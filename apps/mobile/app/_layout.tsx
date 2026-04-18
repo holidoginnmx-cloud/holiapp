@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { StripeProvider } from "@stripe/stripe-react-native";
+import { registerForPushNotifications } from "@/lib/pushNotifications";
 
 const tokenCache = {
   async getToken(key: string) {
@@ -43,6 +44,10 @@ function ClerkTokenSync() {
     if (isSignedIn && userId) {
       console.log("🔄 [ClerkTokenSync] Calling syncUser...");
       syncUser();
+      // Registrar push token con el backend (best-effort, no bloquea)
+      registerForPushNotifications().catch((err) => {
+        console.error("[push] Error registrando token:", err);
+      });
     }
   }, [isSignedIn, userId]);
 

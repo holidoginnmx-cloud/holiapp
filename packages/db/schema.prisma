@@ -640,3 +640,18 @@ model CreditLedger {
   @@index([userId, createdAt])
   @@map("credit_ledger")
 }
+
+// =============================================================
+//  STRIPE EVENT — Registro de eventos de webhook procesados
+//  (idempotencia: evita procesar el mismo evento dos veces)
+// =============================================================
+
+model StripeEvent {
+  id          String   @id   // event.id de Stripe (evt_...)
+  type        String         // payment_intent.succeeded, charge.refunded, etc.
+  processedAt DateTime @default(now())
+  payload     Json           // evento completo, para debugging/audit
+
+  @@index([type, processedAt])
+  @@map("stripe_events")
+}

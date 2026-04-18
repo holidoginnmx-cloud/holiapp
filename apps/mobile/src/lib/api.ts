@@ -762,3 +762,17 @@ export const getCreditLedger = () =>
 export type MeResponse = User & { creditBalance: string };
 
 export const getMe = () => apiFetch<MeResponse>(`/users/me`);
+
+// ─── Push tokens ──────────────────────────────────────────
+
+export const registerPushToken = (token: string, platform: "ios" | "android") =>
+  apiFetch<{ id: string }>(ENDPOINTS.pushTokens, {
+    method: "POST",
+    body: JSON.stringify({ token, platform }),
+  });
+
+export const unregisterPushToken = (token: string) =>
+  apiFetch<{ deleted: number }>(
+    `${ENDPOINTS.pushTokens}?token=${encodeURIComponent(token)}`,
+    { method: "DELETE" }
+  );

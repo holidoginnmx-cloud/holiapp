@@ -36,6 +36,13 @@
           "merchantIdentifier": "merchant.com.holidoginn.app",
           "enableGooglePay": true
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#3a7cab",
+          "defaultChannel": "default"
+        }
       ]
     ]
   }

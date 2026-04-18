@@ -3,6 +3,7 @@ import { CreateBathAddonSchema, ConfirmBathAddonSchema } from "@holidoginn/share
 import { Prisma, PetSize, PrismaClient } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import { notifyUsers } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -54,14 +55,11 @@ export async function notifyBathContracted(
 
   if (targets.size === 0) return;
 
-  await prisma.notification.createMany({
-    data: Array.from(targets).map((userId) => ({
-      userId,
-      type: "GENERAL" as const,
-      title,
-      body,
-      data: { reservationId, kind: "BATH_CONTRACTED" },
-    })),
+  await notifyUsers(prisma, Array.from(targets), {
+    type: "GENERAL" as const,
+    title,
+    body,
+    data: { reservationId, kind: "BATH_CONTRACTED" },
   });
 }
 

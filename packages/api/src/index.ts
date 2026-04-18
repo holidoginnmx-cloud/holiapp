@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import rawBody from "fastify-raw-body";
 import { clerkPlugin } from "@clerk/fastify";
 import prismaPlugin from "./plugins/prisma";
 import usersRoutes from "./routes/users";
@@ -16,6 +17,8 @@ import staffRoutes from "./routes/staff";
 import reviewsRoutes from "./routes/reviews";
 import servicesRoutes from "./routes/services";
 import changeRequestsRoutes from "./routes/changeRequests";
+import stripeWebhookRoutes from "./routes/stripeWebhooks";
+import pushTokensRoutes from "./routes/pushTokens";
 
 const app = Fastify({ logger: true });
 
@@ -60,6 +63,15 @@ app.register(rateLimit, {
   allowList: isDev ? ["127.0.0.1", "::1"] : [],
 });
 
+// Raw body capture (solo para el webhook de Stripe — requiere el body original
+// sin parsear para validar la firma). Debe registrarse antes de las rutas.
+app.register(rawBody, {
+  field: "rawBody",
+  global: false,
+  encoding: "utf8",
+  runFirst: true,
+});
+
 app.register(clerkPlugin);
 app.register(prismaPlugin);
 
@@ -81,6 +93,8 @@ app.register(staffRoutes);
 app.register(reviewsRoutes);
 app.register(servicesRoutes);
 app.register(changeRequestsRoutes);
+app.register(stripeWebhookRoutes);
+app.register(pushTokensRoutes);
 
 const start = async () => {
   try {

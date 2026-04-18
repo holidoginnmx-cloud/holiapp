@@ -11,6 +11,12 @@ import { randomUUID } from "crypto";
 import Stripe from "stripe";
 import { notifyBathContracted } from "./services";
 import { createAuthMiddleware } from "../middleware/auth";
+import {
+  reservationConfirmedTemplate,
+  refundIssuedTemplate,
+  sendEmail,
+} from "../lib/email";
+import { notifyUser, notifyUsers } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -513,14 +519,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           reservationId: reservations[0]?.id ?? null,
         },
       });
-      await prisma.notification.create({
-        data: {
-          userId: ownerId,
-          type: "CREDIT_APPLIED",
-          title: "Saldo a favor aplicado 💰",
-          body: `Se aplicaron $${creditApplied.toLocaleString("es-MX")} de tu saldo a la nueva reservación.`,
-          data: { reservationId: reservations[0]?.id, amount: creditApplied },
-        },
+      await notifyUser(prisma, {
+        userId: ownerId,
+        type: "CREDIT_APPLIED",
+        title: "Saldo a favor aplicado 💰",
+        body: `Se aplicaron $${creditApplied.toLocaleString("es-MX")} de tu saldo a la nueva reservación.`,
+        data: { reservationId: reservations[0]?.id, amount: creditApplied },
       });
     }
 
@@ -531,15 +535,30 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       select: { id: true },
     });
     if (staffUsers.length > 0) {
-      await prisma.notification.createMany({
-        data: staffUsers.map((s) => ({
-          userId: s.id,
-          type: "NEW_RESERVATION" as any,
-          title: "Nueva reservación creada 🐾",
-          body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
-          data: { reservationId: reservations[0]?.id },
-        })),
+      await notifyUsers(prisma, staffUsers.map((s) => s.id), {
+        type: "NEW_RESERVATION" as any,
+        title: "Nueva reservación creada 🐾",
+        body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
+        data: { reservationId: reservations[0]?.id },
       });
+    }
+
+    // Email de confirmación al dueño
+    if (owner.email) {
+      const depositAmount = paymentType === "DEPOSIT" ? grandTotal * 0.20 : grandTotal;
+      const remainingAmount = grandTotal - depositAmount;
+      const roomNames = [...new Set(reservations.map((r: any) => r.room?.name).filter(Boolean))];
+      const tpl = reservationConfirmedTemplate({
+        ownerFirstName: owner.firstName,
+        petNames: reservations.map((r: any) => r.pet.name),
+        checkIn,
+        checkOut,
+        roomName: roomNames.length === 1 ? (roomNames[0] as string) : null,
+        totalAmount: grandTotal,
+        paymentType: paymentType as "FULL" | "DEPOSIT",
+        remainingAmount,
+      });
+      await sendEmail({ to: owner.email, ...tpl });
     }
 
     return reply.status(201).send({ reservations, grandTotal, groupId, creditApplied });
@@ -616,6 +635,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Cargar email del dueño (para notificación post-transacción)
+      const ownerForEmail = await prisma.user.findUnique({
+        where: { id: reservation.ownerId },
+        select: { email: true, firstName: true },
+      });
+
       await prisma.$transaction(async (tx) => {
         await tx.reservation.update({
           where: { id: reservation.id },
@@ -640,15 +665,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
                 notes: `Reembolso por cancelación de reservación`,
               },
             });
-            await tx.notification.create({
-              data: {
-                userId: reservation.ownerId,
-                type: "REFUND_ISSUED",
-                title: "Reembolso procesado 💳",
-                body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por la cancelación de ${reservation.pet.name}.`,
-                data: { reservationId: reservation.id, amount: refundAmount },
-              },
-            });
+            // Notificación se hace fuera del $transaction (side-effect con push)
           } else {
             const updatedUser = await tx.user.update({
               where: { id: reservation.ownerId },
@@ -664,18 +681,42 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
                 reservationId: reservation.id,
               },
             });
-            await tx.notification.create({
-              data: {
-                userId: reservation.ownerId,
-                type: "CREDIT_ADDED",
-                title: "Saldo a favor acreditado 💰",
-                body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por la cancelación de ${reservation.pet.name}.`,
-                data: { reservationId: reservation.id, amount: refundAmount },
-              },
-            });
+            // Notificación se hace fuera del $transaction (side-effect con push)
           }
         }
       });
+
+      // Notificación + push post-commit
+      if (refundAmount > 0) {
+        if (refundChoice === "STRIPE_REFUND" && lastStripePayment?.stripePaymentIntentId) {
+          await notifyUser(prisma, {
+            userId: reservation.ownerId,
+            type: "REFUND_ISSUED",
+            title: "Reembolso procesado 💳",
+            body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por la cancelación de ${reservation.pet.name}.`,
+            data: { reservationId: reservation.id, amount: refundAmount },
+          });
+        } else {
+          await notifyUser(prisma, {
+            userId: reservation.ownerId,
+            type: "CREDIT_ADDED",
+            title: "Saldo a favor acreditado 💰",
+            body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por la cancelación de ${reservation.pet.name}.`,
+            data: { reservationId: reservation.id, amount: refundAmount },
+          });
+        }
+      }
+
+      // Email post-cancelación
+      if (refundAmount > 0 && ownerForEmail?.email) {
+        const tpl = refundIssuedTemplate({
+          ownerFirstName: ownerForEmail.firstName,
+          amount: refundAmount,
+          petName: reservation.pet.name,
+          channel: refundChoice === "STRIPE_REFUND" ? "STRIPE" : "CREDIT",
+        });
+        await sendEmail({ to: ownerForEmail.email, ...tpl });
+      }
 
       return reply.send({ success: true, refundAmount, refundChoice });
     }

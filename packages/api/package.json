@@ -7,7 +7,8 @@
     "build": "tsc",
     "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "reconcile": "tsx --env-file=.env src/scripts/reconcile.ts"
   },
   "dependencies": {
     "@clerk/fastify": "^3.1.5",
@@ -16,8 +17,11 @@
     "@fastify/rate-limit": "^10.3.0",
     "@holidoginn/db": "*",
     "@holidoginn/shared": "*",
+    "expo-server-sdk": "^6.1.0",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.1.0",
+    "fastify-raw-body": "^5.0.0",
+    "resend": "^6.12.0",
     "stripe": "^22.0.0",
     "zod": "^4.3.6"
   },

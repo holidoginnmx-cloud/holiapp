@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { ReviewCartillaSchema, CartillaStatusEnum } from "@holidoginn/shared";
+import { notifyUser, notifyUsers } from "../lib/notify";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -205,19 +206,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .send({ error: "No hay usuarios destinatarios" });
       }
 
-      const notifications = await prisma.notification.createMany({
-        data: targetUserIds.map((userId) => ({
-          userId,
-          title,
-          body,
-          type: (type as any) ?? "GENERAL",
-          isRead: false,
-        })),
+      await notifyUsers(prisma, targetUserIds, {
+        type: (type as any) ?? "GENERAL",
+        title,
+        body,
       });
 
       return reply
         .status(201)
-        .send({ sent: notifications.count });
+        .send({ sent: targetUserIds.length });
     }
   );
 
@@ -296,15 +293,13 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         include: { staff: { select: { firstName: true, lastName: true } } },
       });
 
-      // Notificar al staff
-      await prisma.notification.create({
-        data: {
-          userId: staffId,
-          type: "STAFF_ASSIGNED" as any,
-          title: `Te asignaron a ${reservation.pet.name}`,
-          body: `El admin te asignó como responsable de la estancia de ${reservation.pet.name}.`,
-          data: { reservationId: reservation.id },
-        },
+      // Notificar al staff (in-app + push)
+      await notifyUser(prisma, {
+        userId: staffId,
+        type: "STAFF_ASSIGNED" as any,
+        title: `Te asignaron a ${reservation.pet.name}`,
+        body: `El admin te asignó como responsable de la estancia de ${reservation.pet.name}.`,
+        data: { reservationId: reservation.id },
       });
 
       return updated;
@@ -383,14 +378,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         },
       });
 
-      await prisma.notification.create({
-        data: {
-          userId: user.id,
-          type: "CREDIT_ADDED" as any,
-          title: amount > 0 ? "Crédito agregado" : "Ajuste de crédito",
-          body: `${amount > 0 ? "Se agregaron" : "Se ajustaron"} $${Math.abs(amount).toLocaleString("es-MX")} a tu saldo. Motivo: ${description}`,
-          data: { amount },
-        },
+      await notifyUser(prisma, {
+        userId: user.id,
+        type: "CREDIT_ADDED" as any,
+        title: amount > 0 ? "Crédito agregado" : "Ajuste de crédito",
+        body: `${amount > 0 ? "Se agregaron" : "Se ajustaron"} $${Math.abs(amount).toLocaleString("es-MX")} a tu saldo. Motivo: ${description}`,
+        data: { amount },
       });
 
       return { creditBalance: Number(updatedUser.creditBalance) };
@@ -467,23 +460,21 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               },
       });
 
-      // Notify the owner
-      await prisma.notification.create({
-        data: {
-          userId: pet.ownerId,
-          type: "GENERAL",
-          title:
-            action === "APPROVE"
-              ? `Cartilla aprobada: ${pet.name}`
-              : `Cartilla rechazada: ${pet.name}`,
-          body:
-            action === "APPROVE"
-              ? `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`
-              : `La cartilla de ${pet.name} fue rechazada${
-                  reason?.trim() ? `: ${reason.trim()}` : "."
-                } Sube una nueva para revisarla.`,
-          data: { petId: pet.id, kind: "CARTILLA_REVIEW", action },
-        },
+      // Notify the owner (in-app + push)
+      await notifyUser(prisma, {
+        userId: pet.ownerId,
+        type: "GENERAL",
+        title:
+          action === "APPROVE"
+            ? `Cartilla aprobada: ${pet.name}`
+            : `Cartilla rechazada: ${pet.name}`,
+        body:
+          action === "APPROVE"
+            ? `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`
+            : `La cartilla de ${pet.name} fue rechazada${
+                reason?.trim() ? `: ${reason.trim()}` : "."
+              } Sube una nueva para revisarla.`,
+        data: { petId: pet.id, kind: "CARTILLA_REVIEW", action },
       });
 
       return updated;

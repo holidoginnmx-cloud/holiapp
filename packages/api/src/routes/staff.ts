@@ -10,6 +10,7 @@ import {
   CreateStaffAlertSchema,
   CreateStayUpdateSchema,
 } from "@holidoginn/shared";
+import { notifyUser, notifyUsers } from "../lib/notify";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -45,15 +46,13 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     if (existingReminder) return;
 
     const petNames = staysWithoutChecklist.map((s) => s.pet.name).join(", ");
-    await prisma.notification.create({
+    await notifyUser(prisma, {
+      userId: staffId,
+      type: "CHECKLIST_REMINDER" as any,
+      title: "Reportes diarios pendientes 📋",
+      body: `Faltan reportes de hoy para: ${petNames}. No olvides llenarlos.`,
       data: {
-        userId: staffId,
-        type: "CHECKLIST_REMINDER" as any,
-        title: "Reportes diarios pendientes 📋",
-        body: `Faltan reportes de hoy para: ${petNames}. No olvides llenarlos.`,
-        data: {
-          reservationIds: staysWithoutChecklist.map((s) => s.id),
-        },
+        reservationIds: staysWithoutChecklist.map((s) => s.id),
       },
     });
   }
@@ -219,14 +218,12 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       });
 
       // Notificación al staff asignado
-      await prisma.notification.create({
-        data: {
-          userId: request.userId!,
-          type: "STAFF_ASSIGNED" as any,
-          title: `Te asignaste a ${updated.pet.name}`,
-          body: `Ahora eres responsable de la estancia de ${updated.pet.name}. Revisa los detalles y prepárate para el check-in.`,
-          data: { reservationId: id },
-        },
+      await notifyUser(prisma, {
+        userId: request.userId!,
+        type: "STAFF_ASSIGNED" as any,
+        title: `Te asignaste a ${updated.pet.name}`,
+        body: `Ahora eres responsable de la estancia de ${updated.pet.name}. Revisa los detalles y prepárate para el check-in.`,
+        data: { reservationId: id },
       });
 
       return updated;
@@ -264,15 +261,13 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Notificación al dueño
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "CHECK_IN",
-          title: "Tu mascota ya está hospedada",
-          body: `${reservation.pet.name} ya se encuentra en HolidogInn. Estamos al pendiente, te enviaremos actualizaciones diarias 🐾`,
-          data: { reservationId: id },
-        },
+      // Notificación al dueño (in-app + push)
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "CHECK_IN",
+        title: "Tu mascota ya está hospedada",
+        body: `${reservation.pet.name} ya se encuentra en HolidogInn. Estamos al pendiente, te enviaremos actualizaciones diarias 🐾`,
+        data: { reservationId: id },
       });
 
       return updated;
@@ -326,26 +321,22 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         data: { status: "CHECKED_OUT" },
       });
 
-      // Notificación al dueño
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "CHECK_OUT",
-          title: `${reservation.pet.name} ya salió 🐾`,
-          body: `La estancia de ${reservation.pet.name} ha finalizado. Gracias por confiar en nosotros, nos vemos pronto.`,
-          data: { reservationId: id },
-        },
+      // Notificación al dueño (in-app + push)
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "CHECK_OUT",
+        title: `${reservation.pet.name} ya salió 🐾`,
+        body: `La estancia de ${reservation.pet.name} ha finalizado. Gracias por confiar en nosotros, nos vemos pronto.`,
+        data: { reservationId: id },
       });
 
-      // Solicitud de reseña
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "REVIEW_REQUEST",
-          title: "¿Cómo fue la experiencia? ⭐",
-          body: `Cuéntanos sobre la estancia de ${reservation.pet.name}. Tu reseña nos ayuda a mejorar.`,
-          data: { reservationId: id },
-        },
+      // Solicitud de reseña (in-app + push)
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "REVIEW_REQUEST",
+        title: "¿Cómo fue la experiencia? ⭐",
+        body: `Cuéntanos sobre la estancia de ${reservation.pet.name}. Tu reseña nos ayuda a mejorar.`,
+        data: { reservationId: id },
       });
 
       return { reservation: updated, warnings };
@@ -430,14 +421,12 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       const energyLabels: Record<string, string> = { LOW: "Baja", MEDIUM: "Media", HIGH: "Alta" };
       const moodLabels: Record<string, string> = { SAD: "Triste", NEUTRAL: "Neutral", HAPPY: "Feliz", EXCITED: "Emocionado" };
 
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "DAILY_REPORT",
-          title: `Reporte diario de ${reservation.pet.name}`,
-          body: `Energía: ${energyLabels[data.energy]}, Estado: ${moodLabels[data.mood]}. ${data.additionalNotes || "Todo en orden."}`,
-          data: { reservationId: data.reservationId, checklistId: checklist.id },
-        },
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "DAILY_REPORT",
+        title: `Reporte diario de ${reservation.pet.name}`,
+        body: `Energía: ${energyLabels[data.energy]}, Estado: ${moodLabels[data.mood]}. ${data.additionalNotes || "Todo en orden."}`,
+        data: { reservationId: data.reservationId, checklistId: checklist.id },
       });
 
       return reply.status(201).send(checklist);
@@ -526,14 +515,12 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         select: { name: true },
       });
 
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "NEW_UPDATE",
-          title: `Nueva ${data.mediaType === "video" ? "video" : "foto"} de ${pet?.name ?? "tu mascota"}`,
-          body: data.caption || `Se ha subido una nueva ${data.mediaType === "video" ? "video" : "foto"} de la estancia.`,
-          data: { reservationId: data.reservationId, updateId: update.id },
-        },
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "NEW_UPDATE",
+        title: `Nueva ${data.mediaType === "video" ? "video" : "foto"} de ${pet?.name ?? "tu mascota"}`,
+        body: data.caption || `Se ha subido una nueva ${data.mediaType === "video" ? "video" : "foto"} de la estancia.`,
+        data: { reservationId: data.reservationId, updateId: update.id },
       });
 
       return reply.status(201).send(update);
@@ -580,19 +567,16 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       };
 
       if (admins.length > 0) {
-        await prisma.notification.createMany({
-          data: admins.map((admin) => ({
-            userId: admin.id,
-            type: "STAFF_ALERT" as const,
-            title: `🚨 Alerta: ${pet?.name ?? "Mascota"} - ${alertLabels[data.type]}`,
-            body: data.description,
-            data: {
-              reservationId: data.reservationId,
-              petId: data.petId,
-              alertId: alert.id,
-              alertType: data.type,
-            },
-          })),
+        await notifyUsers(prisma, admins.map((a) => a.id), {
+          type: "STAFF_ALERT" as const,
+          title: `🚨 Alerta: ${pet?.name ?? "Mascota"} - ${alertLabels[data.type]}`,
+          body: data.description,
+          data: {
+            reservationId: data.reservationId,
+            petId: data.petId,
+            alertId: alert.id,
+            alertType: data.type,
+          },
         });
       }
 

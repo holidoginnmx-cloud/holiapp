@@ -17,4 +17,5 @@ export const ENDPOINTS = {
   notifications: "/notifications",
   reviews: "/reviews",
   services: "/services",
+  pushTokens: "/push-tokens",
 } as const;

@@ -3,6 +3,8 @@ import { CreatePaymentSchema } from "@holidoginn/shared";
 import { PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import { paymentReceivedTemplate, sendEmail } from "../lib/email";
+import { notifyUser } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -385,6 +387,37 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Email "pago recibido"
+    const owner = await prisma.user.findUnique({
+      where: { id: reservation.ownerId },
+      select: { email: true, firstName: true },
+    });
+    const pet = await prisma.pet.findUnique({
+      where: { id: reservation.petId },
+      select: { name: true },
+    });
+    if (owner?.email && pet) {
+      const tpl = paymentReceivedTemplate({
+        ownerFirstName: owner.firstName,
+        amount: paymentIntent.amount / 100,
+        petName: pet.name,
+        method: "CARD",
+        reservationStatus: "CONFIRMED",
+      });
+      await sendEmail({ to: owner.email, ...tpl });
+    }
+
+    // Notificación + push in-app
+    if (pet) {
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "PAYMENT_RECEIVED",
+        title: "Pago recibido ✅",
+        body: `Se registró tu pago de $${(paymentIntent.amount / 100).toLocaleString("es-MX")} para la estancia de ${pet.name}.`,
+        data: { reservationId, amount: paymentIntent.amount / 100 },
+      });
+    }
+
     return reply.send({ success: true });
   });
 
@@ -448,15 +481,13 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Notificar al owner
-      await prisma.notification.create({
-        data: {
-          userId: reservation.ownerId,
-          type: "PAYMENT_RECEIVED" as any,
-          title: "Pago registrado",
-          body: `Se registró un pago de $${amount.toLocaleString("es-MX")} (${method === "CASH" ? "efectivo" : "transferencia"}) para la estancia de ${reservation.pet.name}.`,
-          data: { reservationId, paymentId: payment.id },
-        },
+      // Notificar al owner (in-app + push)
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "PAYMENT_RECEIVED" as any,
+        title: "Pago registrado",
+        body: `Se registró un pago de $${amount.toLocaleString("es-MX")} (${method === "CASH" ? "efectivo" : "transferencia"}) para la estancia de ${reservation.pet.name}.`,
+        data: { reservationId, paymentId: payment.id },
       });
 
       return reply.status(201).send(payment);
