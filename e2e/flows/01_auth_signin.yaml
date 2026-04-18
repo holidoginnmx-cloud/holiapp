@@ -1,0 +1,42 @@
+appId: com.holidoginn.app
+tags:
+  - smoke
+  - auth
+name: Clerk sign-in happy path (email + password)
+env:
+  E2E_EMAIL: "qa+e2e@holidoginn.com"
+  E2E_PASSWORD: "changeme"
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+
+- assertVisible:
+    id: "auth-login-screen"
+
+- tapOn:
+    id: "auth-login-email-input"
+- inputText: ${E2E_EMAIL}
+- hideKeyboard
+
+- tapOn:
+    id: "auth-login-password-input"
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+
+- tapOn:
+    id: "auth-login-submit-button"
+
+# Happy path: Clerk returns `complete` and the app routes to (tabs)/home.
+# If the Clerk instance requires email-code 2FA, the app renders the
+# email_code step — fail fast rather than prompting for a code the
+# test cannot deliver.
+# TODO: wire a real mailbox (e.g. maildev, mailosaur) if 2FA is enforced
+# for the E2E user; for now, disable 2FA on the QA user in Clerk.
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
+    timeout: 15000
+
+- assertVisible:
+    id: "home-reserve-button"

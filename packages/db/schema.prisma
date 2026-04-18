@@ -1,0 +1,642 @@
+// =============================================================
+//  Holidogg Inn — Prisma Schema
+//  Base de datos: PostgreSQL
+// =============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================
+//  ENUMS
+// =============================================================
+
+enum Role {
+  OWNER   // Dueño de mascota (cliente)
+  STAFF   // Empleado del negocio
+  ADMIN   // Administrador / dueño del negocio
+}
+
+enum PetSize {
+  XS   // Extra pequeño (< 5 kg)
+  S    // Pequeño (5–10 kg)
+  M    // Mediano (10–20 kg)
+  L    // Grande (20–35 kg)
+  XL   // Extra grande (> 35 kg)
+}
+
+enum ReservationStatus {
+  PENDING     // Esperando confirmación
+  CONFIRMED   // Confirmada por el negocio
+  CHECKED_IN  // Mascota en el hotel
+  CHECKED_OUT // Estancia finalizada
+  CANCELLED   // Cancelada
+}
+
+enum PaymentStatus {
+  UNPAID    // Sin pagar
+  PARTIAL   // Pago parcial (anticipo)
+  PAID      // Pagado completo
+  REFUNDED  // Reembolsado
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  STRIPE
+  CREDIT
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum RefundChoice {
+  STRIPE_REFUND
+  CREDIT
+}
+
+enum CreditEntryType {
+  CREDIT_ADDED
+  CREDIT_APPLIED
+  CREDIT_ADJUSTED
+}
+
+enum NotificationType {
+  RESERVATION_CONFIRMED
+  RESERVATION_REMINDER
+  CHECK_IN
+  CHECK_OUT
+  NEW_UPDATE       // Foto/actualización de la mascota
+  PAYMENT_RECEIVED
+  GENERAL
+  DAILY_REPORT     // Reporte diario del staff
+  STAFF_ALERT      // Alerta del staff hacia admin
+  REVIEW_REQUEST   // Solicitud de reseña post check-out
+  RESERVATION_CHANGE_REQUESTED
+  RESERVATION_CHANGE_APPROVED
+  RESERVATION_CHANGE_REJECTED
+  REFUND_ISSUED
+  CREDIT_ADDED
+  CREDIT_APPLIED
+}
+
+enum EnergyLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SocializationLevel {
+  ISOLATED
+  SELECTIVE
+  SOCIAL
+}
+
+enum RestQuality {
+  POOR
+  FAIR
+  GOOD
+}
+
+enum MoodLevel {
+  SAD
+  NEUTRAL
+  HAPPY
+  EXCITED
+}
+
+enum BehaviorTagValue {
+  CALM
+  ANXIOUS
+  DOMINANT
+  SOCIABLE
+  SHY
+  AGGRESSIVE
+}
+
+enum AlertType {
+  NOT_EATING
+  LETHARGIC
+  BEHAVIOR_ISSUE
+  HEALTH_CONCERN
+  INCIDENT
+}
+
+enum AddonPaymentSource {
+  BOOKING      // Cobrado junto con el hospedaje
+  STANDALONE   // Cobrado con su propio PaymentIntent
+}
+
+enum CartillaStatus {
+  PENDING    // Subida, esperando revisión
+  APPROVED   // Validada por admin
+  REJECTED   // Rechazada por admin (ver cartillaRejectionReason)
+}
+
+// =============================================================
+//  USER — Usuarios (clientes, staff y admin)
+// =============================================================
+
+model User {
+  id            String   @id @default(cuid())
+  clerkId       String?  @unique
+  email         String   @unique
+  phone         String?
+  firstName     String
+  lastName      String
+  avatarUrl     String?
+  role          Role     @default(OWNER)
+  isActive      Boolean  @default(true)
+  creditBalance Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relaciones
+  pets              Pet[]
+  reservations      Reservation[]
+  payments          Payment[]
+  notifications     Notification[]
+  pushTokens        PushToken[]
+
+  reviews           Review[]
+
+  // Relaciones de staff
+  staffAssignments  Reservation[]      @relation("StaffAssignments")
+  stayUpdates       StayUpdate[]       @relation("StaffUpdates")
+  checklists        DailyChecklist[]   @relation("StaffChecklists")
+  behaviorTags      BehaviorTag[]      @relation("StaffBehaviorTags")
+  staffAlerts       StaffAlert[]       @relation("StaffAlerts")
+
+  // Cambios y saldo
+  changeRequests    ReservationChangeRequest[] @relation("ChangeRequestedBy")
+  approvedChanges   ReservationChangeRequest[] @relation("ChangeApprovedBy")
+  creditEntries     CreditLedger[]
+
+  // Cartillas revisadas como admin
+  cartillasReviewed Pet[]              @relation("CartillaReviewer")
+
+  @@map("users")
+}
+
+// =============================================================
+//  PET — Mascotas
+// =============================================================
+
+model Pet {
+  id          String   @id @default(cuid())
+  name        String
+  breed       String?
+  size        PetSize
+  birthDate   DateTime?
+  weight      Float?         // En kilogramos
+  photoUrl    String?
+  notes       String?        // Notas especiales (alergias, comportamiento, etc.)
+  sex                 String?        // "M" o "F"
+  behavior            String?        // CSV: "amigable,nervioso,agresivo,otro"
+  walkPreference      String?        // CSV: "aire_libre,instalaciones"
+  healthIssues        String?        // Descripción si tiene problemas de salud
+  isNeutered          Boolean  @default(false)
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  emergencyContactRelation String?   // Relación con el propietario
+  vetName             String?
+  vetPhone            String?
+  vetEmergency24h     Boolean  @default(false)
+  feedingSchedule     String?        // Horarios de comida
+  feedingAmount       String?        // Cantidad por comida
+  foodType            String?        // Tipo de alimento
+  feedingInstructions String?        // Instrucciones especiales
+  diet                String?        // Legacy: campo anterior de dieta
+  personality         String?
+
+  // Cartilla de vacunación (documento oficial del vet)
+  cartillaUrl             String?
+  cartillaStatus          CartillaStatus?   // null = aún no se ha subido
+  cartillaReviewedAt      DateTime?
+  cartillaReviewedById    String?
+  cartillaReviewedBy      User?     @relation("CartillaReviewer", fields: [cartillaReviewedById], references: [id])
+  cartillaRejectionReason String?
+
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  ownerId      String
+  owner        User           @relation(fields: [ownerId], references: [id])
+  vaccines     Vaccine[]
+  reservations Reservation[]
+  updates      StayUpdate[]
+  behaviorTags BehaviorTag[]
+  staffAlerts  StaffAlert[]
+
+  @@map("pets")
+}
+
+// =============================================================
+//  VACCINE — Historial de vacunas de cada mascota
+// =============================================================
+
+model Vaccine {
+  id          String   @id @default(cuid())
+  name        String          // "Rabia", "Parvovirus", "DHPP", etc.
+  appliedAt   DateTime
+  expiresAt   DateTime?
+  vetName     String?
+  fileUrl     String?         // PDF o imagen del carnet
+  createdAt   DateTime @default(now())
+
+  petId String
+  pet   Pet    @relation(fields: [petId], references: [id])
+
+  @@map("vaccines")
+}
+
+// =============================================================
+//  ROOM — Habitaciones o espacios del hotel
+// =============================================================
+
+model Room {
+  id          String   @id @default(cuid())
+  name        String          // "Suite 1", "Cuarto Mediano A", etc.
+  description String?
+  capacity    Int      @default(1)
+  sizeAllowed PetSize[]       // Tamaños de mascota permitidos
+  pricePerDay Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  photoUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reservations Reservation[]
+
+  @@map("rooms")
+}
+
+// =============================================================
+//  RESERVATION — Reservaciones de estancia
+// =============================================================
+
+model Reservation {
+  id            String            @id @default(cuid())
+  checkIn       DateTime
+  checkOut      DateTime
+  status        ReservationStatus @default(PENDING)
+  totalDays     Int
+  totalAmount   Decimal           @db.Decimal(10, 2)
+  notes         String?
+  medicationNotes String?          // Instrucciones de administración si la mascota toma medicamento
+  legalAccepted Boolean          @default(false)
+  groupId       String?            // Agrupa reservaciones multi-mascota
+  paymentType     String?          // "FULL" o "DEPOSIT"
+  depositDeadline DateTime?        // 48h antes del checkIn, solo para anticipos
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // Relaciones
+  ownerId  String
+  owner    User    @relation(fields: [ownerId], references: [id])
+
+  petId    String
+  pet      Pet     @relation(fields: [petId], references: [id])
+
+  roomId   String?
+  room     Room?   @relation(fields: [roomId], references: [id])
+
+  // Staff asignado
+  staffId  String?
+  staff    User?   @relation("StaffAssignments", fields: [staffId], references: [id])
+
+  payments   Payment[]
+  updates    StayUpdate[]
+  checklists DailyChecklist[]
+  alerts     StaffAlert[]
+  review     Review?
+  addons     ReservationAddon[]
+  changeRequests ReservationChangeRequest[]
+
+  @@map("reservations")
+}
+
+// =============================================================
+//  STAY UPDATE — Actualizaciones/fotos durante la estancia
+// =============================================================
+
+model StayUpdate {
+  id          String   @id @default(cuid())
+  caption     String?
+  mediaUrl    String          // URL de foto o video
+  mediaType   String   @default("image") // "image" | "video"
+  createdAt   DateTime @default(now())
+
+  // Relaciones
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+
+  petId  String
+  pet    Pet    @relation(fields: [petId], references: [id])
+
+  // Staff que subió la actualización
+  staffId String?
+  staff   User?   @relation("StaffUpdates", fields: [staffId], references: [id])
+
+  @@map("stay_updates")
+}
+
+// =============================================================
+//  DAILY CHECKLIST — Reporte diario del staff por reservación
+// =============================================================
+
+model DailyChecklist {
+  id              String             @id @default(cuid())
+  date            DateTime           @db.Date
+
+  // Reporte diario
+  energy          EnergyLevel
+  socialization   SocializationLevel
+  rest            RestQuality
+
+  // Checklist
+  mealsCompleted     Boolean  @default(false)
+  mealsNotes         String?
+  walksCompleted     Boolean  @default(false)
+  bathroomBreaks     Boolean  @default(false)
+  playtime           Boolean  @default(false)
+  socializationDone  Boolean  @default(false)
+  mood               MoodLevel
+
+  // Observaciones
+  feedingNotes    String?
+  behaviorNotes   String?
+  additionalNotes String?
+
+  // Conteo de evidencias del día
+  photosCount     Int      @default(0)
+  videosCount     Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relaciones
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  staffId         String
+  staff           User    @relation("StaffChecklists", fields: [staffId], references: [id])
+
+  @@unique([reservationId, date])
+  @@map("daily_checklists")
+}
+
+// =============================================================
+//  BEHAVIOR TAG — Etiquetas de comportamiento por mascota
+// =============================================================
+
+model BehaviorTag {
+  id        String           @id @default(cuid())
+  tag       BehaviorTagValue
+  notes     String?
+  stayId    String           // reservationId para contexto
+  createdAt DateTime         @default(now())
+
+  petId     String
+  pet       Pet              @relation(fields: [petId], references: [id])
+
+  staffId   String
+  staff     User             @relation("StaffBehaviorTags", fields: [staffId], references: [id])
+
+  @@map("behavior_tags")
+}
+
+// =============================================================
+//  STAFF ALERT — Alertas del staff hacia admin
+// =============================================================
+
+model StaffAlert {
+  id          String    @id @default(cuid())
+  type        AlertType
+  description String
+  isResolved  Boolean   @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+
+  petId       String
+  pet         Pet        @relation(fields: [petId], references: [id])
+
+  staffId     String
+  staff       User       @relation("StaffAlerts", fields: [staffId], references: [id])
+
+  @@map("staff_alerts")
+}
+
+// =============================================================
+//  REVIEW — Reseñas post-estancia
+// =============================================================
+
+model Review {
+  id            String   @id @default(cuid())
+  rating        Int      // 1-5 patitas
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  reservationId String   @unique
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id])
+
+  @@map("reviews")
+}
+
+// =============================================================
+//  PAYMENT — Pagos de reservaciones
+// =============================================================
+
+model Payment {
+  id            String        @id @default(cuid())
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod
+  status        PaymentStatus @default(UNPAID)
+  reference     String?       // Referencia de transferencia o recibo
+  stripePaymentIntentId String?  @unique
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  // Relaciones
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+
+  userId  String
+  user    User  @relation(fields: [userId], references: [id])
+
+  addons  ReservationAddon[]
+
+  @@map("payments")
+}
+
+// =============================================================
+//  NOTIFICATION — Notificaciones in-app
+// =============================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  data      Json?            // Metadata extra (ej: reservationId)
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+// =============================================================
+//  PUSH TOKEN — Tokens de dispositivo para notificaciones push
+// =============================================================
+
+model PushToken {
+  id        String   @id @default(cuid())
+  token     String   @unique  // Expo Push Token
+  platform  String            // "ios" | "android"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("push_tokens")
+}
+
+// =============================================================
+//  SERVICE TYPE — Catálogo de servicios adicionales (ej. Baño)
+// =============================================================
+
+model ServiceType {
+  id        String   @id @default(cuid())
+  code      String   @unique          // "BATH"
+  name      String                    // "Baño"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  variants  ServiceVariant[]
+
+  @@map("service_types")
+}
+
+// =============================================================
+//  SERVICE VARIANT — Matriz de precios por tamaño y opciones
+// =============================================================
+
+model ServiceVariant {
+  id            String   @id @default(cuid())
+  petSize       PetSize
+  deslanado     Boolean
+  corte         Boolean
+  price         Decimal  @db.Decimal(10, 2)
+  isActive      Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+
+  serviceTypeId String
+  serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id])
+
+  addons        ReservationAddon[]
+
+  @@unique([serviceTypeId, petSize, deslanado, corte])
+  @@map("service_variants")
+}
+
+// =============================================================
+//  RESERVATION ADDON — Servicios adicionales contratados por reserva
+// =============================================================
+
+model ReservationAddon {
+  id            String    @id @default(cuid())
+  unitPrice     Decimal   @db.Decimal(10, 2)   // Snapshot del precio al momento de compra
+  paidWith      AddonPaymentSource
+  completedAt   DateTime?                       // Fecha en que el staff completó el servicio
+  createdAt     DateTime  @default(now())
+
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  variantId     String
+  variant       ServiceVariant @relation(fields: [variantId], references: [id])
+
+  paymentId     String?
+  payment       Payment? @relation(fields: [paymentId], references: [id])
+
+  @@map("reservation_addons")
+}
+
+// =============================================================
+//  RESERVATION CHANGE REQUEST — Extensión o recorte de estadía
+// =============================================================
+
+model ReservationChangeRequest {
+  id              String              @id @default(cuid())
+  newCheckIn      DateTime
+  newCheckOut     DateTime
+  newTotalDays    Int
+  newTotalAmount  Decimal             @db.Decimal(10, 2)
+  deltaAmount     Decimal             @db.Decimal(10, 2)   // + owes more, - refund
+  refundChoice    RefundChoice?                             // required when delta < 0
+  status          ChangeRequestStatus @default(PENDING)
+  rejectionReason String?
+  approvedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  requestedById   String
+  requestedBy     User        @relation("ChangeRequestedBy", fields: [requestedById], references: [id])
+
+  approvedById    String?
+  approvedBy      User?       @relation("ChangeApprovedBy", fields: [approvedById], references: [id])
+
+  creditEntries   CreditLedger[]
+
+  @@index([reservationId, status])
+  @@map("reservation_change_requests")
+}
+
+// =============================================================
+//  CREDIT LEDGER — Historial de saldo a favor por usuario
+// =============================================================
+
+model CreditLedger {
+  id               String          @id @default(cuid())
+  type             CreditEntryType
+  amount           Decimal         @db.Decimal(10, 2)   // signed
+  balanceAfter     Decimal         @db.Decimal(10, 2)
+  description      String
+  createdAt        DateTime        @default(now())
+
+  userId           String
+  user             User            @relation(fields: [userId], references: [id])
+
+  reservationId    String?
+  changeRequestId  String?
+  changeRequest    ReservationChangeRequest? @relation(fields: [changeRequestId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("credit_ledger")
+}

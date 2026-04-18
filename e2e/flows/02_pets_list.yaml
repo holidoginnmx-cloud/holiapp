@@ -1,0 +1,34 @@
+appId: com.holidoginn.app
+tags:
+  - smoke
+  - pets
+name: Pets tab renders the list (or empty state)
+---
+- runFlow:
+    file: 01_auth_signin.yaml
+
+- tapOn:
+    id: "tabbar-pets"
+
+- assertVisible:
+    id: "pets-screen"
+
+# Either the list is populated or the empty state with the CTA is shown.
+- runFlow:
+    when:
+      visible:
+        id: "pets-list"
+    commands:
+      - assertVisible:
+          id: "pets-list"
+- runFlow:
+    when:
+      visible:
+        id: "pets-empty-state"
+    commands:
+      - assertVisible:
+          id: "pets-empty-create-button"
+
+# FAB to create a new pet must always be present on this screen.
+- assertVisible:
+    id: "pets-create-fab"

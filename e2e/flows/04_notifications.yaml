@@ -1,0 +1,29 @@
+appId: com.holidoginn.app
+tags:
+  - smoke
+  - notifications
+name: Notifications tab renders (list or empty state)
+---
+- runFlow:
+    file: 01_auth_signin.yaml
+
+- tapOn:
+    id: "tabbar-notifications"
+
+- assertVisible:
+    id: "notifications-screen"
+
+- runFlow:
+    when:
+      visible:
+        id: "notifications-list"
+    commands:
+      - assertVisible:
+          id: "notifications-list"
+- runFlow:
+    when:
+      visible:
+        id: "notifications-empty-state"
+    commands:
+      - assertVisible:
+          id: "notifications-empty-state"

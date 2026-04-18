@@ -1,0 +1,40 @@
+{
+  "name": "holidoginn-app",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "db:migrate": "turbo run db:migrate",
+    "db:generate": "turbo run db:generate",
+    "db:seed": "turbo run db:seed",
+    "android": "cd apps/mobile && expo run:android",
+    "ios": "cd apps/mobile && expo run:ios",
+    "update-ip": "bash scripts/update-ip.sh",
+    "test:e2e": "maestro test e2e/flows/",
+    "test:e2e:studio": "maestro studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "npm@10.0.0",
+  "version": "1.0.0",
+  "dependencies": {
+    "@react-native-community/datetimepicker": "^9.1.0",
+    "@stripe/stripe-react-native": "^0.62.0",
+    "expo": "~54.0.33",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "overrides": {
+    "expo-crypto": "~15.0.8"
+  }
+}

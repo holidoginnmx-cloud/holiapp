@@ -1,0 +1,17 @@
+appId: com.holidoginn.app
+
+# Default tags applied when running `maestro test e2e/flows/`.
+# Override on the CLI with `--include-tags` / `--exclude-tags`.
+tags:
+  - smoke
+
+# Flows are discovered from this directory when running the whole suite.
+flows:
+  - flows/
+
+# Environment variables consumed by flow files via ${VAR} interpolation.
+# Provide real values via `maestro test -e E2E_EMAIL=... -e E2E_PASSWORD=...`
+# or by exporting them before invoking maestro.
+env:
+  E2E_EMAIL: "qa+e2e@holidoginn.com"
+  E2E_PASSWORD: "changeme"

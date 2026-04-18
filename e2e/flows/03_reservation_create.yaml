@@ -1,0 +1,73 @@
+appId: com.holidoginn.app
+tags:
+  - reservation
+name: Create a reservation end-to-end (pet → dates → room → confirm)
+---
+- runFlow:
+    file: 01_auth_signin.yaml
+
+# Navigate: Reservations tab → New reservation.
+- tapOn:
+    id: "tabbar-reservations"
+- assertVisible:
+    id: "reservations-screen"
+
+- tapOn:
+    id: "reservations-new-button"
+- assertVisible:
+    id: "reservation-create-screen"
+
+# Dates. The date pickers are native; we tap the trigger and accept the
+# default value the picker opens to. On iOS this dismisses via the
+# "Done" button; on Android the first tap commits the date.
+# TODO: parameterize dates once we have a backend fixture that guarantees
+# room availability on a known-future date.
+- tapOn:
+    id: "reservation-create-checkin-button"
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
+
+- tapOn:
+    id: "reservation-create-checkout-button"
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
+
+# Pet: select the first pet chip. The chip carries the pet id, but the
+# list order is stable for seeded QA data, so we rely on the "-first"
+# testID exposed by the screen.
+- tapOn:
+    id: "reservation-create-pet-chip-first"
+
+# Room preference is only rendered when 2+ pets are selected; skip if absent.
+- runFlow:
+    when:
+      visible:
+        id: "reservation-create-room-shared"
+    commands:
+      - tapOn:
+          id: "reservation-create-room-shared"
+
+# Legal checkboxes.
+- tapOn:
+    id: "reservation-create-legal-terms"
+- tapOn:
+    id: "reservation-create-legal-vaccines"
+- tapOn:
+    id: "reservation-create-legal-incidents"
+
+# Confirm. This opens the Stripe PaymentSheet, which is a native modal
+# we cannot reliably drive from Maestro across iOS/Android. Assert the
+# submit button is enabled and tappable, then stop.
+# TODO: point STRIPE_PUBLISHABLE_KEY at a test key with a stub card and
+# extend this flow through the PaymentSheet once we settle on a strategy
+# (Maestro can sometimes drive it via coordinate taps).
+- assertVisible:
+    id: "reservation-create-submit-button"
+- tapOn:
+    id: "reservation-create-submit-button"

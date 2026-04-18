@@ -1,0 +1,26 @@
+appId: com.holidoginn.app
+tags:
+  - smoke
+  - launch
+name: App launches and reaches a known first screen
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+# The app redirects unauthenticated users to /auth/login. If a session
+# from a previous run persists (Clerk on SecureStore), we land on home.
+# Accept either as a valid "app rendered" signal.
+- runFlow:
+    when:
+      visible:
+        id: "auth-login-screen"
+    commands:
+      - assertVisible:
+          id: "auth-login-email-input"
+- runFlow:
+    when:
+      visible:
+        id: "home-screen"
+    commands:
+      - assertVisible:
+          id: "home-reserve-button"

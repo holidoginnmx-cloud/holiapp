@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "HolidogInn",
+    "slug": "holidoginn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "holidoginn",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.holidoginn.app"
+    },
+    "android": {
+      "package": "com.holidoginn.app"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HolidogInn necesita acceso a tus fotos para subir imágenes de mascotas.",
+          "cameraPermission": "HolidogInn necesita acceso a la cámara para tomar fotos de mascotas."
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.holidoginn.app",
+          "enableGooglePay": true
+        }
+      ]
+    ]
+  }
+}
