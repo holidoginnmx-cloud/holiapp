@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx seed.ts",
+    "db:seed:services": "tsx seed-services.ts",
     "db:studio": "prisma studio",
     "lint": "tsc --noEmit"
   },
