@@ -35,7 +35,7 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>13.4</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -46,13 +46,9 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>HolidogInn necesita acceso a la cámara para tomar fotos de mascotas.</string>
-    <key>NSFaceIDUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>HolidogInn necesita acceso a la cámara para tomar fotos de tu mascota y subir su cartilla de vacunación.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>HolidogInn necesita acceso a tus fotos para subir imágenes de mascotas.</string>
+    <string>HolidogInn necesita acceso a tus fotos para subir imágenes de tu mascota y su cartilla de vacunación.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

@@ -1,0 +1,39 @@
+# Mobile app — Railway no necesita esto, solo despliega el API
+apps/mobile/
+
+# Tests E2E del mobile
+e2e/
+.maestro/
+
+# iOS root (legacy, si existe)
+ios/
+
+# Scripts de desarrollo
+scripts/
+
+# Configs locales del editor
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs (Nixpacks los regenera)
+**/node_modules/
+**/dist/
+**/.turbo/
+**/.expo/
+**/*.tsbuildinfo
+
+# Secretos (Railway usa env vars del dashboard)
+**/.env
+**/.env.local
+**/.env.production
+
+# CI/CD ignorado
+.github/
+
+# Plan files / docs internas
+plans/

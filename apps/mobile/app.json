@@ -11,7 +11,17 @@
     ],
     "newArchEnabled": true,
     "ios": {
-      "bundleIdentifier": "com.holidoginn.app"
+      "bundleIdentifier": "com.holidoginn.app",
+      "buildNumber": "1",
+      "deploymentTarget": "13.4",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "LSMinimumSystemVersion": "13.4",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      }
     },
     "android": {
       "package": "com.holidoginn.app"
@@ -26,8 +36,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "HolidogInn necesita acceso a tus fotos para subir imágenes de mascotas.",
-          "cameraPermission": "HolidogInn necesita acceso a la cámara para tomar fotos de mascotas."
+          "photosPermission": "HolidogInn necesita acceso a tus fotos para subir imágenes de tu mascota y su cartilla de vacunación.",
+          "cameraPermission": "HolidogInn necesita acceso a la cámara para tomar fotos de tu mascota y subir su cartilla de vacunación."
         }
       ],
       [

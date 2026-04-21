@@ -87,6 +87,17 @@ export default function TabsLayout() {
               <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
             </TouchableOpacity>
           ),
+          headerRight: () => (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 16 }}>
+              <CreditBalancePill />
+              <TouchableOpacity
+                onPress={() => router.push("/profile/account")}
+                testID="tabs-account-button"
+              >
+                <Ionicons name="person-circle-outline" size={28} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+          ),
         }}
       />
       <Tabs.Screen

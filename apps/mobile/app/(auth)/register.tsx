@@ -12,12 +12,16 @@ import {
 } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSignUp } from "@clerk/clerk-expo";
-import { useState } from "react";
+import { useSignUp, useSSO } from "@clerk/clerk-expo";
+import { useCallback, useState } from "react";
+import * as WebBrowser from "expo-web-browser";
 import { BASE_URL } from "@/constants/api";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function RegisterScreen() {
   const { signUp, setActive, isLoaded } = useSignUp();
+  const { startSSOFlow } = useSSO();
   const router = useRouter();
 
   const [firstName, setFirstName] = useState("");
@@ -28,6 +32,27 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [code, setCode] = useState("");
+
+  const handleAppleSignUp = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { createdSessionId, setActive: setActiveSession } =
+        await startSSOFlow({ strategy: "oauth_apple" });
+
+      if (createdSessionId && setActiveSession) {
+        await setActiveSession({ session: createdSessionId });
+        router.replace("/(tabs)/home");
+      } else {
+        setError("No se pudo completar el registro con Apple.");
+      }
+    } catch (err: any) {
+      const msg = err?.errors?.[0]?.longMessage;
+      setError(msg ?? "Error al registrarse con Apple. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, [startSSOFlow, router]);
 
   const handleRegister = async () => {
     if (!isLoaded) {
@@ -220,6 +245,27 @@ export default function RegisterScreen() {
 
           {!pendingVerification ? (
             <>
+              {Platform.OS === "ios" && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.appleButton, loading && styles.buttonDisabled]}
+                    onPress={handleAppleSignUp}
+                    activeOpacity={0.8}
+                    disabled={loading}
+                    testID="auth-register-apple-button"
+                  >
+                    <Ionicons name="logo-apple" size={20} color={COLORS.white} />
+                    <Text style={styles.appleButtonText}>Continuar con Apple</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.divider}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>o regístrate con email</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+                </>
+              )}
+
               <View style={styles.row}>
                 <View style={[styles.inputGroup, styles.flex]}>
                   <Text style={styles.label}>Nombre</Text>
@@ -484,5 +530,34 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 14,
     fontWeight: "600",
+  },
+  appleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#000000",
+    borderRadius: 10,
+    paddingVertical: 14,
+  },
+  appleButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.borderLight,
+  },
+  dividerText: {
+    color: COLORS.textTertiary,
+    fontSize: 13,
   },
 });

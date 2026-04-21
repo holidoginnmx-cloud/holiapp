@@ -17,6 +17,7 @@ import {
   sendEmail,
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -277,6 +278,27 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
     if (!legalAccepted) {
       return reply.status(400).send({ error: "Debes aceptar los términos legales para reservar" });
+    }
+
+    // Gate: verificar que el usuario haya aceptado la versión vigente de los
+    // documentos requeridos (TOS, PRIVACY, VET_AUTH). 412 = Precondition Failed.
+    const acceptances = await prisma.legalAcceptance.findMany({
+      where: { userId: ownerId },
+      select: { documentType: true, version: true },
+    });
+    const acceptedSet = new Set(
+      acceptances.map((a) => `${a.documentType}@${a.version}`)
+    );
+    const missingLegal = REQUIRED_FOR_BOOKING.filter(
+      (type) => !acceptedSet.has(`${type}@${LEGAL_DOC_VERSIONS[type]}`)
+    );
+    if (missingLegal.length > 0) {
+      return reply.status(412).send({
+        error: "Faltan consentimientos legales vigentes",
+        code: "LEGAL_ACCEPTANCE_REQUIRED",
+        missing: missingLegal,
+        versions: LEGAL_DOC_VERSIONS,
+      });
     }
 
     // Verify Stripe payment succeeded (allow credit-only bypass when no intent was created)

@@ -411,7 +411,22 @@ export default function CreateReservationScreen() {
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (err: any) {
-      Alert.alert("Error", err.message || "No se pudo procesar el pago");
+      const msg: string = err?.message || "No se pudo procesar el pago";
+      if (msg.toLowerCase().includes("consentimientos legales")) {
+        Alert.alert(
+          "Falta aceptar consentimientos",
+          "Antes de reservar necesitas aceptar los documentos legales vigentes.",
+          [
+            { text: "Ahora no", style: "cancel" },
+            {
+              text: "Ir a firmar",
+              onPress: () => router.push("/legal/onboarding"),
+            },
+          ]
+        );
+      } else {
+        Alert.alert("Error", msg);
+      }
     } finally {
       setPaying(false);
     }

@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { clerkClient } from "@clerk/fastify";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 
@@ -22,6 +23,162 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     { preHandler: [createAuthMiddleware(prisma)] },
     async (request, reply) => {
       return request.dbUser;
+    }
+  );
+
+  // GET /users/me/export — export completo de los datos del usuario (derecho ARCO de Acceso)
+  fastify.get(
+    "/users/me/export",
+    { preHandler: [authMiddleware] },
+    async (request) => {
+      const userId = request.userId!;
+      const [user, pets, reservations, payments, notifications, legalAcceptances, creditEntries, reviews] =
+        await Promise.all([
+          prisma.user.findUnique({ where: { id: userId } }),
+          prisma.pet.findMany({
+            where: { ownerId: userId },
+            include: { vaccines: true },
+          }),
+          prisma.reservation.findMany({ where: { ownerId: userId } }),
+          prisma.payment.findMany({ where: { userId } }),
+          prisma.notification.findMany({ where: { userId } }),
+          prisma.legalAcceptance.findMany({ where: { userId } }),
+          prisma.creditLedger.findMany({ where: { userId } }),
+          prisma.review.findMany({ where: { ownerId: userId } }),
+        ]);
+
+      return {
+        exportedAt: new Date().toISOString(),
+        user,
+        pets,
+        reservations,
+        payments,
+        notifications,
+        legalAcceptances,
+        creditEntries,
+        reviews,
+      };
+    }
+  );
+
+  // DELETE /users/me — eliminaci\u00f3n de cuenta del usuario autenticado (derecho ARCO de Cancelaci\u00f3n)
+  // Apple Guideline 5.1.1(v) requiere que los usuarios puedan eliminar su cuenta desde dentro del app.
+  fastify.delete(
+    "/users/me",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const clerkId = request.dbUser?.clerkId ?? null;
+
+      // Bloquear si hay reservaciones activas: el usuario no puede desaparecer mientras tenemos su perro.
+      const now = new Date();
+      const activeReservation = await prisma.reservation.findFirst({
+        where: {
+          ownerId: userId,
+          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+          checkOut: { gte: now },
+        },
+      });
+      if (activeReservation) {
+        return reply.status(409).send({
+          error: "ACTIVE_RESERVATION",
+          message:
+            "Tienes una reservaci\u00f3n activa o pr\u00f3xima. Cancélala antes de eliminar tu cuenta.",
+          reservationId: activeReservation.id,
+        });
+      }
+
+      const pets = await prisma.pet.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      const petIds = pets.map((p) => p.id);
+      const reservations = await prisma.reservation.findMany({
+        where: { ownerId: userId },
+        select: { id: true },
+      });
+      const reservationIds = reservations.map((r) => r.id);
+
+      // Anonimizar PII pero conservar registros vinculados a pagos/reservaciones por retenci\u00f3n fiscal (5 a\u00f1os LFPDPPP).
+      await prisma.$transaction(async (tx) => {
+        await tx.pushToken.deleteMany({ where: { userId } });
+        await tx.notification.deleteMany({ where: { userId } });
+        await tx.legalAcceptance.deleteMany({ where: { userId } });
+        await tx.creditLedger.deleteMany({ where: { userId } });
+        await tx.review.deleteMany({ where: { ownerId: userId } });
+
+        if (petIds.length > 0) {
+          await tx.vaccine.deleteMany({ where: { petId: { in: petIds } } });
+          await tx.behaviorTag.deleteMany({ where: { petId: { in: petIds } } });
+          await tx.staffAlert.deleteMany({ where: { petId: { in: petIds } } });
+          await tx.stayUpdate.deleteMany({ where: { petId: { in: petIds } } });
+        }
+        if (reservationIds.length > 0) {
+          await tx.dailyChecklist.deleteMany({
+            where: { reservationId: { in: reservationIds } },
+          });
+        }
+
+        // Anonimizar mascotas (no se borran porque reservaciones mantienen FK por motivos fiscales).
+        if (petIds.length > 0) {
+          await tx.pet.updateMany({
+            where: { id: { in: petIds } },
+            data: {
+              name: "Mascota eliminada",
+              breed: null,
+              photoUrl: null,
+              notes: null,
+              sex: null,
+              behavior: null,
+              walkPreference: null,
+              healthIssues: null,
+              emergencyContactName: null,
+              emergencyContactPhone: null,
+              emergencyContactRelation: null,
+              vetName: null,
+              vetPhone: null,
+              feedingSchedule: null,
+              feedingAmount: null,
+              foodType: null,
+              feedingInstructions: null,
+              diet: null,
+              personality: null,
+              cartillaUrl: null,
+              cartillaStatus: null,
+              cartillaReviewedAt: null,
+              cartillaReviewedById: null,
+              cartillaRejectionReason: null,
+              isActive: false,
+            },
+          });
+        }
+
+        // Anonimizar usuario (conserva id para integridad referencial de pagos/reservaciones pasadas).
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            clerkId: null,
+            email: `deleted-${userId}@holidoginn.deleted`,
+            phone: null,
+            firstName: "Usuario",
+            lastName: "Eliminado",
+            avatarUrl: null,
+            isActive: false,
+          },
+        });
+      });
+
+      // Borrar usuario en Clerk para que no pueda iniciar sesi\u00f3n nuevamente.
+      // Si esto falla, la cuenta ya qued\u00f3 anonimizada en BD — solo logueamos.
+      if (clerkId) {
+        try {
+          await clerkClient.users.deleteUser(clerkId);
+        } catch (err) {
+          request.log.error({ err, clerkId }, "Fall\u00f3 borrar usuario en Clerk");
+        }
+      }
+
+      return reply.status(200).send({ ok: true });
     }
   );
 

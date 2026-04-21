@@ -763,6 +763,11 @@ export type MeResponse = User & { creditBalance: string };
 
 export const getMe = () => apiFetch<MeResponse>(`/users/me`);
 
+export const exportMyData = () => apiFetch<Record<string, unknown>>(`/users/me/export`);
+
+export const deleteMyAccount = () =>
+  apiFetch<{ ok: true }>(`/users/me`, { method: "DELETE" });
+
 // ─── Push tokens ──────────────────────────────────────────
 
 export const registerPushToken = (token: string, platform: "ios" | "android") =>
@@ -776,3 +781,47 @@ export const unregisterPushToken = (token: string) =>
     `${ENDPOINTS.pushTokens}?token=${encodeURIComponent(token)}`,
     { method: "DELETE" }
   );
+
+// ─── Legal / consentimientos ──────────────────────────────
+
+export type LegalDocType = "TOS" | "PRIVACY" | "IMAGE_USE" | "VET_AUTH";
+
+export type LegalDocument = {
+  type: LegalDocType;
+  version: string;
+  required: boolean;
+};
+
+export type LegalAcceptance = {
+  id: string;
+  userId: string;
+  documentType: LegalDocType;
+  version: string;
+  acceptedAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+};
+
+export type LegalStatus = {
+  canBook: boolean;
+  missing: LegalDocType[];
+  versions: Record<LegalDocType, string>;
+};
+
+export const getLegalDocuments = () =>
+  apiFetch<LegalDocument[]>(`${ENDPOINTS.legal}/documents`);
+
+export const getMyLegalStatus = () =>
+  apiFetch<LegalStatus>(`${ENDPOINTS.legal}/me/status`);
+
+export const getMyLegalAcceptances = () =>
+  apiFetch<LegalAcceptance[]>(`${ENDPOINTS.legal}/me/acceptances`);
+
+export const acceptLegalDocument = (
+  documentType: LegalDocType,
+  version: string
+) =>
+  apiFetch<LegalAcceptance>(`${ENDPOINTS.legal}/acceptances`, {
+    method: "POST",
+    body: JSON.stringify({ documentType, version }),
+  });

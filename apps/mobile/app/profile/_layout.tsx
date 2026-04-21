@@ -10,6 +10,7 @@ export default function ProfileLayout() {
       }}
     >
       <Stack.Screen name="credit-history" options={{ title: "Saldo a favor" }} />
+      <Stack.Screen name="account" options={{ title: "Mi cuenta" }} />
     </Stack>
   );
 }

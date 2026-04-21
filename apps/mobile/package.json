@@ -15,7 +15,7 @@
     "@clerk/clerk-expo": "^2.19.31",
     "@holidoginn/shared": "*",
     "@react-native-community/datetimepicker": "8.4.4",
-    "@stripe/stripe-react-native": "^0.50.3",
+    "@stripe/stripe-react-native": "^0.64.0",
     "@tanstack/react-query": "^5.95.2",
     "expo": "~54.0.0",
     "expo-auth-session": "~7.0.10",

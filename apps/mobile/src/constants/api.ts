@@ -1,10 +1,18 @@
-import { Platform } from "react-native";
+const baseUrl = process.env.EXPO_PUBLIC_API_URL;
 
-// Android emulator usa 10.0.2.2 para acceder al host; iOS simulator usa localhost
-const LOCALHOST = Platform.OS === "android" ? "10.0.2.2" : "localhost";
+if (!baseUrl) {
+  throw new Error(
+    "EXPO_PUBLIC_API_URL is required. Set it in apps/mobile/.env (development) or inject it at build time (production).",
+  );
+}
 
-export const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.96:3000';
+if (!__DEV__ && !baseUrl.startsWith("https://")) {
+  throw new Error(
+    "EXPO_PUBLIC_API_URL must use HTTPS in production builds.",
+  );
+}
+
+export const BASE_URL = baseUrl;
 
 export const ENDPOINTS = {
   health: "/health",
@@ -18,4 +26,5 @@ export const ENDPOINTS = {
   reviews: "/reviews",
   services: "/services",
   pushTokens: "/push-tokens",
+  legal: "/legal",
 } as const;

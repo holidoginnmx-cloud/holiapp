@@ -54,6 +54,27 @@ export default function LoginScreen() {
     }
   }, [startSSOFlow, router]);
 
+  const handleAppleLogin = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { createdSessionId, setActive: setActiveSession } =
+        await startSSOFlow({ strategy: "oauth_apple" });
+
+      if (createdSessionId && setActiveSession) {
+        await setActiveSession({ session: createdSessionId });
+        router.replace("/(tabs)/home");
+      } else {
+        setError("No se pudo completar el inicio con Apple.");
+      }
+    } catch (err: any) {
+      const msg = err?.errors?.[0]?.longMessage;
+      setError(msg ?? "Error al iniciar con Apple. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, [startSSOFlow, router]);
+
   const handleLogin = async () => {
     if (!isLoaded) {
       setError("Cargando autenticación, intenta de nuevo en un momento.");
@@ -257,6 +278,19 @@ export default function LoginScreen() {
                 <Text style={styles.dividerText}>o</Text>
                 <View style={styles.dividerLine} />
               </View>
+
+              {Platform.OS === "ios" && (
+                <TouchableOpacity
+                  style={[styles.appleButton, loading && styles.buttonDisabled]}
+                  onPress={handleAppleLogin}
+                  activeOpacity={0.8}
+                  disabled={loading}
+                  testID="auth-login-apple-button"
+                >
+                  <Ionicons name="logo-apple" size={20} color={COLORS.white} />
+                  <Text style={styles.appleButtonText}>Continuar con Apple</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={[styles.googleButton, loading && styles.buttonDisabled]}
@@ -485,6 +519,20 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  appleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#000000",
+    borderRadius: 10,
+    paddingVertical: 14,
+  },
+  appleButtonText: {
+    color: COLORS.white,
     fontSize: 16,
     fontWeight: "600",
   },

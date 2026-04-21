@@ -19,6 +19,7 @@ import servicesRoutes from "./routes/services";
 import changeRequestsRoutes from "./routes/changeRequests";
 import stripeWebhookRoutes from "./routes/stripeWebhooks";
 import pushTokensRoutes from "./routes/pushTokens";
+import legalRoutes from "./routes/legal";
 
 const app = Fastify({ logger: true });
 
@@ -95,6 +96,7 @@ app.register(servicesRoutes);
 app.register(changeRequestsRoutes);
 app.register(stripeWebhookRoutes);
 app.register(pushTokensRoutes);
+app.register(legalRoutes);
 
 const start = async () => {
   try {

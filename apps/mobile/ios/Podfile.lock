@@ -35,6 +35,8 @@ PODS:
     - ExpoModulesCore
   - ExpoCrypto (15.0.8):
     - ExpoModulesCore
+  - ExpoDevice (55.0.15):
+    - ExpoModulesCore
   - ExpoFileSystem (19.0.21):
     - ExpoModulesCore
   - ExpoFont (14.0.11):
@@ -71,6 +73,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - ExpoNotifications (55.0.19):
+    - ExpoModulesCore
   - ExpoSecureStore (15.0.8):
     - ExpoModulesCore
   - ExpoWebBrowser (15.0.10):
@@ -1846,14 +1850,14 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - Stripe (25.9.0):
-    - StripeApplePay (= 25.9.0)
-    - StripeCore (= 25.9.0)
-    - StripeIssuing (= 25.9.0)
-    - StripePayments (= 25.9.0)
-    - StripePaymentsUI (= 25.9.0)
-    - StripeUICore (= 25.9.0)
-  - stripe-react-native (0.62.0):
+  - Stripe (25.11.0):
+    - StripeApplePay (= 25.11.0)
+    - StripeCore (= 25.11.0)
+    - StripeIssuing (= 25.11.0)
+    - StripePayments (= 25.11.0)
+    - StripePaymentsUI (= 25.11.0)
+    - StripeUICore (= 25.11.0)
+  - stripe-react-native (0.64.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1874,10 +1878,10 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - stripe-react-native/Core (= 0.62.0)
-    - stripe-react-native/NewArch (= 0.62.0)
+    - stripe-react-native/Core (= 0.64.0)
+    - stripe-react-native/NewArch (= 0.64.0)
     - Yoga
-  - stripe-react-native/Core (0.62.0):
+  - stripe-react-native/Core (0.64.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1898,14 +1902,14 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - Stripe (~> 25.9.0)
-    - StripeApplePay (~> 25.9.0)
-    - StripeFinancialConnections (~> 25.9.0)
-    - StripePayments (~> 25.9.0)
-    - StripePaymentSheet (~> 25.9.0)
-    - StripePaymentsUI (~> 25.9.0)
+    - Stripe (~> 25.11.0)
+    - StripeApplePay (~> 25.11.0)
+    - StripeFinancialConnections (~> 25.11.0)
+    - StripePayments (~> 25.11.0)
+    - StripePaymentSheet (~> 25.11.0)
+    - StripePaymentsUI (~> 25.11.0)
     - Yoga
-  - stripe-react-native/NewArch (0.62.0):
+  - stripe-react-native/NewArch (0.64.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1927,32 +1931,32 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - StripeApplePay (25.9.0):
-    - StripeCore (= 25.9.0)
-  - StripeCore (25.9.0)
-  - StripeFinancialConnections (25.9.0):
-    - StripeCore (= 25.9.0)
-    - StripeUICore (= 25.9.0)
-  - StripeIssuing (25.9.0):
-    - StripeCore (= 25.9.0)
-    - StripePayments (= 25.9.0)
-    - StripePaymentsUI (= 25.9.0)
-  - StripePayments (25.9.0):
-    - StripeCore (= 25.9.0)
-    - StripePayments/Stripe3DS2 (= 25.9.0)
-  - StripePayments/Stripe3DS2 (25.9.0):
-    - StripeCore (= 25.9.0)
-  - StripePaymentSheet (25.9.0):
-    - StripeApplePay (= 25.9.0)
-    - StripeCore (= 25.9.0)
-    - StripePayments (= 25.9.0)
-    - StripePaymentsUI (= 25.9.0)
-  - StripePaymentsUI (25.9.0):
-    - StripeCore (= 25.9.0)
-    - StripePayments (= 25.9.0)
-    - StripeUICore (= 25.9.0)
-  - StripeUICore (25.9.0):
-    - StripeCore (= 25.9.0)
+  - StripeApplePay (25.11.0):
+    - StripeCore (= 25.11.0)
+  - StripeCore (25.11.0)
+  - StripeFinancialConnections (25.11.0):
+    - StripeCore (= 25.11.0)
+    - StripeUICore (= 25.11.0)
+  - StripeIssuing (25.11.0):
+    - StripeCore (= 25.11.0)
+    - StripePayments (= 25.11.0)
+    - StripePaymentsUI (= 25.11.0)
+  - StripePayments (25.11.0):
+    - StripeCore (= 25.11.0)
+    - StripePayments/Stripe3DS2 (= 25.11.0)
+  - StripePayments/Stripe3DS2 (25.11.0):
+    - StripeCore (= 25.11.0)
+  - StripePaymentSheet (25.11.0):
+    - StripeApplePay (= 25.11.0)
+    - StripeCore (= 25.11.0)
+    - StripePayments (= 25.11.0)
+    - StripePaymentsUI (= 25.11.0)
+  - StripePaymentsUI (25.11.0):
+    - StripeCore (= 25.11.0)
+    - StripePayments (= 25.11.0)
+    - StripeUICore (= 25.11.0)
+  - StripeUICore (25.11.0):
+    - StripeCore (= 25.11.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -1962,6 +1966,7 @@ DEPENDENCIES:
   - Expo (from `../../../node_modules/expo`)
   - ExpoAsset (from `../../../node_modules/expo-asset/ios`)
   - ExpoCrypto (from `../../../node_modules/expo-crypto/ios`)
+  - ExpoDevice (from `../../../node_modules/expo-device/ios`)
   - ExpoFileSystem (from `../../../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../../../node_modules/expo-font/ios`)
   - ExpoHead (from `../../../node_modules/expo-router/ios`)
@@ -1969,6 +1974,7 @@ DEPENDENCIES:
   - ExpoKeepAwake (from `../../../node_modules/expo-keep-awake/ios`)
   - ExpoLinking (from `../../../node_modules/expo-linking/ios`)
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
+  - ExpoNotifications (from `../../../node_modules/expo-notifications/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
   - ExpoWebBrowser (from `../../../node_modules/expo-web-browser/ios`)
   - FBLazyVector (from `../../../node_modules/react-native/Libraries/FBLazyVector`)
@@ -2041,7 +2047,7 @@ DEPENDENCIES:
   - ReactNativeDependencies (from `../../../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
   - RNScreens (from `../../../node_modules/react-native-screens`)
-  - "stripe-react-native (from `../../../node_modules/@stripe/stripe-react-native`)"
+  - "stripe-react-native (from `../node_modules/@stripe/stripe-react-native`)"
   - Yoga (from `../../../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -2069,6 +2075,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-asset/ios"
   ExpoCrypto:
     :path: "../../../node_modules/expo-crypto/ios"
+  ExpoDevice:
+    :path: "../../../node_modules/expo-device/ios"
   ExpoFileSystem:
     :path: "../../../node_modules/expo-file-system/ios"
   ExpoFont:
@@ -2083,6 +2091,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-linking/ios"
   ExpoModulesCore:
     :path: "../../../node_modules/expo-modules-core"
+  ExpoNotifications:
+    :path: "../../../node_modules/expo-notifications/ios"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
   ExpoWebBrowser:
@@ -2227,7 +2237,7 @@ EXTERNAL SOURCES:
   RNScreens:
     :path: "../../../node_modules/react-native-screens"
   stripe-react-native:
-    :path: "../../../node_modules/@stripe/stripe-react-native"
+    :path: "../node_modules/@stripe/stripe-react-native"
   Yoga:
     :path: "../../../node_modules/react-native/ReactCommon/yoga"
 
@@ -2238,6 +2248,7 @@ SPEC CHECKSUMS:
   Expo: aadbcc8c6c14ff3105a9154f1683cb1424ff0d2a
   ExpoAsset: f867e55ceb428aab99e1e8c082b5aee7c159ea18
   ExpoCrypto: b6105ebaa15d6b38a811e71e43b52cd934945322
+  ExpoDevice: 3a4a361d685333e4139da5d56bb2740c86132beb
   ExpoFileSystem: 858a44267a3e6e9057e0888ad7c7cfbf55d52063
   ExpoFont: f543ce20a228dd702813668b1a07b46f51878d47
   ExpoHead: 7e19b2272edf492262acf8afb391a295198a6b23
@@ -2245,6 +2256,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLinking: 8f0aaf69aa56f832913030503b6263dc6f647f37
   ExpoModulesCore: f3da4f1ab5a8375d0beafab763739dbee8446583
+  ExpoNotifications: 52440855fb1c86e9bd2033e849489c1b915eeefc
   ExpoSecureStore: d32f751874a2ceb5aaeebeb3578e165c1ba2b24a
   ExpoWebBrowser: 17b064c621789e41d4816c95c93f429b84971f52
   FBLazyVector: e95a291ad2dadb88e42b06e0c5fb8262de53ec12
@@ -2316,16 +2328,16 @@ SPEC CHECKSUMS:
   ReactNativeDependencies: 71ce9c28beb282aa720ea7b46980fff9669f428a
   RNDateTimePicker: be0e44bcb9ed0607c7c5f47dbedd88cf091f6791
   RNScreens: d8d6f1792f6e7ac12b0190d33d8d390efc0c1845
-  Stripe: 604acd978f3ec2921098f477ccaa229e12690373
-  stripe-react-native: c2798b9c4308e0c9e0b525990a4aa77b5617a5a2
-  StripeApplePay: 9dabe2d3d897419a7a7663dc3338ff4bc51b9f54
-  StripeCore: 87c7dc5c110c1fd6b3de3ecdbc4df54c0ed5968a
-  StripeFinancialConnections: 2ef6995c4b5e4dc4007388c248446d47d13f1799
-  StripeIssuing: 89b08263d6bc0d881fab731f7336ecf664f93fa2
-  StripePayments: d2d00182defa4880b355020d6528a014cbd43170
-  StripePaymentSheet: 0fc945d26c9884ad5781d6c636e1b8adedf9a886
-  StripePaymentsUI: e2f00f9be6fea280d6188b805fdb5199a96e1151
-  StripeUICore: bfe8754c2d78eeb0fc4ce147316a7e5129b58423
+  Stripe: 0421dcc510a52f2abf63bbf03a547caf6639dce7
+  stripe-react-native: e0ec982671861424446573db50602de5c3d7e21c
+  StripeApplePay: b74b487cdc4176b32ea3f250d63ceb7b0ab7dedb
+  StripeCore: c9d8b48d4b9b14e73edfa2ca714dea44c0849f73
+  StripeFinancialConnections: 0209e955d46e927089a017f56e4a34f2e3e85bfd
+  StripeIssuing: 2b1f0054ee9439e7e716f101099a22bb95addc08
+  StripePayments: c54ac68d13e5ef09c98aa5c12314a73d1e6a1fc6
+  StripePaymentSheet: 46ca981c6106b559d323d41b5ee9af0485252a63
+  StripePaymentsUI: e942824c2a21c67f41b3bf6c09e87ebe882dd5c5
+  StripeUICore: 9ee3c730f282fd34605f7ba00f2b77d80729d882
   Yoga: 5934998fbeaef7845dbf698f698518695ab4cd1a
 
 PODFILE CHECKSUM: 7accd916f2e299d482f0e7c6bdd64b1b2a1c844b
