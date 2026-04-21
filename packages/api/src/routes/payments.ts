@@ -86,7 +86,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
   );
 
   // POST /payments/create-intent — crear Stripe PaymentIntent
-  fastify.post("/payments/create-intent", { preHandler: [authMiddleware] }, async (request, reply) => {
+  fastify.post("/payments/create-intent", { preHandler: [authMiddleware] }, async (request, reply) => { try {
     const body = request.body as {
       petIds: string[];
       checkIn: string;
@@ -321,6 +321,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       medicationBreakdown,
       medicationTotal,
     });
+  } catch (err: any) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: err?.message || "Error interno del servidor" });
+  }
   });
 
   // POST /payments/pay-balance — crear intent para liquidar saldo pendiente
