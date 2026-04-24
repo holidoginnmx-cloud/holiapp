@@ -29,11 +29,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         checkedInReservations,
       ] = await Promise.all([
         // Perros hospedados
-        prisma.reservation.count({ where: { status: "CHECKED_IN" } }),
+        prisma.reservation.count({
+          where: { reservationType: "STAY", status: "CHECKED_IN" },
+        }),
 
         // Check-ins programados hoy
         prisma.reservation.count({
           where: {
+            reservationType: "STAY",
             status: { in: ["CONFIRMED", "CHECKED_IN"] },
             checkIn: { gte: todayStart, lt: todayEnd },
           },
@@ -42,6 +45,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // Check-outs programados hoy
         prisma.reservation.count({
           where: {
+            reservationType: "STAY",
             status: "CHECKED_IN",
             checkOut: { gte: todayStart, lt: todayEnd },
           },
@@ -52,7 +56,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
         // Cuartos ocupados (con reservación CHECKED_IN)
         prisma.reservation.findMany({
-          where: { status: "CHECKED_IN", roomId: { not: null } },
+          where: {
+            reservationType: "STAY",
+            status: "CHECKED_IN",
+            roomId: { not: null },
+          },
           select: { roomId: true },
         }),
 
@@ -88,7 +96,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
         // Reservaciones CHECKED_IN para verificar evidencias
         prisma.reservation.findMany({
-          where: { status: "CHECKED_IN" },
+          where: { reservationType: "STAY", status: "CHECKED_IN" },
           include: {
             pet: { select: { id: true, name: true } },
             owner: { select: { firstName: true, lastName: true } },
@@ -142,7 +150,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       });
 
       const occupiedReservations = await prisma.reservation.findMany({
-        where: { status: "CHECKED_IN", roomId: { not: null } },
+        where: {
+          reservationType: "STAY",
+          status: "CHECKED_IN",
+          roomId: { not: null },
+        },
         include: {
           pet: { select: { name: true } },
           owner: { select: { firstName: true, lastName: true } },
@@ -318,15 +330,19 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
       });
       if (!reservation) return reply.status(404).send({ error: "Reservación no encontrada" });
+      if (reservation.reservationType !== "STAY" || !reservation.checkIn || !reservation.checkOut) {
+        return reply.status(400).send({ error: "Solo se pueden asignar cuartos a hospedajes" });
+      }
 
       const room = await prisma.room.findUnique({ where: { id: roomId } });
       if (!room || !room.isActive) {
         return reply.status(400).send({ error: "Cuarto no disponible" });
       }
 
-      // Check room availability
+      // Check room availability (solo hospedajes)
       const conflict = await prisma.reservation.findFirst({
         where: {
+          reservationType: "STAY",
           roomId,
           id: { not: reservation.id },
           status: { notIn: ["CANCELLED", "CHECKED_OUT"] as any },

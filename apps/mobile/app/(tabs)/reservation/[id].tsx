@@ -261,42 +261,78 @@ export default function ReservationDetailScreen() {
             value={reservation.pet.breed}
           />
         )}
-        <InfoRow
-          icon="calendar-outline"
-          label="Check-in"
-          value={new Date(reservation.checkIn).toLocaleDateString("es-MX", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-          })}
-        />
-        <InfoRow
-          icon="calendar-outline"
-          label="Check-out"
-          value={new Date(reservation.checkOut).toLocaleDateString("es-MX", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-          })}
-        />
-        {reservation.room ? (
-          <InfoRow
-            icon="bed-outline"
-            label="Habitación"
-            value={reservation.room.name}
-          />
+        {reservation.reservationType === "BATH" ? (
+          <>
+            <InfoRow icon="water-outline" label="Tipo" value="Cita de baño" />
+            {reservation.appointmentAt && (
+              <>
+                <InfoRow
+                  icon="calendar-outline"
+                  label="Fecha"
+                  value={new Date(reservation.appointmentAt).toLocaleDateString("es-MX", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  })}
+                />
+                <InfoRow
+                  icon="time-outline"
+                  label="Hora"
+                  value={new Date(reservation.appointmentAt).toLocaleTimeString("es-MX", {
+                    timeZone: "America/Hermosillo",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                />
+              </>
+            )}
+          </>
         ) : (
-          <InfoRow
-            icon="bed-outline"
-            label="Habitación"
-            value="Por asignar"
-          />
+          <>
+            {reservation.checkIn && (
+              <InfoRow
+                icon="calendar-outline"
+                label="Check-in"
+                value={new Date(reservation.checkIn).toLocaleDateString("es-MX", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })}
+              />
+            )}
+            {reservation.checkOut && (
+              <InfoRow
+                icon="calendar-outline"
+                label="Check-out"
+                value={new Date(reservation.checkOut).toLocaleDateString("es-MX", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })}
+              />
+            )}
+            {reservation.room ? (
+              <InfoRow
+                icon="bed-outline"
+                label="Habitación"
+                value={reservation.room.name}
+              />
+            ) : (
+              <InfoRow
+                icon="bed-outline"
+                label="Habitación"
+                value="Por asignar"
+              />
+            )}
+            {reservation.totalDays != null && (
+              <InfoRow
+                icon="moon-outline"
+                label="Noches"
+                value={`${reservation.totalDays}`}
+              />
+            )}
+          </>
         )}
-        <InfoRow
-          icon="moon-outline"
-          label="Noches"
-          value={`${reservation.totalDays}`}
-        />
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>

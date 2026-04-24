@@ -41,6 +41,9 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       },
     });
     if (!reservation) return { error: "Reservación no encontrada" as const };
+    if (reservation.reservationType !== "STAY") {
+      return { error: "Solo se pueden modificar fechas de hospedajes" as const };
+    }
 
     const existingBathTotal = reservation.addons.reduce(
       (sum, a) => sum + Number(a.unitPrice),
@@ -125,7 +128,10 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
 
       const today = startOfToday();
       if (reservation.status === "CHECKED_IN") {
-        if (newCheckIn.getTime() !== reservation.checkIn.getTime()) {
+        if (
+          reservation.checkIn &&
+          newCheckIn.getTime() !== reservation.checkIn.getTime()
+        ) {
           return reply.status(400).send({
             error: "No puedes cambiar la fecha de entrada durante la estancia",
           });

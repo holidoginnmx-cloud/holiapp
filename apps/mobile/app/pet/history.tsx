@@ -85,7 +85,7 @@ export default function PetHistoryScreen() {
         </View>
         <View style={styles.statBox}>
           <Text style={styles.statValue}>
-            {reservations.reduce((sum, r) => sum + r.totalDays, 0)}
+            {reservations.reduce((sum, r) => sum + (r.totalDays ?? 0), 0)}
           </Text>
           <Text style={styles.statLabel}>Noches</Text>
         </View>
@@ -132,16 +132,13 @@ export default function PetHistoryScreen() {
             <View style={styles.timelineCard}>
               <View style={styles.timelineHeader}>
                 <Text style={styles.timelineDates}>
-                  {new Date(res.checkIn).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                  })}{" "}
-                  -{" "}
-                  {new Date(res.checkOut).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
+                  {res.reservationType === "BATH" && res.appointmentAt
+                    ? new Date(res.appointmentAt).toLocaleDateString("es-MX", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      }) + " · Baño"
+                    : `${res.checkIn ? new Date(res.checkIn).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—"} - ${res.checkOut ? new Date(res.checkOut).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "—"}`}
                 </Text>
                 <Text style={styles.timelineStatus}>
                   {STATUS_LABEL[res.status] || res.status}
@@ -155,12 +152,14 @@ export default function PetHistoryScreen() {
                 </View>
               )}
 
-              <View style={styles.timelineInfoRow}>
-                <Ionicons name="moon-outline" size={14} color={COLORS.textTertiary} />
-                <Text style={styles.timelineInfo}>
-                  {res.totalDays} noche{res.totalDays > 1 ? "s" : ""}
-                </Text>
-              </View>
+              {res.totalDays != null && (
+                <View style={styles.timelineInfoRow}>
+                  <Ionicons name="moon-outline" size={14} color={COLORS.textTertiary} />
+                  <Text style={styles.timelineInfo}>
+                    {res.totalDays} noche{res.totalDays > 1 ? "s" : ""}
+                  </Text>
+                </View>
+              )}
 
               {/* Photo thumbnails */}
               {res.updates && res.updates.length > 0 && (

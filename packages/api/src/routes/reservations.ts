@@ -69,6 +69,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         pet: { select: { id: true, name: true, breed: true, photoUrl: true } },
         room: { select: { id: true, name: true } },
         staff: { select: { id: true, firstName: true, lastName: true } },
+        owner: { select: { id: true, firstName: true, lastName: true } },
         changeRequests: {
           where: { status: "PENDING" },
           select: { id: true },
@@ -329,6 +330,38 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({
         error: `Cartilla pendiente de aprobación: ${names}. Sube la cartilla y espera el visto bueno del equipo HDI.`,
         blockedPetIds: blocked.map((p) => p.id),
+      });
+    }
+
+    // Overlap guard: una misma mascota no puede tener dos reservas activas con
+    // fechas solapadas. Defensa en profundidad — el frontend ya valida pero no
+    // es confiable ante race conditions / clientes desactualizados.
+    const overlapping = await prisma.reservation.findMany({
+      where: {
+        petId: { in: petIds },
+        status: { not: "CANCELLED" },
+        AND: [
+          { checkIn: { lt: checkOut } },
+          { checkOut: { gt: checkIn } },
+        ],
+      },
+      include: { pet: { select: { id: true, name: true } } },
+    });
+    if (overlapping.length > 0) {
+      const names = Array.from(
+        new Set(overlapping.map((r) => r.pet.name))
+      ).join(", ");
+      return reply.status(409).send({
+        error: `Ya existe una reserva activa para: ${names} en esas fechas.`,
+        code: "RESERVATION_OVERLAP",
+        conflicts: overlapping.map((r) => ({
+          reservationId: r.id,
+          petId: r.petId,
+          petName: r.pet.name,
+          checkIn: r.checkIn,
+          checkOut: r.checkOut,
+          status: r.status,
+        })),
       });
     }
 

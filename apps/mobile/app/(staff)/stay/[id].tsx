@@ -26,6 +26,7 @@ import {
   createStaffAlert,
   createStaffUpdate,
   addBehaviorTag,
+  deleteBehaviorTag,
   resolveStaffAlert,
   completeAddon,
 } from "@/lib/api";
@@ -138,6 +139,27 @@ export default function StayDetail() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  const deleteTagMutation = useMutation({
+    mutationFn: (tagId: string) => deleteBehaviorTag(tagId),
+    onSuccess: () => invalidateAll(),
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  const handleDeleteTag = (tagId: string, tagLabel: string) => {
+    Alert.alert(
+      "Quitar etiqueta",
+      `¿Eliminar la etiqueta "${tagLabel}"?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deleteTagMutation.mutate(tagId),
+        },
+      ]
+    );
+  };
 
   const resolveAlertMutation = useMutation({
     mutationFn: (alertId: string) => resolveStaffAlert(alertId),
@@ -379,19 +401,23 @@ export default function StayDetail() {
           <View style={styles.stayInfoItem}>
             <Text style={styles.stayInfoLabel}>Entrada</Text>
             <Text style={styles.stayInfoValue}>
-              {new Date(stay.checkIn).toLocaleDateString("es-MX", {
-                day: "numeric",
-                month: "short",
-              })}
+              {stay.checkIn
+                ? new Date(stay.checkIn).toLocaleDateString("es-MX", {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "—"}
             </Text>
           </View>
           <View style={styles.stayInfoItem}>
             <Text style={styles.stayInfoLabel}>Salida</Text>
             <Text style={styles.stayInfoValue}>
-              {new Date(stay.checkOut).toLocaleDateString("es-MX", {
-                day: "numeric",
-                month: "short",
-              })}
+              {stay.checkOut
+                ? new Date(stay.checkOut).toLocaleDateString("es-MX", {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "—"}
             </Text>
           </View>
           <View style={styles.stayInfoItem}>
@@ -625,7 +651,15 @@ export default function StayDetail() {
         ) : (
           <View style={styles.tagsRow}>
             {stay.pet.behaviorTags.map((bt) => (
-              <BehaviorTagPill key={bt.id} tag={bt.tag} />
+              <BehaviorTagPill
+                key={bt.id}
+                tag={bt.tag}
+                onDelete={
+                  stay.status === "CHECKED_IN"
+                    ? () => handleDeleteTag(bt.id, bt.tag)
+                    : undefined
+                }
+              />
             ))}
           </View>
         )}

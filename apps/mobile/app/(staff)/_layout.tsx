@@ -88,6 +88,15 @@ export default function StaffLayout() {
         }}
       />
       <Tabs.Screen
+        name="baths"
+        options={{
+          title: "Baños",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="water-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="notifications"
         options={{
           title: "Avisos",

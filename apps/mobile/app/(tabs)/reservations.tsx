@@ -26,8 +26,10 @@ type GroupedReservation = {
   petNames: string;
   roomNames: string | null;
   status: string;
-  checkIn: string | Date;
-  checkOut: string | Date;
+  reservationType?: "STAY" | "BATH";
+  appointmentAt?: string | Date | null;
+  checkIn: string | Date | null;
+  checkOut: string | Date | null;
   totalAmount: number;
   reservationIds: string[];
   petCount: number;
@@ -84,6 +86,8 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       petNames: r.pet.name,
       roomNames: r.room?.name ?? null,
       status: r.status,
+      reservationType: r.reservationType,
+      appointmentAt: r.appointmentAt,
       checkIn: r.checkIn,
       checkOut: r.checkOut,
       totalAmount: Number(r.totalAmount),
@@ -231,6 +235,8 @@ export default function ReservationsScreen() {
             status={item.status}
             checkIn={item.checkIn}
             checkOut={item.checkOut}
+            reservationType={item.reservationType}
+            appointmentAt={item.appointmentAt}
             totalAmount={item.totalAmount}
             petCount={item.petCount}
             paymentType={item.paymentType}

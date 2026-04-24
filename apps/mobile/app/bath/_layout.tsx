@@ -3,19 +3,15 @@ import { Stack, useRouter } from "expo-router";
 import { TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-export default function TabsReservationLayout() {
+export default function BathLayout() {
   const router = useRouter();
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/reservations" as any);
-    }
-  };
-
   const backButton = () => (
-    <TouchableOpacity onPress={handleBack} style={{ marginLeft: 8 }}>
+    <TouchableOpacity
+      onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"))}
+      style={{ marginLeft: 8 }}
+      testID="bath-back-button"
+    >
       <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
     </TouchableOpacity>
   );
@@ -25,9 +21,14 @@ export default function TabsReservationLayout() {
       screenOptions={{
         headerShown: true,
         headerTintColor: COLORS.primary,
+        headerStyle: { backgroundColor: COLORS.white },
+        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
       }}
     >
-      <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backButton }} />
+      <Stack.Screen
+        name="create"
+        options={{ title: "Reservar baño", headerLeft: backButton }}
+      />
     </Stack>
   );
 }

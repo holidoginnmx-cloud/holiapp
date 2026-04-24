@@ -27,4 +27,5 @@ export const ENDPOINTS = {
   services: "/services",
   pushTokens: "/push-tokens",
   legal: "/legal",
+  baths: "/baths",
 } as const;

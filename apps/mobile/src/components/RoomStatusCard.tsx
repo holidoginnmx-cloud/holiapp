@@ -73,7 +73,7 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
         <Text style={styles.price}>
           ${Number(room.pricePerDay).toLocaleString()}/día
         </Text>
-        <Text style={styles.meta}>
+        <Text style={styles.meta} numberOfLines={2} ellipsizeMode="tail">
           Cap. {room.capacity} ·{" "}
           {(room.sizeAllowed as string[]).map((s) => SIZE_LABELS[s] || s).join(", ")}
         </Text>
@@ -141,6 +141,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
@@ -150,9 +151,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: COLORS.primary,
+    flexShrink: 0,
   },
   meta: {
     fontSize: 12,
     color: COLORS.textDisabled,
+    flex: 1,
+    flexShrink: 1,
+    textAlign: "right",
   },
 });

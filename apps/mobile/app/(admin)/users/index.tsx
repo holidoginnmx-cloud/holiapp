@@ -21,7 +21,7 @@ const ROLE_CONFIG: Record<string, { label: string; bg: string; color: string }> 
   OWNER: { label: "Cliente", bg: COLORS.bgSection, color: COLORS.textTertiary },
 };
 
-const ROLE_CYCLE = ["OWNER", "STAFF", "ADMIN"];
+const ALL_ROLES = ["OWNER", "STAFF", "ADMIN"] as const;
 
 export default function AdminUsers() {
   const router = useRouter();
@@ -57,20 +57,19 @@ export default function AdminUsers() {
   };
 
   const handleChangeRole = (user: User) => {
-    const currentIndex = ROLE_CYCLE.indexOf(user.role);
-    const nextRole = ROLE_CYCLE[(currentIndex + 1) % ROLE_CYCLE.length];
-    const config = ROLE_CONFIG[nextRole];
+    const alternatives = ALL_ROLES.filter((r) => r !== user.role);
+    const currentLabel = ROLE_CONFIG[user.role]?.label ?? user.role;
 
     Alert.alert(
       "Cambiar rol",
-      `¿Cambiar rol de ${user.firstName} a ${config.label}?`,
+      `${user.firstName} ${user.lastName} es ${currentLabel}. ¿A qué rol cambiar?`,
       [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: `Cambiar a ${config.label}`,
+        ...alternatives.map((role) => ({
+          text: `Cambiar a ${ROLE_CONFIG[role].label}`,
           onPress: () =>
-            mutation.mutate({ id: user.id, data: { role: nextRole as any } }),
-        },
+            mutation.mutate({ id: user.id, data: { role: role as any } }),
+        })),
+        { text: "Cancelar", style: "cancel" as const },
       ]
     );
   };

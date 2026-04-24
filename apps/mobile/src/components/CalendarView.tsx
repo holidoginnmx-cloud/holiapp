@@ -30,8 +30,8 @@ const MONTH_NAMES = [
 // ─── Types ───────────────────────────────────────────────
 export interface CalendarReservation {
   id: string;
-  checkIn: string | Date;
-  checkOut: string | Date;
+  checkIn: string | Date | null;
+  checkOut: string | Date | null;
   status: string;
   totalAmount: number | string;
   pet: { id: string; name: string; breed?: string; photoUrl?: string | null };
@@ -106,6 +106,7 @@ export function CalendarView({
     // Track which days have checklists for active stays
     const checklistDays = new Set<string>();
     for (const r of reservations) {
+      if (!r.checkIn || !r.checkOut) continue;
       const ci = new Date(r.checkIn);
       const co = new Date(r.checkOut);
       for (let d = 1; d <= daysInMonth; d++) {

@@ -97,6 +97,18 @@ export default function AdminSettings() {
           subtitle="Administrar servicios, variantes y precios"
           onPress={() => router.push("/(admin)/services" as any)}
         />
+        <MenuItem
+          icon="water-outline"
+          label="Agenda de baños"
+          subtitle="Horario, duración del slot y capacidad simultánea"
+          onPress={() => router.push("/(admin)/bath-config" as any)}
+        />
+        <MenuItem
+          icon="warning-outline"
+          label="Alertas del staff"
+          subtitle="Incidentes, salud y comportamiento reportados"
+          onPress={() => router.push("/(admin)/alerts" as any)}
+        />
       </View>
 
       <View style={styles.menuSection}>

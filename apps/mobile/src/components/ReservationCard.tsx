@@ -6,8 +6,10 @@ interface ReservationCardProps {
   petName: string;
   roomName: string | null;
   status: string;
-  checkIn: string | Date;
-  checkOut: string | Date;
+  checkIn?: string | Date | null;
+  checkOut?: string | Date | null;
+  reservationType?: "STAY" | "BATH";
+  appointmentAt?: string | Date | null;
   totalAmount: number;
   ownerName?: string;
   staffName?: string | null;
@@ -51,6 +53,8 @@ export function ReservationCard({
   status,
   checkIn,
   checkOut,
+  reservationType,
+  appointmentAt,
   totalAmount,
   ownerName,
   staffName,
@@ -61,6 +65,7 @@ export function ReservationCard({
   hasReview,
   onPress,
 }: ReservationCardProps) {
+  const isBath = reservationType === "BATH";
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
 
   const showDepositAlert =
@@ -149,15 +154,41 @@ export function ReservationCard({
       )}
 
       <View style={styles.details}>
-        <View style={styles.dateRow}>
-          <Text style={styles.dateLabel}>Entrada</Text>
-          <Text style={styles.dateValue}>{formatDate(checkIn)}</Text>
-        </View>
-        <View style={styles.dateSeparator} />
-        <View style={styles.dateRow}>
-          <Text style={styles.dateLabel}>Salida</Text>
-          <Text style={styles.dateValue}>{formatDate(checkOut)}</Text>
-        </View>
+        {isBath && appointmentAt ? (
+          <>
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>🛁 Baño</Text>
+              <Text style={styles.dateValue}>{formatDate(appointmentAt)}</Text>
+            </View>
+            <View style={styles.dateSeparator} />
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>Hora</Text>
+              <Text style={styles.dateValue}>
+                {new Date(appointmentAt).toLocaleTimeString("es-MX", {
+                  timeZone: "America/Hermosillo",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>Entrada</Text>
+              <Text style={styles.dateValue}>
+                {checkIn ? formatDate(checkIn) : "—"}
+              </Text>
+            </View>
+            <View style={styles.dateSeparator} />
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>Salida</Text>
+              <Text style={styles.dateValue}>
+                {checkOut ? formatDate(checkOut) : "—"}
+              </Text>
+            </View>
+          </>
+        )}
         <View style={styles.amountContainer}>
           <Text style={styles.amount}>${Number(totalAmount).toLocaleString()}</Text>
         </View>

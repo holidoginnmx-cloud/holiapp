@@ -30,6 +30,7 @@ export type ReservationListItem = Reservation & {
   pet: { id: string; name: string; breed: string | null; photoUrl: string | null };
   room: { id: string; name: string } | null;
   staff: { id: string; firstName: string; lastName: string } | null;
+  owner: { id: string; firstName: string; lastName: string };
   hasPendingChangeRequest: boolean;
   lastUpdateAt: string | null;
   hasReview: boolean;
@@ -294,6 +295,102 @@ export const confirmBathAddonPayment = (reservationId: string, paymentIntentId: 
     `${ENDPOINTS.reservations}/${reservationId}/addons/bath/confirm`,
     { method: "POST", body: JSON.stringify({ paymentIntentId }) }
   );
+
+// ─── Bath standalone (citas sin hotel) ───────────────────
+
+export type BathConfig = {
+  id: string;
+  openHour: number;
+  closeHour: number;
+  slotMinutes: number;
+  maxConcurrentBaths: number;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type BathSlot = {
+  startUtc: string;
+  available: boolean;
+  remaining: number;
+  inPast: boolean;
+};
+
+export const getBathConfig = () =>
+  apiFetch<BathConfig>(`${ENDPOINTS.baths}/config`);
+
+export const updateBathConfig = (data: Partial<Omit<BathConfig, "id" | "updatedAt">>) =>
+  apiFetch<BathConfig>(`/admin${ENDPOINTS.baths}/config`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const getBathSlots = (date: string) =>
+  apiFetch<{ config: BathConfig; slots: BathSlot[] }>(
+    `${ENDPOINTS.baths}/slots?date=${encodeURIComponent(date)}`,
+  );
+
+export const createBathIntent = (data: {
+  petId: string;
+  deslanado: boolean;
+  corte: boolean;
+  appointmentAt: string;
+  notes?: string;
+}) =>
+  apiFetch<{
+    clientSecret: string | null;
+    paymentIntentId: string | null;
+    coveredByCredit: boolean;
+    creditApplied: number;
+    price: number;
+    variantId: string;
+  }>(`${ENDPOINTS.baths}/create-intent`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const confirmBath = (data: {
+  paymentIntentId?: string;
+  petId?: string;
+  variantId?: string;
+  appointmentAt?: string;
+  notes?: string;
+}) =>
+  apiFetch<{ success: boolean; reservation: Reservation }>(
+    `${ENDPOINTS.baths}/confirm`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+
+// ─── Staff: bath appointments ─────────────────────────────
+
+export type StaffBath = Reservation & {
+  pet: {
+    id: string;
+    name: string;
+    breed: string | null;
+    weight: number | null;
+    photoUrl: string | null;
+    size: "XS" | "S" | "M" | "L" | "XL";
+    notes: string | null;
+  };
+  owner: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    email: string;
+  };
+  addons: ReservationAddonWithVariant[];
+};
+
+export const getStaffBaths = (date?: string) =>
+  apiFetch<{ date: string; baths: StaffBath[] }>(
+    `/staff/baths${date ? `?date=${encodeURIComponent(date)}` : ""}`,
+  );
+
+export const completeStaffBath = (id: string) =>
+  apiFetch<{ success: boolean }>(`/staff/baths/${id}/complete`, {
+    method: "POST",
+  });
 
 export type ChecklistWithStaff = DailyChecklist & {
   staff: { id: string; firstName: string; lastName: string };
@@ -640,6 +737,11 @@ export const getBehaviorTags = (petId: string) =>
   apiFetch<(BehaviorTag & { staff: { id: string; firstName: string; lastName: string } })[]>(
     `/staff/behavior-tags/${petId}`
   );
+
+export const deleteBehaviorTag = (tagId: string) =>
+  apiFetch<{ ok: true }>(`/staff/behavior-tags/${tagId}`, {
+    method: "DELETE",
+  });
 
 export const resolveStaffAlert = (alertId: string) =>
   apiFetch<StaffAlert>(`/staff/alerts/${alertId}/resolve`, {

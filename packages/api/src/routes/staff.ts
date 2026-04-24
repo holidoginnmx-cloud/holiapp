@@ -26,6 +26,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     // Find active stays assigned to this staff without today's checklist
     const staysWithoutChecklist = await prisma.reservation.findMany({
       where: {
+        reservationType: "STAY",
         staffId,
         status: "CHECKED_IN",
         checklists: { none: { date: todayStart } },
@@ -73,6 +74,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
     const stays = await prisma.reservation.findMany({
       where: {
+        reservationType: "STAY",
         status: status as any,
         ...(request.userRole === "STAFF" ? { staffId: request.userId } : {}),
       },
@@ -115,6 +117,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   fastify.get("/staff/stays/unassigned", { preHandler }, async () => {
     const stays = await prisma.reservation.findMany({
       where: {
+        reservationType: "STAY",
         status: { in: ["CONFIRMED", "CHECKED_IN"] },
         staffId: null,
       },
@@ -677,6 +680,27 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       });
 
       return tags;
+    }
+  );
+
+  // ─── DELETE /staff/behavior-tags/:tagId — quitar etiqueta ─────
+
+  fastify.delete<{ Params: { tagId: string } }>(
+    "/staff/behavior-tags/:tagId",
+    { preHandler },
+    async (request, reply) => {
+      const existing = await prisma.behaviorTag.findUnique({
+        where: { id: request.params.tagId },
+      });
+      if (!existing) {
+        return reply.status(404).send({ error: "Etiqueta no encontrada" });
+      }
+
+      await prisma.behaviorTag.delete({
+        where: { id: request.params.tagId },
+      });
+
+      return reply.status(200).send({ ok: true });
     }
   );
 }

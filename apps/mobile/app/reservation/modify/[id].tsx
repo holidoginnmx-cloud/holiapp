@@ -64,7 +64,7 @@ export default function ModifyReservationScreen() {
   const today = useMemo(() => startOfDay(new Date()), []);
 
   useEffect(() => {
-    if (reservation) {
+    if (reservation?.checkIn && reservation?.checkOut) {
       setNewCheckIn(new Date(reservation.checkIn));
       setNewCheckOut(new Date(reservation.checkOut));
     }

@@ -108,6 +108,8 @@ export default function HomeScreen() {
             status={res.status}
             checkIn={res.checkIn}
             checkOut={res.checkOut}
+            reservationType={res.reservationType}
+            appointmentAt={res.appointmentAt}
             totalAmount={Number(res.totalAmount)}
             onPress={() => router.push(`/reservation/${res.id}`)}
           />

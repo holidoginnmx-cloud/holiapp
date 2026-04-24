@@ -147,6 +147,11 @@ enum CartillaStatus {
   REJECTED   // Rechazada por admin (ver cartillaRejectionReason)
 }
 
+enum ReservationType {
+  STAY   // Hospedaje con rango de fechas
+  BATH   // Cita de baño puntual (appointmentAt)
+}
+
 // =============================================================
 //  USER — Usuarios (clientes, staff y admin)
 // =============================================================
@@ -296,10 +301,12 @@ model Room {
 
 model Reservation {
   id            String            @id @default(cuid())
-  checkIn       DateTime
-  checkOut      DateTime
+  reservationType ReservationType @default(STAY)
+  checkIn       DateTime?                           // solo STAY
+  checkOut      DateTime?                           // solo STAY
+  appointmentAt DateTime?                           // solo BATH: inicio de la cita
   status        ReservationStatus @default(PENDING)
-  totalDays     Int
+  totalDays     Int?                                // solo STAY
   totalAmount   Decimal           @db.Decimal(10, 2)
   notes         String?
   medicationNotes String?          // Instrucciones de administración si la mascota toma medicamento
@@ -688,4 +695,21 @@ model StripeEvent {
 
   @@index([type, processedAt])
   @@map("stripe_events")
+}
+
+// =============================================================
+//  BATH CONFIG — Configuración global de citas de baño (singleton)
+//  Editable por admin: horario, capacidad y duración del slot
+// =============================================================
+
+model BathConfig {
+  id                  String   @id @default("singleton")
+  openHour            Int      @default(9)    // 0–23, hora de apertura inclusive
+  closeHour           Int      @default(18)   // 0–23, hora de cierre exclusive
+  slotMinutes         Int      @default(60)
+  maxConcurrentBaths  Int      @default(1)
+  isActive            Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+
+  @@map("bath_config")
 }

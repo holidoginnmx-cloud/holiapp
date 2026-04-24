@@ -284,10 +284,12 @@ export type CreateRoom = z.infer<typeof CreateRoomSchema>;
 
 export const ReservationSchema = z.object({
   id: z.string().cuid(),
-  checkIn: z.coerce.date(),
-  checkOut: z.coerce.date(),
+  reservationType: z.enum(["STAY", "BATH"]).default("STAY"),
+  checkIn: z.coerce.date().nullable(),
+  checkOut: z.coerce.date().nullable(),
+  appointmentAt: z.coerce.date().nullable(),
   status: ReservationStatusEnum,
-  totalDays: z.number().int().positive(),
+  totalDays: z.number().int().positive().nullable(),
   totalAmount: z.number().nonnegative(),
   notes: z.string().nullable(),
   legalAccepted: z.boolean(),
@@ -590,3 +592,44 @@ export const ConfirmBathAddonSchema = z.object({
   paymentIntentId: z.string(),
 });
 export type ConfirmBathAddon = z.infer<typeof ConfirmBathAddonSchema>;
+
+// ========================
+// Bath Appointment (standalone — no hotel stay)
+// ========================
+
+export const ReservationTypeEnum = z.enum(["STAY", "BATH"]);
+export type ReservationTypeValue = z.infer<typeof ReservationTypeEnum>;
+
+export const BathConfigSchema = z.object({
+  id: z.string(),
+  openHour: z.number().int().min(0).max(23),
+  closeHour: z.number().int().min(1).max(24),
+  slotMinutes: z.number().int().min(15).max(240),
+  maxConcurrentBaths: z.number().int().min(1),
+  isActive: z.boolean(),
+  updatedAt: z.coerce.date(),
+});
+export type BathConfig = z.infer<typeof BathConfigSchema>;
+
+export const UpdateBathConfigSchema = z.object({
+  openHour: z.number().int().min(0).max(23).optional(),
+  closeHour: z.number().int().min(1).max(24).optional(),
+  slotMinutes: z.number().int().min(15).max(240).optional(),
+  maxConcurrentBaths: z.number().int().min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+export type UpdateBathConfig = z.infer<typeof UpdateBathConfigSchema>;
+
+export const CreateBathIntentSchema = z.object({
+  petId: z.string(),
+  deslanado: z.boolean(),
+  corte: z.boolean(),
+  appointmentAt: z.string().datetime(),  // ISO UTC — debe ser un slot válido
+  notes: z.string().max(500).optional(),
+});
+export type CreateBathIntent = z.infer<typeof CreateBathIntentSchema>;
+
+export const ConfirmBathSchema = z.object({
+  paymentIntentId: z.string(),
+});
+export type ConfirmBath = z.infer<typeof ConfirmBathSchema>;

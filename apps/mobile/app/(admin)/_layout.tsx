@@ -97,11 +97,11 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="alerts"
+        name="baths"
         options={{
-          title: "Alertas",
+          title: "Baños",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="warning-outline" size={size} color={color} />
+            <Ionicons name="water-outline" size={size} color={color} />
           ),
         }}
       />
@@ -114,8 +114,46 @@ export default function AdminLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="alerts"
+        options={{
+          href: null,
+          title: "Alertas del staff",
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack()
+                  ? router.back()
+                  : router.replace("/(admin)/settings" as any)
+              }
+              style={{ marginLeft: 16 }}
+            >
+              <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <Tabs.Screen name="change-requests" options={{ href: null }} />
       <Tabs.Screen name="services" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen
+        name="bath-config"
+        options={{
+          href: null,
+          title: "Agenda de baños",
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() =>
+                router.canGoBack()
+                  ? router.back()
+                  : router.replace("/(admin)/settings" as any)
+              }
+              style={{ marginLeft: 16 }}
+            >
+              <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <Tabs.Screen
         name="settings"
         options={{

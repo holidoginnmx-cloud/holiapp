@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,11 +7,17 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  FlatList,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { getReservations, listAdminChangeRequests } from "@/lib/api";
+import {
+  getReservations,
+  listAdminChangeRequests,
+  type ReservationListItem,
+} from "@/lib/api";
 import { CalendarView } from "@/components/CalendarView";
 import { FilterTabs } from "@/components/FilterTabs";
 
@@ -19,6 +25,22 @@ const VIEW_TABS = [
   { key: "calendar", label: "Calendario" },
   { key: "list", label: "Lista" },
 ];
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
+  PENDING: { label: "Pendiente", bg: COLORS.warningBg, color: COLORS.warningText },
+  CONFIRMED: { label: "Confirmada", bg: COLORS.infoBg, color: COLORS.infoText },
+  CHECKED_IN: { label: "En estancia", bg: COLORS.successBg, color: COLORS.successText },
+  CHECKED_OUT: { label: "Finalizada", bg: COLORS.bgSection, color: COLORS.textTertiary },
+  CANCELLED: { label: "Cancelada", bg: COLORS.errorBg, color: COLORS.errorText },
+  REJECTED: { label: "Rechazada", bg: COLORS.errorBg, color: COLORS.errorText },
+};
+
+function formatDateRange(checkIn: string | Date | null, checkOut: string | Date | null): string {
+  if (!checkIn || !checkOut) return "—";
+  const fmt = (d: string | Date) =>
+    new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+  return `${fmt(checkIn)} → ${fmt(checkOut)}`;
+}
 
 export default function AdminReservations() {
   const router = useRouter();
@@ -110,18 +132,101 @@ export default function AdminReservations() {
           onRefresh={refetch}
         />
       ) : (
-        <CalendarView
+        <ReservationListView
           reservations={filtered}
           onPressReservation={(id) =>
             router.push(`/(admin)/reservation/${id}` as any)
           }
-          showOwnerName
-          showStaffName
           refreshing={isRefetching}
           onRefresh={refetch}
         />
       )}
     </View>
+  );
+}
+
+function ReservationListView({
+  reservations,
+  onPressReservation,
+  refreshing,
+  onRefresh,
+}: {
+  reservations: ReservationListItem[];
+  onPressReservation: (id: string) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const sorted = useMemo(
+    () =>
+      [...reservations].sort((a, b) => {
+        const ai = a.checkIn ? new Date(a.checkIn).getTime() : 0;
+        const bi = b.checkIn ? new Date(b.checkIn).getTime() : 0;
+        return ai - bi;
+      }),
+    [reservations]
+  );
+
+  if (sorted.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="calendar-outline" size={40} color={COLORS.textDisabled} />
+        <Text style={styles.emptyText}>Sin reservaciones</Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={sorted}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.listContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={COLORS.primary}
+        />
+      }
+      renderItem={({ item }) => {
+        const statusCfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.PENDING;
+        const ownerName = `${item.owner.firstName} ${item.owner.lastName}`;
+        return (
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => onPressReservation(item.id)}
+          >
+            <View style={styles.rowHeader}>
+              <View style={styles.petInfo}>
+                <Ionicons name="paw" size={16} color={COLORS.primary} />
+                <Text style={styles.petName} numberOfLines={1}>
+                  {item.pet.name}
+                </Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+                <Text style={[styles.statusText, { color: statusCfg.color }]}>
+                  {statusCfg.label}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.ownerLine} numberOfLines={1}>
+              {ownerName}
+            </Text>
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={13} color={COLORS.textTertiary} />
+              <Text style={styles.metaText}>
+                {formatDateRange(item.checkIn, item.checkOut)}
+              </Text>
+              <View style={styles.metaDot} />
+              <Ionicons name="bed-outline" size={13} color={COLORS.textTertiary} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {item.room?.name ?? "Sin asignar"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+    />
   );
 }
 
@@ -178,5 +283,82 @@ const styles = StyleSheet.create({
   tabContainer: {
     paddingHorizontal: 12,
     paddingTop: 8,
+  },
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  row: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+    gap: 6,
+  },
+  rowHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  petInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+    marginRight: 8,
+  },
+  petName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    flexShrink: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  ownerLine: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  metaText: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    flexShrink: 1,
+  },
+  metaDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: COLORS.textDisabled,
+    marginHorizontal: 4,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textDisabled,
   },
 });

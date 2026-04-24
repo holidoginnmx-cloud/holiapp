@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
-import { getStaffStays, getStaffStaysUnassigned } from "@/lib/api";
+import { getStaffStays, getStaffStaysUnassigned, getStaffBaths } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
 
@@ -50,12 +50,29 @@ export default function StaffDashboard() {
     refetchInterval: 60_000,
   });
 
+  const {
+    data: bathsToday,
+    refetch: refetchBaths,
+  } = useQuery({
+    queryKey: ["staff-baths", "today"],
+    queryFn: () => getStaffBaths(),
+    refetchInterval: 60_000,
+  });
+
+  const pendingBaths = (bathsToday?.baths ?? []).filter(
+    (b) => b.status !== "CHECKED_OUT",
+  );
+  const doneBaths = (bathsToday?.baths ?? []).filter(
+    (b) => b.status === "CHECKED_OUT",
+  );
+
   const isLoading = loadingActive || loadingConfirmed;
 
   const onRefresh = () => {
     refetchActive();
     refetchConfirmed();
     refetchUnassigned();
+    refetchBaths();
   };
 
   // ── Derived data ──────────────────────────────────────────
@@ -78,10 +95,10 @@ export default function StaffDashboard() {
   // Check-ins/outs programados hoy
   const todayStr = new Date().toISOString().slice(0, 10);
   const checkInsToday = (confirmedStays ?? []).filter(
-    (s) => new Date(s.checkIn).toISOString().slice(0, 10) === todayStr
+    (s) => s.checkIn && new Date(s.checkIn).toISOString().slice(0, 10) === todayStr
   );
   const checkOutsToday = (activeStays ?? []).filter(
-    (s) => new Date(s.checkOut).toISOString().slice(0, 10) === todayStr
+    (s) => s.checkOut && new Date(s.checkOut).toISOString().slice(0, 10) === todayStr
   );
 
   // Progreso de reportes
@@ -158,6 +175,26 @@ export default function StaffDashboard() {
             : COLORS.primary}
         />
       </View>
+
+      {/* Baños de hoy — acceso rápido */}
+      {(bathsToday?.baths.length ?? 0) > 0 && (
+        <TouchableOpacity
+          style={styles.bathSummary}
+          activeOpacity={0.7}
+          onPress={() => router.push("/(staff)/baths" as any)}
+        >
+          <View style={styles.bathIconBubble}>
+            <Ionicons name="water" size={22} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bathSummaryTitle}>Baños de hoy</Text>
+            <Text style={styles.bathSummaryMeta}>
+              {pendingBaths.length} pendientes · {doneBaths.length} completados
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
+        </TouchableOpacity>
+      )}
 
       {/* Alertas — medicación + reportes faltantes + baños */}
       {totalAlerts > 0 && (
@@ -310,7 +347,7 @@ export default function StaffDashboard() {
                   <View style={styles.metaChip}>
                     <Ionicons name="calendar-outline" size={12} color={COLORS.textTertiary} />
                     <Text style={styles.metaText}>
-                      {new Date(stay.checkIn).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                      {stay.checkIn ? new Date(stay.checkIn).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—"}
                     </Text>
                   </View>
                 </View>
@@ -330,6 +367,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPage,
+  },
+  bathSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  bathIconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bathSummaryTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  bathSummaryMeta: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
   loadingContainer: {
     flex: 1,

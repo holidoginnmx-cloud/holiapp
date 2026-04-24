@@ -20,6 +20,7 @@ import changeRequestsRoutes from "./routes/changeRequests";
 import stripeWebhookRoutes from "./routes/stripeWebhooks";
 import pushTokensRoutes from "./routes/pushTokens";
 import legalRoutes from "./routes/legal";
+import bathsRoutes from "./routes/baths";
 
 const app = Fastify({ logger: true });
 
@@ -97,10 +98,11 @@ app.register(changeRequestsRoutes);
 app.register(stripeWebhookRoutes);
 app.register(pushTokensRoutes);
 app.register(legalRoutes);
+app.register(bathsRoutes);
 
 const start = async () => {
   try {
-    const port = Number(process.env.PORT) || 3000;
+    const port = Number(process.env.PORT) || 4000;
     await app.listen({ port, host: "0.0.0.0" });
     console.log(`Server running on http://localhost:${port}`);
   } catch (err) {
@@ -108,5 +110,19 @@ const start = async () => {
     process.exit(1);
   }
 };
+
+const shutdown = async (signal: string) => {
+  app.log.info(`Received ${signal}, shutting down gracefully...`);
+  try {
+    await app.close();
+    process.exit(0);
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
+};
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 start();

@@ -15,7 +15,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { getAdminAlerts, resolveAdminAlert } from "@/lib/api";
 import type { AdminAlert } from "@/lib/api";
-import { FilterTabs } from "@/components/FilterTabs";
 
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
@@ -59,11 +58,6 @@ export default function AdminAlerts() {
   });
 
   const alerts = data ?? [];
-  const unresolvedCount = activeTab === "unresolved" ? alerts.length : 0;
-  const tabsWithCounts = TABS.map((t) => ({
-    ...t,
-    count: t.key === "unresolved" ? alerts.length : undefined,
-  }));
 
   if (isLoading) {
     return (
@@ -159,12 +153,23 @@ export default function AdminAlerts() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.filterContainer}>
-        <FilterTabs
-          tabs={tabsWithCounts}
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-        />
+      <View style={styles.tabsRow}>
+        {TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.tab, activeTab === t.key && styles.tabActive]}
+            onPress={() => setActiveTab(t.key)}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === t.key && styles.tabTextActive,
+              ]}
+            >
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <FlatList
@@ -206,10 +211,22 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     gap: 12,
   },
-  filterContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+  tabsRow: {
+    flexDirection: "row",
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.bgSection,
   },
+  tab: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabActive: { borderBottomColor: COLORS.primary },
+  tabText: { fontSize: 14, fontWeight: "600", color: COLORS.textTertiary },
+  tabTextActive: { color: COLORS.primary },
   list: {
     padding: 16,
     paddingBottom: 32,
