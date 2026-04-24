@@ -83,10 +83,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     }
   }
 
+  const hasBody = options?.body != null;
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...authHeader,
       ...options?.headers,
     },
@@ -118,6 +119,8 @@ export type PetForBooking = Pet & {
     checkIn: string;
     checkOut: string;
     status: "PENDING" | "CONFIRMED" | "CHECKED_IN";
+    paymentType: "FULL" | "DEPOSIT" | null;
+    totalAmount: string;
   }[];
 };
 

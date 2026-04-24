@@ -16,6 +16,8 @@ type PetReservationSummary = {
   checkIn: string;
   checkOut: string;
   status: "PENDING" | "CONFIRMED" | "CHECKED_IN";
+  paymentType?: "FULL" | "DEPOSIT" | null;
+  totalAmount?: string;
 };
 
 type PetWithContext = Pet & {
@@ -53,6 +55,7 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
   const upcoming = reservations
     .filter((r) => r.status === "CONFIRMED" || r.status === "PENDING")
     .sort((a, b) => +new Date(a.checkIn) - +new Date(b.checkIn))[0];
+  const pendingBalance = reservations.find((r) => r.status === "PENDING");
 
   if (checkedIn) {
     chips.push({
@@ -67,6 +70,15 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
       label: `Hotel el ${formatShortDate(upcoming.checkIn)}`,
       bg: COLORS.infoBg,
       fg: COLORS.infoText,
+    });
+  }
+
+  if (pendingBalance) {
+    chips.push({
+      icon: "alert-circle-outline",
+      label: "Saldo pendiente",
+      bg: COLORS.warningBg,
+      fg: COLORS.warningText,
     });
   }
 

@@ -101,14 +101,35 @@ export default function CreateReservationScreen() {
   });
   const creditBalance = Number(me?.creditBalance ?? 0);
 
+  type PendingBalance = {
+    reservationId: string;
+    checkIn: string;
+    checkOut: string;
+    totalAmount: number;
+  };
+
   // Validate pet booking eligibility given selected dates
   function validatePet(pet: any, rangeStart: Date | null, rangeEnd: Date | null): {
     blockReason: string | null;
     warnings: string[];
     conflictDates: string | null;
+    pendingBalance: PendingBalance | null;
   } {
     const status = pet?.cartillaStatus as
       | "PENDING" | "APPROVED" | "REJECTED" | null | undefined;
+
+    // Detectar reserva con saldo pendiente (status=PENDING implica anticipo sin pago del balance)
+    const pendingReservation = Array.isArray(pet?.reservations)
+      ? pet.reservations.find((r: any) => r.status === "PENDING")
+      : null;
+    const pendingBalance: PendingBalance | null = pendingReservation
+      ? {
+          reservationId: pendingReservation.id,
+          checkIn: pendingReservation.checkIn,
+          checkOut: pendingReservation.checkOut,
+          totalAmount: Number(pendingReservation.totalAmount ?? 0),
+        }
+      : null;
 
     if (status !== "APPROVED") {
       const msg =
@@ -117,7 +138,7 @@ export default function CreateReservationScreen() {
           : status === "PENDING"
           ? `${pet.name} tiene su cartilla en revisión. Te avisaremos cuando el equipo HDI la apruebe.`
           : `${pet.name} tiene la cartilla rechazada. Sube una nueva desde su perfil.`;
-      return { blockReason: msg, warnings: [], conflictDates: null };
+      return { blockReason: msg, warnings: [], conflictDates: null, pendingBalance };
     }
 
     if (!pet.weight || !pet.size) {
@@ -127,6 +148,7 @@ export default function CreateReservationScreen() {
         }. Complétalos para calcular el precio y asignar cuarto.`,
         warnings: [],
         conflictDates: null,
+        pendingBalance,
       };
     }
 
@@ -152,6 +174,7 @@ export default function CreateReservationScreen() {
           blockReason: `${pet.name} ya tiene una reservación del ${ci} al ${co}. Elige fechas que no se traslapen.`,
           warnings: [],
           conflictDates,
+          pendingBalance,
         };
       }
     }
@@ -177,7 +200,7 @@ export default function CreateReservationScreen() {
       }
     }
 
-    return { blockReason: null, warnings, conflictDates };
+    return { blockReason: null, warnings, conflictDates, pendingBalance };
   }
 
   // Toggle pet selection
@@ -440,6 +463,27 @@ export default function CreateReservationScreen() {
     ? new Date(checkIn.getTime() + 86_400_000)
     : tomorrow;
 
+  // Avisos de saldo pendiente — una tarjeta por mascota con anticipo sin pagar
+  const pendingBalanceAlerts = (pets ?? [])
+    .map((p) => {
+      const pending = p.reservations?.find((r) => r.status === "PENDING");
+      if (!pending) return null;
+      return {
+        petName: p.name,
+        reservationId: pending.id,
+        checkIn: new Date(pending.checkIn).toLocaleDateString("es-MX", {
+          day: "numeric",
+          month: "short",
+        }),
+        checkOut: new Date(pending.checkOut).toLocaleDateString("es-MX", {
+          day: "numeric",
+          month: "short",
+        }),
+        totalAmount: Number(pending.totalAmount ?? 0),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -456,6 +500,30 @@ export default function CreateReservationScreen() {
       <View style={styles.headerRow}>
         <Text style={styles.title}>Nueva reservación</Text>
       </View>
+
+      {/* ── Avisos de saldo pendiente ── */}
+      {pendingBalanceAlerts.map((alert) => (
+        <TouchableOpacity
+          key={alert.reservationId}
+          style={styles.pendingBanner}
+          activeOpacity={0.85}
+          onPress={() =>
+            router.push(`/(tabs)/reservation/${alert.reservationId}` as any)
+          }
+        >
+          <Ionicons name="alert-circle" size={22} color={COLORS.warningText} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pendingBannerTitle}>
+              {alert.petName} tiene un pago pendiente
+            </Text>
+            <Text style={styles.pendingBannerBody}>
+              Reserva del {alert.checkIn} al {alert.checkOut}. Completa el pago
+              para poder hacer otra reserva con anticipo.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.warningText} />
+        </TouchableOpacity>
+      ))}
 
       {/* ── Fechas ── */}
       <View style={styles.section}>
@@ -566,7 +634,7 @@ export default function CreateReservationScreen() {
             <View style={styles.petRow}>
               {pets.map((pet, index) => {
                 const isSelected = selectedPetIds.includes(pet.id);
-                const { blockReason, warnings, conflictDates } = validatePet(
+                const { blockReason, warnings, conflictDates, pendingBalance } = validatePet(
                   pet,
                   checkIn,
                   checkOut
@@ -592,6 +660,9 @@ export default function CreateReservationScreen() {
                 } else if (conflictDates) {
                   chipLabel = `Ocupado ${conflictDates}`;
                   chipColor = COLORS.errorText;
+                } else if (pendingBalance) {
+                  chipLabel = "Saldo pendiente";
+                  chipColor = COLORS.warningText;
                 } else if (warnings.length > 0) {
                   chipLabel = `Vacunas: ${warnings.length}`;
                   chipColor = COLORS.warningText;
@@ -1100,6 +1171,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: { fontSize: 24, fontWeight: "800", color: COLORS.textPrimary },
+  pendingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.warningBg,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.warningText,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  pendingBannerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.warningText,
+    marginBottom: 2,
+  },
+  pendingBannerBody: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+  },
   section: {
     backgroundColor: COLORS.white,
     borderRadius: 14,

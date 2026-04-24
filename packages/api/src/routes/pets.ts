@@ -31,7 +31,14 @@ export default async function petsRoutes(fastify: FastifyInstance) {
             where: {
               status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
             },
-            select: { id: true, checkIn: true, checkOut: true, status: true },
+            select: {
+              id: true,
+              checkIn: true,
+              checkOut: true,
+              status: true,
+              paymentType: true,
+              totalAmount: true,
+            },
             orderBy: { checkIn: "asc" },
           },
         },
