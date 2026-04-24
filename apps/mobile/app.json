@@ -43,7 +43,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.holidoginn.app",
+          "merchantIdentifier": "merchant.com.holidoginnmx.app",
           "enableGooglePay": true
         }
       ],

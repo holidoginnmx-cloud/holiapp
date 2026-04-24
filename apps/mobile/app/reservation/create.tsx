@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useStripe } from "@stripe/stripe-react-native";
+import { AnimatedPayButton } from "@/components/AnimatedPayButton";
 
 function priceForPet(weight: number | null): number {
   return weight && weight >= 20 ? 450 : 350;
@@ -394,6 +395,29 @@ export default function CreateReservationScreen() {
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: intent.clientSecret,
         merchantDisplayName: "HolidogInn",
+        applePay: { merchantCountryCode: "MX" },
+        appearance: {
+          colors: {
+            primary: COLORS.primary,
+            background: COLORS.white,
+            componentBackground: COLORS.bgPage,
+            primaryText: COLORS.textPrimary,
+            secondaryText: COLORS.textSecondary,
+          },
+          shapes: {
+            borderRadius: 12,
+            borderWidth: 1,
+          },
+          primaryButton: {
+            colors: {
+              background: COLORS.primary,
+              text: COLORS.white,
+            },
+            shapes: {
+              borderRadius: 12,
+            },
+          },
+        },
       });
 
       if (initError) {
@@ -412,7 +436,7 @@ export default function CreateReservationScreen() {
       }
 
       // 4. Payment succeeded — create reservations
-      await createMultiReservation({
+      const result = await createMultiReservation({
         checkIn: checkIn!.toISOString(),
         checkOut: checkOut!.toISOString(),
         petIds: selectedPetIds,
@@ -427,12 +451,16 @@ export default function CreateReservationScreen() {
       });
 
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      const msg = paymentType === "DEPOSIT"
-        ? `Se cobró el anticipo de $${depositAmount.toLocaleString("es-MX")}. Deberás liquidar el saldo 48 horas antes del check-in.`
-        : "Tu pago fue procesado y tu reservación está confirmada.";
-      Alert.alert("Reservación confirmada", msg, [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+
+      const firstReservationId = result?.reservations?.[0]?.id;
+      router.replace({
+        pathname: "/reservation/success" as any,
+        params: {
+          reservationId: firstReservationId ?? "",
+          paymentType,
+          amount: paymentType === "DEPOSIT" ? String(depositAmount) : "0",
+        },
+      });
     } catch (err: any) {
       const msg: string = err?.message || "No se pudo procesar el pago";
       if (msg.toLowerCase().includes("consentimientos legales")) {
@@ -1140,22 +1168,13 @@ export default function CreateReservationScreen() {
       </View>
 
       {/* ── Submit ── */}
-      <TouchableOpacity
-        style={[styles.submitButton, (!canSubmit || paying) && { opacity: 0.5 }]}
+      <AnimatedPayButton
         onPress={handleSubmit}
-        disabled={!canSubmit || paying}
-        activeOpacity={0.8}
+        disabled={!canSubmit}
+        loading={paying}
+        label="Pagar y confirmar"
         testID="reservation-create-submit-button"
-      >
-        {paying ? (
-          <ActivityIndicator color={COLORS.white} />
-        ) : (
-          <>
-            <Ionicons name="card-outline" size={22} color={COLORS.white} />
-            <Text style={styles.submitText}>Pagar y confirmar</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      />
     </ScrollView>
     </KeyboardAvoidingView>
   );
