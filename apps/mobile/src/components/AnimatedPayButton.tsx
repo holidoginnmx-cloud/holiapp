@@ -29,7 +29,6 @@ export function AnimatedPayButton({
   testID,
 }: Props) {
   const scale = useSharedValue(1);
-  const shimmerX = useSharedValue(-1);
   const active = !disabled && !loading;
 
   useEffect(() => {
@@ -42,29 +41,17 @@ export function AnimatedPayButton({
         -1,
         false
       );
-      shimmerX.value = withRepeat(
-        withTiming(1, { duration: 2200, easing: Easing.linear }),
-        -1,
-        false
-      );
     } else {
       cancelAnimation(scale);
-      cancelAnimation(shimmerX);
       scale.value = withTiming(1, { duration: 150 });
     }
     return () => {
       cancelAnimation(scale);
-      cancelAnimation(shimmerX);
     };
-  }, [active, scale, shimmerX]);
+  }, [active, scale]);
 
   const containerStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
-  }));
-
-  const shimmerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: `${shimmerX.value * 100}%` }],
-    opacity: active ? 0.35 : 0,
   }));
 
   const handlePressIn = () => {
@@ -92,7 +79,6 @@ export function AnimatedPayButton({
         disabled={!active}
         testID={testID}
       >
-        <Animated.View style={[styles.shimmer, shimmerStyle]} pointerEvents="none" />
         <View style={styles.content}>
           {loading ? (
             <ActivityIndicator color={COLORS.white} />
@@ -132,14 +118,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-  },
-  shimmer: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: "40%",
-    backgroundColor: "rgba(255,255,255,0.6)",
-    transform: [{ translateX: "-100%" }, { skewX: "-20deg" }],
   },
   label: {
     fontSize: 17,
