@@ -406,6 +406,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // GET /admin/cartillas/pending-count — cuántas cartillas están esperando revisión
+  fastify.get(
+    "/admin/cartillas/pending-count",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async () => {
+      const pending = await prisma.pet.count({
+        where: { cartillaStatus: "PENDING", isActive: true },
+      });
+      return { pending };
+    }
+  );
+
   // GET /admin/cartillas — list pets filtered by cartilla status
   fastify.get<{ Querystring: { status?: string } }>(
     "/admin/cartillas",

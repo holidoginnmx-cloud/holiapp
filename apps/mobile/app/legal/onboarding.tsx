@@ -17,7 +17,12 @@ type DocMeta = {
   type: LegalDocType;
   title: string;
   subtitle: string;
-  route: "/legal/tos" | "/legal/privacy" | "/legal/vet-authorization" | "/legal/image-consent";
+  route:
+    | "/legal/tos"
+    | "/legal/privacy"
+    | "/legal/vet-authorization"
+    | "/legal/image-consent"
+    | "/legal/incidents";
 };
 
 const DOC_META: Record<LegalDocType, DocMeta> = {
@@ -39,6 +44,12 @@ const DOC_META: Record<LegalDocType, DocMeta> = {
     subtitle: "Qué hacemos en una emergencia.",
     route: "/legal/vet-authorization",
   },
+  INCIDENT_POLICY: {
+    type: "INCIDENT_POLICY",
+    title: "Política de incidentes",
+    subtitle: "Cómo actuamos si algo pasa durante la estancia.",
+    route: "/legal/incidents",
+  },
   IMAGE_USE: {
     type: "IMAGE_USE",
     title: "Uso de imagen (opcional)",
@@ -47,7 +58,12 @@ const DOC_META: Record<LegalDocType, DocMeta> = {
   },
 };
 
-const REQUIRED_ORDER: LegalDocType[] = ["TOS", "PRIVACY", "VET_AUTH"];
+const REQUIRED_ORDER: LegalDocType[] = [
+  "TOS",
+  "PRIVACY",
+  "VET_AUTH",
+  "INCIDENT_POLICY",
+];
 
 export default function LegalOnboardingScreen() {
   const router = useRouter();

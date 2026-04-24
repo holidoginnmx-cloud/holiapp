@@ -13,6 +13,7 @@ export const LEGAL_DOC_VERSIONS = {
   PRIVACY: "1.0.0",
   IMAGE_USE: "1.0.0",
   VET_AUTH: "1.0.0",
+  INCIDENT_POLICY: "1.0.0",
 } as const;
 
 export type LegalDocType = keyof typeof LEGAL_DOC_VERSIONS;
@@ -24,6 +25,7 @@ export const REQUIRED_FOR_BOOKING: LegalDocType[] = [
   "TOS",
   "PRIVACY",
   "VET_AUTH",
+  "INCIDENT_POLICY",
 ];
 
 // Todos los tipos (útil para UI de preferencias).
@@ -32,4 +34,5 @@ export const ALL_DOC_TYPES: LegalDocType[] = [
   "PRIVACY",
   "IMAGE_USE",
   "VET_AUTH",
+  "INCIDENT_POLICY",
 ];

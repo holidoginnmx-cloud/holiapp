@@ -608,6 +608,9 @@ export type PetWithCartilla = Pet & {
 export const getCartillas = (status: CartillaStatusValue = "PENDING") =>
   apiFetch<PetWithCartilla[]>(`/admin/cartillas?status=${status}`);
 
+export const getPendingCartillasCount = () =>
+  apiFetch<{ pending: number }>("/admin/cartillas/pending-count");
+
 export const reviewCartilla = (
   petId: string,
   data: { action: "APPROVE" | "REJECT"; reason?: string }
@@ -889,7 +892,12 @@ export const unregisterPushToken = (token: string) =>
 
 // ─── Legal / consentimientos ──────────────────────────────
 
-export type LegalDocType = "TOS" | "PRIVACY" | "IMAGE_USE" | "VET_AUTH";
+export type LegalDocType =
+  | "TOS"
+  | "PRIVACY"
+  | "IMAGE_USE"
+  | "VET_AUTH"
+  | "INCIDENT_POLICY";
 
 export type LegalDocument = {
   type: LegalDocType;

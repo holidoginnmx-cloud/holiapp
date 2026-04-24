@@ -4,8 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { TouchableOpacity } from "react-native";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { useQuery } from "@tanstack/react-query";
 
 import { useAuthStore } from "@/store/authStore";
+import { getPendingCartillasCount } from "@/lib/api";
 
 export default function AdminLayout() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -33,6 +35,14 @@ export default function AdminLayout() {
       router.replace("/(tabs)/home");
     }
   }, [role]);
+
+  const { data: pendingCartillas } = useQuery({
+    queryKey: ["admin", "cartillas", "pending-count"],
+    queryFn: getPendingCartillasCount,
+    enabled: role === "ADMIN",
+    refetchInterval: 30_000,
+  });
+  const pendingCount = pendingCartillas?.pending ?? 0;
 
   if (!isLoaded || !isSignedIn) return null;
 
@@ -112,6 +122,13 @@ export default function AdminLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="shield-checkmark-outline" size={size} color={color} />
           ),
+          tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: COLORS.errorText,
+            color: COLORS.white,
+            fontSize: 11,
+            fontWeight: "700",
+          },
         }}
       />
       <Tabs.Screen

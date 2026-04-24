@@ -661,10 +661,11 @@ model CreditLedger {
 // =============================================================
 
 enum LegalDocumentType {
-  TOS         // Términos y condiciones del servicio
-  PRIVACY     // Aviso de privacidad LFPDPPP
-  IMAGE_USE   // Consentimiento de uso de imagen (opt-in)
-  VET_AUTH    // Carta responsiva veterinaria
+  TOS              // Términos y condiciones del servicio
+  PRIVACY          // Aviso de privacidad LFPDPPP
+  IMAGE_USE        // Consentimiento de uso de imagen (opt-in)
+  VET_AUTH         // Carta responsiva veterinaria
+  INCIDENT_POLICY  // Política de incidentes durante la estancia
 }
 
 model LegalAcceptance {

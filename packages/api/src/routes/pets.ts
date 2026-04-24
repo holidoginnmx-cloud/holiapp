@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { CreatePetSchema, UpdatePetSchema, CreateVaccineSchema } from "@holidoginn/shared";
 import { createAuthMiddleware } from "../middleware/auth";
+import { notifyUsers } from "../lib/notify";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -8,6 +9,29 @@ export default async function petsRoutes(fastify: FastifyInstance) {
 
   const isStaffOrAdmin = (role?: string) => role === "ADMIN" || role === "STAFF";
   const isAdmin = (role?: string) => role === "ADMIN";
+
+  // Notifica a todos los admins que hay una cartilla pendiente de revisión.
+  async function notifyAdminsNewCartilla(
+    petId: string,
+    petName: string,
+    ownerName: string
+  ) {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    if (admins.length === 0) return;
+    await notifyUsers(
+      prisma,
+      admins.map((a) => a.id),
+      {
+        type: "GENERAL",
+        title: "Cartilla pendiente de revisión",
+        body: `${ownerName} subió la cartilla de ${petName}. Revisa en Cartillas.`,
+        data: { petId, kind: "CARTILLA_UPLOADED" },
+      }
+    );
+  }
 
   // GET /pets — OWNER sees only own pets; STAFF/ADMIN can filter by any ownerId
   fastify.get<{ Querystring: { ownerId?: string } }>(
@@ -96,6 +120,15 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       const pet = await prisma.pet.create({
         data: { ...parsed.data, cartillaStatus },
       });
+
+      if (cartillaStatus === "PENDING") {
+        await notifyAdminsNewCartilla(
+          pet.id,
+          pet.name,
+          `${owner.firstName} ${owner.lastName}`
+        );
+      }
+
       return reply.status(201).send(pet);
     }
   );
@@ -135,6 +168,21 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         data,
       });
+
+      if (data.cartillaStatus === "PENDING") {
+        const ownerRecord = await prisma.user.findUnique({
+          where: { id: pet.ownerId },
+          select: { firstName: true, lastName: true },
+        });
+        if (ownerRecord) {
+          await notifyAdminsNewCartilla(
+            updated.id,
+            updated.name,
+            `${ownerRecord.firstName} ${ownerRecord.lastName}`
+          );
+        }
+      }
+
       return updated;
     }
   );

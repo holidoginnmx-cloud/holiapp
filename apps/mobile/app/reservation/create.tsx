@@ -1118,7 +1118,13 @@ export default function CreateReservationScreen() {
             color={legalTerms ? COLORS.primary : COLORS.textDisabled}
           />
           <Text style={styles.checkText}>
-            Acepto los términos y condiciones del servicio
+            Acepto los{" "}
+            <Text
+              style={styles.checkLink}
+              onPress={() => router.push("/legal/tos")}
+            >
+              términos y condiciones del servicio
+            </Text>
           </Text>
         </TouchableOpacity>
 
@@ -1148,7 +1154,14 @@ export default function CreateReservationScreen() {
             color={legalIncidents ? COLORS.primary : COLORS.textDisabled}
           />
           <Text style={styles.checkText}>
-            Acepto la política de incidencias del hotel
+            Acepto la{" "}
+            <Text
+              style={styles.checkLink}
+              onPress={() => router.push("/legal/incidents")}
+            >
+              política de incidentes
+            </Text>{" "}
+            del hotel
           </Text>
         </TouchableOpacity>
       </View>
@@ -1326,6 +1339,7 @@ const styles = StyleSheet.create({
   // Legal
   checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   checkText: { fontSize: 14, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
+  checkLink: { color: COLORS.primary, fontWeight: "600", textDecorationLine: "underline" },
   // Notes
   input: {
     backgroundColor: COLORS.white,

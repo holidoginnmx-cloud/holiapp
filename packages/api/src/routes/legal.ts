@@ -9,7 +9,13 @@ import {
 } from "../lib/legal";
 
 const AcceptSchema = z.object({
-  documentType: z.enum(["TOS", "PRIVACY", "IMAGE_USE", "VET_AUTH"] as const),
+  documentType: z.enum([
+    "TOS",
+    "PRIVACY",
+    "IMAGE_USE",
+    "VET_AUTH",
+    "INCIDENT_POLICY",
+  ] as const),
   version: z.string().min(1).max(50),
 });
 
