@@ -383,9 +383,11 @@ export default async function staffRoutes(fastify: FastifyInstance) {
           .send({ error: "Solo se pueden crear reportes para estancias activas" });
       }
 
-      // Contar evidencias del día (incluye la nueva foto que se va a crear)
+      // Contar evidencias del día (incluye la nueva foto que se va a crear).
+      // Trunca en UTC (no en la TZ del server) para que el "día" sea el del
+      // cliente, no el de Railway/Europa, y no colisione con el día anterior.
       const dateStart = new Date(data.date);
-      dateStart.setHours(0, 0, 0, 0);
+      dateStart.setUTCHours(0, 0, 0, 0);
       const dateEnd = new Date(dateStart.getTime() + 86_400_000);
 
       const checklist = await prisma.$transaction(async (tx) => {

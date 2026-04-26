@@ -116,8 +116,14 @@ export default function ChecklistForm() {
     mutationFn: async () => {
       if (!photoUri) throw new Error("Falta la foto del día");
       const cloud = await uploadToCloudinary(photoUri, "checklists");
+      // UTC midnight de la fecha LOCAL del staff. Así el server (en cualquier TZ)
+      // y Postgres @db.Date guardan el día correcto sin shifts.
+      const now = new Date();
+      const localDayUTC = new Date(
+        Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
+      );
       return createDailyChecklist({
-        date: new Date(),
+        date: localDayUTC,
         // Defaults para los campos del schema que ya no se preguntan
         energy: "MEDIUM",
         socialization: "SOCIAL",
