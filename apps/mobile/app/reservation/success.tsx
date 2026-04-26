@@ -7,12 +7,15 @@ import ConfettiCannon from "react-native-confetti-cannon";
 
 const { width } = Dimensions.get("window");
 
+type Variant = "hotel" | "bath" | "balance";
+
 export default function ReservationSuccess() {
   const router = useRouter();
-  const { reservationId, paymentType, amount } = useLocalSearchParams<{
+  const { reservationId, paymentType, amount, variant } = useLocalSearchParams<{
     reservationId?: string;
     paymentType?: "FULL" | "DEPOSIT";
     amount?: string;
+    variant?: Variant;
   }>();
   const confettiRef = useRef<ConfettiCannon>(null);
 
@@ -21,8 +24,45 @@ export default function ReservationSuccess() {
     return () => clearTimeout(t);
   }, []);
 
+  const v: Variant = variant ?? "hotel";
   const isDeposit = paymentType === "DEPOSIT";
   const depositAmount = Number(amount ?? 0);
+
+  const copy = {
+    hotel: {
+      title: "¡Reservación confirmada!",
+      subtitle:
+        "Tu mascota ya tiene lugar en HolidogInn. Recibirás seguimiento constante durante su estancia.",
+      primaryLabel: "Ver reservación",
+      primaryIcon: "document-text-outline" as const,
+    },
+    bath: {
+      title: "¡Baño agendado!",
+      subtitle:
+        "Tu perro tiene su cita confirmada. Te avisaremos antes de la fecha.",
+      primaryLabel: "Ir a mis reservaciones",
+      primaryIcon: "calendar-outline" as const,
+    },
+    balance: {
+      title: "¡Saldo liquidado!",
+      subtitle:
+        "Tu reservación quedó confirmada. Nos vemos en el check-in.",
+      primaryLabel: "Ver mis reservaciones",
+      primaryIcon: "calendar-outline" as const,
+    },
+  }[v];
+
+  const handlePrimary = () => {
+    if (v === "hotel" && reservationId) {
+      router.replace(`/(tabs)/reservation/${reservationId}` as any);
+    } else if (v === "balance") {
+      router.replace("/(tabs)/reservations?tab=CONFIRMED" as any);
+    } else {
+      router.replace("/(tabs)/reservations" as any);
+    }
+  };
+
+  const showSecondary = v === "hotel" && !!reservationId;
 
   return (
     <>
@@ -45,13 +85,10 @@ export default function ReservationSuccess() {
           </View>
         </View>
 
-        <Text style={styles.title}>¡Reservación confirmada!</Text>
-        <Text style={styles.subtitle}>
-          Tu mascota ya tiene lugar en HolidogInn. Recibirás seguimiento
-          constante durante su estancia.
-        </Text>
+        <Text style={styles.title}>{copy.title}</Text>
+        <Text style={styles.subtitle}>{copy.subtitle}</Text>
 
-        {isDeposit && depositAmount > 0 && (
+        {v === "hotel" && isDeposit && depositAmount > 0 && (
           <View style={styles.depositCard}>
             <Ionicons name="information-circle" size={20} color={COLORS.warningText} />
             <Text style={styles.depositText}>
@@ -66,25 +103,23 @@ export default function ReservationSuccess() {
         )}
 
         <View style={styles.actions}>
-          {reservationId && (
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() =>
-                router.replace(`/(tabs)/reservation/${reservationId}` as any)
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons name="document-text-outline" size={20} color={COLORS.white} />
-              <Text style={styles.primaryBtnText}>Ver reservación</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.replace("/(tabs)/reservations" as any)}
+            style={styles.primaryBtn}
+            onPress={handlePrimary}
             activeOpacity={0.85}
           >
-            <Text style={styles.secondaryBtnText}>Ir a mis reservaciones</Text>
+            <Ionicons name={copy.primaryIcon} size={20} color={COLORS.white} />
+            <Text style={styles.primaryBtnText}>{copy.primaryLabel}</Text>
           </TouchableOpacity>
+          {showSecondary && (
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.replace("/(tabs)/reservations" as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryBtnText}>Ir a mis reservaciones</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </>

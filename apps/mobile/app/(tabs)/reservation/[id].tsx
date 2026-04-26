@@ -167,6 +167,7 @@ export default function ReservationDetailScreen() {
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: "HolidogInn",
+        applePay: { merchantCountryCode: "MX" },
       });
       if (initError) {
         Alert.alert("Error", initError.message);
@@ -183,7 +184,11 @@ export default function ReservationDetailScreen() {
 
       await confirmBalancePayment(id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      Alert.alert("Pago completado", "Tu saldo ha sido liquidado exitosamente.");
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      router.replace({
+        pathname: "/reservation/success" as any,
+        params: { variant: "balance" },
+      });
     } catch (err: any) {
       Alert.alert("Error", err.message || "No se pudo procesar el pago");
     } finally {

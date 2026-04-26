@@ -137,6 +137,7 @@ export default function CreateBathScreen() {
         const { error: initError } = await initPaymentSheet({
           paymentIntentClientSecret: intent.clientSecret,
           merchantDisplayName: "HolidogInn",
+          applePay: { merchantCountryCode: "MX" },
         });
         if (initError) {
           Alert.alert("Error", initError.message);
@@ -163,11 +164,10 @@ export default function CreateBathScreen() {
 
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       queryClient.invalidateQueries({ queryKey: ["bath-slots", dateYMD] });
-      Alert.alert(
-        "Cita confirmada",
-        `Baño agendado para ${formatDateLong(date)} a las ${formatSlotLocal(selectedSlotIso)}.`,
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      router.replace({
+        pathname: "/reservation/success" as any,
+        params: { variant: "bath" },
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo reservar el baño";
       Alert.alert("Error", msg);

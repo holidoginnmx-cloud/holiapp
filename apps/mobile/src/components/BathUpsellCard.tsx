@@ -8,6 +8,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStripe } from "@stripe/stripe-react-native";
 import { COLORS } from "@/constants/colors";
@@ -46,6 +47,7 @@ interface Props {
 
 export function BathUpsellCard({ reservation }: Props) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
@@ -109,6 +111,7 @@ export function BathUpsellCard({ reservation }: Props) {
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: "HolidogInn",
+        applePay: { merchantCountryCode: "MX" },
       });
       if (initError) {
         Alert.alert("Error", initError.message);
@@ -125,10 +128,11 @@ export function BathUpsellCard({ reservation }: Props) {
 
       await confirmBathAddonPayment(reservation.id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", reservation.id] });
-      Alert.alert(
-        "Baño contratado",
-        "Tu perro será entregado bañado el día del check-out."
-      );
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      router.replace({
+        pathname: "/reservation/success" as any,
+        params: { variant: "bath" },
+      });
     } catch (err: any) {
       Alert.alert("Error", err.message || "No se pudo contratar el baño");
     } finally {

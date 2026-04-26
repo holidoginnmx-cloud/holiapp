@@ -805,6 +805,7 @@ export default function CreateReservationScreen() {
                 {state.enabled && (
                   <View style={styles.bathOptionsRow}>
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       style={[styles.bathChip, state.deslanado && styles.bathChipSelected]}
                       onPress={() =>
                         setBathByPet((prev) => ({
@@ -813,6 +814,11 @@ export default function CreateReservationScreen() {
                         }))
                       }
                     >
+                      <Ionicons
+                        name={state.deslanado ? "checkmark-circle" : "sparkles-outline"}
+                        size={15}
+                        color={state.deslanado ? COLORS.primary : COLORS.textTertiary}
+                      />
                       <Text
                         style={[
                           styles.bathChipText,
@@ -823,6 +829,7 @@ export default function CreateReservationScreen() {
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
+                      activeOpacity={0.7}
                       style={[styles.bathChip, state.corte && styles.bathChipSelected]}
                       onPress={() =>
                         setBathByPet((prev) => ({
@@ -831,6 +838,11 @@ export default function CreateReservationScreen() {
                         }))
                       }
                     >
+                      <Ionicons
+                        name={state.corte ? "checkmark-circle" : "cut-outline"}
+                        size={15}
+                        color={state.corte ? COLORS.primary : COLORS.textTertiary}
+                      />
                       <Text
                         style={[
                           styles.bathChipText,
@@ -1463,28 +1475,40 @@ const styles = StyleSheet.create({
   },
   bathOptionsRow: {
     flexDirection: "row",
-    gap: 8,
-    paddingLeft: 32,
+    gap: 10,
+    marginTop: 10,
+    paddingLeft: 34,
+    flexWrap: "wrap",
   },
   bathChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1.5,
     borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.bgPage,
+    backgroundColor: COLORS.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   bathChipSelected: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
     borderColor: COLORS.primary,
   },
   bathChipText: {
     fontSize: 13,
     fontWeight: "600",
-    color: COLORS.textTertiary,
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
   },
   bathChipTextSelected: {
-    color: COLORS.white,
+    color: COLORS.primary,
+    fontWeight: "700",
   },
   creditHint: {
     flexDirection: "row",

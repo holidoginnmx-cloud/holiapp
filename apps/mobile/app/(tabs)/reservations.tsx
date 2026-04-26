@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Linking,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getReservations } from "@/lib/api";
@@ -138,7 +138,14 @@ const EMPTY_STATES: Record<
 export default function ReservationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("CHECKED_IN");
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [activeTab, setActiveTab] = useState(tab ?? "CHECKED_IN");
+
+  useFocusEffect(
+    useCallback(() => {
+      if (tab && tab !== activeTab) setActiveTab(tab);
+    }, [tab])
+  );
 
   const {
     data: reservations,
