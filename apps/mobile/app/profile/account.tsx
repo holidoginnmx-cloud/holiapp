@@ -26,6 +26,33 @@ export default function AccountScreen() {
 
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  function confirmSignOut() {
+    Alert.alert(
+      "Cerrar sesión",
+      "¿Quieres cerrar tu sesión? Tendrás que volver a iniciar sesión para acceder a tu cuenta.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Cerrar sesión", style: "destructive", onPress: runSignOut },
+      ],
+    );
+  }
+
+  async function runSignOut() {
+    try {
+      setSigningOut(true);
+      await signOut();
+      logout();
+      router.replace("/(auth)/login");
+    } catch (err) {
+      setSigningOut(false);
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "No se pudo cerrar sesión.",
+      );
+    }
+  }
 
   async function handleExport() {
     try {
@@ -99,7 +126,22 @@ export default function AccountScreen() {
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Privacidad y datos</Text>
+      <Text style={styles.sectionTitle}>Cuenta</Text>
+
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => router.push("/profile/edit" as any)}
+        testID="account-edit-button"
+      >
+        <Ionicons name="person-outline" size={22} color={COLORS.textPrimary} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>Editar perfil</Text>
+          <Text style={styles.rowSubtitle}>Nombre, apellido y teléfono.</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
+      </TouchableOpacity>
+
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Privacidad y datos</Text>
 
       <TouchableOpacity
         style={styles.row}
@@ -146,6 +188,43 @@ export default function AccountScreen() {
           <Text style={styles.rowTitle}>Términos y condiciones</Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => router.push("/help/refund-policy" as any)}
+        testID="account-refund-policy-button"
+      >
+        <Ionicons name="cash-outline" size={22} color={COLORS.textPrimary} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>Política de reembolsos y cambios</Text>
+          <Text style={styles.rowSubtitle}>
+            Modificaciones, cancelaciones, saldo a favor y reembolsos.
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
+      </TouchableOpacity>
+
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Sesión</Text>
+
+      <TouchableOpacity
+        style={styles.row}
+        onPress={confirmSignOut}
+        disabled={signingOut}
+        testID="account-signout-button"
+      >
+        <Ionicons name="log-out-outline" size={22} color={COLORS.textPrimary} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>Cerrar sesión</Text>
+          <Text style={styles.rowSubtitle}>
+            Saldrás de tu cuenta en este dispositivo.
+          </Text>
+        </View>
+        {signingOut ? (
+          <ActivityIndicator color={COLORS.primary} />
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
+        )}
       </TouchableOpacity>
 
       <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Zona peligrosa</Text>

@@ -6,8 +6,16 @@ import { Ionicons } from "@expo/vector-icons";
 export default function PetLayout() {
   const router = useRouter();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/pets" as any);
+    }
+  };
+
   const backButton = () => (
-    <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 8 }}>
+    <TouchableOpacity onPress={handleBack} style={{ marginLeft: 8 }}>
       <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
     </TouchableOpacity>
   );

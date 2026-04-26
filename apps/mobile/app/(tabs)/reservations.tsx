@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
-import { FilterTabs } from "@/components/FilterTabs";
+import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { buildWhatsappUrl } from "@/constants/business";
 import type { ReservationListItem } from "@/lib/api";
 
@@ -34,6 +34,7 @@ type GroupedReservation = {
   reservationIds: string[];
   petCount: number;
   paymentType: string | null;
+  hasBalance: boolean;
   hasPendingChangeRequest: boolean;
   lastUpdateAt: string | null;
   hasReview: boolean;
@@ -73,6 +74,8 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       reservationIds: items.map((i) => i.id),
       petCount: items.length,
       paymentType: items[0].paymentType,
+      reservationType: items[0].reservationType,
+      hasBalance: items.some((i) => i.hasBalance),
       hasPendingChangeRequest: items.some((i) => i.hasPendingChangeRequest),
       lastUpdateAt: updateDates.sort().reverse()[0] ?? null,
       hasReview: items.every((i) => i.hasReview),
@@ -94,6 +97,7 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       reservationIds: [r.id],
       petCount: 1,
       paymentType: r.paymentType,
+      hasBalance: r.hasBalance,
       hasPendingChangeRequest: r.hasPendingChangeRequest,
       lastUpdateAt: r.lastUpdateAt,
       hasReview: r.hasReview,
@@ -110,10 +114,21 @@ const TABS = [
   { key: "history", label: "Historial" },
 ];
 
-const EMPTY_STATES: Record<
-  string,
-  { icon: keyof typeof Ionicons.glyphMap; message: string; cta?: string }
-> = {
+type TypeFilter = "STAY" | "BATH";
+
+const TYPE_FILTERS: { key: TypeFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "STAY", label: "Hotel", icon: "bed-outline" },
+  { key: "BATH", label: "Baños", icon: "water-outline" },
+];
+
+type EmptyState = {
+  icon: keyof typeof Ionicons.glyphMap;
+  message: string;
+  cta?: string;
+  ctaHref?: string;
+};
+
+const EMPTY_STATES: Record<string, EmptyState> = {
   CHECKED_IN: {
     icon: "paw-outline",
     message: "No tienes peludos hospedados ahora mismo",
@@ -135,11 +150,35 @@ const EMPTY_STATES: Record<
   },
 };
 
+const EMPTY_STATES_BATH: Record<string, EmptyState> = {
+  CHECKED_IN: {
+    icon: "water-outline",
+    message: "No hay baños en proceso ahora mismo",
+  },
+  CONFIRMED: {
+    icon: "water-outline",
+    message: "No tienes citas de baño confirmadas",
+    cta: "Reservar baño",
+    ctaHref: "/bath/create",
+  },
+  PENDING: {
+    icon: "time-outline",
+    message: "No tienes solicitudes de baño pendientes",
+  },
+  history: {
+    icon: "archive-outline",
+    message: "Aún no tienes baños en tu historial",
+    cta: "Reservar baño",
+    ctaHref: "/bath/create",
+  },
+};
+
 export default function ReservationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState(tab ?? "CHECKED_IN");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("STAY");
 
   useFocusEffect(
     useCallback(() => {
@@ -161,17 +200,19 @@ export default function ReservationsScreen() {
 
   const grouped = reservations ? groupReservations(reservations) : [];
 
+  const byType = grouped.filter((r) => (r.reservationType ?? "STAY") === typeFilter);
+
   const tabCounts: Record<string, number> = {
-    CHECKED_IN: grouped.filter((r) => r.status === "CHECKED_IN").length,
-    CONFIRMED: grouped.filter((r) => r.status === "CONFIRMED").length,
-    PENDING: grouped.filter((r) => r.status === "PENDING").length,
-    history: grouped.filter(
+    CHECKED_IN: byType.filter((r) => r.status === "CHECKED_IN").length,
+    CONFIRMED: byType.filter((r) => r.status === "CONFIRMED").length,
+    PENDING: byType.filter((r) => r.status === "PENDING").length,
+    history: byType.filter(
       (r) => r.status === "CHECKED_OUT" || r.status === "CANCELLED"
     ).length,
   };
   const tabsWithCounts = TABS.map((t) => ({ ...t, count: tabCounts[t.key] ?? 0 }));
 
-  const filtered = grouped.filter((r) => {
+  const filtered = byType.filter((r) => {
     if (activeTab === "history")
       return r.status === "CHECKED_OUT" || r.status === "CANCELLED";
     return r.status === activeTab;
@@ -196,7 +237,8 @@ export default function ReservationsScreen() {
     );
   }
 
-  const emptyState = EMPTY_STATES[activeTab];
+  const emptyState =
+    typeFilter === "BATH" ? EMPTY_STATES_BATH[activeTab] : EMPTY_STATES[activeTab];
 
   return (
     <View style={styles.container} testID="reservations-screen">
@@ -222,9 +264,35 @@ export default function ReservationsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filters */}
-      <View style={styles.filterContainer}>
-        <FilterTabs
+      {/* Type filter (segmented control) */}
+      <View style={styles.segmentedControl}>
+        {TYPE_FILTERS.map((opt) => {
+          const active = typeFilter === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              style={[styles.segment, active && styles.segmentActive]}
+              onPress={() => setTypeFilter(opt.key)}
+              activeOpacity={0.7}
+            >
+              {opt.icon && (
+                <Ionicons
+                  name={opt.icon}
+                  size={14}
+                  color={active ? COLORS.primary : COLORS.textTertiary}
+                />
+              )}
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Status filter (underline tabs) */}
+      <View style={styles.underlineFilterWrap}>
+        <FilterTabsUnderline
           tabs={tabsWithCounts}
           activeTab={activeTab}
           onSelect={setActiveTab}
@@ -247,6 +315,7 @@ export default function ReservationsScreen() {
             totalAmount={item.totalAmount}
             petCount={item.petCount}
             paymentType={item.paymentType}
+            hasBalance={item.hasBalance}
             hasPendingChangeRequest={item.hasPendingChangeRequest}
             lastUpdateAt={item.lastUpdateAt}
             hasReview={item.hasReview}
@@ -272,7 +341,9 @@ export default function ReservationsScreen() {
             {emptyState?.cta && (
               <TouchableOpacity
                 style={styles.emptyButton}
-                onPress={() => router.push("/reservation/create")}
+                onPress={() =>
+                  router.push((emptyState.ctaHref ?? "/reservation/create") as any)
+                }
               >
                 <Text style={styles.emptyButtonText}>{emptyState.cta}</Text>
               </TouchableOpacity>
@@ -329,6 +400,43 @@ const styles = StyleSheet.create({
   filterContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  underlineFilterWrap: {
+    marginTop: 8,
+  },
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 10,
+    padding: 3,
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  segment: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 7,
+  },
+  segmentActive: {
+    backgroundColor: COLORS.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
+  },
+  segmentTextActive: {
+    color: COLORS.textPrimary,
+    fontWeight: "700",
   },
   list: {
     padding: 16,

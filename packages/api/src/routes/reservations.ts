@@ -70,6 +70,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         room: { select: { id: true, name: true } },
         staff: { select: { id: true, firstName: true, lastName: true } },
         owner: { select: { id: true, firstName: true, lastName: true } },
+        payments: {
+          where: { status: "PAID" },
+          select: { amount: true },
+        },
         changeRequests: {
           where: { status: "PENDING" },
           select: { id: true },
@@ -86,12 +90,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       },
       orderBy: { createdAt: "desc" },
     });
-    return reservations.map(({ changeRequests, updates, review, ...r }) => ({
-      ...r,
-      hasPendingChangeRequest: (changeRequests?.length ?? 0) > 0,
-      lastUpdateAt: updates?.[0]?.createdAt ?? null,
-      hasReview: !!review,
-    }));
+    return reservations.map(({ payments, changeRequests, updates, review, ...r }) => {
+      const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const remaining = Number(r.totalAmount) - totalPaid;
+      return {
+        ...r,
+        hasBalance: remaining > 0.01,
+        hasPendingChangeRequest: (changeRequests?.length ?? 0) > 0,
+        lastUpdateAt: updates?.[0]?.createdAt ?? null,
+        hasReview: !!review,
+      };
+    });
   });
 
   // GET /reservations/:id — obtener con relaciones completas (owner o staff/admin)

@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
 import { getStaffBaths, completeStaffBath, type StaffBath } from "@/lib/api";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 const SIZE_LABEL: Record<string, string> = {
   XS: "XS",
@@ -83,27 +85,57 @@ export default function StaffBaths() {
     };
   }, [baths]);
 
+  async function pickPhoto(source: "camera" | "library"): Promise<string | null> {
+    if (source === "camera") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara.");
+        return null;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (result.canceled) return null;
+      return result.assets[0].uri;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled) return null;
+    return result.assets[0].uri;
+  }
+
+  async function uploadAndComplete(bath: StaffBath, source: "camera" | "library") {
+    const uri = await pickPhoto(source);
+    if (!uri) return;
+    setCompletingId(bath.id);
+    try {
+      const cloud = await uploadToCloudinary(uri, "baths");
+      await completeStaffBath(bath.id, cloud.secure_url);
+      queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo completar";
+      Alert.alert("Error", msg);
+    } finally {
+      setCompletingId(null);
+    }
+  }
+
   async function handleComplete(bath: StaffBath) {
     Alert.alert(
-      "Marcar como completado",
-      `¿Confirmar que ${bath.pet.name} ya terminó su baño? Se notificará al dueño.`,
+      "Foto del baño",
+      `Sube una foto de ${bath.pet.name} bañado para completar la cita.`,
       [
         { text: "Cancelar", style: "cancel" },
-        {
-          text: "Completar",
-          onPress: async () => {
-            setCompletingId(bath.id);
-            try {
-              await completeStaffBath(bath.id);
-              queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : "No se pudo completar";
-              Alert.alert("Error", msg);
-            } finally {
-              setCompletingId(null);
-            }
-          },
-        },
+        { text: "Tomar foto", onPress: () => uploadAndComplete(bath, "camera") },
+        { text: "Elegir foto", onPress: () => uploadAndComplete(bath, "library") },
       ],
     );
   }

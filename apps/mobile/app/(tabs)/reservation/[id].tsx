@@ -9,8 +9,12 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  Modal,
+  Image,
+  Pressable,
+  Dimensions,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -18,12 +22,11 @@ import {
   getReservationById,
   getReservations,
   getStayUpdates,
-  getOwnerChecklists,
+  getCreditLedger,
   createBalancePayment,
   confirmBalancePayment,
 } from "@/lib/api";
 import { StayUpdateCard } from "@/components/StayUpdateCard";
-import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
@@ -66,8 +69,7 @@ export default function ReservationDetailScreen() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewPrompted, setReviewPrompted] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
-
-  console.log("📋 [ReservationDetail] MOUNTED with id:", id);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const {
     data: reservation,
@@ -92,21 +94,22 @@ export default function ReservationDetailScreen() {
     enabled: !!reservation?.groupId,
   });
 
-  const { data: checklists } = useQuery({
-    queryKey: ["owner", "checklists", id],
-    queryFn: () => getOwnerChecklists(id!),
-    enabled:
-      !!reservation &&
-      (reservation.status === "CHECKED_IN" ||
-        reservation.status === "CHECKED_OUT"),
-  });
-
   const { data: updates } = useQuery({
     queryKey: ["stay-updates", id],
     queryFn: () => getStayUpdates(id!),
     enabled: !!reservation,
     refetchInterval: 30_000,
   });
+
+  const { data: ledger } = useQuery({
+    queryKey: ["credit-ledger"],
+    queryFn: getCreditLedger,
+    enabled: !!id,
+  });
+
+  const reservationRefund = (ledger ?? [])
+    .filter((e) => e.reservationId === id && e.type === "CREDIT_ADDED")
+    .reduce((sum, e) => sum + Number(e.amount), 0);
 
   const { data: changeRequests } = useQuery({
     queryKey: ["reservation", id, "change-requests"],
@@ -118,6 +121,7 @@ export default function ReservationDetailScreen() {
   );
   const canModify =
     reservation &&
+    reservation.reservationType !== "BATH" &&
     ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(reservation.status) &&
     !pendingChange;
   const canCancel =
@@ -215,15 +219,36 @@ export default function ReservationDetailScreen() {
   const statusConfig = STATUS_CONFIG[reservation.status] ?? STATUS_CONFIG.PENDING;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
+    <>
+      {reservationRefund > 0 && (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <TouchableOpacity
+                onPress={() => router.push("/profile/credit-history" as any)}
+                style={styles.refundPill}
+                activeOpacity={0.85}
+                hitSlop={8}
+                testID="reservation-refund-pill"
+              >
+                <Ionicons name="wallet" size={13} color={COLORS.successText} />
+                <Text style={styles.refundPillText}>
+                  +${reservationRefund.toLocaleString("es-MX")}
+                </Text>
+              </TouchableOpacity>
+            ),
+          }}
+        />
+      )}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
         <Text style={styles.petName}>
           {groupedReservations
             ? groupedReservations.map((r: any) => r.pet.name).join(", ")
@@ -349,25 +374,31 @@ export default function ReservationDetailScreen() {
       {/* Payment status */}
       {reservation.payments && reservation.payments.length > 0 && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Pagos</Text>
-          {reservation.payments.map((p) => {
+          {reservation.payments.map((p, idx) => {
             const pConfig = PAYMENT_STATUS[p.status] ?? PAYMENT_STATUS.UNPAID;
             return (
               <View key={p.id} style={styles.paymentRow}>
-                <Text style={styles.paymentAmount}>
-                  ${Number(p.amount).toLocaleString("es-MX")}
-                </Text>
-                <View
-                  style={[
-                    styles.paymentBadge,
-                    { backgroundColor: `${pConfig.color}15` },
-                  ]}
-                >
-                  <Text
-                    style={[styles.paymentBadgeText, { color: pConfig.color }]}
-                  >
-                    {pConfig.label}
+                {idx === 0 ? (
+                  <Text style={styles.cardTitle}>Pagos</Text>
+                ) : (
+                  <View />
+                )}
+                <View style={styles.paymentRight}>
+                  <Text style={styles.paymentAmount}>
+                    ${Number(p.amount).toLocaleString("es-MX")}
                   </Text>
+                  <View
+                    style={[
+                      styles.paymentBadge,
+                      { backgroundColor: `${pConfig.color}15` },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.paymentBadgeText, { color: pConfig.color }]}
+                    >
+                      {pConfig.label}
+                    </Text>
+                  </View>
                 </View>
               </View>
             );
@@ -498,11 +529,6 @@ export default function ReservationDetailScreen() {
       {/* Bath upsell (CONFIRMED → CHECKED_IN) */}
       <BathUpsellCard reservation={reservation} />
 
-      {/* Daily reports */}
-      {checklists && checklists.length > 0 && (
-        <DailyReportsSection checklists={checklists} />
-      )}
-
       {/* Photos / Videos */}
       {updates && updates.length > 0 && (
         <View>
@@ -510,14 +536,19 @@ export default function ReservationDetailScreen() {
             Fotos y videos ({updates.length})
           </Text>
           <View style={styles.photosGrid}>
-            {updates.map((u) => (
-              <View key={u.id} style={styles.photoWrapper}>
+            {updates.map((u, idx) => (
+              <TouchableOpacity
+                key={u.id}
+                style={styles.photoWrapper}
+                onPress={() => setViewerIndex(idx)}
+                activeOpacity={0.85}
+              >
                 <StayUpdateCard
                   mediaUrl={u.mediaUrl}
                   caption={u.caption}
                   createdAt={u.createdAt}
                 />
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -579,7 +610,44 @@ export default function ReservationDetailScreen() {
         allowStripeRefund={paidStripeAmount > 0}
         onClose={() => setCancelModalOpen(false)}
       />
-    </ScrollView>
+      </ScrollView>
+
+      {viewerIndex !== null && updates && updates[viewerIndex] && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setViewerIndex(null)}
+          statusBarTranslucent
+        >
+          <Pressable
+            style={styles.viewerBackdrop}
+            onPress={() => setViewerIndex(null)}
+          >
+            <TouchableOpacity
+              style={styles.viewerClose}
+              onPress={() => setViewerIndex(null)}
+              activeOpacity={0.7}
+              hitSlop={12}
+            >
+              <Ionicons name="close" size={28} color={COLORS.white} />
+            </TouchableOpacity>
+            <Image
+              source={{ uri: updates[viewerIndex].mediaUrl }}
+              style={styles.viewerImage}
+              resizeMode="contain"
+            />
+            {updates[viewerIndex].caption && (
+              <View style={styles.viewerCaptionWrap} pointerEvents="none">
+                <Text style={styles.viewerCaption}>
+                  {updates[viewerIndex].caption}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -599,69 +667,6 @@ function InfoRow({
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
       <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
-function DailyReportsSection({ checklists }: { checklists: any[] }) {
-  const sorted = React.useMemo(
-    () =>
-      [...checklists].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      ),
-    [checklists]
-  );
-  const [selectedId, setSelectedId] = useState<string>(sorted[0].id);
-  const selected = sorted.find((c) => c.id === selectedId) ?? sorted[0];
-
-  const fullDate = new Date(selected.date).toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-
-  return (
-    <View>
-      <Text style={styles.sectionTitle}>
-        {sorted.length === 1 ? "Reporte diario" : "Reportes diarios"} — {fullDate}
-      </Text>
-      {sorted.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dateSelector}
-        >
-          {sorted.map((cl) => {
-            const isActive = cl.id === selected.id;
-            const label = new Date(cl.date).toLocaleDateString("es-MX", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            });
-            return (
-              <TouchableOpacity
-                key={cl.id}
-                onPress={() => setSelectedId(cl.id)}
-                activeOpacity={0.7}
-                style={[
-                  styles.datePill,
-                  isActive && styles.datePillActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.datePillText,
-                    isActive && styles.datePillTextActive,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-      <ChecklistSummaryCard checklist={selected} />
     </View>
   );
 }
@@ -721,10 +726,70 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 4,
+  },
+  paymentRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   paymentAmount: { fontSize: 15, fontWeight: "600", color: COLORS.textPrimary },
   paymentBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   paymentBadgeText: { fontSize: 12, fontWeight: "700" },
+  refundPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.successBg,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: COLORS.successText,
+  },
+  refundPillText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.successText,
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.96)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  viewerClose: {
+    position: "absolute",
+    top: 60,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  viewerImage: {
+    width: Dimensions.get("window").width,
+    height: Dimensions.get("window").height * 0.85,
+  },
+  viewerCaptionWrap: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 50,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  viewerCaption: {
+    color: COLORS.white,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   pendingBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -755,31 +820,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 12,
     marginTop: 8,
-  },
-  dateSelector: {
-    flexDirection: "row",
-    gap: 8,
-    paddingBottom: 12,
-  },
-  datePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  datePillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  datePillText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  datePillTextActive: {
-    color: COLORS.white,
   },
   photosGrid: {
     flexDirection: "row",

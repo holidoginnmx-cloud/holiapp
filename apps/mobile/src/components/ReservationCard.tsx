@@ -15,6 +15,7 @@ interface ReservationCardProps {
   staffName?: string | null;
   petCount?: number;
   paymentType?: string | null;
+  hasBalance?: boolean;
   hasPendingChangeRequest?: boolean;
   lastUpdateAt?: string | null;
   hasReview?: boolean;
@@ -60,6 +61,7 @@ export function ReservationCard({
   staffName,
   petCount,
   paymentType,
+  hasBalance,
   hasPendingChangeRequest,
   lastUpdateAt,
   hasReview,
@@ -69,6 +71,7 @@ export function ReservationCard({
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
 
   const showDepositAlert =
+    !!hasBalance &&
     paymentType === "DEPOSIT" &&
     (status === "PENDING" || status === "CONFIRMED");
   const showChangeRequest = !!hasPendingChangeRequest;

@@ -352,6 +352,14 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     "/staff/checklists",
     { preHandler },
     async (request, reply) => {
+      const body = request.body as Record<string, unknown> | null;
+      const mediaUrl = body?.mediaUrl;
+      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
+        return reply.status(400).send({
+          error: "Se requiere una foto del día para guardar el reporte",
+        });
+      }
+
       const parsed = CreateDailyChecklistSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
@@ -362,7 +370,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       // Verificar que la reservación existe y está activa
       const reservation = await prisma.reservation.findUnique({
         where: { id: data.reservationId },
-        include: { pet: { select: { name: true } } },
+        include: { pet: { select: { id: true, name: true } } },
       });
 
       if (!reservation) {
@@ -375,60 +383,84 @@ export default async function staffRoutes(fastify: FastifyInstance) {
           .send({ error: "Solo se pueden crear reportes para estancias activas" });
       }
 
-      // Contar evidencias del día
+      // Contar evidencias del día (incluye la nueva foto que se va a crear)
       const dateStart = new Date(data.date);
       dateStart.setHours(0, 0, 0, 0);
       const dateEnd = new Date(dateStart.getTime() + 86_400_000);
 
-      const [photosCount, videosCount] = await Promise.all([
-        prisma.stayUpdate.count({
-          where: {
+      const checklist = await prisma.$transaction(async (tx) => {
+        await tx.stayUpdate.create({
+          data: {
             reservationId: data.reservationId,
+            petId: reservation.pet.id,
+            staffId: request.userId!,
+            mediaUrl,
             mediaType: "image",
-            createdAt: { gte: dateStart, lt: dateEnd },
+            caption: data.additionalNotes ?? null,
           },
-        }),
-        prisma.stayUpdate.count({
-          where: {
-            reservationId: data.reservationId,
-            mediaType: "video",
-            createdAt: { gte: dateStart, lt: dateEnd },
-          },
-        }),
-      ]);
+        });
 
-      const checklist = await prisma.dailyChecklist.upsert({
-        where: {
-          reservationId_date: {
-            reservationId: data.reservationId,
-            date: dateStart,
+        const [photosCount, videosCount] = await Promise.all([
+          tx.stayUpdate.count({
+            where: {
+              reservationId: data.reservationId,
+              mediaType: "image",
+              createdAt: { gte: dateStart, lt: dateEnd },
+            },
+          }),
+          tx.stayUpdate.count({
+            where: {
+              reservationId: data.reservationId,
+              mediaType: "video",
+              createdAt: { gte: dateStart, lt: dateEnd },
+            },
+          }),
+        ]);
+
+        return tx.dailyChecklist.upsert({
+          where: {
+            reservationId_date: {
+              reservationId: data.reservationId,
+              date: dateStart,
+            },
           },
-        },
-        create: {
-          ...data,
-          date: dateStart,
-          staffId: request.userId!,
-          photosCount,
-          videosCount,
-        },
-        update: {
-          ...data,
-          date: undefined,
-          reservationId: undefined,
-          photosCount,
-          videosCount,
-        },
+          create: {
+            ...data,
+            date: dateStart,
+            staffId: request.userId!,
+            photosCount,
+            videosCount,
+          },
+          update: {
+            ...data,
+            date: undefined,
+            reservationId: undefined,
+            photosCount,
+            videosCount,
+          },
+        });
       });
 
       // Notificación al dueño
-      const energyLabels: Record<string, string> = { LOW: "Baja", MEDIUM: "Media", HIGH: "Alta" };
-      const moodLabels: Record<string, string> = { SAD: "Triste", NEUTRAL: "Neutral", HAPPY: "Feliz", EXCITED: "Emocionado" };
+      const moodConfig: Record<string, { emoji: string; label: string }> = {
+        SAD: { emoji: "😢", label: "triste" },
+        NEUTRAL: { emoji: "😐", label: "tranquilo" },
+        HAPPY: { emoji: "😊", label: "feliz" },
+        EXCITED: { emoji: "🤩", label: "emocionado" },
+      };
+      const m = moodConfig[data.mood] ?? moodConfig.HAPPY;
+      const ownerNote = (data.additionalNotes ?? "")
+        .replace(/\n?\[HANDOFF\] [\s\S]*/, "")
+        .trim();
+      const tail = ownerNote.length > 0
+        ? `${ownerNote} Hay foto nueva 📸`
+        : "Sube a la app para ver la foto del día 📸";
 
       await notifyUser(prisma, {
         userId: reservation.ownerId,
         type: "DAILY_REPORT",
-        title: `Reporte diario de ${reservation.pet.name}`,
-        body: `Energía: ${energyLabels[data.energy]}, Estado: ${moodLabels[data.mood]}. ${data.additionalNotes || "Todo en orden."}`,
+        title: `Reporte de ${reservation.pet.name}`,
+        body: `${m.emoji} Hoy está ${m.label}. ${tail}`,
         data: { reservationId: data.reservationId, checklistId: checklist.id },
       });
 
@@ -615,14 +647,25 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   );
 
   // ─── PATCH /staff/addons/:id/complete — marcar baño como completado ─
+  //  Requiere foto del perro bañado (mediaUrl). Crea StayUpdate.
 
-  fastify.patch<{ Params: { id: string } }>(
+  fastify.patch<{ Params: { id: string }; Body: { mediaUrl?: string } }>(
     "/staff/addons/:id/complete",
     { preHandler },
     async (request, reply) => {
+      const mediaUrl = request.body?.mediaUrl;
+      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
+        return reply.status(400).send({
+          error: "Se requiere una foto del baño completado",
+        });
+      }
+
       const addon = await prisma.reservationAddon.findUnique({
         where: { id: request.params.id },
-        include: { variant: { include: { serviceType: true } } },
+        include: {
+          variant: { include: { serviceType: true } },
+          reservation: { select: { id: true, petId: true, pet: { select: { name: true } } } },
+        },
       });
 
       if (!addon) {
@@ -633,10 +676,23 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "El servicio ya fue completado" });
       }
 
-      const updated = await prisma.reservationAddon.update({
-        where: { id: request.params.id },
-        data: { completedAt: new Date() },
-        include: { variant: { include: { serviceType: true } } },
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.reservationAddon.update({
+          where: { id: request.params.id },
+          data: { completedAt: new Date() },
+          include: { variant: { include: { serviceType: true } } },
+        });
+        await tx.stayUpdate.create({
+          data: {
+            reservationId: addon.reservation.id,
+            petId: addon.reservation.petId,
+            staffId: request.userId!,
+            mediaUrl,
+            mediaType: "image",
+            caption: `${addon.reservation.pet.name} listo después del baño`,
+          },
+        });
+        return result;
       });
 
       return updated;

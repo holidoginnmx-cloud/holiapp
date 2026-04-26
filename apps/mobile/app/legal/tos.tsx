@@ -29,7 +29,7 @@ export default function TosScreen() {
             Las tarifas se calculan según peso, duración y servicios adicionales. El
             cliente puede pagar el total o un anticipo del 20% si la estancia es de
             2+ noches y faltan 3+ días para el check-in. La política completa de
-            cancelación y reembolsos está disponible en el apartado de Ayuda.
+            cancelación y reembolsos está disponible en Mi cuenta.
           </Text>
 
           <Text style={styles.h2}>4. Comportamiento de la mascota</Text>

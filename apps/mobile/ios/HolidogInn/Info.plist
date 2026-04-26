@@ -33,7 +33,9 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>3</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>LSMinimumSystemVersion</key>
     <string>13.4</string>
     <key>LSRequiresIPhoneOS</key>
@@ -47,6 +49,10 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>HolidogInn necesita acceso a la cámara para tomar fotos de tu mascota y subir su cartilla de vacunación.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>HolidogInn necesita acceso a tus fotos para subir imágenes de tu mascota y su cartilla de vacunación.</string>
     <key>NSUserActivityTypes</key>

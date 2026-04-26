@@ -10,51 +10,21 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
 import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api";
-import { LevelSelector } from "@/components/LevelSelector";
-import type { EnergyLevel, SocializationLevel, RestQuality, MoodLevel } from "@holidoginn/shared";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import type { MoodLevel } from "@holidoginn/shared";
 
-const ENERGY_OPTIONS = [
-  { key: "LOW", label: "Baja" },
-  { key: "MEDIUM", label: "Media" },
-  { key: "HIGH", label: "Alta" },
-];
-
-const SOCIALIZATION_OPTIONS = [
-  { key: "ISOLATED", label: "Aislado" },
-  { key: "SELECTIVE", label: "Selectivo" },
-  { key: "SOCIAL", label: "Social" },
-];
-
-const REST_OPTIONS = [
-  { key: "POOR", label: "Malo" },
-  { key: "FAIR", label: "Regular" },
-  { key: "GOOD", label: "Bueno" },
-];
-
-const MOOD_OPTIONS = [
-  { key: "SAD", label: "Triste" },
-  { key: "NEUTRAL", label: "Neutral" },
-  { key: "HAPPY", label: "Feliz" },
-  { key: "EXCITED", label: "Emocionado" },
-];
-
-const FEEDING_TEMPLATES = [
-  "Comió todo su alimento sin problema",
-  "Comió la mitad de su porción",
-  "No quiso comer",
-  "Se le cambió el alimento por indicación",
-];
-
-const BEHAVIOR_TEMPLATES = [
-  "Se adaptó bien, sin signos de estrés",
-  "Mostró ansiedad leve al inicio",
-  "Muy sociable con los demás perros",
-  "Prefiere estar solo, se pone nervioso en grupo",
+const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
+  { key: "SAD", emoji: "😢", label: "Triste" },
+  { key: "NEUTRAL", emoji: "😐", label: "Neutral" },
+  { key: "HAPPY", emoji: "😊", label: "Feliz" },
+  { key: "EXCITED", emoji: "🤩", label: "Emocionado" },
 ];
 
 export default function ChecklistForm() {
@@ -62,21 +32,14 @@ export default function ChecklistForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  // Form state
-  const [energy, setEnergy] = useState<EnergyLevel>("MEDIUM");
-  const [socialization, setSocialization] = useState<SocializationLevel>("SOCIAL");
-  const [rest, setRest] = useState<RestQuality>("GOOD");
+  // Form state — campos visibles
   const [mood, setMood] = useState<MoodLevel>("HAPPY");
   const [mealsCompleted, setMealsCompleted] = useState(true);
-  const [mealsNotes, setMealsNotes] = useState("");
   const [walksCompleted, setWalksCompleted] = useState(true);
   const [bathroomBreaks, setBathroomBreaks] = useState(true);
-  const [playtime, setPlaytime] = useState(true);
-  const [socializationDone, setSocializationDone] = useState(true);
-  const [feedingNotes, setFeedingNotes] = useState("");
-  const [behaviorNotes, setBehaviorNotes] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [handoffNotes, setHandoffNotes] = useState("");
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
 
   const { data: stay } = useQuery({
     queryKey: ["staff", "stay", reservationId],
@@ -90,7 +53,6 @@ export default function ChecklistForm() {
     enabled: !!reservationId,
   });
 
-  // Pre-populate if today's checklist exists
   const todayStr = new Date().toDateString();
   const existing = checklists?.find(
     (c) => new Date(c.date).toDateString() === todayStr
@@ -98,18 +60,10 @@ export default function ChecklistForm() {
 
   useEffect(() => {
     if (existing) {
-      setEnergy(existing.energy as EnergyLevel);
-      setSocialization(existing.socialization as SocializationLevel);
-      setRest(existing.rest as RestQuality);
       setMood(existing.mood as MoodLevel);
       setMealsCompleted(existing.mealsCompleted);
-      setMealsNotes(existing.mealsNotes ?? "");
       setWalksCompleted(existing.walksCompleted);
       setBathroomBreaks(existing.bathroomBreaks);
-      setPlaytime(existing.playtime);
-      setSocializationDone(existing.socializationDone);
-      setFeedingNotes(existing.feedingNotes ?? "");
-      setBehaviorNotes(existing.behaviorNotes ?? "");
       const notes = existing.additionalNotes ?? "";
       const handoffMatch = notes.match(/\[HANDOFF\] ([\s\S]*)/);
       if (handoffMatch) {
@@ -122,26 +76,79 @@ export default function ChecklistForm() {
     }
   }, [existing?.id]);
 
+  async function pickPhoto(source: "camera" | "library") {
+    if (source === "camera") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (result.canceled) return;
+      setPhotoUri(result.assets[0].uri);
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+    setPhotoUri(result.assets[0].uri);
+  }
+
+  function promptPhoto() {
+    Alert.alert("Foto del día", "¿Cómo quieres subir la foto?", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Tomar foto", onPress: () => pickPhoto("camera") },
+      { text: "Elegir foto", onPress: () => pickPhoto("library") },
+    ]);
+  }
+
   const saveMutation = useMutation({
-    mutationFn: () =>
-      createDailyChecklist({
+    mutationFn: async () => {
+      if (!photoUri) throw new Error("Falta la foto del día");
+      const cloud = await uploadToCloudinary(photoUri, "checklists");
+      return createDailyChecklist({
         date: new Date(),
-        energy,
-        socialization,
-        rest,
+        // Defaults para los campos del schema que ya no se preguntan
+        energy: "MEDIUM",
+        socialization: "SOCIAL",
+        rest: "GOOD",
         mood,
         mealsCompleted,
-        mealsNotes: mealsNotes || null,
+        mealsNotes: null,
         walksCompleted,
         bathroomBreaks,
-        playtime,
-        socializationDone,
-        feedingNotes: feedingNotes || null,
-        behaviorNotes: behaviorNotes || null,
-        additionalNotes: [additionalNotes, handoffNotes ? `[HANDOFF] ${handoffNotes}` : ""].filter(Boolean).join("\n") || null,
+        playtime: true,
+        socializationDone: true,
+        feedingNotes: null,
+        behaviorNotes: null,
+        additionalNotes:
+          [
+            additionalNotes,
+            handoffNotes ? `[HANDOFF] ${handoffNotes}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n") || null,
         reservationId: reservationId!,
-      }),
-    onSuccess: () => {
+        mediaUrl: cloud.secure_url,
+      });
+    },
+    onSuccess: async () => {
+      // Refetch explícito (no sólo invalidate) — garantiza que el detalle
+      // y la lista tengan la nueva foto antes de regresar.
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["staff", "stay", reservationId] }),
+        queryClient.refetchQueries({ queryKey: ["staff", "checklists", reservationId] }),
+      ]);
       queryClient.invalidateQueries({ queryKey: ["staff"] });
       Alert.alert("Reporte guardado", "Se notificó al dueño", [
         { text: "OK", onPress: () => router.back() },
@@ -157,6 +164,8 @@ export default function ChecklistForm() {
       </View>
     );
   }
+
+  const canSubmit = !!photoUri && !saveMutation.isPending;
 
   return (
     <ScrollView style={styles.container}>
@@ -176,24 +185,15 @@ export default function ChecklistForm() {
         </View>
       </View>
 
-      {/* Quick fill — "Normal day" template */}
       {!existing && (
         <TouchableOpacity
           style={styles.normalDayButton}
           onPress={() => {
-            setEnergy("HIGH");
-            setSocialization("SOCIAL");
-            setRest("GOOD");
             setMood("HAPPY");
             setMealsCompleted(true);
             setWalksCompleted(true);
             setBathroomBreaks(true);
-            setPlaytime(true);
-            setSocializationDone(true);
-            setFeedingNotes("Comió todo su alimento sin problema");
-            setBehaviorNotes("Se adaptó bien, sin signos de estrés");
-            setAdditionalNotes("");
-            Alert.alert("Listo", "Formulario llenado con valores de día normal. Revisa y ajusta si es necesario.");
+            Alert.alert("Listo", "Día normal aplicado. Sólo falta la foto.");
           }}
           activeOpacity={0.7}
         >
@@ -202,126 +202,60 @@ export default function ChecklistForm() {
         </TouchableOpacity>
       )}
 
-      {/* Daily Report Section */}
+      {/* Mood */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Reporte del día</Text>
-
-        <LevelSelector
-          label="Energía"
-          options={ENERGY_OPTIONS}
-          selected={energy}
-          onSelect={(k) => setEnergy(k as EnergyLevel)}
-        />
-        <LevelSelector
-          label="Socialización"
-          options={SOCIALIZATION_OPTIONS}
-          selected={socialization}
-          onSelect={(k) => setSocialization(k as SocializationLevel)}
-        />
-        <LevelSelector
-          label="Descanso"
-          options={REST_OPTIONS}
-          selected={rest}
-          onSelect={(k) => setRest(k as RestQuality)}
-        />
-        <LevelSelector
-          label="Estado de ánimo"
-          options={MOOD_OPTIONS}
-          selected={mood}
-          onSelect={(k) => setMood(k as MoodLevel)}
-        />
+        <Text style={styles.cardTitle}>¿Cómo se siente hoy?</Text>
+        <View style={styles.moodRow}>
+          {MOOD_OPTIONS.map((opt) => {
+            const active = mood === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.moodPill, active && styles.moodPillActive]}
+                onPress={() => setMood(opt.key)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.moodEmoji}>{opt.emoji}</Text>
+                <Text
+                  style={[
+                    styles.moodLabel,
+                    active && styles.moodLabelActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
-      {/* Checklist Section */}
+      {/* Checklist */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Checklist</Text>
-
+        <Text style={styles.cardTitle}>Necesidades básicas</Text>
         <ChecklistSwitch
-          label="Comidas completadas"
+          label="Comió"
           value={mealsCompleted}
           onValueChange={setMealsCompleted}
         />
-        {mealsCompleted && (
-          <TextInput
-            style={styles.inlineInput}
-            placeholder="Notas de comida (opcional)"
-            placeholderTextColor={COLORS.textDisabled}
-            value={mealsNotes}
-            onChangeText={setMealsNotes}
-          />
-        )}
         <ChecklistSwitch
-          label="Paseos realizados"
+          label="Paseó"
           value={walksCompleted}
           onValueChange={setWalksCompleted}
         />
         <ChecklistSwitch
-          label="Necesidades fisiológicas"
+          label="Sanitario"
           value={bathroomBreaks}
           onValueChange={setBathroomBreaks}
         />
-        <ChecklistSwitch
-          label="Tiempo de juego"
-          value={playtime}
-          onValueChange={setPlaytime}
-        />
-        <ChecklistSwitch
-          label="Socialización con otros perros"
-          value={socializationDone}
-          onValueChange={setSocializationDone}
-        />
       </View>
 
-      {/* Observations */}
+      {/* Notas */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Observaciones</Text>
-
-        <Text style={styles.inputLabel}>Alimentación</Text>
+        <Text style={styles.cardTitle}>Notas del día</Text>
         <TextInput
           style={styles.textArea}
-          placeholder="Notas sobre alimentación..."
-          placeholderTextColor={COLORS.textDisabled}
-          value={feedingNotes}
-          onChangeText={setFeedingNotes}
-          multiline
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
-          {FEEDING_TEMPLATES.map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={styles.templateChip}
-              onPress={() => setFeedingNotes(t)}
-            >
-              <Text style={styles.templateChipText}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <Text style={[styles.inputLabel, { marginTop: 16 }]}>Comportamiento</Text>
-        <TextInput
-          style={styles.textArea}
-          placeholder="Notas sobre comportamiento..."
-          placeholderTextColor={COLORS.textDisabled}
-          value={behaviorNotes}
-          onChangeText={setBehaviorNotes}
-          multiline
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
-          {BEHAVIOR_TEMPLATES.map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={styles.templateChip}
-              onPress={() => setBehaviorNotes(t)}
-            >
-              <Text style={styles.templateChipText}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <Text style={[styles.inputLabel, { marginTop: 16 }]}>Notas adicionales</Text>
-        <TextInput
-          style={styles.textArea}
-          placeholder="Cualquier otra observación..."
+          placeholder="Algo importante que el dueño deba saber (opcional)"
           placeholderTextColor={COLORS.textDisabled}
           value={additionalNotes}
           onChangeText={setAdditionalNotes}
@@ -329,7 +263,7 @@ export default function ChecklistForm() {
         />
       </View>
 
-      {/* Handoff notes — for next shift */}
+      {/* Handoff */}
       <View style={styles.card}>
         <View style={styles.handoffHeader}>
           <Ionicons name="swap-horizontal" size={18} color={COLORS.infoText} />
@@ -337,7 +271,7 @@ export default function ChecklistForm() {
         </View>
         <TextInput
           style={styles.textArea}
-          placeholder="Indicaciones para el staff del siguiente turno (ej: darle medicamento a las 8pm, no juntar con perro del cuarto 3...)"
+          placeholder="Indicaciones internas (medicación, perros incompatibles…)"
           placeholderTextColor={COLORS.textDisabled}
           value={handoffNotes}
           onChangeText={setHandoffNotes}
@@ -345,11 +279,43 @@ export default function ChecklistForm() {
         />
       </View>
 
+      {/* Photo */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>
+          Foto del día <Text style={styles.required}>*</Text>
+        </Text>
+        {photoUri ? (
+          <View>
+            <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+            <TouchableOpacity
+              style={styles.photoChangeButton}
+              onPress={promptPhoto}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh" size={16} color={COLORS.primary} />
+              <Text style={styles.photoChangeText}>Cambiar foto</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={promptPhoto}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="camera" size={28} color={COLORS.primary} />
+            <Text style={styles.photoButtonText}>Tomar o elegir foto</Text>
+            <Text style={styles.photoHint}>
+              El dueño la verá en su reservación
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Submit */}
       <TouchableOpacity
-        style={[styles.submitButton, saveMutation.isPending && { opacity: 0.6 }]}
+        style={[styles.submitButton, !canSubmit && { opacity: 0.5 }]}
         onPress={() => saveMutation.mutate()}
-        disabled={saveMutation.isPending}
+        disabled={!canSubmit}
       >
         {saveMutation.isPending ? (
           <ActivityIndicator color={COLORS.white} />
@@ -435,6 +401,39 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 14,
   },
+  required: {
+    color: COLORS.errorText,
+  },
+  moodRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  moodPill: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    gap: 4,
+  },
+  moodPillActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
+  },
+  moodEmoji: {
+    fontSize: 28,
+  },
+  moodLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
+  },
+  moodLabelActive: {
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
   switchRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -444,24 +443,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.bgSection,
   },
   switchLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
-  },
-  inlineInput: {
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 13,
+    fontSize: 15,
     color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  inputLabel: {
-    fontSize: 13,
     fontWeight: "600",
-    color: COLORS.textSecondary,
-    marginBottom: 6,
   },
   textArea: {
     borderWidth: 1,
@@ -470,23 +454,49 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: COLORS.textPrimary,
-    minHeight: 60,
+    minHeight: 70,
     textAlignVertical: "top",
   },
-  templateScroll: {
-    marginTop: 8,
-  },
-  templateChip: {
+  photoButton: {
     backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    padding: 24,
+    alignItems: "center",
+    gap: 6,
   },
-  templateChipText: {
-    fontSize: 12,
+  photoButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
     color: COLORS.primary,
-    fontWeight: "500",
+    marginTop: 4,
+  },
+  photoHint: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+  },
+  photoPreview: {
+    width: "100%",
+    aspectRatio: 4 / 3,
+    borderRadius: 12,
+    backgroundColor: COLORS.bgSection,
+  },
+  photoChangeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.primaryLight,
+  },
+  photoChangeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
   submitButton: {
     flexDirection: "row",

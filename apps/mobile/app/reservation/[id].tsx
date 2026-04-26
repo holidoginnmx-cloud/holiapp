@@ -17,12 +17,10 @@ import { useStripe } from "@stripe/stripe-react-native";
 import {
   getReservationById,
   getStayUpdates,
-  getOwnerChecklists,
   createBalancePayment,
   confirmBalancePayment,
 } from "@/lib/api";
 import { StayUpdateCard } from "@/components/StayUpdateCard";
-import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 
@@ -75,15 +73,6 @@ export default function ReservationDetailScreen() {
     queryFn: () => getReservationById(id!),
     enabled: !!id,
     refetchInterval: 30_000,
-  });
-
-  const { data: checklists } = useQuery({
-    queryKey: ["owner", "checklists", id],
-    queryFn: () => getOwnerChecklists(id!),
-    enabled:
-      !!reservation &&
-      (reservation.status === "CHECKED_IN" ||
-        reservation.status === "CHECKED_OUT"),
   });
 
   const { data: updates } = useQuery({
@@ -384,11 +373,6 @@ export default function ReservationDetailScreen() {
       {/* Bath upsell (CONFIRMED → CHECKED_IN) */}
       <BathUpsellCard reservation={reservation} />
 
-      {/* Daily reports */}
-      {checklists && checklists.length > 0 && (
-        <DailyReportsSection checklists={checklists} />
-      )}
-
       {/* Photos / Videos */}
       {updates && updates.length > 0 && (
         <View>
@@ -476,69 +460,6 @@ function InfoRow({
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
       <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
-function DailyReportsSection({ checklists }: { checklists: any[] }) {
-  const sorted = React.useMemo(
-    () =>
-      [...checklists].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      ),
-    [checklists]
-  );
-  const [selectedId, setSelectedId] = useState<string>(sorted[0].id);
-  const selected = sorted.find((c) => c.id === selectedId) ?? sorted[0];
-
-  const fullDate = new Date(selected.date).toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-
-  return (
-    <View>
-      <Text style={styles.sectionTitle}>
-        {sorted.length === 1 ? "Reporte diario" : "Reportes diarios"} — {fullDate}
-      </Text>
-      {sorted.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dateSelector}
-        >
-          {sorted.map((cl) => {
-            const isActive = cl.id === selected.id;
-            const label = new Date(cl.date).toLocaleDateString("es-MX", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            });
-            return (
-              <TouchableOpacity
-                key={cl.id}
-                onPress={() => setSelectedId(cl.id)}
-                activeOpacity={0.7}
-                style={[
-                  styles.datePill,
-                  isActive && styles.datePillActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.datePillText,
-                    isActive && styles.datePillTextActive,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-      <ChecklistSummaryCard checklist={selected} />
     </View>
   );
 }
@@ -632,31 +553,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 12,
     marginTop: 8,
-  },
-  dateSelector: {
-    flexDirection: "row",
-    gap: 8,
-    paddingBottom: 12,
-  },
-  datePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  datePillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  datePillText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  datePillTextActive: {
-    color: COLORS.white,
   },
   photosGrid: {
     flexDirection: "row",

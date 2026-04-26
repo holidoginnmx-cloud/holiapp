@@ -460,17 +460,24 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
   // ────────────────────────────────────────────────────────────
   //  POST /staff/baths/:id/complete — marcar cita como finalizada
-  //  Setea status=CHECKED_OUT y addon.completedAt=now.
-  //  Notifica al dueño.
+  //  Requiere foto del perro bañado (mediaUrl). Crea StayUpdate,
+  //  setea status=CHECKED_OUT y addon.completedAt=now. Notifica.
   // ────────────────────────────────────────────────────────────
-  fastify.post<{ Params: { id: string } }>(
+  fastify.post<{ Params: { id: string }; Body: { mediaUrl?: string } }>(
     "/staff/baths/:id/complete",
     { preHandler: staffAuth },
     async (request, reply) => {
+      const mediaUrl = request.body?.mediaUrl;
+      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
+        return reply.status(400).send({
+          error: "Se requiere una foto del baño completado",
+        });
+      }
+
       const reservation = await prisma.reservation.findUnique({
         where: { id: request.params.id },
         include: {
-          pet: { select: { name: true } },
+          pet: { select: { id: true, name: true } },
           addons: true,
         },
       });
@@ -495,6 +502,16 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         await tx.reservationAddon.updateMany({
           where: { reservationId: reservation.id, completedAt: null },
           data: { completedAt: new Date() },
+        });
+        await tx.stayUpdate.create({
+          data: {
+            reservationId: reservation.id,
+            petId: reservation.pet.id,
+            staffId: request.userId!,
+            mediaUrl,
+            mediaType: "image",
+            caption: `${reservation.pet.name} listo después del baño`,
+          },
         });
       });
 

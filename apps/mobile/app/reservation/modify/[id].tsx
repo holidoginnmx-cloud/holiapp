@@ -108,13 +108,21 @@ export default function ModifyReservationScreen() {
       qc.invalidateQueries({ queryKey: ["reservation", id, "change-requests"] });
       qc.invalidateQueries({ queryKey: ["credit-ledger"] });
       qc.invalidateQueries({ queryKey: ["me"] });
-      Alert.alert(
-        res.requiresApproval ? "Solicitud enviada" : "Cambio aplicado",
-        res.requiresApproval
-          ? "El admin revisará tu solicitud y te avisará."
-          : "Tu reembolso o saldo ya está listo.",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
+
+      let title = "Cambio aplicado";
+      let body = "Tu cambio quedó aplicado.";
+      if (res.requiresApproval) {
+        title = "Solicitud enviada";
+        body = "El admin revisará tu solicitud y te avisará.";
+      } else if (preview && preview.delta < 0) {
+        const refundAmount = formatMoney(-preview.delta);
+        if (refundChoice === "CREDIT") {
+          body = `Tu reembolso de ${refundAmount} ahora está disponible como saldo a favor en Mi cuenta.`;
+        } else {
+          body = `Tu reembolso de ${refundAmount} llegará a tu tarjeta en 5–10 días hábiles.`;
+        }
+      }
+      Alert.alert(title, body, [{ text: "OK", onPress: () => router.back() }]);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });

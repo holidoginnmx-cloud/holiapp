@@ -227,12 +227,13 @@ const styles = StyleSheet.create({
   },
   photoWrap: {
     width: "100%",
-    aspectRatio: 16 / 10,
+    aspectRatio: 4 / 3,
     backgroundColor: COLORS.bgSection,
   },
   photo: {
     width: "100%",
     height: "100%",
+    resizeMode: "contain",
   },
   photoBadge: {
     position: "absolute",

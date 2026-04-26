@@ -12,6 +12,8 @@ import { StripeProvider } from "@stripe/stripe-react-native";
 import { registerForPushNotifications } from "@/lib/pushNotifications";
 import { getMyLegalStatus } from "@/lib/api";
 
+const TOUR_SEEN_KEY = "welcome-tour-seen";
+
 const tokenCache = {
   async getToken(key: string) {
     return SecureStore.getItemAsync(key);
@@ -45,9 +47,7 @@ function ClerkTokenSync() {
 
   // Sync DB user when signed in and token is ready
   useEffect(() => {
-    console.log("🔄 [ClerkTokenSync] isSignedIn:", isSignedIn, "userId:", userId);
     if (isSignedIn && userId) {
-      console.log("🔄 [ClerkTokenSync] Calling syncUser...");
       syncUser();
       // Registrar push token con el backend (best-effort, no bloquea)
       registerForPushNotifications().catch((err) => {
@@ -60,15 +60,21 @@ function ClerkTokenSync() {
   // al dashboard interno y no pasan por el flujo de reserva.
   useEffect(() => {
     if (!isSignedIn || !dbUserId || role !== "OWNER") return;
-    // No redirigir si ya estamos en legal o auth
+    // No redirigir si ya estamos en legal, auth o welcome
     const inLegal = segments[0] === "legal";
     const inAuth = segments[0] === "(auth)";
-    if (inLegal || inAuth) return;
+    const inWelcome = segments[0] === "welcome";
+    if (inLegal || inAuth || inWelcome) return;
 
     getMyLegalStatus()
-      .then((status) => {
+      .then(async (status) => {
         if (!status.canBook) {
           router.replace("/legal/onboarding");
+          return;
+        }
+        const seen = await SecureStore.getItemAsync(TOUR_SEEN_KEY).catch(() => null);
+        if (!seen) {
+          router.replace("/welcome/tour" as any);
         }
       })
       .catch((err) => {
@@ -106,6 +112,7 @@ export default function RootLayout() {
           <Stack.Screen name="pet" />
           <Stack.Screen name="reservation" />
           <Stack.Screen name="legal" />
+          <Stack.Screen name="welcome" />
           <Stack.Screen
             name="review/[reservationId]"
             options={{

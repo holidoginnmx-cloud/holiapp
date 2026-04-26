@@ -16,25 +16,13 @@ import { PetCard } from "@/components/PetCard";
 
 export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
-  const firstName = useAuthStore((s) => s.firstName);
   const router = useRouter();
-
-  console.log("🐾 [PetsScreen] userId:", userId);
 
   const { data: pets, isLoading, error, refetch } = useQuery({
     queryKey: ["pets", userId],
-    queryFn: async () => {
-      console.log("🐾 [PetsScreen] Fetching pets for userId:", userId);
-      const result = await getPetsByOwner(userId!);
-      console.log("🐾 [PetsScreen] Got pets:", result?.length, result?.map(p => p.name));
-      return result;
-    },
+    queryFn: () => getPetsByOwner(userId!),
     enabled: !!userId,
   });
-
-  if (error) {
-    console.log("🐾 [PetsScreen] Error:", error);
-  }
 
   if (isLoading) {
     return (
@@ -55,38 +43,12 @@ export default function PetsScreen() {
     );
   }
 
-  const petCount = pets?.length ?? 0;
-  const countLabel =
-    petCount === 0
-      ? "Aún no hay peluditos en tu familia"
-      : petCount === 1
-        ? "1 peludito en tu familia HDI"
-        : `${petCount} peluditos en tu familia HDI`;
-
-  const Header = (
-    <View style={styles.heroWrap}>
-      <View style={styles.heroBand} />
-      <View style={styles.heroContent}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.heroGreeting}>
-            Hola, {firstName || "amigo"} 👋
-          </Text>
-          <Text style={styles.heroSubtitle}>{countLabel}</Text>
-        </View>
-        <View style={styles.heroIconCircle}>
-          <Ionicons name="paw" size={26} color={COLORS.primary} />
-        </View>
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.container} testID="pets-screen">
       <FlatList
         testID="pets-list"
         data={pets}
         keyExtractor={(item) => item.id}
-        ListHeaderComponent={Header}
         renderItem={({ item }) => (
           <PetCard
             pet={item}
@@ -143,45 +105,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 16,
     paddingBottom: 80,
-  },
-  heroWrap: {
-    marginBottom: 20,
-    borderRadius: 18,
-    overflow: "hidden",
-  },
-  heroBand: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.primaryLight,
-  },
-  heroContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 18,
-    gap: 12,
-  },
-  heroGreeting: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  heroIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
   },
   center: {
     flex: 1,

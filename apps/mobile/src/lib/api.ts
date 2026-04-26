@@ -31,6 +31,7 @@ export type ReservationListItem = Reservation & {
   room: { id: string; name: string } | null;
   staff: { id: string; firstName: string; lastName: string } | null;
   owner: { id: string; firstName: string; lastName: string };
+  hasBalance: boolean;
   hasPendingChangeRequest: boolean;
   lastUpdateAt: string | null;
   hasReview: boolean;
@@ -390,9 +391,10 @@ export const getStaffBaths = (date?: string) =>
     `/staff/baths${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   );
 
-export const completeStaffBath = (id: string) =>
+export const completeStaffBath = (id: string, mediaUrl: string) =>
   apiFetch<{ success: boolean }>(`/staff/baths/${id}/complete`, {
     method: "POST",
+    body: JSON.stringify({ mediaUrl }),
   });
 
 export type ChecklistWithStaff = DailyChecklist & {
@@ -704,7 +706,9 @@ export const staffCheckout = (id: string) =>
     { method: "POST", body: JSON.stringify({}) }
   );
 
-export const createDailyChecklist = (data: CreateDailyChecklist) =>
+export const createDailyChecklist = (
+  data: CreateDailyChecklist & { mediaUrl: string }
+) =>
   apiFetch<DailyChecklist>("/staff/checklists", {
     method: "POST",
     body: JSON.stringify(data),
@@ -754,9 +758,10 @@ export const resolveStaffAlert = (alertId: string) =>
     method: "PATCH",
   });
 
-export const completeAddon = (addonId: string) =>
+export const completeAddon = (addonId: string, mediaUrl: string) =>
   apiFetch<ReservationAddonWithVariant>(`/staff/addons/${addonId}/complete`, {
     method: "PATCH",
+    body: JSON.stringify({ mediaUrl }),
   });
 
 // ─── Change Requests & Credit ─────────────────────────────
@@ -870,6 +875,9 @@ export const getCreditLedger = () =>
 export type MeResponse = User & { creditBalance: string };
 
 export const getMe = () => apiFetch<MeResponse>(`/users/me`);
+
+export const updateMe = (data: { firstName?: string; lastName?: string; phone?: string | null }) =>
+  apiFetch<User>(`/users/me`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const exportMyData = () => apiFetch<Record<string, unknown>>(`/users/me/export`);
 

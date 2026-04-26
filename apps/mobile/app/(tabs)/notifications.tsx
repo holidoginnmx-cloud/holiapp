@@ -10,11 +10,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
-import {
-  getNotifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-} from "@/lib/api";
+import { getNotifications, markNotificationAsRead } from "@/lib/api";
 import { NotificationItem } from "@/components/NotificationItem";
 
 export default function NotificationsScreen() {
@@ -32,13 +28,6 @@ export default function NotificationsScreen() {
     mutationFn: markNotificationAsRead,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
   });
-
-  const markAllMutation = useMutation({
-    mutationFn: () => markAllNotificationsAsRead(userId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
-  });
-
-  const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
 
   if (isLoading) {
     return (
@@ -61,22 +50,6 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.container} testID="notifications-screen">
-      {unreadCount > 0 && (
-        <TouchableOpacity
-          style={styles.markAllButton}
-          onPress={() => markAllMutation.mutate()}
-          disabled={markAllMutation.isPending}
-          activeOpacity={0.7}
-          testID="notifications-mark-all-button"
-        >
-          <Text style={styles.markAllText}>
-            {markAllMutation.isPending
-              ? "Marcando..."
-              : `Marcar todas como leídas (${unreadCount})`}
-          </Text>
-        </TouchableOpacity>
-      )}
-
       <FlatList
         testID="notifications-list"
         data={notifications}
@@ -117,19 +90,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 60,
-  },
-  markAllButton: {
-    backgroundColor: COLORS.reviewBgAlt,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    margin: 16,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  markAllText: {
-    color: COLORS.primary,
-    fontWeight: "700",
-    fontSize: 14,
   },
   emptyText: {
     fontSize: 15,

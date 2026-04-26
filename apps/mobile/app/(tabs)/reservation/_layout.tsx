@@ -6,16 +6,12 @@ import { Ionicons } from "@expo/vector-icons";
 export default function TabsReservationLayout() {
   const router = useRouter();
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/reservations" as any);
-    }
+  const handleBackToReservations = () => {
+    router.replace("/(tabs)/reservations" as any);
   };
 
   const backButton = () => (
-    <TouchableOpacity onPress={handleBack} style={{ marginLeft: 8 }}>
+    <TouchableOpacity onPress={handleBackToReservations} style={{ marginLeft: 8 }}>
       <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
     </TouchableOpacity>
   );

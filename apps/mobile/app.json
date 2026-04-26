@@ -12,7 +12,7 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.holidoginn.app",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "deploymentTarget": "13.4",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -24,7 +24,10 @@
       }
     },
     "android": {
-      "package": "com.holidoginn.app"
+      "package": "com.holidoginn.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -54,6 +57,13 @@
           "defaultChannel": "default"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "36f3e249-f177-4247-9e55-f89d017128e8"
+      }
+    },
+    "owner": "holidoginn.mx"
   }
 }

@@ -26,6 +26,35 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // PATCH /users/me — actualizar perfil propio (firstName, lastName, phone)
+  fastify.patch<{
+    Body: { firstName?: string; lastName?: string; phone?: string | null };
+  }>(
+    "/users/me",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const userId = request.userId!;
+      const { firstName, lastName, phone } = request.body ?? {};
+      const data: { firstName?: string; lastName?: string; phone?: string | null } = {};
+      if (typeof firstName === "string" && firstName.trim().length > 0) {
+        data.firstName = firstName.trim();
+      }
+      if (typeof lastName === "string" && lastName.trim().length > 0) {
+        data.lastName = lastName.trim();
+      }
+      if (phone === null) {
+        data.phone = null;
+      } else if (typeof phone === "string") {
+        data.phone = phone.trim().length > 0 ? phone.trim() : null;
+      }
+      if (Object.keys(data).length === 0) {
+        return reply.status(400).send({ error: "Nada para actualizar" });
+      }
+      const updated = await prisma.user.update({ where: { id: userId }, data });
+      return updated;
+    }
+  );
+
   // GET /users/me/export — export completo de los datos del usuario (derecho ARCO de Acceso)
   fastify.get(
     "/users/me/export",

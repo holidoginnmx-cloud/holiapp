@@ -4,14 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications } from "@/lib/api";
 import { CreditBalancePill } from "@/components/CreditBalancePill";
 
 export default function TabsLayout() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { signOut } = useClerk();
   const router = useRouter();
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -31,7 +30,6 @@ export default function TabsLayout() {
 
   // Role-based routing: once role is loaded, redirect staff/admin to their area
   useEffect(() => {
-    console.log("=== TABS ROLE EFFECT ===", { role, isLoaded, isSignedIn });
     if (!role) return;
     if (role === "ADMIN") {
       router.replace("/(admin)/dashboard" as any);
@@ -74,18 +72,6 @@ export default function TabsLayout() {
           tabBarButtonTestID: "tabbar-home",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
-          ),
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => {
-                signOut();
-                router.replace("/(auth)/login");
-              }}
-              style={{ marginLeft: 16 }}
-              testID="tabs-signout-button"
-            >
-              <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
-            </TouchableOpacity>
           ),
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 16 }}>
@@ -134,16 +120,6 @@ export default function TabsLayout() {
             fontSize: 11,
             fontWeight: "700",
           },
-        }}
-      />
-      <Tabs.Screen
-        name="help"
-        options={{
-          title: "Ayuda",
-          tabBarButtonTestID: "tabbar-help",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="help-circle" size={size} color={color} />
-          ),
         }}
       />
       {/* Hidden detail screen */}

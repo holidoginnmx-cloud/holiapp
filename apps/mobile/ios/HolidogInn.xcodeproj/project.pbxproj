@@ -8,27 +8,27 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		308999E06E5FA4DB7B852F0E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = E75DC58EC24AF325120ABFDA /* PrivacyInfo.xcprivacy */; };
+		2871DD7C6E64549332AC5512 /* libPods-HolidogInn.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 07C3EC07007645F46AB46EF4 /* libPods-HolidogInn.a */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		8A267768E0AF541400C9C07A /* libPods-HolidogInn.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 13DF3DAC630C517F11BBB913 /* libPods-HolidogInn.a */; };
-		AFF0E5B556B44C3DA1818E29 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCC63C74C2D413A8D7641AF /* noop-file.swift */; };
+		4F34F55A561BAD432992FAD4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA4882F50E4A2D876C67887 /* ExpoModulesProvider.swift */; };
+		85FFF875B00000FE4D3D6109 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AD38311B7D7B6BAF2F750EA2 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		C24173B24C0D63D2E0AA8A3A /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0BB5458141F68A511A85DAE /* ExpoModulesProvider.swift */; };
+		C9E69CCD091A414690D21BC4 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = B648A3AB1DF64D888001CF56 /* noop-file.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		07C3EC07007645F46AB46EF4 /* libPods-HolidogInn.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HolidogInn.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* HolidogInn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HolidogInn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = HolidogInn/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HolidogInn/Info.plist; sourceTree = "<group>"; };
-		13DF3DAC630C517F11BBB913 /* libPods-HolidogInn.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HolidogInn.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		2F079982BC15CC427611C050 /* Pods-HolidogInn.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HolidogInn.release.xcconfig"; path = "Target Support Files/Pods-HolidogInn/Pods-HolidogInn.release.xcconfig"; sourceTree = "<group>"; };
-		52A3CDBA290AB75F338CEDC6 /* Pods-HolidogInn.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HolidogInn.debug.xcconfig"; path = "Target Support Files/Pods-HolidogInn/Pods-HolidogInn.debug.xcconfig"; sourceTree = "<group>"; };
+		67D1F7583B5F02FDFF16448D /* Pods-HolidogInn.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HolidogInn.release.xcconfig"; path = "Target Support Files/Pods-HolidogInn/Pods-HolidogInn.release.xcconfig"; sourceTree = "<group>"; };
+		68EE1528FBBEF624F2480D83 /* Pods-HolidogInn.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HolidogInn.debug.xcconfig"; path = "Target Support Files/Pods-HolidogInn/Pods-HolidogInn.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = HolidogInn/SplashScreen.storyboard; sourceTree = "<group>"; };
+		AD38311B7D7B6BAF2F750EA2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = HolidogInn/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		B648A3AB1DF64D888001CF56 /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "HolidogInn/noop-file.swift"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		C0BB5458141F68A511A85DAE /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HolidogInn/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		CDCC63C74C2D413A8D7641AF /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "HolidogInn/noop-file.swift"; sourceTree = "<group>"; };
-		E75DC58EC24AF325120ABFDA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = HolidogInn/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		CAA4882F50E4A2D876C67887 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HolidogInn/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HolidogInn/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* HolidogInn-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "HolidogInn-Bridging-Header.h"; path = "HolidogInn/HolidogInn-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -39,13 +39,23 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8A267768E0AF541400C9C07A /* libPods-HolidogInn.a in Frameworks */,
+				2871DD7C6E64549332AC5512 /* libPods-HolidogInn.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		12A800C071C0A81F7EFFE6D4 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				68EE1528FBBEF624F2480D83 /* Pods-HolidogInn.debug.xcconfig */,
+				67D1F7583B5F02FDFF16448D /* Pods-HolidogInn.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* HolidogInn */ = {
 			isa = PBXGroup;
 			children = (
@@ -55,16 +65,8 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				CDCC63C74C2D413A8D7641AF /* noop-file.swift */,
-				E75DC58EC24AF325120ABFDA /* PrivacyInfo.xcprivacy */,
-			);
-			name = HolidogInn;
-			sourceTree = "<group>";
-		};
-		15EFD4B5DBFD8EDEAC7C2EB7 /* HolidogInn */ = {
-			isa = PBXGroup;
-			children = (
-				C0BB5458141F68A511A85DAE /* ExpoModulesProvider.swift */,
+				B648A3AB1DF64D888001CF56 /* noop-file.swift */,
+				AD38311B7D7B6BAF2F750EA2 /* PrivacyInfo.xcprivacy */,
 			);
 			name = HolidogInn;
 			sourceTree = "<group>";
@@ -73,18 +75,17 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				13DF3DAC630C517F11BBB913 /* libPods-HolidogInn.a */,
+				07C3EC07007645F46AB46EF4 /* libPods-HolidogInn.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		6954CF8252C0632AC0650E1B /* Pods */ = {
+		336D7F6E85BF8941171CFC15 /* HolidogInn */ = {
 			isa = PBXGroup;
 			children = (
-				52A3CDBA290AB75F338CEDC6 /* Pods-HolidogInn.debug.xcconfig */,
-				2F079982BC15CC427611C050 /* Pods-HolidogInn.release.xcconfig */,
+				CAA4882F50E4A2D876C67887 /* ExpoModulesProvider.swift */,
 			);
-			path = Pods;
+			name = HolidogInn;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -101,8 +102,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				6954CF8252C0632AC0650E1B /* Pods */,
-				86647CDE4169B52BA5A364A6 /* ExpoModulesProviders */,
+				12A800C071C0A81F7EFFE6D4 /* Pods */,
+				C36CCE70843167BBEB77EB96 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -117,14 +118,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		86647CDE4169B52BA5A364A6 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				15EFD4B5DBFD8EDEAC7C2EB7 /* HolidogInn */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
 			isa = PBXGroup;
 			children = (
@@ -132,6 +125,14 @@
 			);
 			name = Supporting;
 			path = HolidogInn/Supporting;
+			sourceTree = "<group>";
+		};
+		C36CCE70843167BBEB77EB96 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				336D7F6E85BF8941171CFC15 /* HolidogInn */,
+			);
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -142,13 +143,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "HolidogInn" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				58407B475D3F6B36BB4762F9 /* [Expo] Configure project */,
+				465FB41C245CAA2902EBA5FE /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				34D43D4F84473F18B9646CED /* [CP] Embed Pods Frameworks */,
+				F187877150EE4C3D42AA0C5C /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -198,7 +199,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				308999E06E5FA4DB7B852F0E /* PrivacyInfo.xcprivacy in Resources */,
+				85FFF875B00000FE4D3D6109 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,29 +245,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		34D43D4F84473F18B9646CED /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-HolidogInn/Pods-HolidogInn-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HolidogInn/Pods-HolidogInn-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		58407B475D3F6B36BB4762F9 /* [Expo] Configure project */ = {
+		465FB41C245CAA2902EBA5FE /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -338,6 +317,28 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HolidogInn/Pods-HolidogInn-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		F187877150EE4C3D42AA0C5C /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-HolidogInn/Pods-HolidogInn-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HolidogInn/Pods-HolidogInn-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -346,8 +347,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				AFF0E5B556B44C3DA1818E29 /* noop-file.swift in Sources */,
-				C24173B24C0D63D2E0AA8A3A /* ExpoModulesProvider.swift in Sources */,
+				C9E69CCD091A414690D21BC4 /* noop-file.swift in Sources */,
+				4F34F55A561BAD432992FAD4 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -356,13 +357,12 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 52A3CDBA290AB75F338CEDC6 /* Pods-HolidogInn.debug.xcconfig */;
+			baseConfigurationReference = 68EE1528FBBEF624F2480D83 /* Pods-HolidogInn.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HolidogInn/HolidogInn.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = T6HYD3Q656;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -393,13 +393,12 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 2F079982BC15CC427611C050 /* Pods-HolidogInn.release.xcconfig */;
+			baseConfigurationReference = 67D1F7583B5F02FDFF16448D /* Pods-HolidogInn.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HolidogInn/HolidogInn.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = T6HYD3Q656;
 				INFOPLIST_FILE = HolidogInn/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (

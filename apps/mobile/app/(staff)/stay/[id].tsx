@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -69,6 +69,13 @@ export default function StayDetail() {
     queryFn: () => getStaffStayById(id!),
     enabled: !!id,
   });
+
+  // Refetch al volver a la pantalla (ej. después de submitir un reporte)
+  useFocusEffect(
+    useCallback(() => {
+      if (id) refetch();
+    }, [id])
+  );
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["staff"] });
@@ -171,13 +178,60 @@ export default function StayDetail() {
   });
 
   const completeAddonMutation = useMutation({
-    mutationFn: (addonId: string) => completeAddon(addonId),
+    mutationFn: ({ addonId, mediaUrl }: { addonId: string; mediaUrl: string }) =>
+      completeAddon(addonId, mediaUrl),
     onSuccess: () => {
       invalidateAll();
       Alert.alert("Listo", "Baño marcado como completado");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  const [completingBathId, setCompletingBathId] = useState<string | null>(null);
+
+  async function pickBathPhoto(source: "camera" | "library"): Promise<string | null> {
+    if (source === "camera") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara.");
+        return null;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (result.canceled) return null;
+      return result.assets[0].uri;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled) return null;
+    return result.assets[0].uri;
+  }
+
+  async function handleCompleteBathAddon(addonId: string, source: "camera" | "library") {
+    const uri = await pickBathPhoto(source);
+    if (!uri) return;
+    setCompletingBathId(addonId);
+    try {
+      const cloud = await uploadToCloudinary(uri, "baths");
+      await completeAddonMutation.mutateAsync({ addonId, mediaUrl: cloud.secure_url });
+    } catch (err) {
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "No se pudo completar el baño",
+      );
+    } finally {
+      setCompletingBathId(null);
+    }
+  }
 
   const handleUploadEvidence = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -459,15 +513,26 @@ export default function StayDetail() {
                 <TouchableOpacity
                   style={styles.completeBathButton}
                   onPress={() =>
-                    Alert.alert("Completar baño", "¿Marcar el baño como realizado?", [
-                      { text: "Cancelar", style: "cancel" },
-                      { text: "Completar", onPress: () => completeAddonMutation.mutate(bath.id) },
-                    ])
+                    Alert.alert(
+                      "Foto del baño",
+                      `Sube una foto de ${stay.pet.name} bañado para completar.`,
+                      [
+                        { text: "Cancelar", style: "cancel" },
+                        { text: "Tomar foto", onPress: () => handleCompleteBathAddon(bath.id, "camera") },
+                        { text: "Elegir foto", onPress: () => handleCompleteBathAddon(bath.id, "library") },
+                      ],
+                    )
                   }
-                  disabled={completeAddonMutation.isPending}
+                  disabled={completingBathId === bath.id || completeAddonMutation.isPending}
                 >
-                  <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
-                  <Text style={styles.completeBathText}>Marcar completado</Text>
+                  {completingBathId === bath.id ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
+                      <Text style={styles.completeBathText}>Marcar completado</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
               {isCompleted && (
@@ -722,9 +787,25 @@ export default function StayDetail() {
       {stay.checklists.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Historial de reportes</Text>
-          {stay.checklists.map((c) => (
-            <ChecklistSummaryCard key={c.id} checklist={c} compact />
-          ))}
+          {stay.checklists.map((c) => {
+            const cDate = new Date(c.date);
+            cDate.setHours(0, 0, 0, 0);
+            const dayEnd = cDate.getTime() + 86_400_000;
+            const reportPhoto = stay.updates.find(
+              (u) =>
+                u.mediaType === "image" &&
+                new Date(u.createdAt).getTime() >= cDate.getTime() &&
+                new Date(u.createdAt).getTime() < dayEnd,
+            );
+            return (
+              <ChecklistSummaryCard
+                key={c.id}
+                checklist={c}
+                compact
+                photoUrl={reportPhoto?.mediaUrl ?? null}
+              />
+            );
+          })}
         </View>
       )}
 
