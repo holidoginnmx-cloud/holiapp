@@ -157,7 +157,11 @@ export default function ChecklistForm() {
       ]);
       queryClient.invalidateQueries({ queryKey: ["staff"] });
       Alert.alert("Reporte guardado", "Se notificó al dueño", [
-        { text: "OK", onPress: () => router.back() },
+        {
+          text: "OK",
+          onPress: () =>
+            router.replace(`/(staff)/stay/${reservationId}` as any),
+        },
       ]);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),

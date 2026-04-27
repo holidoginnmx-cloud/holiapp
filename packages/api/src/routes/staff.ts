@@ -220,15 +220,6 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Notificación al staff asignado
-      await notifyUser(prisma, {
-        userId: request.userId!,
-        type: "STAFF_ASSIGNED" as any,
-        title: `Te asignaste a ${updated.pet.name}`,
-        body: `Ahora eres responsable de la estancia de ${updated.pet.name}. Revisa los detalles y prepárate para el check-in.`,
-        data: { reservationId: id },
-      });
-
       return updated;
     }
   );

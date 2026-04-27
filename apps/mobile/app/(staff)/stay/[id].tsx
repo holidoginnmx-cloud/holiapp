@@ -780,6 +780,16 @@ export default function StayDetail() {
               </View>
             ))
           )}
+
+          {/* Aviso si aún no hay reporte de hoy */}
+          {!todayChecklist && (
+            <View style={styles.missingReportBanner}>
+              <Ionicons name="document-text-outline" size={18} color={COLORS.warningText} />
+              <Text style={styles.missingReportText}>
+                Aún no se ha completado el reporte de hoy
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -1351,5 +1361,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textDisabled,
     marginTop: 3,
+  },
+  missingReportBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  missingReportText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.warningText,
   },
 });
