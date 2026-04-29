@@ -12,7 +12,7 @@ export default function ImageConsentScreen() {
       showReject
       body={
         <>
-          <Text style={styles.h2}>¿Por qué te lo pedimos? [REEMPLAZAR CON VERSIÓN REVISADA POR ABOGADO]</Text>
+          <Text style={styles.h2}>¿Por qué te lo pedimos?</Text>
           <Text style={styles.p}>
             Durante la estancia tomamos fotos y videos para que los disfrutes
             en vivo. También nos gustaría (con tu permiso) publicar algunos en
@@ -42,8 +42,8 @@ export default function ImageConsentScreen() {
           </Text>
 
           <Text style={styles.foot}>
-            [REEMPLAZAR TODO EL TEXTO ANTERIOR CON EL CONSENTIMIENTO DE USO DE
-            IMAGEN REDACTADO POR TU ABOGADO]
+            Última actualización: abril 2026. Para revocar tu consentimiento o
+            solicitar la baja de imágenes, escríbenos a holidoginnmx@gmail.com.
           </Text>
         </>
       }

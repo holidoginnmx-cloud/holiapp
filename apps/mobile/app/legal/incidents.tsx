@@ -149,8 +149,8 @@ export default function IncidentPolicyScreen() {
           </Text>
 
           <Text style={styles.foot}>
-            [BORRADOR INICIAL — REVISAR CON TU ABOGADO ANTES DE PUBLICACIÓN
-            FINAL. ACTUALIZAR CONTACTOS Y DATOS DEL VETERINARIO DE CABECERA.]
+            Última actualización: abril 2026. Para reportar un incidente o
+            consultar su seguimiento, escríbenos a holidoginnmx@gmail.com.
           </Text>
         </>
       }

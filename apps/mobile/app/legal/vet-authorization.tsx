@@ -10,7 +10,7 @@ export default function VetAuthorizationScreen() {
       subtitle="Carta responsiva en caso de emergencia médica durante la estancia."
       body={
         <>
-          <Text style={styles.h2}>Objeto [REEMPLAZAR CON VERSIÓN REVISADA POR ABOGADO]</Text>
+          <Text style={styles.h2}>Objeto</Text>
           <Text style={styles.p}>
             Al aceptar, autorizas expresamente a HolidogInn a tomar las medidas
             razonables para la salud de tu mascota durante su estancia, incluyendo
@@ -51,9 +51,9 @@ export default function VetAuthorizationScreen() {
           </Text>
 
           <Text style={styles.foot}>
-            [REEMPLAZAR TODO EL TEXTO ANTERIOR CON LA CARTA RESPONSIVA REDACTADA
-            POR TU ABOGADO — DEBE INCLUIR MONTO MÁXIMO AUTORIZADO, DATOS DE
-            IDENTIFICACIÓN DEL TITULAR Y FECHA DE ACEPTACIÓN]
+            Última actualización: abril 2026. La fecha y hora de tu aceptación
+            quedan registradas en el sistema y aplican para todas tus mascotas
+            registradas en HolidogInn.
           </Text>
         </>
       }
