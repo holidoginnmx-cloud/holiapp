@@ -10,7 +10,7 @@ export default function TosScreen() {
       subtitle="Las reglas del servicio de hospedaje y estética canina HolidogInn."
       body={
         <>
-          <Text style={styles.h2}>1. Objeto [REEMPLAZAR CON VERSIÓN REVISADA POR ABOGADO]</Text>
+          <Text style={styles.h2}>1. Objeto</Text>
           <Text style={styles.p}>
             HolidogInn presta servicios de hospedaje, cuidado y estética canina en sus
             instalaciones en Hermosillo, Sonora. Estos términos regulan la relación
@@ -55,7 +55,8 @@ export default function TosScreen() {
           </Text>
 
           <Text style={styles.foot}>
-            [REEMPLAZAR TODO EL TEXTO ANTERIOR CON LOS TÉRMINOS FINALES REVISADOS POR TU ABOGADO]
+            Última actualización: abril 2026. Versión preliminar. Jurisdicción
+            aplicable: Hermosillo, Sonora, México.
           </Text>
         </>
       }

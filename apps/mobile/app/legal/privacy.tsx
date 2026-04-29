@@ -10,7 +10,7 @@ export default function PrivacyScreen() {
       subtitle="LFPDPPP — Ley Federal de Protección de Datos Personales en Posesión de los Particulares."
       body={
         <>
-          <Text style={styles.h2}>1. Responsable [REEMPLAZAR CON VERSIÓN REVISADA POR ABOGADO]</Text>
+          <Text style={styles.h2}>1. Responsable</Text>
           <Text style={styles.p}>
             HolidogInn, con domicilio en Hermosillo, Sonora, es responsable del
             tratamiento de tus datos personales. Para dudas sobre privacidad escribe
@@ -62,9 +62,9 @@ export default function PrivacyScreen() {
           </Text>
 
           <Text style={styles.foot}>
-            [REEMPLAZAR TODO EL TEXTO ANTERIOR CON EL AVISO DE PRIVACIDAD
-            REVISADO POR TU ABOGADO — DEBE INCLUIR DATOS EXACTOS DE DOMICILIO
-            FISCAL, RFC, Y REFERENCIAS A LOS ARTÍCULOS APLICABLES DE LA LFPDPPP]
+            Última actualización: abril 2026. Versión preliminar. Para dudas
+            específicas sobre el tratamiento de tus datos, escribe a
+            privacidad@holidoginn.com.
           </Text>
         </>
       }

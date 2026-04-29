@@ -10,9 +10,16 @@
       "android"
     ],
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "bundleIdentifier": "com.holidoginn.app",
-      "buildNumber": "3",
+      "icon": "./assets/icon.png",
+      "buildNumber": "4",
       "deploymentTarget": "13.4",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -24,10 +31,7 @@
       }
     },
     "android": {
-      "package": "com.holidoginn.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "package": "com.holidoginn.app"
     },
     "web": {
       "bundler": "metro"
