@@ -37,7 +37,7 @@ export default function ImageConsentScreen() {
 
           <Text style={styles.h2}>Puedes revocar en cualquier momento</Text>
           <Text style={styles.p}>
-            Escríbenos a privacidad@holidoginn.com y retiraremos las imágenes
+            Escríbenos a holidoginnmx@gmail.com y retiraremos las imágenes
             publicadas en un plazo máximo de 10 días hábiles.
           </Text>
 

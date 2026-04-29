@@ -14,7 +14,7 @@ export default function PrivacyScreen() {
           <Text style={styles.p}>
             HolidogInn, con domicilio en Hermosillo, Sonora, es responsable del
             tratamiento de tus datos personales. Para dudas sobre privacidad escribe
-            a privacidad@holidoginn.com.
+            a holidoginnmx@gmail.com.
           </Text>
 
           <Text style={styles.h2}>2. Datos que recabamos</Text>
@@ -45,7 +45,7 @@ export default function PrivacyScreen() {
           <Text style={styles.h2}>5. Derechos ARCO</Text>
           <Text style={styles.p}>
             Puedes ejercer tus derechos de Acceso, Rectificación, Cancelación y
-            Oposición escribiendo a privacidad@holidoginn.com. Responderemos en un
+            Oposición escribiendo a holidoginnmx@gmail.com. Responderemos en un
             plazo máximo de 20 días hábiles.
           </Text>
 
@@ -64,7 +64,7 @@ export default function PrivacyScreen() {
           <Text style={styles.foot}>
             Última actualización: abril 2026. Versión preliminar. Para dudas
             específicas sobre el tratamiento de tus datos, escribe a
-            privacidad@holidoginn.com.
+            holidoginnmx@gmail.com.
           </Text>
         </>
       }
