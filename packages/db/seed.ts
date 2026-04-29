@@ -19,8 +19,11 @@ const monthsFromNow = (m: number) => {
 const dateOnly = (d: Date) => new Date(d.toISOString().split("T")[0] + "T00:00:00.000Z");
 
 // ─── Clerk IDs (test accounts) ───────────────────────────
+// Solo Javier corresponde a un usuario real en Clerk (login funcional).
+// Jessica y Jose existen únicamente como anclas relacionales para el demo data
+// (reservaciones, pagos, mascotas); sus clerkIds son placeholders y no permiten login.
 const CLERK = {
-  javier: "user_3BmX57VDMl0Hurc7cuf1r50g1n6",
+  javier: "user_3D1GPy0JlybZHWUdDujdt5WmXoC",
   jessica: "user_3BmXSo06ppZq6HhujQmIFLhQsTM",
   jose: "user_3BmXdIbwxduP5tpTrVZcZKQ0cOr",
 };
@@ -104,7 +107,7 @@ async function seed() {
     {
       id: ID.javier,
       clerkId: CLERK.javier,
-      email: "javier@holidoginn.com",
+      email: "javier1234@gmail.com",
       firstName: "Javier",
       lastName: "Oviedo",
       role: "ADMIN" as const,
