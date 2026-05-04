@@ -253,7 +253,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           },
         },
       },
-      orderBy: { pricePerDay: "asc" },
+      orderBy: { createdAt: "asc" },
     });
     return rooms[0] ?? null;
   }

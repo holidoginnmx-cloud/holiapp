@@ -19,7 +19,7 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
           isActive: true,
           ...(size ? { sizeAllowed: { has: size } } : {}),
         },
-        orderBy: { pricePerDay: "asc" },
+        orderBy: { createdAt: "asc" },
       });
       return rooms;
     }
@@ -98,7 +98,7 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
           },
         },
       },
-      orderBy: { pricePerDay: "asc" },
+      orderBy: { createdAt: "asc" },
     });
 
     return rooms;

@@ -309,7 +309,6 @@ async function seed() {
       description: "Suite premium con cama ortopédica, cámara en vivo y patio privado",
       capacity: 1,
       sizeAllowed: ["XL" as const, "L" as const],
-      pricePerDay: new Prisma.Decimal(450),
     },
     {
       id: ID.cuartoMedA,
@@ -317,7 +316,6 @@ async function seed() {
       description: "Cuarto cómodo con ventilación y espacio para jugar",
       capacity: 1,
       sizeAllowed: ["M" as const, "S" as const],
-      pricePerDay: new Prisma.Decimal(280),
     },
     {
       id: ID.cuartoPeqB,
@@ -325,14 +323,13 @@ async function seed() {
       description: "Cuarto acogedor ideal para mascotas pequeñas, capacidad doble",
       capacity: 2,
       sizeAllowed: ["S" as const, "XS" as const],
-      pricePerDay: new Prisma.Decimal(200),
     },
   ];
 
   for (const r of roomFields) {
     await prisma.room.upsert({
       where: { id: r.id },
-      update: { name: r.name, pricePerDay: r.pricePerDay, capacity: r.capacity },
+      update: { name: r.name, capacity: r.capacity },
       create: r,
     });
   }

@@ -284,7 +284,6 @@ model Room {
   description String?
   capacity    Int      @default(1)
   sizeAllowed PetSize[]       // Tamaños de mascota permitidos
-  pricePerDay Decimal  @db.Decimal(10, 2)
   isActive    Boolean  @default(true)
   photoUrl    String?
   createdAt   DateTime @default(now())

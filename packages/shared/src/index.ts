@@ -257,7 +257,6 @@ export const RoomSchema = z.object({
   description: z.string().nullable(),
   capacity: z.number().int().positive(),
   sizeAllowed: z.array(PetSizeEnum),
-  pricePerDay: z.number().nonnegative(),
   isActive: z.boolean(),
   photoUrl: z.string().nullable(),
   createdAt: z.coerce.date(),
