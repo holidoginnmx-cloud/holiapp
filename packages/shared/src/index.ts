@@ -332,7 +332,9 @@ export const CreateMultiReservationSchema = z.object({
   ownerId: z.string(),
   petIds: z.array(z.string()).min(1),
   roomPreference: z.enum(["shared", "separate"]),
-  stripePaymentIntentId: z.string(),
+  // Null when saldo a favor covered the entire deposit/total and no Stripe
+  // charge was created.
+  stripePaymentIntentId: z.string().nullable(),
   paymentType: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
   bathSelectionsByPet: z.record(z.string(), BathSelectionSchema).optional(),
   medicationByPet: z.record(z.string(), MedicationSelectionSchema).optional(),
