@@ -2,10 +2,10 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npx prisma generate --schema=packages/db/schema.prisma"
+    "buildCommand": "npx prisma@6.19.2 generate --schema=packages/db/schema.prisma"
   },
   "deploy": {
-    "startCommand": "npx prisma migrate deploy --schema=packages/db/schema.prisma && npm --workspace=@holidoginn/api run start",
+    "startCommand": "npx prisma@6.19.2 migrate deploy --schema=packages/db/schema.prisma && npm --workspace=@holidoginn/api run start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
