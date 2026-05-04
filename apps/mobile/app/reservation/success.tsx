@@ -11,11 +11,12 @@ type Variant = "hotel" | "bath" | "balance";
 
 export default function ReservationSuccess() {
   const router = useRouter();
-  const { reservationId, paymentType, amount, variant } = useLocalSearchParams<{
+  const { reservationId, paymentType, amount, variant, paidWith } = useLocalSearchParams<{
     reservationId?: string;
     paymentType?: "FULL" | "DEPOSIT";
     amount?: string;
     variant?: Variant;
+    paidWith?: "STRIPE" | "CREDIT";
   }>();
   const confettiRef = useRef<ConfettiCannon>(null);
 
@@ -92,7 +93,7 @@ export default function ReservationSuccess() {
           <View style={styles.depositCard}>
             <Ionicons name="information-circle" size={20} color={COLORS.warningText} />
             <Text style={styles.depositText}>
-              Se cobró el anticipo de{" "}
+              {paidWith === "CREDIT" ? "Aplicaste tu saldo a favor por " : "Se cobró el anticipo de "}
               <Text style={styles.depositAmount}>
                 ${depositAmount.toLocaleString("es-MX")}
               </Text>

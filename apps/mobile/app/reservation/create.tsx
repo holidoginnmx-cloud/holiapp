@@ -392,9 +392,26 @@ export default function CreateReservationScreen() {
         medicationByPet: medicationPayload,
       });
 
-      // 2. Open Stripe PaymentSheet only when there is something to charge.
-      // When credit fully covers the deposit/total the backend returns
-      // `coveredByCredit: true` with `clientSecret: null` — skip Stripe.
+      // 2. Saldo a favor cubre todo: confirmar con el usuario antes de aplicar
+      // el cargo. Sin esto el botón "Reservar" se sentiría mágico — Stripe no
+      // muestra ningún modal porque no hay cobro.
+      if (intent.coveredByCredit) {
+        const remaining = creditBalance - intent.creditApplied;
+        const userConfirmed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            "Pagar con saldo a favor",
+            `Se aplicarán $${intent.creditApplied.toLocaleString("es-MX")} de tu saldo a favor para cubrir el anticipo.\n\nSaldo restante después: $${remaining.toLocaleString("es-MX")}.`,
+            [
+              { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+              { text: "Confirmar", onPress: () => resolve(true) },
+            ],
+            { cancelable: false }
+          );
+        });
+        if (!userConfirmed) return;
+      }
+
+      // 3. Open Stripe PaymentSheet only when there is something to charge.
       if (!intent.coveredByCredit && intent.clientSecret) {
         const { error: initError } = await initPaymentSheet({
           paymentIntentClientSecret: intent.clientSecret,
@@ -463,6 +480,7 @@ export default function CreateReservationScreen() {
           reservationId: firstReservationId ?? "",
           paymentType,
           amount: paymentType === "DEPOSIT" ? String(depositAmount) : "0",
+          paidWith: intent.coveredByCredit ? "CREDIT" : "STRIPE",
         },
       });
     } catch (err: any) {
