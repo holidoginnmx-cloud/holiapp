@@ -2,6 +2,7 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { RoomWithStatus } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 interface RoomStatusCardProps {
   room: RoomWithStatus;
@@ -61,7 +62,7 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
         <View style={styles.occupantRow}>
           <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
           <Text style={styles.occupantText}>
-            {room.currentReservation.petName} — {room.currentReservation.ownerName}
+            {formatName(room.currentReservation.petName)} — {formatName(room.currentReservation.ownerName)}
           </Text>
           <Text style={styles.checkoutText}>
             Sale {formatDate(room.currentReservation.checkOut)}
@@ -70,9 +71,6 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
       )}
 
       <View style={styles.details}>
-        <Text style={styles.price}>
-          ${Number(room.pricePerDay).toLocaleString()}/día
-        </Text>
         <Text style={styles.meta} numberOfLines={2} ellipsizeMode="tail">
           Cap. {room.capacity} ·{" "}
           {(room.sizeAllowed as string[]).map((s) => SIZE_LABELS[s] || s).join(", ")}
@@ -147,17 +145,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.bgSection,
   },
-  price: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.primary,
-    flexShrink: 0,
-  },
   meta: {
     fontSize: 12,
     color: COLORS.textDisabled,
     flex: 1,
     flexShrink: 1,
-    textAlign: "right",
   },
 });

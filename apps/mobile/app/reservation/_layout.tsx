@@ -1,7 +1,6 @@
 import { COLORS } from "@/constants/colors";
 import { Stack, useRouter } from "expo-router";
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function ReservationLayout() {
   const router = useRouter();
@@ -14,21 +13,7 @@ export default function ReservationLayout() {
     }
   };
 
-  const handleBackToReservations = () => {
-    router.replace("/(tabs)/reservations" as any);
-  };
-
-  const backButton = () => (
-    <TouchableOpacity onPress={handleBack} style={{ marginLeft: 8 }}>
-      <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
-
-  const backToReservationsButton = () => (
-    <TouchableOpacity onPress={handleBackToReservations} style={{ marginLeft: 8 }}>
-      <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+  const backButton = () => <HeaderBackButton onPress={handleBack} />;
 
   return (
     <Stack
@@ -37,7 +22,7 @@ export default function ReservationLayout() {
         headerTintColor: COLORS.primary,
       }}
     >
-      <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backToReservationsButton }} />
+      <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backButton }} />
       <Stack.Screen name="create" options={{ title: "Nueva reservación", headerLeft: backButton }} />
       <Stack.Screen name="modify/[id]" options={{ title: "Modificar fechas", headerLeft: backButton }} />
       <Stack.Screen name="success" options={{ headerShown: false, gestureEnabled: false }} />

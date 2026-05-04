@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { getUsers, updateUser } from "@/lib/api";
 import type { User } from "@holidoginn/shared";
+import { formatName } from "@/lib/format";
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
   ADMIN: { label: "Admin", bg: COLORS.primaryLight, color: COLORS.primary },
@@ -44,7 +45,7 @@ export default function AdminUsers() {
     const newState = !user.isActive;
     Alert.alert(
       newState ? "Activar usuario" : "Desactivar usuario",
-      `¿${newState ? "Activar" : "Desactivar"} a ${user.firstName} ${user.lastName}?`,
+      `¿${newState ? "Activar" : "Desactivar"} a ${formatName(user.firstName)} ${formatName(user.lastName)}?`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -62,7 +63,7 @@ export default function AdminUsers() {
 
     Alert.alert(
       "Cambiar rol",
-      `${user.firstName} ${user.lastName} es ${currentLabel}. ¿A qué rol cambiar?`,
+      `${formatName(user.firstName)} ${formatName(user.lastName)} es ${currentLabel}. ¿A qué rol cambiar?`,
       [
         ...alternatives.map((role) => ({
           text: `Cambiar a ${ROLE_CONFIG[role].label}`,
@@ -82,7 +83,7 @@ export default function AdminUsers() {
         <View style={styles.userInfo}>
           <View style={styles.userHeader}>
             <Text style={styles.userName}>
-              {item.firstName} {item.lastName}
+              {formatName(item.firstName)} {formatName(item.lastName)}
             </Text>
             {!item.isActive && (
               <View style={styles.inactiveBadge}>

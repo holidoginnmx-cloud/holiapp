@@ -16,6 +16,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getStaffStays, getStaffStaysUnassigned, getStaffBaths } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
+import { formatName } from "@/lib/format";
 
 export default function StaffDashboard() {
   const router = useRouter();
@@ -129,7 +130,7 @@ export default function StaffDashboard() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>Hola, {firstName}</Text>
+        <Text style={styles.greeting}>Hola, {formatName(firstName)}</Text>
         <Text style={styles.date}>{formatDate()}</Text>
       </View>
 
@@ -204,7 +205,7 @@ export default function StaffDashboard() {
             <AlertItem
               key={`med-${stay.id}`}
               icon="medkit-outline"
-              text={`${stay.pet.name} — Medicamento: ${stay.medicationNotes}`}
+              text={`${formatName(stay.pet.name)} — Medicamento: ${stay.medicationNotes}`}
               severity="error"
               onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
             />
@@ -213,7 +214,7 @@ export default function StaffDashboard() {
             <AlertItem
               key={`checklist-${stay.id}`}
               icon="document-text-outline"
-              text={`${stay.pet.name} — Falta reporte diario`}
+              text={`${formatName(stay.pet.name)} — Falta reporte diario`}
               severity="warning"
               onPress={() =>
                 router.push(`/(staff)/checklist/${stay.id}` as any)
@@ -233,7 +234,7 @@ export default function StaffDashboard() {
               <AlertItem
                 key={`bath-${stay.id}`}
                 icon="water-outline"
-                text={`${stay.pet.name} — Baño pendiente${detail}`}
+                text={`${formatName(stay.pet.name)} — Baño pendiente${detail}`}
                 severity="info"
                 onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
               />
@@ -264,9 +265,9 @@ export default function StaffDashboard() {
                 style={styles.petPhoto}
               />
               <View style={styles.stayInfo}>
-                <Text style={styles.stayPetName}>{stay.pet.name}</Text>
+                <Text style={styles.stayPetName}>{formatName(stay.pet.name)}</Text>
                 <Text style={styles.stayOwnerName}>
-                  {stay.owner.firstName} {stay.owner.lastName}
+                  {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
                 </Text>
                 <View style={styles.stayMeta}>
                   {stay.room && (
@@ -303,7 +304,7 @@ export default function StaffDashboard() {
             <AlertItem
               key={stay.id}
               icon="person-add-outline"
-              text={`${stay.pet.name} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
+              text={`${formatName(stay.pet.name)} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
               severity="info"
               onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
             />
@@ -333,9 +334,9 @@ export default function StaffDashboard() {
                 style={styles.petPhoto}
               />
               <View style={styles.stayInfo}>
-                <Text style={styles.stayPetName}>{stay.pet.name}</Text>
+                <Text style={styles.stayPetName}>{formatName(stay.pet.name)}</Text>
                 <Text style={styles.stayOwnerName}>
-                  {stay.owner.firstName} {stay.owner.lastName}
+                  {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
                 </Text>
                 <View style={styles.stayMeta}>
                   {stay.room && (

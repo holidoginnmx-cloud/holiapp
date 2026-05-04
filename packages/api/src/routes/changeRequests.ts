@@ -59,7 +59,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
     const currentTotal = Number(reservation.totalAmount);
     const delta = newTotal - currentTotal;
     const lastPaid = reservation.payments
-      .filter((p) => p.status === "PAID")
+      .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
       .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
 
     return {
@@ -149,9 +149,9 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Sin cambio en el monto" });
       }
 
-      // Deposit gate: balance must be paid in full
+      // Deposit gate: balance must be paid in full (count PAID + PARTIAL).
       const totalPaid = reservation.payments
-        .filter((p) => p.status === "PAID")
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
         .reduce((s, p) => s + Number(p.amount), 0);
       const hasOutstandingBalance = totalPaid < Number(reservation.totalAmount) - 0.01;
       if (hasOutstandingBalance) {
@@ -225,7 +225,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
             totalDays: preview.newTotalDays,
             totalAmount: preview.newTotal,
             depositDeadline: reservation.paymentType === "DEPOSIT"
-              ? new Date(newCheckIn.getTime() - 48 * 60 * 60 * 1000)
+              ? newCheckIn
               : reservation.depositDeadline,
           },
         });
@@ -248,7 +248,11 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
 
         if (refundChoice === "STRIPE_REFUND") {
           const lastStripePayment = reservation.payments
-            .filter((p) => p.status === "PAID" && p.stripePaymentIntentId)
+            .filter(
+              (p) =>
+                (p.status === "PAID" || p.status === "PARTIAL") &&
+                p.stripePaymentIntentId,
+            )
             .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
           if (!lastStripePayment?.stripePaymentIntentId) {
             throw new Error("No se encontró pago Stripe para reembolsar");
@@ -416,7 +420,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
             totalDays: cr.newTotalDays,
             totalAmount: cr.newTotalAmount,
             depositDeadline: cr.reservation.paymentType === "DEPOSIT"
-              ? new Date(cr.newCheckIn.getTime() - 48 * 60 * 60 * 1000)
+              ? cr.newCheckIn
               : cr.reservation.depositDeadline,
           },
         });

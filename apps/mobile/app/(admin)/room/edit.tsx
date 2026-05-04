@@ -32,7 +32,6 @@ export default function RoomEditScreen() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [pricePerDay, setPricePerDay] = useState("");
   const [capacity, setCapacity] = useState("1");
   const [sizeAllowed, setSizeAllowed] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
@@ -51,7 +50,6 @@ export default function RoomEditScreen() {
       if (room) {
         setName(room.name);
         setDescription(room.description ?? "");
-        setPricePerDay(String(Number(room.pricePerDay)));
         setCapacity(String(room.capacity));
         setSizeAllowed(room.sizeAllowed as string[]);
         setIsActive(room.isActive);
@@ -70,10 +68,6 @@ export default function RoomEditScreen() {
       Alert.alert("Error", "Ingresa el nombre del cuarto");
       return;
     }
-    if (!pricePerDay || Number(pricePerDay) <= 0) {
-      Alert.alert("Error", "Ingresa un precio valido");
-      return;
-    }
     if (sizeAllowed.length === 0) {
       Alert.alert("Error", "Selecciona al menos un tamano permitido");
       return;
@@ -85,7 +79,6 @@ export default function RoomEditScreen() {
       const data = {
         name: name.trim(),
         description: description.trim() || null,
-        pricePerDay: Number(pricePerDay),
         capacity: Number(capacity) || 1,
         sizeAllowed,
         isActive,
@@ -145,31 +138,17 @@ export default function RoomEditScreen() {
           />
         </View>
 
-        <View style={styles.row}>
-          <View style={[styles.inputGroup, styles.flex]}>
-            <Text style={styles.label}>Precio/dia ($)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="350"
-              placeholderTextColor={COLORS.textDisabled}
-              value={pricePerDay}
-              onChangeText={setPricePerDay}
-              keyboardType="numeric"
-              editable={!loading}
-            />
-          </View>
-          <View style={[styles.inputGroup, styles.flex]}>
-            <Text style={styles.label}>Capacidad</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="1"
-              placeholderTextColor={COLORS.textDisabled}
-              value={capacity}
-              onChangeText={setCapacity}
-              keyboardType="numeric"
-              editable={!loading}
-            />
-          </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Capacidad</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="1"
+            placeholderTextColor={COLORS.textDisabled}
+            value={capacity}
+            onChangeText={setCapacity}
+            keyboardType="numeric"
+            editable={!loading}
+          />
         </View>
 
         <View style={styles.inputGroup}>
@@ -279,13 +258,6 @@ const styles = StyleSheet.create({
   multiline: {
     minHeight: 80,
     textAlignVertical: "top",
-  },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  flex: {
-    flex: 1,
   },
   sizeRow: {
     flexDirection: "row",

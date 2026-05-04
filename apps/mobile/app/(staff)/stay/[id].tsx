@@ -12,6 +12,9 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
 } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +36,7 @@ import {
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
+import { formatName, utcDayKey, localDayKey, formatPhoneInput } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 
 const ALERT_TYPES: { key: AlertType; label: string; icon: string }[] = [
@@ -68,12 +72,17 @@ export default function StayDetail() {
     queryKey: ["staff", "stay", id],
     queryFn: () => getStaffStayById(id!),
     enabled: !!id,
+    staleTime: 0,
   });
 
-  // Refetch al volver a la pantalla (ej. después de submitir un reporte)
+  // Refetch al volver a la pantalla (ej. después de submitir un reporte).
+  // Invalidate + refetch para asegurar que se obtengan datos frescos del server,
+  // ignorando el cache local.
   useFocusEffect(
     useCallback(() => {
-      if (id) refetch();
+      if (!id) return;
+      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+      refetch();
     }, [id])
   );
 
@@ -279,8 +288,9 @@ export default function StayDetail() {
   const isAssignedToMe = stay.staffId === currentUserId;
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const todayKey = localDayKey();
   const todayChecklist = stay.checklists.find(
-    (c) => new Date(c.date).toDateString() === todayStart.toDateString()
+    (c) => utcDayKey(c.date) === todayKey
   );
   const todayUpdates = stay.updates.filter(
     (u) => new Date(u.createdAt) >= todayStart
@@ -305,9 +315,9 @@ export default function StayDetail() {
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={styles.headerInfo}>
-          <Text style={styles.petName}>{stay.pet.name}</Text>
+          <Text style={styles.petName}>{formatName(stay.pet.name)}</Text>
           <Text style={styles.ownerName}>
-            {stay.owner.firstName} {stay.owner.lastName}
+            {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
           </Text>
         </View>
         <View
@@ -354,7 +364,7 @@ export default function StayDetail() {
         <View style={styles.ownerRow}>
           <Ionicons name="person-outline" size={14} color={COLORS.textTertiary} />
           <Text style={styles.ownerDetail}>
-            {stay.owner.firstName} {stay.owner.lastName}
+            {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
           </Text>
         </View>
         <View style={styles.ownerRow}>
@@ -364,7 +374,7 @@ export default function StayDetail() {
         {stay.owner.phone && (
           <View style={styles.ownerRow}>
             <Ionicons name="call-outline" size={14} color={COLORS.textTertiary} />
-            <Text style={styles.ownerDetail}>{stay.owner.phone}</Text>
+            <Text style={styles.ownerDetail}>{formatPhoneInput(stay.owner.phone)}</Text>
           </View>
         )}
         {stay.medicationNotes && (
@@ -515,7 +525,7 @@ export default function StayDetail() {
                   onPress={() =>
                     Alert.alert(
                       "Foto del baño",
-                      `Sube una foto de ${stay.pet.name} bañado para completar.`,
+                      `Sube una foto de ${formatName(stay.pet.name)} bañado para completar.`,
                       [
                         { text: "Cancelar", style: "cancel" },
                         { text: "Tomar foto", onPress: () => handleCompleteBathAddon(bath.id, "camera") },
@@ -551,7 +561,8 @@ export default function StayDetail() {
       </View>
 
       {/* Action Buttons */}
-      {stay.status === "CONFIRMED" && !stay.staffId && (
+      {(stay.status === "CONFIRMED" || stay.status === "CHECKED_IN") &&
+        !stay.staffId && (
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
           onPress={() =>
@@ -822,78 +833,134 @@ export default function StayDetail() {
       <View style={{ height: 40 }} />
 
       {/* Alert Modal */}
-      <Modal visible={alertModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reportar alerta</Text>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              {ALERT_TYPES.map((t) => (
+      <Modal
+        visible={alertModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setAlertModalVisible(false);
+          setAlertDescription("");
+        }}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => {
+              setAlertModalVisible(false);
+              setAlertDescription("");
+            }}
+          >
+            <Pressable
+              style={[styles.modalContent, { maxHeight: "85%" }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Reportar alerta</Text>
                 <TouchableOpacity
-                  key={t.key}
-                  style={[
-                    styles.alertTypeChip,
-                    alertType === t.key && styles.alertTypeChipActive,
-                  ]}
-                  onPress={() => setAlertType(t.key)}
+                  onPress={() => {
+                    setAlertModalVisible(false);
+                    setAlertDescription("");
+                  }}
+                  hitSlop={12}
+                  testID="alert-modal-close"
                 >
-                  <Ionicons
-                    name={t.icon as any}
-                    size={16}
-                    color={alertType === t.key ? COLORS.white : COLORS.textTertiary}
-                  />
-                  <Text
-                    style={[
-                      styles.alertTypeChipText,
-                      alertType === t.key && { color: COLORS.white },
-                    ]}
-                  >
-                    {t.label}
-                  </Text>
+                  <Ionicons name="close" size={24} color={COLORS.textTertiary} />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
 
-            <TextInput
-              style={styles.textArea}
-              placeholder="Describe la situación..."
-              placeholderTextColor={COLORS.textDisabled}
-              value={alertDescription}
-              onChangeText={setAlertDescription}
-              multiline
-              numberOfLines={4}
-            />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 12, flexGrow: 0 }}
+              >
+                {ALERT_TYPES.map((t) => (
+                  <TouchableOpacity
+                    key={t.key}
+                    style={[
+                      styles.alertTypeChip,
+                      alertType === t.key && styles.alertTypeChipActive,
+                    ]}
+                    onPress={() => setAlertType(t.key)}
+                  >
+                    <Ionicons
+                      name={t.icon as any}
+                      size={16}
+                      color={alertType === t.key ? COLORS.white : COLORS.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.alertTypeChipText,
+                        alertType === t.key && { color: COLORS.white },
+                      ]}
+                    >
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButtonCancel}
-                onPress={() => {
-                  setAlertModalVisible(false);
-                  setAlertDescription("");
-                }}
-              >
-                <Text style={styles.modalButtonCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButtonConfirm,
-                  !alertDescription.trim() && { opacity: 0.5 },
-                ]}
-                onPress={() => alertMutation.mutate()}
-                disabled={!alertDescription.trim() || alertMutation.isPending}
-              >
-                <Text style={styles.modalButtonConfirmText}>Enviar alerta</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+              <TextInput
+                style={styles.textArea}
+                placeholder="Describe la situación..."
+                placeholderTextColor={COLORS.textDisabled}
+                value={alertDescription}
+                onChangeText={setAlertDescription}
+                multiline
+                numberOfLines={4}
+                testID="alert-description-input"
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonCancel}
+                  onPress={() => {
+                    setAlertModalVisible(false);
+                    setAlertDescription("");
+                  }}
+                >
+                  <Text style={styles.modalButtonCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButtonConfirm,
+                    !alertDescription.trim() && { opacity: 0.5 },
+                  ]}
+                  onPress={() => alertMutation.mutate()}
+                  disabled={!alertDescription.trim() || alertMutation.isPending}
+                >
+                  <Text style={styles.modalButtonConfirmText}>Enviar alerta</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Tag Modal */}
-      <Modal visible={tagModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Agregar etiqueta</Text>
+      <Modal
+        visible={tagModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTagModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setTagModalVisible(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Agregar etiqueta</Text>
+              <TouchableOpacity
+                onPress={() => setTagModalVisible(false)}
+                hitSlop={12}
+                testID="tag-modal-close"
+              >
+                <Ionicons name="close" size={24} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            </View>
             <View style={styles.tagsGrid}>
               {BEHAVIOR_TAGS.map((bt) => (
                 <TouchableOpacity
@@ -912,8 +979,8 @@ export default function StayDetail() {
             >
               <Text style={styles.modalButtonCancelText}>Cancelar</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </ScrollView>
   );
@@ -1193,11 +1260,16 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: "60%",
   },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: COLORS.textPrimary,
-    marginBottom: 16,
   },
   alertTypeChip: {
     flexDirection: "row",
@@ -1224,8 +1296,9 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: COLORS.textPrimary,
-    minHeight: 80,
+    minHeight: 110,
     textAlignVertical: "top",
+    backgroundColor: COLORS.white,
   },
   modalButtons: {
     flexDirection: "row",

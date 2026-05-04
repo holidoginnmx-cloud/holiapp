@@ -31,6 +31,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
+import { formatName } from "@/lib/format";
 
 function priceForPet(weight: number | null): number {
   return weight && weight >= 20 ? 450 : 350;
@@ -135,16 +136,16 @@ export default function CreateReservationScreen() {
     if (status !== "APPROVED") {
       const msg =
         !status
-          ? `${pet.name} aún no tiene cartilla subida. Sube la cartilla desde su perfil y espera la aprobación del equipo HDI.`
+          ? `${formatName(pet.name)} aún no tiene cartilla subida. Sube la cartilla desde su perfil y espera la aprobación del equipo HDI.`
           : status === "PENDING"
-          ? `${pet.name} tiene su cartilla en revisión. Te avisaremos cuando el equipo HDI la apruebe.`
-          : `${pet.name} tiene la cartilla rechazada. Sube una nueva desde su perfil.`;
+          ? `${formatName(pet.name)} tiene su cartilla en revisión. Te avisaremos cuando el equipo HDI la apruebe.`
+          : `${formatName(pet.name)} tiene la cartilla rechazada. Sube una nueva desde su perfil.`;
       return { blockReason: msg, warnings: [], conflictDates: null, pendingBalance };
     }
 
     if (!pet.weight || !pet.size) {
       return {
-        blockReason: `Faltan datos en el perfil de ${pet.name}: ${
+        blockReason: `Faltan datos en el perfil de ${formatName(pet.name)}: ${
           !pet.weight && !pet.size ? "peso y tamaño" : !pet.weight ? "peso" : "tamaño"
         }. Complétalos para calcular el precio y asignar cuarto.`,
         warnings: [],
@@ -172,7 +173,7 @@ export default function CreateReservationScreen() {
         });
         conflictDates = `${ci} — ${co}`;
         return {
-          blockReason: `${pet.name} ya tiene una reservación del ${ci} al ${co}. Elige fechas que no se traslapen.`,
+          blockReason: `${formatName(pet.name)} ya tiene una reservación del ${ci} al ${co}. Elige fechas que no se traslapen.`,
           warnings: [],
           conflictDates,
           pendingBalance,
@@ -391,48 +392,51 @@ export default function CreateReservationScreen() {
         medicationByPet: medicationPayload,
       });
 
-      // 2. Init Stripe PaymentSheet
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: intent.clientSecret,
-        merchantDisplayName: "HolidogInn",
-        applePay: { merchantCountryCode: "MX" },
-        appearance: {
-          colors: {
-            primary: COLORS.primary,
-            background: COLORS.white,
-            componentBackground: COLORS.bgPage,
-            primaryText: COLORS.textPrimary,
-            secondaryText: COLORS.textSecondary,
-          },
-          shapes: {
-            borderRadius: 12,
-            borderWidth: 1,
-          },
-          primaryButton: {
+      // 2. Open Stripe PaymentSheet only when there is something to charge.
+      // When credit fully covers the deposit/total the backend returns
+      // `coveredByCredit: true` with `clientSecret: null` — skip Stripe.
+      if (!intent.coveredByCredit && intent.clientSecret) {
+        const { error: initError } = await initPaymentSheet({
+          paymentIntentClientSecret: intent.clientSecret,
+          merchantDisplayName: "HolidogInn",
+          applePay: { merchantCountryCode: "MX" },
+          appearance: {
             colors: {
-              background: COLORS.primary,
-              text: COLORS.white,
+              primary: COLORS.primary,
+              background: COLORS.white,
+              componentBackground: COLORS.bgPage,
+              primaryText: COLORS.textPrimary,
+              secondaryText: COLORS.textSecondary,
             },
             shapes: {
               borderRadius: 12,
+              borderWidth: 1,
+            },
+            primaryButton: {
+              colors: {
+                background: COLORS.primary,
+                text: COLORS.white,
+              },
+              shapes: {
+                borderRadius: 12,
+              },
             },
           },
-        },
-      });
+        });
 
-      if (initError) {
-        Alert.alert("Error", initError.message);
-        return;
-      }
-
-      // 3. Present PaymentSheet to user
-      const { error: payError } = await presentPaymentSheet();
-
-      if (payError) {
-        if (payError.code !== "Canceled") {
-          Alert.alert("Error de pago", payError.message);
+        if (initError) {
+          Alert.alert("Error", initError.message);
+          return;
         }
-        return;
+
+        const { error: payError } = await presentPaymentSheet();
+
+        if (payError) {
+          if (payError.code !== "Canceled") {
+            Alert.alert("Error de pago", payError.message);
+          }
+          return;
+        }
       }
 
       // 4. Payment succeeded — create reservations
@@ -730,7 +734,7 @@ export default function CreateReservationScreen() {
                       style={styles.petChipPhoto}
                     />
                     <Text style={[styles.petChipName, isSelected && styles.petChipNameSelected]}>
-                      {pet.name}
+                      {formatName(pet.name)}
                     </Text>
                     <Text style={[styles.petChipWeight, isSelected && { color: COLORS.primaryLight }]}>
                       {pet.weight ? `${pet.weight} kg` : pet.size ?? "Sin datos"}
@@ -795,7 +799,7 @@ export default function CreateReservationScreen() {
                     size={22}
                     color={state.enabled ? COLORS.primary : COLORS.textDisabled}
                   />
-                  <Text style={styles.bathPetName}>Baño para {pet.name}</Text>
+                  <Text style={styles.bathPetName}>Baño para {formatName(pet.name)}</Text>
                   {state.enabled && variant && (
                     <Text style={styles.bathPrice}>
                       ${variant.price.toLocaleString("es-MX")}
@@ -888,7 +892,7 @@ export default function CreateReservationScreen() {
                     size={22}
                     color={state.enabled ? COLORS.primary : COLORS.textDisabled}
                   />
-                  <Text style={styles.bathPetName}>Medicamento para {pet.name}</Text>
+                  <Text style={styles.bathPetName}>Medicamento para {formatName(pet.name)}</Text>
                   {state.enabled && surcharge > 0 && (
                     <Text style={styles.bathPrice}>
                       +${surcharge.toLocaleString("es-MX")}
@@ -975,7 +979,7 @@ export default function CreateReservationScreen() {
           {priceBreakdown.map((row) => (
             <View key={row.pet.id} style={styles.priceRow}>
               <Text style={styles.priceLabel}>
-                {row.pet.name} ({row.pet.weight ?? 0}kg)
+                {formatName(row.pet.name)} ({row.pet.weight ?? 0}kg)
               </Text>
               <Text style={styles.priceValue}>
                 ${row.perNight} × {totalDays} = ${row.subtotal.toLocaleString("es-MX")}
@@ -1105,9 +1109,9 @@ export default function CreateReservationScreen() {
                 Saldo pendiente: ${(grandTotal - depositAmount).toLocaleString("es-MX")} MXN
               </Text>
               <View style={styles.depositWarning}>
-                <Ionicons name="warning-outline" size={16} color={COLORS.warningText} />
+                <Ionicons name="information-circle-outline" size={16} color={COLORS.infoText} />
                 <Text style={styles.depositWarningText}>
-                  Deberás liquidar el saldo restante al menos 48 horas antes del check-in. De lo contrario, tu reservación será cancelada automáticamente.
+                  Puedes liquidar el saldo en la app o pagarlo al entregar a tu mascota en la sucursal de Holidog Inn.
                 </Text>
               </View>
             </View>

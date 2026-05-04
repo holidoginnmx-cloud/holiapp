@@ -16,6 +16,7 @@ import { useSignUp, useSSO } from "@clerk/clerk-expo";
 import { useCallback, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
 import { BASE_URL } from "@/constants/api";
+import { formatName } from "@/lib/format";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -80,10 +81,13 @@ export default function RegisterScreen() {
     setLoading(true);
     setError(null);
 
+    const cleanFirstName = formatName(firstName);
+    const cleanLastName = formatName(lastName);
+
     try {
       const createResult = await signUp.create({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
         emailAddress: email.trim().toLowerCase(),
         password,
       });
@@ -100,8 +104,8 @@ export default function RegisterScreen() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 clerkId: (createResult as any).createdUserId,
-                firstName: firstName.trim(),
-                lastName: lastName.trim(),
+                firstName: cleanFirstName,
+                lastName: cleanLastName,
                 email: email.trim().toLowerCase(),
                 role: "OWNER",
               }),
@@ -184,8 +188,8 @@ export default function RegisterScreen() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               clerkId: result.createdUserId,
-              firstName: firstName.trim(),
-              lastName: lastName.trim(),
+              firstName: formatName(firstName),
+              lastName: formatName(lastName),
               email: email.trim().toLowerCase(),
               role: "OWNER",
             }),

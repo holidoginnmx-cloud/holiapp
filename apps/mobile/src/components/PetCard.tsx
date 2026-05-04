@@ -2,6 +2,7 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { Pet, Vaccine } from "@holidoginn/shared";
+import { formatName } from "@/lib/format";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -142,11 +143,11 @@ export function PetCard({
         </View>
         <View style={styles.photoNameWrap}>
           <Text style={styles.photoName} numberOfLines={1}>
-            {pet.name}
+            {formatName(pet.name)}
           </Text>
           {ownerName && (
             <Text style={styles.photoOwner} numberOfLines={1}>
-              {ownerName}
+              {formatName(ownerName)}
             </Text>
           )}
         </View>

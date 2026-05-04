@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getUsers, sendAdminNotification } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 export default function SendNotificationScreen() {
   const router = useRouter();
@@ -148,7 +149,7 @@ export default function SendNotificationScreen() {
                     isSelected && styles.userItemTextSelected,
                   ]}
                 >
-                  {user.firstName} {user.lastName}
+                  {formatName(user.firstName)} {formatName(user.lastName)}
                 </Text>
                 {isSelected && (
                   <Ionicons name="checkmark" size={18} color={COLORS.primary} />

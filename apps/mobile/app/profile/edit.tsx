@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMe, updateMe } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
+import { formatName, formatPhoneInput } from "@/lib/format";
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function EditProfileScreen() {
     if (me) {
       setFirstName(me.firstName ?? "");
       setLastName(me.lastName ?? "");
-      setPhone(me.phone ?? "");
+      setPhone(formatPhoneInput(me.phone));
     }
   }, [me]);
 
@@ -54,8 +55,8 @@ export default function EditProfileScreen() {
     setSaving(true);
     try {
       const payload: { firstName?: string; lastName?: string; phone?: string | null } = {};
-      if (firstName.trim() !== (me.firstName ?? "")) payload.firstName = firstName.trim();
-      if (lastName.trim() !== (me.lastName ?? "")) payload.lastName = lastName.trim();
+      if (firstName.trim() !== (me.firstName ?? "")) payload.firstName = formatName(firstName);
+      if (lastName.trim() !== (me.lastName ?? "")) payload.lastName = formatName(lastName);
       if (phone.trim() !== (me.phone ?? "")) {
         payload.phone = phone.trim().length > 0 ? phone.trim() : null;
       }
@@ -117,8 +118,8 @@ export default function EditProfileScreen() {
         <TextInput
           style={styles.input}
           value={phone}
-          onChangeText={setPhone}
-          placeholder="+52 662 ..."
+          onChangeText={(v) => setPhone(formatPhoneInput(v))}
+          placeholder="+52 (662) 429 6727"
           placeholderTextColor={COLORS.textDisabled}
           keyboardType="phone-pad"
           testID="edit-phone-input"

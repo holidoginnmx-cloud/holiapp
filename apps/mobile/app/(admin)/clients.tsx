@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getAllPets, getUsers } from "@/lib/api";
 import type { PetWithOwner } from "@/lib/api";
+import { formatName, formatPhoneInput } from "@/lib/format";
 
 type OwnerGroup = {
   id: string;
@@ -102,14 +103,14 @@ export default function AdminClients() {
           </View>
           <View style={styles.ownerInfo}>
             <Text style={styles.ownerName}>
-              {item.firstName} {item.lastName}
+              {formatName(item.firstName)} {formatName(item.lastName)}
             </Text>
             <Text style={styles.ownerEmail}>{item.email}</Text>
             <View style={styles.ownerMeta}>
               {phone && (
                 <View style={styles.metaChip}>
                   <Ionicons name="call-outline" size={11} color={COLORS.textTertiary} />
-                  <Text style={styles.metaText}>{phone}</Text>
+                  <Text style={styles.metaText}>{formatPhoneInput(phone)}</Text>
                 </View>
               )}
               {credit > 0 && (
@@ -147,7 +148,7 @@ export default function AdminClients() {
                 </View>
               )}
               <View style={styles.petInfo}>
-                <Text style={styles.petName}>{pet.name}</Text>
+                <Text style={styles.petName}>{formatName(pet.name)}</Text>
                 <Text style={styles.petBreed}>{pet.breed ?? "Sin raza"}</Text>
               </View>
               <View

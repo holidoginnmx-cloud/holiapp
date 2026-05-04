@@ -213,7 +213,9 @@ export const createMultiReservation = (data: {
   legalAccepted: boolean;
   ownerId: string;
   roomPreference: "shared" | "separate";
-  stripePaymentIntentId: string;
+  // null when the deposit/total was fully covered by saldo a favor and no
+  // Stripe charge was created.
+  stripePaymentIntentId: string | null;
   paymentType: "FULL" | "DEPOSIT";
   bathSelectionsByPet?: BathSelectionsByPet;
   medicationByPet?: MedicationByPet;
@@ -234,8 +236,12 @@ export const createPaymentIntent = (data: {
   medicationByPet?: MedicationByPet;
 }) =>
   apiFetch<{
-    clientSecret: string;
-    paymentIntentId: string;
+    // Both null when saldo a favor covered the entire deposit/total — no
+    // Stripe charge created.
+    clientSecret: string | null;
+    paymentIntentId: string | null;
+    coveredByCredit: boolean;
+    creditApplied: number;
     grandTotal: number;
     depositAmount: number;
     remainingAmount: number;
@@ -333,6 +339,9 @@ export const getBathSlots = (date: string) =>
     `${ENDPOINTS.baths}/slots?date=${encodeURIComponent(date)}`,
   );
 
+export const BATH_DEPOSIT_AMOUNT = 150;
+export const BATH_LATE_TOLERANCE_MIN = 15;
+
 export const createBathIntent = (data: {
   petId: string;
   deslanado: boolean;
@@ -346,6 +355,8 @@ export const createBathIntent = (data: {
     coveredByCredit: boolean;
     creditApplied: number;
     price: number;
+    depositAmount: number;
+    remainingAmount: number;
     variantId: string;
   }>(`${ENDPOINTS.baths}/create-intent`, {
     method: "POST",

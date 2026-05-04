@@ -17,6 +17,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 const TZ_OFFSET_HOURS = 7;
 const BATH_CONFIG_ID = "singleton";
 
+// Fixed deposit collected via Stripe at booking time. The remaining balance
+// (price - deposit) is paid in person when the owner drops off the pet.
+export const BATH_DEPOSIT_AMOUNT = 150;
+// Grace period (minutes) past the appointment time before the slot is
+// considered missed. Surfaced in the UI so owners know their margin.
+export const BATH_LATE_TOLERANCE_MIN = 15;
+
 function sizeFromWeight(kg: number): PetSize {
   if (kg <= 5) return "S";
   if (kg <= 15) return "M";
@@ -351,8 +358,11 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       });
       const ownerCredit = Number(owner?.creditBalance ?? 0);
       const price = Number(variant.price);
-      const creditApplied = Math.min(ownerCredit, price);
-      const chargeAmount = price - creditApplied;
+      // Owner pays a fixed deposit now; remainder is collected in person at drop-off.
+      const depositAmount = Math.min(BATH_DEPOSIT_AMOUNT, price);
+      const creditApplied = Math.min(ownerCredit, depositAmount);
+      const chargeAmount = depositAmount - creditApplied;
+      const remainingAmount = price - depositAmount;
 
       if (chargeAmount === 0) {
         return reply.send({
@@ -361,6 +371,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           coveredByCredit: true,
           creditApplied,
           price,
+          depositAmount,
+          remainingAmount,
           variantId: variant.id,
         });
       }
@@ -375,6 +387,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           variantId: variant.id,
           appointmentAt: appointmentDate.toISOString(),
           creditApplied: String(creditApplied),
+          depositAmount: String(depositAmount),
           ...(notes ? { notes } : {}),
         },
       });
@@ -385,6 +398,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         coveredByCredit: false,
         creditApplied,
         price,
+        depositAmount,
+        remainingAmount,
         variantId: variant.id,
       });
     }
@@ -678,6 +693,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           }
 
           const price = Number(variant.price);
+          const depositAmount = Math.min(BATH_DEPOSIT_AMOUNT, price);
+          const isPartial = depositAmount < price;
           const reservation = await tx.reservation.create({
             data: {
               reservationType: "BATH",
@@ -686,11 +703,21 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               totalAmount: new Prisma.Decimal(price),
               notes,
               legalAccepted: true,
-              paymentType: "FULL",
+              // DEPOSIT when there's a balance to collect on arrival;
+              // FULL when credit/price covered everything at booking time.
+              paymentType: isPartial ? "DEPOSIT" : "FULL",
+              depositDeadline: isPartial ? appointmentAt : null,
               ownerId,
               petId,
             },
           });
+
+          // Status convention (matches reservations.ts): PARTIAL when there's
+          // still a balance owed at check-in, PAID when fully covered.
+          const paymentStatus = isPartial ? "PARTIAL" : "PAID";
+          const paymentLabel = isPartial
+            ? `Anticipo baño — ${describeBath(variant.deslanado, variant.corte)}`
+            : `Baño estandalone — ${describeBath(variant.deslanado, variant.corte)}`;
 
           // Registrar pago Stripe (si aplica)
           let payment = null;
@@ -699,10 +726,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               data: {
                 amount: new Prisma.Decimal(stripeAmount),
                 method: "STRIPE",
-                status: "PAID",
+                status: paymentStatus,
                 stripePaymentIntentId: paymentIntentId,
                 paidAt: new Date(),
-                notes: `Baño estandalone — ${describeBath(variant.deslanado, variant.corte)}`,
+                notes: paymentLabel,
                 reservationId: reservation.id,
                 userId: ownerId,
               },
@@ -733,7 +760,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               data: {
                 amount: new Prisma.Decimal(creditApplied),
                 method: "CREDIT",
-                status: "PAID",
+                status: paymentStatus,
                 paidAt: new Date(),
                 notes: "Pago con saldo a favor",
                 reservationId: reservation.id,

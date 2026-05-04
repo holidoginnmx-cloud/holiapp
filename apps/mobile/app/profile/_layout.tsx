@@ -1,19 +1,15 @@
 import { Stack, useRouter } from "expo-router";
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function ProfileLayout() {
   const router = useRouter();
 
   const backButton = () => (
-    <TouchableOpacity
+    <HeaderBackButton
       onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"))}
-      style={{ marginLeft: 16 }}
       testID="profile-back-button"
-    >
-      <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
-    </TouchableOpacity>
+    />
   );
 
   return (

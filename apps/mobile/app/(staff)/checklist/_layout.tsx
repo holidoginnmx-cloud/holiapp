@@ -1,24 +1,20 @@
 import { COLORS } from "@/constants/colors";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function ChecklistLayout() {
   const router = useRouter();
   const { reservationId } = useLocalSearchParams<{ reservationId?: string }>();
 
-  const backButton = () => (
-    <TouchableOpacity
-      onPress={() =>
-        reservationId
-          ? router.navigate(`/(staff)/stay/${reservationId}` as any)
-          : router.navigate("/(staff)/stays" as any)
-      }
-      style={{ marginLeft: 8 }}
-    >
-      <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+  const handleBack = () => {
+    if (reservationId) {
+      router.replace(`/(staff)/stay/${reservationId}` as any);
+    } else {
+      router.replace("/(staff)/stays" as any);
+    }
+  };
+
+  const backButton = () => <HeaderBackButton onPress={handleBack} />;
 
   return (
     <Stack

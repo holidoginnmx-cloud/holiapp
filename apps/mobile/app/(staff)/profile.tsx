@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/authStore";
+import { formatName } from "@/lib/format";
 
 export default function StaffProfile() {
   const { signOut } = useClerk();
@@ -25,7 +26,7 @@ export default function StaffProfile() {
           <Ionicons name="person-circle" size={80} color={COLORS.primary} />
         </View>
         <Text style={styles.name}>
-          {firstName} {lastName}
+          {formatName(firstName)} {formatName(lastName)}
         </Text>
         <Text style={styles.email}>{email}</Text>
         <View style={styles.roleBadge}>

@@ -20,6 +20,7 @@ import { getReservations, getMe, getPetsByOwner } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
 import { HeroStayCard } from "@/components/HeroStayCard";
 import { PreStayChecklistCard } from "@/components/PreStayChecklistCard";
+import { formatName } from "@/lib/format";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -146,7 +147,7 @@ export default function HomeScreen() {
       }
     >
       <Text style={styles.greeting}>
-        {getTimeGreeting()}, {firstName} 👋
+        {getTimeGreeting()}, {formatName(firstName)} 👋
       </Text>
 
       {/* Acciones primarias */}
@@ -190,15 +191,9 @@ export default function HomeScreen() {
         >
           <Ionicons name="alert-circle" size={20} color={COLORS.warningText} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>Saldo pendiente — {r.pet.name}</Text>
-            <Text style={styles.alertSub} numberOfLines={1}>
-              Liquida antes del{" "}
-              {new Date(r.depositDeadline!).toLocaleDateString("es-MX", {
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+            <Text style={styles.alertTitle}>Saldo pendiente — {formatName(r.pet.name)}</Text>
+            <Text style={styles.alertSub} numberOfLines={2}>
+              Liquídalo en la app o al entregar a tu mascota en la sucursal.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={COLORS.warningText} />
@@ -219,8 +214,8 @@ export default function HomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.alertTitle}>
               {cartillaPending[0].cartillaStatus === "REJECTED"
-                ? `Cartilla rechazada — ${cartillaPending[0].name}`
-                : `Sube la cartilla de ${cartillaPending[0].name}`}
+                ? `Cartilla rechazada — ${formatName(cartillaPending[0].name)}`
+                : `Sube la cartilla de ${formatName(cartillaPending[0].name)}`}
             </Text>
             <Text style={styles.alertSub} numberOfLines={1}>
               {cartillaPending[0].cartillaStatus === "REJECTED"
@@ -260,7 +255,7 @@ export default function HomeScreen() {
           <Ionicons name="time-outline" size={20} color={COLORS.infoText} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.alertTitle, { color: COLORS.infoText }]}>
-              Cambio en revisión — {r.pet.name}
+              Cambio en revisión — {formatName(r.pet.name)}
             </Text>
             <Text style={[styles.alertSub, { color: COLORS.infoText }]}>
               Te avisaremos cuando lo aprobemos
@@ -274,7 +269,7 @@ export default function HomeScreen() {
         <PreStayChecklistCard
           key={`prestay-${r.id}`}
           reservationId={r.id}
-          petName={r.pet.name}
+          petName={formatName(r.pet.name)}
           checkIn={r.checkIn!}
           cartillaApproved={prestayPetCartilla(r)}
           saldoLiquidado={!r.hasBalance}
@@ -326,7 +321,7 @@ export default function HomeScreen() {
                   </View>
                 )}
                 <Text style={styles.petName} numberOfLines={1}>
-                  {pet.name}
+                  {formatName(pet.name)}
                 </Text>
               </TouchableOpacity>
             ))}

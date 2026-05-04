@@ -93,8 +93,8 @@ export function reservationConfirmedTemplate(d: ReservationConfirmedData) {
   const deposit =
     d.paymentType === "DEPOSIT"
       ? `<p style="margin:16px 0;padding:12px;background:#fff6e5;border-radius:8px;font-size:14px;">
-          Pagaste el anticipo del 20%. Te recordaremos liquidar el saldo restante de
-          <b>${mx(d.remainingAmount)}</b> antes del check-in.
+          Pagaste el anticipo del 20%. El saldo restante de <b>${mx(d.remainingAmount)}</b>
+          puedes liquidarlo en la app o en la sucursal de Holidog Inn al entregar a tu mascota.
         </p>`
       : "";
   const html = layout(

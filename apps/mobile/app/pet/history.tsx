@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getPetHistory } from "@/lib/api";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
+import { formatName } from "@/lib/format";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendiente",
@@ -73,7 +74,7 @@ export default function PetHistoryScreen() {
           }
           style={styles.petPhoto}
         />
-        <Text style={styles.petName}>{pet.name}</Text>
+        <Text style={styles.petName}>{formatName(pet.name)}</Text>
         {pet.breed && <Text style={styles.petBreed}>{pet.breed}</Text>}
       </View>
 

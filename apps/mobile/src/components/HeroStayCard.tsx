@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getStayUpdates } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 interface HeroStayCardProps {
   reservationId: string;
@@ -48,7 +49,7 @@ export function HeroStayCard({
         )}
         <View style={{ flex: 1 }}>
           <Text style={styles.petName} numberOfLines={1}>
-            {petName}
+            {formatName(petName)}
           </Text>
           <View style={styles.statusRow}>
             <View style={styles.statusBadge}>

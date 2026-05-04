@@ -21,6 +21,7 @@ import {
   type CartillaStatusValue,
   type PetWithCartilla,
 } from "@/lib/api";
+import { formatName, formatPhoneInput } from "@/lib/format";
 
 const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "PENDING", label: "Pendientes" },
@@ -137,9 +138,9 @@ export default function AdminCartillas() {
                   </View>
                 )}
                 <View style={styles.cardInfo}>
-                  <Text style={styles.petName}>{pet.name}</Text>
+                  <Text style={styles.petName}>{formatName(pet.name)}</Text>
                   <Text style={styles.ownerName}>
-                    {pet.owner.firstName} {pet.owner.lastName}
+                    {formatName(pet.owner.firstName)} {formatName(pet.owner.lastName)}
                   </Text>
                   {pet.cartillaReviewedAt ? (
                     <Text style={styles.metaText}>
@@ -185,11 +186,11 @@ export default function AdminCartillas() {
             {selectedPet && (
               <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
                 <Text style={styles.modalTitle}>
-                  Cartilla de {selectedPet.name}
+                  Cartilla de {formatName(selectedPet.name)}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  {selectedPet.owner.firstName} {selectedPet.owner.lastName}
-                  {selectedPet.owner.phone ? ` · ${selectedPet.owner.phone}` : ""}
+                  {formatName(selectedPet.owner.firstName)} {formatName(selectedPet.owner.lastName)}
+                  {selectedPet.owner.phone ? ` · ${formatPhoneInput(selectedPet.owner.phone)}` : ""}
                 </Text>
 
                 {selectedPet.cartillaUrl && (

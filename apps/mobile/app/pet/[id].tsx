@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getPetById } from "@/lib/api";
+import { formatName, formatPhoneInput, phoneToTelUri } from "@/lib/format";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -95,7 +96,7 @@ export default function PetDetailScreen() {
           style={styles.photo}
           defaultSource={require("../../assets/pet-placeholder.png")}
         />
-        <Text style={styles.name}>{pet.name}</Text>
+        <Text style={styles.name}>{formatName(pet.name)}</Text>
         <Text style={styles.breed}>{pet.breed || "Sin raza especificada"}</Text>
 
         {/* Badges */}
@@ -217,14 +218,14 @@ export default function PetDetailScreen() {
               </View>
               <View style={styles.contactInfo}>
                 <Text style={styles.contactLabel}>Veterinario</Text>
-                <Text style={styles.contactName}>{petAny.vetName}</Text>
+                <Text style={styles.contactName}>{formatName(petAny.vetName)}</Text>
                 {petAny.vetPhone && (
                   <TouchableOpacity
                     onPress={() =>
-                      Linking.openURL(`tel:${petAny.vetPhone}`)
+                      Linking.openURL(`tel:${phoneToTelUri(petAny.vetPhone)}`)
                     }
                   >
-                    <Text style={styles.contactPhone}>{petAny.vetPhone}</Text>
+                    <Text style={styles.contactPhone}>{formatPhoneInput(petAny.vetPhone)}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -239,18 +240,18 @@ export default function PetDetailScreen() {
               <View style={styles.contactInfo}>
                 <Text style={styles.contactLabel}>Emergencia</Text>
                 <Text style={styles.contactName}>
-                  {petAny.emergencyContactName}
+                  {formatName(petAny.emergencyContactName)}
                 </Text>
                 {petAny.emergencyContactPhone && (
                   <TouchableOpacity
                     onPress={() =>
                       Linking.openURL(
-                        `tel:${petAny.emergencyContactPhone}`
+                        `tel:${phoneToTelUri(petAny.emergencyContactPhone)}`
                       )
                     }
                   >
                     <Text style={styles.contactPhone}>
-                      {petAny.emergencyContactPhone}
+                      {formatPhoneInput(petAny.emergencyContactPhone)}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -351,7 +352,7 @@ export default function PetDetailScreen() {
                   </Text>
                 )}
                 {vaccine.vetName && (
-                  <Text style={styles.vaccineVet}>{vaccine.vetName}</Text>
+                  <Text style={styles.vaccineVet}>{formatName(vaccine.vetName)}</Text>
                 )}
               </View>
             </View>

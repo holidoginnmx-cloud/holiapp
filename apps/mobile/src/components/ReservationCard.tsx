@@ -1,6 +1,7 @@
 import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { formatName } from "@/lib/format";
 
 interface ReservationCardProps {
   petName: string;
@@ -85,7 +86,7 @@ export function ReservationCard({
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.header}>
-        <Text style={styles.petName}>{petName}</Text>
+        <Text style={styles.petName}>{formatName(petName)}</Text>
         <View style={[styles.badge, { backgroundColor: config.bg }]}>
           <Text style={[styles.badgeText, { color: config.text }]}>
             {config.label}
@@ -93,7 +94,7 @@ export function ReservationCard({
         </View>
       </View>
 
-      {ownerName && <Text style={styles.room}>{ownerName}</Text>}
+      {ownerName && <Text style={styles.room}>{formatName(ownerName)}</Text>}
       {roomName && <Text style={styles.room}>{roomName}</Text>}
       {staffName !== undefined && (
         <View style={styles.staffRow}>
@@ -108,7 +109,7 @@ export function ReservationCard({
               !staffName && styles.staffTextUnassigned,
             ]}
           >
-            {staffName ?? "Sin staff asignado"}
+            {staffName ? formatName(staffName) : "Sin staff asignado"}
           </Text>
         </View>
       )}

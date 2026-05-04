@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { getAdminAlerts, resolveAdminAlert } from "@/lib/api";
 import type { AdminAlert } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
@@ -126,12 +127,12 @@ export default function AdminAlerts() {
         <View style={styles.alertMeta}>
           <View style={styles.metaChip}>
             <Ionicons name="paw" size={12} color={COLORS.primary} />
-            <Text style={styles.metaText}>{item.pet.name}</Text>
+            <Text style={styles.metaText}>{formatName(item.pet.name)}</Text>
           </View>
           <View style={styles.metaChip}>
             <Ionicons name="person-outline" size={12} color={COLORS.textTertiary} />
             <Text style={styles.metaText}>
-              {item.reservation.owner.firstName} {item.reservation.owner.lastName}
+              {formatName(item.reservation.owner.firstName)} {formatName(item.reservation.owner.lastName)}
             </Text>
           </View>
           {item.reservation.room && (
@@ -143,7 +144,7 @@ export default function AdminAlerts() {
           <View style={styles.metaChip}>
             <Ionicons name="person-circle-outline" size={12} color={COLORS.textTertiary} />
             <Text style={styles.metaText}>
-              Staff: {item.staff.firstName}
+              Staff: {formatName(item.staff.firstName)}
             </Text>
           </View>
         </View>

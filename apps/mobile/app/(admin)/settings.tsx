@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
+import { formatName } from "@/lib/format";
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -68,7 +69,7 @@ export default function AdminSettings() {
         </View>
         <View>
           <Text style={styles.profileName}>
-            {firstName} {lastName}
+            {formatName(firstName)} {formatName(lastName)}
           </Text>
           <Text style={styles.profileEmail}>{email}</Text>
           <View style={styles.roleBadge}>

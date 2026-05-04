@@ -1,16 +1,19 @@
 import { Stack, useRouter } from "expo-router";
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function HelpLayout() {
   const router = useRouter();
 
-  const backButton = () => (
-    <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 8 }}>
-      <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/home" as any);
+    }
+  };
+
+  const backButton = () => <HeaderBackButton onPress={handleBack} />;
 
   return (
     <Stack

@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { StayUpdateCard } from "@/components/StayUpdateCard";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
+import { formatName } from "@/lib/format";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
@@ -126,17 +127,20 @@ export default function ReservationDetailScreen() {
     !pendingChange;
   const canCancel =
     reservation && ["PENDING", "CONFIRMED"].includes(reservation.status);
+  // Count both PAID and PARTIAL — both are real money already paid by owner.
   const paidStripeAmount = reservation?.payments
-    ?.filter((p: any) => p.status === "PAID" && p.stripePaymentIntentId)
+    ?.filter((p: any) =>
+      (p.status === "PAID" || p.status === "PARTIAL") && p.stripePaymentIntentId,
+    )
     .reduce((s: number, p: any) => s + Number(p.amount), 0) ?? 0;
   const totalPaidForCancel = reservation?.payments
-    ?.filter((p: any) => p.status === "PAID")
+    ?.filter((p: any) => p.status === "PAID" || p.status === "PARTIAL")
     .reduce((s: number, p: any) => s + Number(p.amount), 0) ?? 0;
 
   // Balance payment logic
   const isDeposit = reservation?.paymentType === "DEPOSIT";
   const totalPaid = reservation?.payments
-    ?.filter((p: any) => p.status === "PAID")
+    ?.filter((p: any) => p.status === "PAID" || p.status === "PARTIAL")
     .reduce((sum: number, p: any) => sum + Number(p.amount), 0) ?? 0;
   const remainingBalance = reservation
     ? Number(reservation.totalAmount) - totalPaid
@@ -167,6 +171,14 @@ export default function ReservationDetailScreen() {
     setPayingBalance(true);
     try {
       const { clientSecret, paymentIntentId } = await createBalancePayment(id);
+
+      if (!clientSecret) {
+        Alert.alert(
+          "Error",
+          "No se pudo iniciar el pago. Verifica el saldo pendiente o intenta de nuevo.",
+        );
+        return;
+      }
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
@@ -251,8 +263,8 @@ export default function ReservationDetailScreen() {
         <View style={styles.header}>
         <Text style={styles.petName}>
           {groupedReservations
-            ? groupedReservations.map((r: any) => r.pet.name).join(", ")
-            : reservation.pet?.name}
+            ? groupedReservations.map((r: any) => formatName(r.pet.name)).join(", ")
+            : formatName(reservation.pet?.name)}
         </Text>
         <View style={[styles.badge, { backgroundColor: statusConfig.bg }]}>
           <Text style={[styles.badgeText, { color: statusConfig.text }]}>
@@ -268,7 +280,7 @@ export default function ReservationDetailScreen() {
           {groupedReservations.map((r: any) => (
             <View key={r.id} style={styles.groupPetRow}>
               <Ionicons name="paw" size={16} color={COLORS.primary} />
-              <Text style={styles.groupPetName}>{r.pet.name}</Text>
+              <Text style={styles.groupPetName}>{formatName(r.pet.name)}</Text>
               {r.pet.breed && <Text style={styles.groupPetBreed}>{r.pet.breed}</Text>}
               <Text style={styles.groupPetAmount}>${Number(r.totalAmount).toLocaleString()}</Text>
             </View>
@@ -470,21 +482,10 @@ export default function ReservationDetailScreen() {
           <Text style={styles.balanceBannerAmount}>
             ${remainingBalance.toLocaleString("es-MX")} MXN
           </Text>
-          {isDeposit && reservation.depositDeadline && (
-            <>
-              <Text style={styles.balanceBannerDeadline}>
-                Fecha límite: {new Date(reservation.depositDeadline).toLocaleDateString("es-MX", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-              <Text style={styles.balanceBannerWarning}>
-                Si no liquidas antes de la fecha límite, tu reservación será cancelada automáticamente.
-              </Text>
-            </>
+          {isDeposit && (
+            <Text style={styles.balanceBannerWarning}>
+              Puedes liquidarlo aquí en la app o al entregar a tu mascota en la sucursal de Holidog Inn.
+            </Text>
           )}
           {!isDeposit && (
             <Text style={styles.balanceBannerWarning}>

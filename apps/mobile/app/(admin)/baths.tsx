@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStaffBaths, completeStaffBath, type StaffBath } from "@/lib/api";
+import { formatName, phoneToTelUri } from "@/lib/format";
 
 function todayYMD(): string {
   const now = new Date();
@@ -82,7 +83,7 @@ export default function AdminBaths() {
   async function handleComplete(bath: StaffBath) {
     Alert.alert(
       "Marcar como completado",
-      `¿Confirmar que ${bath.pet.name} ya terminó su baño? Se notificará al dueño.`,
+      `¿Confirmar que ${formatName(bath.pet.name)} ya terminó su baño? Se notificará al dueño.`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -134,7 +135,7 @@ export default function AdminBaths() {
             <Ionicons name="paw" size={20} color={COLORS.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.petName}>{item.pet.name}</Text>
+            <Text style={styles.petName}>{formatName(item.pet.name)}</Text>
             <Text style={styles.petMeta}>
               {item.pet.weight ? `${item.pet.weight} kg · ` : ""}
               {item.pet.breed || "Sin raza"} · Talla {item.pet.size}
@@ -150,11 +151,11 @@ export default function AdminBaths() {
         <View style={styles.row}>
           <Ionicons name="person-outline" size={16} color={COLORS.textTertiary} />
           <Text style={styles.rowText}>
-            {item.owner.firstName} {item.owner.lastName}
+            {formatName(item.owner.firstName)} {formatName(item.owner.lastName)}
           </Text>
           {ownerPhone && (
             <TouchableOpacity
-              onPress={() => Linking.openURL(`tel:${ownerPhone}`)}
+              onPress={() => Linking.openURL(`tel:${phoneToTelUri(ownerPhone)}`)}
               style={styles.callBtn}
             >
               <Ionicons name="call" size={14} color={COLORS.primary} />

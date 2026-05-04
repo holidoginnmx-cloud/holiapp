@@ -1,7 +1,6 @@
 import { COLORS } from "@/constants/colors";
 import { Stack, useRouter } from "expo-router";
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function PetLayout() {
   const router = useRouter();
@@ -14,11 +13,7 @@ export default function PetLayout() {
     }
   };
 
-  const backButton = () => (
-    <TouchableOpacity onPress={handleBack} style={{ marginLeft: 8 }}>
-      <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+  const backButton = () => <HeaderBackButton onPress={handleBack} />;
 
   return (
     <Stack

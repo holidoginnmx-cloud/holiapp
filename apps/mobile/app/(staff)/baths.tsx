@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { getStaffBaths, completeStaffBath, type StaffBath } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
+import { formatName, phoneToTelUri } from "@/lib/format";
 
 const SIZE_LABEL: Record<string, string> = {
   XS: "XS",
@@ -131,7 +132,7 @@ export default function StaffBaths() {
   async function handleComplete(bath: StaffBath) {
     Alert.alert(
       "Foto del baño",
-      `Sube una foto de ${bath.pet.name} bañado para completar la cita.`,
+      `Sube una foto de ${formatName(bath.pet.name)} bañado para completar la cita.`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadAndComplete(bath, "camera") },
@@ -167,7 +168,7 @@ export default function StaffBaths() {
             <Ionicons name="paw" size={20} color={COLORS.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.petName}>{item.pet.name}</Text>
+            <Text style={styles.petName}>{formatName(item.pet.name)}</Text>
             <Text style={styles.petMeta}>
               {item.pet.weight ? `${item.pet.weight} kg · ` : ""}
               {item.pet.breed || "Sin raza"} · Talla {SIZE_LABEL[item.pet.size]}
@@ -183,11 +184,11 @@ export default function StaffBaths() {
         <View style={styles.row}>
           <Ionicons name="person-outline" size={16} color={COLORS.textTertiary} />
           <Text style={styles.rowText}>
-            {item.owner.firstName} {item.owner.lastName}
+            {formatName(item.owner.firstName)} {formatName(item.owner.lastName)}
           </Text>
           {ownerPhone && (
             <TouchableOpacity
-              onPress={() => Linking.openURL(`tel:${ownerPhone}`)}
+              onPress={() => Linking.openURL(`tel:${phoneToTelUri(ownerPhone)}`)}
               style={styles.callBtn}
             >
               <Ionicons name="call" size={14} color={COLORS.primary} />

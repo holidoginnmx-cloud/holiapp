@@ -123,10 +123,11 @@ export default function RefundPolicyScreen() {
       <Section icon="time-outline" title="Reservación con anticipo (20%)">
         <P>Si elegiste anticipo:</P>
         <Bullet>
-          Debes liquidar el saldo restante <Strong>al menos 48 horas antes</Strong> del check-in.
+          Puedes liquidar el saldo restante <Strong>en la app</Strong> antes del check-in,
+          o pagarlo <Strong>al entregar a tu mascota en la sucursal de Holidog Inn</Strong>.
         </Bullet>
         <Bullet>
-          Si no liquidas a tiempo, la reservación se cancela automáticamente y pierdes el anticipo.
+          Si el día del check-in no llegas ni liquidas, la reservación se cancela automáticamente y pierdes el anticipo.
         </Bullet>
         <Bullet>
           Las modificaciones de fechas requieren tener el saldo liquidado al 100%.

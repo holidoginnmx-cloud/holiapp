@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAuthStore } from "@/store/authStore";
 import { getPendingCartillasCount } from "@/lib/api";
+import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function AdminLayout() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -137,16 +138,9 @@ export default function AdminLayout() {
           href: null,
           title: "Alertas del staff",
           headerLeft: () => (
-            <TouchableOpacity
-              onPress={() =>
-                router.canGoBack()
-                  ? router.back()
-                  : router.replace("/(admin)/settings" as any)
-              }
-              style={{ marginLeft: 16 }}
-            >
-              <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
-            </TouchableOpacity>
+            <HeaderBackButton
+              onPress={() => router.replace("/(admin)/settings" as any)}
+            />
           ),
         }}
       />
@@ -158,16 +152,9 @@ export default function AdminLayout() {
           href: null,
           title: "Agenda de baños",
           headerLeft: () => (
-            <TouchableOpacity
-              onPress={() =>
-                router.canGoBack()
-                  ? router.back()
-                  : router.replace("/(admin)/settings" as any)
-              }
-              style={{ marginLeft: 16 }}
-            >
-              <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
-            </TouchableOpacity>
+            <HeaderBackButton
+              onPress={() => router.replace("/(admin)/settings" as any)}
+            />
           ),
         }}
       />

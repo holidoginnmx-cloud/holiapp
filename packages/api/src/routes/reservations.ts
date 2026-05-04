@@ -39,7 +39,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     });
     for (const res of overdue) {
       const totalPaid = res.payments
-        .filter((p) => p.status === "PAID")
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
         .reduce((sum, p) => sum + Number(p.amount), 0);
       if (totalPaid < Number(res.totalAmount)) {
         await prisma.reservation.update({
@@ -321,6 +321,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
       creditApplied = Number(paymentIntent.metadata?.creditApplied ?? 0);
     }
+    // creditOnly = true when the deposit/total was fully covered by the
+    // owner's saldo a favor and no Stripe charge was created. We compute the
+    // exact credit to apply later (after we know grandTotal).
+    const creditOnly = !stripePaymentIntentId;
 
     // Verify owner
     const owner = await prisma.user.findUnique({ where: { id: ownerId } });
@@ -485,6 +489,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const surchargeMultiplier = sameDaySurcharge ? 1.20 : 1;
     const grandTotal = baseTotal * surchargeMultiplier;
 
+    // Credit-only path: owner's saldo covers the deposit/total and no Stripe
+    // charge was created. Recompute creditApplied here so we register the
+    // payment as CREDIT (not STRIPE) and decrement the user's balance.
+    if (creditOnly) {
+      const amountDue = paymentType === "DEPOSIT"
+        ? Math.ceil(grandTotal * 0.20)
+        : grandTotal;
+      const ownerCredit = Number(owner.creditBalance || 0);
+      creditApplied = Math.min(ownerCredit, amountDue);
+    }
+
     const operations = [];
     for (const a of assignments) {
       const bath = bathByPet.get(a.petId);
@@ -504,9 +519,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             status: paymentType === "DEPOSIT" ? "PENDING" : "CONFIRMED",
             groupId,
             paymentType,
-            depositDeadline: paymentType === "DEPOSIT"
-              ? new Date(checkIn.getTime() - 48 * 60 * 60 * 1000)
-              : null,
+            // Deposit deadline = check-in day. Owner can pay the balance in
+            // the app or in person at the branch on arrival.
+            depositDeadline: paymentType === "DEPOSIT" ? checkIn : null,
             ownerId,
             petId: a.petId,
             roomId: a.roomId,
@@ -528,11 +543,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       const payment = await prisma.payment.create({
         data: {
           amount: paidAmount,
-          method: "STRIPE",
+          // CREDIT when no Stripe charge was created (saldo a favor cubrió todo).
+          method: creditOnly ? "CREDIT" : "STRIPE",
           status: isDeposit ? "PARTIAL" : "PAID",
-          stripePaymentIntentId: i === 0 ? stripePaymentIntentId : null,
+          stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
           paidAt: new Date(),
-          notes: isDeposit ? "Anticipo 20%" : null,
+          notes: isDeposit
+            ? (creditOnly ? "Anticipo 20% (saldo a favor)" : "Anticipo 20%")
+            : (creditOnly ? "Pago con saldo a favor" : null),
           reservationId: res.id,
           userId: ownerId,
         },
@@ -687,7 +705,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const paidPayments = reservation.payments.filter((p) => p.status === "PAID");
+      // Refund covers anything the owner has already paid, including partial
+      // deposits — exclude only refunds.
+      const paidPayments = reservation.payments.filter(
+        (p) => p.status === "PAID" || p.status === "PARTIAL",
+      );
       const refundAmount = paidPayments.reduce((s, p) => s + Number(p.amount), 0);
       const lastStripePayment = paidPayments
         .filter((p) => p.stripePaymentIntentId)

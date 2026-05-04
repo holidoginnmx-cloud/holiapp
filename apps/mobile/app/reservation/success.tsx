@@ -96,8 +96,9 @@ export default function ReservationSuccess() {
               <Text style={styles.depositAmount}>
                 ${depositAmount.toLocaleString("es-MX")}
               </Text>
-              . Deberás liquidar el saldo{" "}
-              <Text style={styles.depositBold}>48 horas antes del check-in</Text>.
+              . Puedes liquidar el saldo{" "}
+              <Text style={styles.depositBold}>en la app</Text> o{" "}
+              <Text style={styles.depositBold}>al entregar a tu mascota en la sucursal</Text>.
             </Text>
           </View>
         )}

@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { CalendarView } from "@/components/CalendarView";
 import { FilterTabs } from "@/components/FilterTabs";
+import { formatName } from "@/lib/format";
 
 const VIEW_TABS = [
   { key: "calendar", label: "Calendario" },
@@ -189,7 +190,7 @@ function ReservationListView({
       }
       renderItem={({ item }) => {
         const statusCfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.PENDING;
-        const ownerName = `${item.owner.firstName} ${item.owner.lastName}`;
+        const ownerName = `${formatName(item.owner.firstName)} ${formatName(item.owner.lastName)}`;
         return (
           <TouchableOpacity
             style={styles.row}
@@ -200,7 +201,7 @@ function ReservationListView({
               <View style={styles.petInfo}>
                 <Ionicons name="paw" size={16} color={COLORS.primary} />
                 <Text style={styles.petName} numberOfLines={1}>
-                  {item.pet.name}
+                  {formatName(item.pet.name)}
                 </Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>

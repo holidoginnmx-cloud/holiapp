@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/authStore";
 import { deleteMyAccount, exportMyData } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 export default function AccountScreen() {
   const router = useRouter();
@@ -120,7 +121,7 @@ export default function AccountScreen() {
         <Ionicons name="person-circle" size={48} color={COLORS.primary} />
         <View style={{ flex: 1 }}>
           <Text style={styles.name}>
-            {firstName} {lastName}
+            {formatName(firstName)} {formatName(lastName)}
           </Text>
           <Text style={styles.email}>{email}</Text>
         </View>

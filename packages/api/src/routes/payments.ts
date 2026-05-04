@@ -257,8 +257,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     const chargeAmount = depositAmountBase - creditApplied;
 
     const remainingAmount = grandTotal - depositAmountBase;
+    // Deposit deadline = check-in day. Owner can pay the balance in the app or
+    // in person at the branch on arrival.
     const depositDeadline = paymentType === "DEPOSIT"
-      ? new Date(checkInDate.getTime() - 48 * 60 * 60 * 1000).toISOString()
+      ? checkInDate.toISOString()
       : null;
 
     // If credit covers full amount, skip Stripe
@@ -346,8 +348,11 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: "Esta reservación fue cancelada" });
     }
 
+    // Count both PAID (full) and PARTIAL (deposit) payments — both represent
+    // money the owner has already paid. Excluding PARTIAL would double-charge
+    // the deposit when the balance is settled.
     const totalPaid = reservation.payments
-      .filter((p) => p.status === "PAID")
+      .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const remaining = Number(reservation.totalAmount) - totalPaid;
 
@@ -492,9 +497,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Check if reservation is now fully paid and update status if needed
+      // Check if reservation is now fully paid and update status if needed.
+      // Include PARTIAL (deposits) — they count toward the total.
       const totalPaid = reservation.payments
-        .filter((p) => p.status === "PAID")
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
         .reduce((sum, p) => sum + Number(p.amount), 0) + amount;
 
       if (

@@ -3,10 +3,26 @@ export const PRICE_PER_DAY_LARGE = 450;
 export const LARGE_WEIGHT_KG = 20;
 export const MEDICATION_SURCHARGE_PCT = 0.10;
 
+/**
+ * Number of nights between two dates, counted as calendar-day delta in UTC.
+ *
+ * Why: callers may pass dates with different times of day (e.g. when a client
+ * sends `new Date()` rather than UTC midnight) and a raw ms diff with `Math.ceil`
+ * over-counts when checkOut > checkIn by less than a full 24h. Anchoring both
+ * to their UTC date components yields exact integer days regardless of TZ.
+ */
 export function computeDays(checkIn: Date, checkOut: Date): number {
-  return Math.ceil(
-    (checkOut.getTime() - checkIn.getTime()) / 86_400_000
+  const ciUTC = Date.UTC(
+    checkIn.getUTCFullYear(),
+    checkIn.getUTCMonth(),
+    checkIn.getUTCDate(),
   );
+  const coUTC = Date.UTC(
+    checkOut.getUTCFullYear(),
+    checkOut.getUTCMonth(),
+    checkOut.getUTCDate(),
+  );
+  return Math.round((coUTC - ciUTC) / 86_400_000);
 }
 
 export function pricePerDayForWeight(weightKg: number | null): number {

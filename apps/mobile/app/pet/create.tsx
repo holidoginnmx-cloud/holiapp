@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getPetById, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
+import { formatName, formatPhoneInput } from "@/lib/format";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 function sizeFromWeight(kg: number): string {
@@ -100,10 +101,10 @@ export default function CreatePetScreen() {
       setHealthIssues((existingPet as any).healthIssues || "");
       setIsNeutered((existingPet as any).isNeutered || false);
       setEmergencyContactName((existingPet as any).emergencyContactName || "");
-      setEmergencyContactPhone((existingPet as any).emergencyContactPhone || "");
+      setEmergencyContactPhone(formatPhoneInput((existingPet as any).emergencyContactPhone));
       setEmergencyContactRelation((existingPet as any).emergencyContactRelation || "");
       setVetName((existingPet as any).vetName || "");
-      setVetPhone((existingPet as any).vetPhone || "");
+      setVetPhone(formatPhoneInput((existingPet as any).vetPhone));
       setVetEmergency24h((existingPet as any).vetEmergency24h || false);
       setFeedingSchedule((existingPet as any).feedingSchedule || "");
       setFeedingAmount((existingPet as any).feedingAmount || "");
@@ -153,7 +154,7 @@ export default function CreatePetScreen() {
     }
 
     const data: Record<string, unknown> = {
-      name: name.trim(),
+      name: formatName(name),
       breed: breed.trim() || null,
       size,
       weight: weight ? parseFloat(weight) : null,
@@ -165,10 +166,10 @@ export default function CreatePetScreen() {
       walkPreference: walkPreference.length > 0 ? walkPreference.join(",") : null,
       healthIssues: healthIssues.trim() || null,
       isNeutered,
-      emergencyContactName: emergencyContactName.trim() || null,
+      emergencyContactName: formatName(emergencyContactName) || null,
       emergencyContactPhone: emergencyContactPhone.trim() || null,
       emergencyContactRelation: emergencyContactRelation.trim() || null,
-      vetName: vetName.trim() || null,
+      vetName: formatName(vetName) || null,
       vetPhone: vetPhone.trim() || null,
       vetEmergency24h,
       feedingSchedule: feedingSchedule.trim() || null,
@@ -538,8 +539,8 @@ export default function CreatePetScreen() {
           <TextInput
             style={styles.input}
             value={vetPhone}
-            onChangeText={setVetPhone}
-            placeholder="Ej: 662 123 4567"
+            onChangeText={(v) => setVetPhone(formatPhoneInput(v))}
+            placeholder="+52 (662) 429 6727"
             placeholderTextColor={COLORS.textDisabled}
             keyboardType="phone-pad"
           />
@@ -576,8 +577,8 @@ export default function CreatePetScreen() {
           <TextInput
             style={styles.input}
             value={emergencyContactPhone}
-            onChangeText={setEmergencyContactPhone}
-            placeholder="Ej: 662 987 6543"
+            onChangeText={(v) => setEmergencyContactPhone(formatPhoneInput(v))}
+            placeholder="+52 (662) 429 6727"
             placeholderTextColor={COLORS.textDisabled}
             keyboardType="phone-pad"
           />

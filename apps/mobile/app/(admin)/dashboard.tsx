@@ -17,6 +17,7 @@ import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
 import { ReservationCard } from "@/components/ReservationCard";
+import { formatName } from "@/lib/format";
 
 function formatCurrency(amount: number): string {
   return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
@@ -88,7 +89,7 @@ export default function AdminDashboard() {
       }
     >
       {/* Greeting */}
-      <Text style={styles.greeting}>Hola, {firstName ?? "Admin"}</Text>
+      <Text style={styles.greeting}>Hola, {formatName(firstName) || "Admin"}</Text>
       <Text style={styles.date}>{todayStr}</Text>
 
       {pendingCount > 0 && (
@@ -217,7 +218,7 @@ export default function AdminDashboard() {
             <AlertItem
               key={a.id}
               icon="warning-outline"
-              text={`${a.pet.name} — ${a.type === "NOT_EATING" ? "No come" : a.type === "LETHARGIC" ? "Decaído" : a.type === "HEALTH_CONCERN" ? "Salud" : a.type === "INCIDENT" ? "Incidente" : "Comportamiento"}: ${a.description.slice(0, 60)}${a.description.length > 60 ? "..." : ""}`}
+              text={`${formatName(a.pet.name)} — ${a.type === "NOT_EATING" ? "No come" : a.type === "LETHARGIC" ? "Decaído" : a.type === "HEALTH_CONCERN" ? "Salud" : a.type === "INCIDENT" ? "Incidente" : "Comportamiento"}: ${a.description.slice(0, 60)}${a.description.length > 60 ? "..." : ""}`}
               severity="error"
               onPress={() => router.push("/(admin)/alerts" as any)}
             />

@@ -22,6 +22,7 @@ import {
   registerManualPayment,
 } from "@/lib/api";
 import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
+import { formatName } from "@/lib/format";
 
 const STATUS_CONFIG: Record<
   string,
@@ -184,9 +185,9 @@ export default function AdminReservationDetail() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.petName}>{reservation.pet.name}</Text>
+          <Text style={styles.petName}>{formatName(reservation.pet.name)}</Text>
           <Text style={styles.ownerName}>
-            {reservation.owner.firstName} {reservation.owner.lastName}
+            {formatName(reservation.owner.firstName)} {formatName(reservation.owner.lastName)}
           </Text>
         </View>
         <View style={[styles.badge, { backgroundColor: config.bg }]}>
@@ -222,7 +223,7 @@ export default function AdminReservationDetail() {
           <Text style={styles.infoLabel}>Staff:</Text>
           {reservation.staff ? (
             <Text style={styles.infoValue}>
-              {reservation.staff.firstName} {reservation.staff.lastName}
+              {formatName(reservation.staff.firstName)} {formatName(reservation.staff.lastName)}
             </Text>
           ) : (
             <Text style={[styles.infoValue, styles.unassigned]}>Sin asignar</Text>
@@ -410,7 +411,7 @@ export default function AdminReservationDetail() {
                     })}
                   </Text>
                   <Text style={styles.reportStaff}>
-                    {active.staff.firstName} {active.staff.lastName}
+                    {formatName(active.staff.firstName)} {formatName(active.staff.lastName)}
                   </Text>
                 </View>
                 <ChecklistSummaryCard checklist={active} />

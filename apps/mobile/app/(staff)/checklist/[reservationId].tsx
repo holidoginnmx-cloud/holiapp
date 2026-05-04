@@ -19,6 +19,7 @@ import * as ImagePicker from "expo-image-picker";
 import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
+import { formatName, utcDayKey, localDayKey } from "@/lib/format";
 
 const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
   { key: "SAD", emoji: "😢", label: "Triste" },
@@ -53,9 +54,9 @@ export default function ChecklistForm() {
     enabled: !!reservationId,
   });
 
-  const todayStr = new Date().toDateString();
+  const todayKey = localDayKey();
   const existing = checklists?.find(
-    (c) => new Date(c.date).toDateString() === todayStr
+    (c) => utcDayKey(c.date) === todayKey
   );
 
   useEffect(() => {
@@ -183,7 +184,7 @@ export default function ChecklistForm() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>
-            Reporte diario — {stay?.pet.name ?? ""}
+            Reporte diario — {formatName(stay?.pet.name ?? "")}
           </Text>
           <Text style={styles.subtitle}>
             {new Date().toLocaleDateString("es-MX", {

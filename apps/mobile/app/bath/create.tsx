@@ -23,7 +23,11 @@ import {
   getBathSlots,
   createBathIntent,
   confirmBath,
+  BATH_DEPOSIT_AMOUNT,
+  BATH_LATE_TOLERANCE_MIN,
 } from "@/lib/api";
+
+import { formatName } from "@/lib/format";
 
 function sizeFromWeight(kg: number): "S" | "M" | "L" | "XL" {
   if (kg <= 5) return "S";
@@ -217,7 +221,7 @@ export default function CreateBathScreen() {
                     <Ionicons name="paw" size={20} color={COLORS.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.petName}>{p.name}</Text>
+                    <Text style={styles.petName}>{formatName(p.name)}</Text>
                     <Text style={styles.petMeta}>
                       {p.weight ? `${p.weight} kg · ` : ""}
                       {p.breed || "Sin raza"}
@@ -275,14 +279,41 @@ export default function CreateBathScreen() {
               </View>
             </TouchableOpacity>
 
-            {variant && (
-              <View style={styles.priceCard}>
-                <Text style={styles.priceLabel}>Precio</Text>
-                <Text style={styles.priceValue}>
-                  ${Number(variant.price).toLocaleString("es-MX")}
-                </Text>
-              </View>
-            )}
+            {variant && (() => {
+              const price = Number(variant.price);
+              const deposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+              const remaining = price - deposit;
+              return (
+                <View style={styles.priceCard}>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Precio del baño</Text>
+                    <Text style={styles.priceLineValue}>
+                      ${price.toLocaleString("es-MX")}
+                    </Text>
+                  </View>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Anticipo (pagas ahora)</Text>
+                    <Text style={styles.priceValue}>
+                      ${deposit.toLocaleString("es-MX")}
+                    </Text>
+                  </View>
+                  {remaining > 0 && (
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceLabel}>Saldo al entregar</Text>
+                      <Text style={styles.priceLineValue}>
+                        ${remaining.toLocaleString("es-MX")}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.toleranceNote}>
+                    <Ionicons name="time-outline" size={14} color={COLORS.infoText} />
+                    <Text style={styles.toleranceText}>
+                      Tolerancia de {BATH_LATE_TOLERANCE_MIN} minutos para llegar a tu cita.
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
             {!variant && selectedPet && (
               <Text style={styles.noVariantText}>
                 No hay precio configurado para esta combinación.
@@ -377,14 +408,18 @@ export default function CreateBathScreen() {
           >
             {submitting ? (
               <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons name="card" size={20} color={COLORS.white} />
-                <Text style={styles.payButtonText}>
-                  Pagar ${Number(variant.price).toLocaleString("es-MX")} y confirmar
-                </Text>
-              </>
-            )}
+            ) : (() => {
+              const price = Number(variant.price);
+              const deposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+              return (
+                <>
+                  <Ionicons name="card" size={20} color={COLORS.white} />
+                  <Text style={styles.payButtonText}>
+                    Pagar anticipo ${deposit.toLocaleString("es-MX")} y confirmar
+                  </Text>
+                </>
+              );
+            })()}
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -454,16 +489,35 @@ const styles = StyleSheet.create({
   toggleTitle: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
   toggleSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
   priceCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     backgroundColor: COLORS.white,
     padding: 16,
     borderRadius: 12,
     marginTop: 6,
+    gap: 8,
+  },
+  priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontWeight: "600" },
-  priceValue: { fontSize: 22, fontWeight: "800", color: COLORS.primary },
+  priceValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
+  priceLineValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  toleranceNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+  },
+  toleranceText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.infoText,
+    fontWeight: "600",
+  },
   noVariantText: {
     fontSize: 13,
     color: COLORS.dangerText,

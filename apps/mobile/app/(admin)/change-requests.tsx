@@ -20,6 +20,7 @@ import {
   rejectChangeRequest,
   type ChangeRequestWithReservation,
 } from "@/lib/api";
+import { formatName } from "@/lib/format";
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString("es-MX", {
@@ -93,9 +94,9 @@ export default function AdminChangeRequestsScreen() {
           return (
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.petName}>{item.reservation.pet.name}</Text>
+                <Text style={styles.petName}>{formatName(item.reservation.pet.name)}</Text>
                 <Text style={styles.ownerName}>
-                  {item.reservation.owner.firstName} {item.reservation.owner.lastName}
+                  {formatName(item.reservation.owner.firstName)} {formatName(item.reservation.owner.lastName)}
                 </Text>
               </View>
 

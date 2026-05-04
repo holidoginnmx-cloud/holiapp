@@ -20,6 +20,7 @@ import {
   createChangeRequest,
   type ChangePreview,
 } from "@/lib/api";
+import { formatName, localDateFromUTCDay, toUTCDayISO } from "@/lib/format";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
@@ -65,8 +66,8 @@ export default function ModifyReservationScreen() {
 
   useEffect(() => {
     if (reservation?.checkIn && reservation?.checkOut) {
-      setNewCheckIn(new Date(reservation.checkIn));
-      setNewCheckOut(new Date(reservation.checkOut));
+      setNewCheckIn(localDateFromUTCDay(reservation.checkIn));
+      setNewCheckOut(localDateFromUTCDay(reservation.checkOut));
     }
   }, [reservation]);
 
@@ -82,8 +83,8 @@ export default function ModifyReservationScreen() {
       try {
         setPreviewError(null);
         const result = await previewChangeRequest(id, {
-          newCheckIn: newCheckIn.toISOString(),
-          newCheckOut: newCheckOut.toISOString(),
+          newCheckIn: toUTCDayISO(newCheckIn),
+          newCheckOut: toUTCDayISO(newCheckOut),
         });
         setPreview(result);
       } catch (e: any) {
@@ -98,8 +99,8 @@ export default function ModifyReservationScreen() {
     mutationFn: async () => {
       if (!id || !newCheckIn || !newCheckOut) throw new Error("Fechas incompletas");
       return createChangeRequest(id, {
-        newCheckIn: newCheckIn.toISOString(),
-        newCheckOut: newCheckOut.toISOString(),
+        newCheckIn: toUTCDayISO(newCheckIn),
+        newCheckOut: toUTCDayISO(newCheckOut),
         refundChoice: preview && preview.delta < 0 ? refundChoice : null,
       });
     },
@@ -159,7 +160,7 @@ export default function ModifyReservationScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Modificar fechas</Text>
-      <Text style={styles.subtitle}>{reservation.pet.name}</Text>
+      <Text style={styles.subtitle}>{formatName(reservation.pet.name)}</Text>
 
       {isCheckedIn && (
         <View style={styles.hintBox}>
