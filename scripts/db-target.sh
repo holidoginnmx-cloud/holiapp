@@ -23,7 +23,22 @@ ENV_FILES=(
   "$ROOT/packages/api/.env"
   "$ROOT/packages/db/.env"
 )
-RAILWAY_URL="postgresql://postgres:jZwdcdfgpMreXRakHCAbktiVeJYBZsfN@roundhouse.proxy.rlwy.net:56529/railway"
+
+# La URL de Railway vive en un archivo local gitignored para no exponer
+# credenciales en el repo. Crea scripts/.targets.env (ver .targets.env.example).
+TARGETS_FILE="$ROOT/scripts/.targets.env"
+if [ -f "$TARGETS_FILE" ]; then
+  # shellcheck disable=SC1090
+  source "$TARGETS_FILE"
+fi
+if [ -z "${RAILWAY_URL:-}" ]; then
+  echo "❌ RAILWAY_URL no está definida."
+  echo "   Crea $TARGETS_FILE con:"
+  echo "     RAILWAY_URL=postgresql://postgres:<password>@<host>:<port>/railway"
+  echo "   (cópiala de Railway → Postgres → Variables → DATABASE_PUBLIC_URL)"
+  exit 1
+fi
+
 LOCAL_USER="${USER}"
 LOCAL_URL="postgresql://${LOCAL_USER}@localhost:5432/holidoginn_dev"
 

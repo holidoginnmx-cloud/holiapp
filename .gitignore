@@ -6,3 +6,4 @@ dist/
 *.tsbuildinfo
 .maestro/
 e2e/.maestro/
+scripts/.targets.env
