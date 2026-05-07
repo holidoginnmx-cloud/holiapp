@@ -11,6 +11,7 @@ import {
   CreateStayUpdateSchema,
 } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import { autoCheckoutOverdueStays } from "../lib/auto-actions";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -63,6 +64,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   fastify.get<{
     Querystring: { status?: string };
   }>("/staff/stays", { preHandler }, async (request) => {
+    await autoCheckoutOverdueStays(prisma);
     const status = request.query.status || "CHECKED_IN";
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -110,6 +112,60 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     });
 
     return stays;
+  });
+
+  // ─── GET /staff/me/stats — métricas personales del staff ────────
+
+  fastify.get("/staff/me/stats", { preHandler }, async (request, reply) => {
+    const staffId = request.userId;
+    if (!staffId) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [
+      user,
+      totalStays,
+      monthStays,
+      checklists,
+      updates,
+      alertsReported,
+      alertsResolved,
+    ] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: staffId },
+        select: { createdAt: true },
+      }),
+      prisma.reservation.count({
+        where: { staffId, status: "CHECKED_OUT" },
+      }),
+      prisma.reservation.count({
+        where: {
+          staffId,
+          status: "CHECKED_OUT",
+          updatedAt: { gte: monthStart },
+        },
+      }),
+      prisma.dailyChecklist.count({ where: { staffId } }),
+      prisma.stayUpdate.count({ where: { staffId } }),
+      prisma.staffAlert.count({ where: { staffId } }),
+      prisma.staffAlert.count({
+        where: { staffId, isResolved: true },
+      }),
+    ]);
+
+    return {
+      memberSince: user?.createdAt ?? null,
+      totalStays,
+      monthStays,
+      checklists,
+      updates,
+      alertsReported,
+      alertsResolved,
+    };
   });
 
   // ─── GET /staff/stays/unassigned — estancias sin staff asignado ──
@@ -310,9 +366,16 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         );
       }
 
-      const updated = await prisma.reservation.update({
-        where: { id },
-        data: { status: "CHECKED_OUT" },
+      const updated = await prisma.$transaction(async (tx) => {
+        const res = await tx.reservation.update({
+          where: { id },
+          data: { status: "CHECKED_OUT" },
+        });
+        await tx.reservationChangeRequest.updateMany({
+          where: { reservationId: id, status: "PENDING" },
+          data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
+        });
+        return res;
       });
 
       // Notificación al dueño (in-app + push)
@@ -344,10 +407,41 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     { preHandler },
     async (request, reply) => {
       const body = request.body as Record<string, unknown> | null;
-      const mediaUrl = body?.mediaUrl;
-      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
+      // Acepta `mediaItems: Array<{ url, type }>` (preferido), o
+      // `mediaUrls: string[]` / `mediaUrl: string` (legacy, se asumen imágenes).
+      // Cada item se crea como un StayUpdate sin reemplazar los anteriores
+      // del día — permite varias fotos/videos por reporte.
+      const rawItems: Array<{ url: string; type: "image" | "video" }> =
+        Array.isArray(body?.mediaItems)
+          ? (body!.mediaItems as unknown[])
+              .map((it) => {
+                if (it && typeof it === "object") {
+                  const o = it as Record<string, unknown>;
+                  if (
+                    typeof o.url === "string" &&
+                    o.url.startsWith("http") &&
+                    (o.type === "image" || o.type === "video")
+                  ) {
+                    return { url: o.url, type: o.type };
+                  }
+                }
+                return null;
+              })
+              .filter((x): x is { url: string; type: "image" | "video" } => !!x)
+          : (Array.isArray(body?.mediaUrls)
+              ? body!.mediaUrls
+              : typeof body?.mediaUrl === "string"
+                ? [body.mediaUrl]
+                : []
+            )
+              .filter(
+                (u): u is string =>
+                  typeof u === "string" && u.startsWith("http"),
+              )
+              .map((url) => ({ url, type: "image" as const }));
+      if (rawItems.length === 0) {
         return reply.status(400).send({
-          error: "Se requiere una foto del día para guardar el reporte",
+          error: "Se requiere al menos una foto o video para guardar el reporte",
         });
       }
 
@@ -381,16 +475,21 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       dateStart.setUTCHours(0, 0, 0, 0);
       const dateEnd = new Date(dateStart.getTime() + 86_400_000);
 
+      // El caption público no debe incluir el bloque [HANDOFF] (notas internas de relevo entre staff).
+      const publicCaption = data.additionalNotes
+        ? data.additionalNotes.replace(/\n?\[HANDOFF\] [\s\S]*/, "").trim() || null
+        : null;
+
       const checklist = await prisma.$transaction(async (tx) => {
-        await tx.stayUpdate.create({
-          data: {
+        await tx.stayUpdate.createMany({
+          data: rawItems.map((it) => ({
             reservationId: data.reservationId,
             petId: reservation.pet.id,
             staffId: request.userId!,
-            mediaUrl,
-            mediaType: "image",
-            caption: data.additionalNotes ?? null,
-          },
+            mediaUrl: it.url,
+            mediaType: it.type,
+            caption: publicCaption,
+          })),
         });
 
         const [photosCount, videosCount] = await Promise.all([
@@ -445,9 +544,18 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       const ownerNote = (data.additionalNotes ?? "")
         .replace(/\n?\[HANDOFF\] [\s\S]*/, "")
         .trim();
+      const hasVideo = rawItems.some((it) => it.type === "video");
+      const hasImage = rawItems.some((it) => it.type === "image");
+      const evidenceLabel =
+        hasVideo && hasImage
+          ? "fotos y videos nuevos"
+          : hasVideo
+            ? rawItems.length > 1 ? "videos nuevos" : "video nuevo"
+            : rawItems.length > 1 ? "fotos nuevas" : "foto nueva";
+      const evidenceIcon = hasVideo ? "🎥" : "📸";
       const tail = ownerNote.length > 0
-        ? `${ownerNote} Hay foto nueva 📸`
-        : "Sube a la app para ver la foto del día 📸";
+        ? `${ownerNote} Hay ${evidenceLabel} ${evidenceIcon}`
+        : `Sube a la app para ver ${evidenceLabel} del día ${evidenceIcon}`;
 
       await notifyUser(prisma, {
         userId: reservation.ownerId,

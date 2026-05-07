@@ -518,6 +518,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           where: { reservationId: reservation.id, completedAt: null },
           data: { completedAt: new Date() },
         });
+        await tx.reservationChangeRequest.updateMany({
+          where: { reservationId: reservation.id, status: "PENDING" },
+          data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
+        });
         await tx.stayUpdate.create({
           data: {
             reservationId: reservation.id,

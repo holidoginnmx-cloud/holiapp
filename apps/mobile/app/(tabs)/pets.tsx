@@ -57,6 +57,12 @@ export default function PetsScreen() {
             onReserveBath={() =>
               router.push({ pathname: "/bath/create", params: { petId: item.id } })
             }
+            onAddCartilla={() =>
+              router.push({
+                pathname: "/pet/create",
+                params: { editId: item.id, focus: "cartilla" },
+              } as any)
+            }
           />
         )}
         contentContainerStyle={styles.list}

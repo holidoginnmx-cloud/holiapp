@@ -92,6 +92,7 @@ enum NotificationType {
   NEW_RESERVATION
   STAFF_ASSIGNED
   CHECKLIST_REMINDER
+  VACCINE_EXPIRING
 }
 
 enum EnergyLevel {
@@ -145,6 +146,7 @@ enum CartillaStatus {
   PENDING    // Subida, esperando revisión
   APPROVED   // Validada por admin
   REJECTED   // Rechazada por admin (ver cartillaRejectionReason)
+  EXPIRED    // Antes APPROVED, demoteada porque alguna vacuna venció
 }
 
 enum ReservationType {
@@ -271,7 +273,34 @@ model Vaccine {
   petId String
   pet   Pet    @relation(fields: [petId], references: [id])
 
+  catalogId String?
+  catalog   VaccineCatalog? @relation(fields: [catalogId], references: [id])
+
+  // Recordatorios de vencimiento (idempotencia: 1 push por ventana, por vacuna)
+  reminded30dAt DateTime?
+  reminded7dAt  DateTime?
+  reminded0dAt  DateTime?
+
   @@map("vaccines")
+}
+
+// =============================================================
+//  VACCINE CATALOG — Tipos de vacuna con duración estándar
+// =============================================================
+
+model VaccineCatalog {
+  id                  String   @id @default(cuid())
+  code                String   @unique  // "RABIES_1Y", "DHPP_1Y", etc.
+  displayName         String            // "Rabia (1 año)", "DHPP (1 año)"
+  defaultDurationDays Int               // 365, 1095, 180, etc.
+  description         String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  vaccines Vaccine[]
+
+  @@map("vaccine_catalog")
 }
 
 // =============================================================
@@ -712,4 +741,20 @@ model BathConfig {
   updatedAt           DateTime @updatedAt
 
   @@map("bath_config")
+}
+
+// =============================================================
+//  LODGING PRICING — Tarifas de hospedaje (singleton, editable)
+//  Reemplaza las constantes hardcoded de packages/api/src/lib/pricing.ts
+// =============================================================
+
+model LodgingPricing {
+  id                     String   @id @default("singleton")
+  pricePerDaySmall       Decimal  @default(350) @db.Decimal(10, 2)
+  pricePerDayLarge       Decimal  @default(450) @db.Decimal(10, 2)
+  largeWeightKg          Float    @default(20)
+  medicationSurchargePct Float    @default(0.10)  // 0.10 = 10%
+  updatedAt              DateTime @updatedAt
+
+  @@map("lodging_pricing")
 }

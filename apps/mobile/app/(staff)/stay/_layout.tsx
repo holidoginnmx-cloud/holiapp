@@ -20,6 +20,8 @@ export default function StayLayout() {
       screenOptions={{
         headerShown: true,
         headerTintColor: COLORS.primary,
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen name="[id]" options={{ title: "Detalle de estancia", headerLeft: backButton }} />

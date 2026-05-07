@@ -21,8 +21,17 @@ import type {
 
 // ─── Extended types (API responses with relations) ───────
 
+export type VaccineWithCatalog = Vaccine & {
+  catalogId?: string | null;
+  catalog?: {
+    id: string;
+    code: string;
+    displayName: string;
+  } | null;
+};
+
 export type PetWithVaccines = Pet & {
-  vaccines: Vaccine[];
+  vaccines: VaccineWithCatalog[];
   owner: { id: string; firstName: string; lastName: string; email: string };
 };
 
@@ -114,7 +123,7 @@ export const getUserById = (id: string) =>
 // ─── Pets ────────────────────────────────────────────────
 
 export type PetForBooking = Pet & {
-  vaccines: Vaccine[];
+  vaccines: VaccineWithCatalog[];
   reservations: {
     id: string;
     checkIn: string;
@@ -164,6 +173,23 @@ export type PetHistory = {
 
 export const getPetHistory = (petId: string) =>
   apiFetch<PetHistory>(`${ENDPOINTS.pets}/${petId}/history`);
+
+export type PetAlert = StaffAlert & {
+  staff: { id: string; firstName: string; lastName: string };
+  reservation: {
+    id: string;
+    checkIn: string | null;
+    checkOut: string | null;
+    reservationType: "STAY" | "BATH";
+    appointmentAt: string | null;
+    room: { id: string; name: string } | null;
+  };
+};
+
+export const getPetAlerts = (petId: string, resolved?: boolean) => {
+  const qs = resolved === undefined ? "" : `?resolved=${resolved}`;
+  return apiFetch<PetAlert[]>(`${ENDPOINTS.pets}/${petId}/alerts${qs}`);
+};
 
 // ─── Rooms ───────────────────────────────────────────────
 
@@ -485,10 +511,21 @@ export interface AdminStats {
 
 export interface RoomWithStatus extends Room {
   currentReservation: {
+    reservationId: string;
+    pet: {
+      id: string;
+      name: string;
+      breed: string | null;
+      size: "XS" | "S" | "M" | "L" | "XL";
+      photoUrl: string | null;
+    };
+    owner: { id: string; name: string };
+    staff: { id: string; name: string } | null;
+    checkIn: string;
+    checkOut: string;
+    // legacy
     petName: string;
     ownerName: string;
-    checkOut: string;
-    reservationId: string;
   } | null;
 }
 
@@ -501,6 +538,40 @@ export const getAdminStats = () =>
 
 export const getAdminRoomStatus = () =>
   apiFetch<RoomWithStatus[]>("/admin/rooms/status");
+
+export type AdminRevenueBreakdown = {
+  monthStart: string;
+  monthEnd: string;
+  total: number;
+  gross: number;
+  refunded: number;
+  byMethod: Record<string, number>;
+  byCategory: { hotel: number; bath: number };
+  payments: {
+    id: string;
+    amount: string;
+    method: string;
+    status: string;
+    kind: "PAYMENT" | "REFUND";
+    paidAt: string | null;
+    createdAt: string;
+    category: "HOTEL" | "BATH" | "MIXED";
+    hotelAmount: number;
+    bathAmount: number;
+    reservation: {
+      id: string;
+      reservationType: "STAY" | "BATH";
+      status: string;
+      pet: { name: string };
+      owner: { firstName: string; lastName: string };
+    } | null;
+  }[];
+};
+
+export const getAdminRevenueBreakdown = (month?: string) => {
+  const qs = month ? `?month=${month}` : "";
+  return apiFetch<AdminRevenueBreakdown>(`/admin/revenue/breakdown${qs}`);
+};
 
 export type AdminAlert = {
   id: string;
@@ -583,6 +654,26 @@ export const createServiceVariant = (data: {
 }) =>
   apiFetch("/admin/services/variants", { method: "POST", body: JSON.stringify(data) });
 
+// ─── Lodging pricing (admin) ─────────────────────────────
+export interface AdminLodgingPricing {
+  pricePerDaySmall: number;
+  pricePerDayLarge: number;
+  largeWeightKg: number;
+  medicationSurchargePct: number;
+  updatedAt: string;
+}
+
+export const getAdminLodgingPricing = () =>
+  apiFetch<AdminLodgingPricing>("/admin/lodging-pricing");
+
+export const updateAdminLodgingPricing = (
+  data: Partial<Omit<AdminLodgingPricing, "updatedAt">>
+) =>
+  apiFetch<AdminLodgingPricing>("/admin/lodging-pricing", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
 export const sendAdminNotification = (data: {
   userIds: string[] | "all";
   title: string;
@@ -596,7 +687,21 @@ export const sendAdminNotification = (data: {
 
 // ─── Cartillas (admin) ───────────────────────────────────
 
-export type CartillaStatusValue = "PENDING" | "APPROVED" | "REJECTED";
+export type CartillaStatusValue = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+
+export type CartillaVaccine = {
+  id: string;
+  name: string;
+  appliedAt: string;
+  expiresAt: string | null;
+  vetName: string | null;
+  catalogId: string | null;
+  catalog: {
+    id: string;
+    code: string;
+    displayName: string;
+  } | null;
+};
 
 export type PetWithCartilla = Pet & {
   cartillaUrl: string | null;
@@ -616,6 +721,7 @@ export type PetWithCartilla = Pet & {
     firstName: string;
     lastName: string;
   } | null;
+  vaccines?: CartillaVaccine[];
 };
 
 export const getCartillas = (status: CartillaStatusValue = "PENDING") =>
@@ -624,13 +730,55 @@ export const getCartillas = (status: CartillaStatusValue = "PENDING") =>
 export const getPendingCartillasCount = () =>
   apiFetch<{ pending: number }>("/admin/cartillas/pending-count");
 
-export const reviewCartilla = (
-  petId: string,
-  data: { action: "APPROVE" | "REJECT"; reason?: string }
-) =>
+export type VaccineCatalogEntry = {
+  id: string;
+  code: string;
+  displayName: string;
+  defaultDurationDays: number;
+  description: string | null;
+  isActive: boolean;
+};
+
+export const getVaccineCatalog = () =>
+  apiFetch<VaccineCatalogEntry[]>("/vaccine-catalog");
+
+export type ReviewCartillaPayload =
+  | {
+      action: "APPROVE";
+      vaccines?: {
+        catalogId: string;
+        appliedAt: string;
+        expiresAt: string;
+        vetName?: string;
+      }[];
+    }
+  | { action: "REJECT"; reason?: string };
+
+export const reviewCartilla = (petId: string, data: ReviewCartillaPayload) =>
   apiFetch<Pet>(`/admin/pets/${petId}/cartilla`, {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+
+export type UpdateVaccinePayload = {
+  catalogId?: string;
+  appliedAt?: string;
+  expiresAt?: string;
+  vetName?: string | null;
+};
+
+export const updateAdminVaccine = (
+  vaccineId: string,
+  data: UpdateVaccinePayload
+) =>
+  apiFetch<CartillaVaccine>(`/admin/vaccines/${vaccineId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteAdminVaccine = (vaccineId: string) =>
+  apiFetch<{ id: string }>(`/admin/vaccines/${vaccineId}`, {
+    method: "DELETE",
   });
 
 export const updateReservationStatus = (id: string, status: string) =>
@@ -696,6 +844,19 @@ export type StaffStayDetail = Reservation & {
   addons?: ReservationAddonWithVariant[];
 };
 
+export type StaffStats = {
+  memberSince: string | null;
+  totalStays: number;
+  monthStays: number;
+  checklists: number;
+  updates: number;
+  alertsReported: number;
+  alertsResolved: number;
+};
+
+export const getStaffStats = () =>
+  apiFetch<StaffStats>("/staff/me/stats");
+
 export const getStaffStays = (status?: string) =>
   apiFetch<StaffStay[]>(`/staff/stays${status ? `?status=${status}` : ""}`);
 
@@ -718,7 +879,9 @@ export const staffCheckout = (id: string) =>
   );
 
 export const createDailyChecklist = (
-  data: CreateDailyChecklist & { mediaUrl: string }
+  data: CreateDailyChecklist & {
+    mediaItems: Array<{ url: string; type: "image" | "video" }>;
+  }
 ) =>
   apiFetch<DailyChecklist>("/staff/checklists", {
     method: "POST",
@@ -868,6 +1031,28 @@ export const cancelReservation = (
       body: JSON.stringify({ refundChoice }),
     }
   );
+
+export const issueRefund = (
+  reservationId: string,
+  refundChoice: "STRIPE_REFUND" | "CREDIT"
+) =>
+  apiFetch<{ success: true; refundAmount: number; refundChoice: string }>(
+    `/reservations/${reservationId}/issue-refund`,
+    {
+      method: "POST",
+      body: JSON.stringify({ refundChoice }),
+    }
+  );
+
+export const adminCancelReservation = (reservationId: string) =>
+  apiFetch<{
+    success: true;
+    reservationId: string;
+    refundAmount: number;
+    awaitingClientChoice: boolean;
+  }>(`/admin/reservations/${reservationId}/cancel`, {
+    method: "POST",
+  });
 
 export type CreditLedgerEntry = {
   id: string;

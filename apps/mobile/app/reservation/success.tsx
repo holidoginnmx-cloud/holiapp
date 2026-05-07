@@ -55,7 +55,7 @@ export default function ReservationSuccess() {
 
   const handlePrimary = () => {
     if (v === "hotel" && reservationId) {
-      router.replace(`/(tabs)/reservation/${reservationId}` as any);
+      router.replace(`/reservation/detail/${reservationId}` as any);
     } else if (v === "balance") {
       router.replace("/(tabs)/reservations?tab=CONFIRMED" as any);
     } else {

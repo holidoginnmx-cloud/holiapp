@@ -558,7 +558,7 @@ export default function CreateReservationScreen() {
           style={styles.pendingBanner}
           activeOpacity={0.85}
           onPress={() =>
-            router.push(`/(tabs)/reservation/${alert.reservationId}` as any)
+            router.push(`/reservation/detail/${alert.reservationId}` as any)
           }
         >
           <Ionicons name="alert-circle" size={22} color={COLORS.warningText} />
@@ -702,6 +702,8 @@ export default function CreateReservationScreen() {
                       ? "Cartilla en revisión"
                       : cartillaStatus === "REJECTED"
                       ? "Cartilla rechazada"
+                      : cartillaStatus === "EXPIRED"
+                      ? "Cartilla vencida"
                       : "Sin cartilla";
                   chipColor = COLORS.errorText;
                 } else if (!pet.weight || !pet.size) {

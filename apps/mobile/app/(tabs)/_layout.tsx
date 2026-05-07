@@ -122,8 +122,6 @@ export default function TabsLayout() {
           },
         }}
       />
-      {/* Hidden detail screen */}
-      <Tabs.Screen name="reservation" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

@@ -8,8 +8,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getPetHistory } from "@/lib/api";
@@ -26,6 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function PetHistoryScreen() {
   const { petId } = useLocalSearchParams<{ petId: string }>();
+  const router = useRouter();
 
   const {
     data,
@@ -100,6 +102,29 @@ export default function PetHistoryScreen() {
           <Text style={styles.statLabel}>Fotos</Text>
         </View>
       </View>
+
+      {/* Incidentes — link a pantalla dedicada */}
+      <TouchableOpacity
+        style={styles.incidentsCard}
+        onPress={() => router.push(`/pet/incidents/${pet.id}` as any)}
+        activeOpacity={0.85}
+        testID="pet-history-incidents-link"
+      >
+        <View style={styles.incidentsIcon}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={22}
+            color={COLORS.primary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.incidentsTitle}>Incidentes</Text>
+          <Text style={styles.incidentsSubtitle}>
+            Reportes del staff de todas las estancias
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+      </TouchableOpacity>
 
       {/* Behavior tags */}
       {behaviorTags.length > 0 && (
@@ -314,5 +339,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 2,
     marginTop: 4,
+  },
+  incidentsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  incidentsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  incidentsTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  incidentsSubtitle: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
 });

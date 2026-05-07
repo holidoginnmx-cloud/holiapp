@@ -276,6 +276,7 @@ export default function PetDetailScreen() {
               | "PENDING"
               | "APPROVED"
               | "REJECTED"
+              | "EXPIRED"
               | null;
             const config = status === "APPROVED"
               ? { label: "Aprobada", bg: COLORS.successBg, text: COLORS.successText }
@@ -283,6 +284,8 @@ export default function PetDetailScreen() {
               ? { label: "En revisión", bg: COLORS.warningBg, text: COLORS.warningText }
               : status === "REJECTED"
               ? { label: "Rechazada", bg: COLORS.errorBg, text: COLORS.errorText }
+              : status === "EXPIRED"
+              ? { label: "Vencida", bg: COLORS.errorBg, text: COLORS.errorText }
               : null;
             if (!config) return null;
             return (
@@ -329,7 +332,9 @@ export default function PetDetailScreen() {
                   size={18}
                   color={status?.text || COLORS.greenBright}
                 />
-                <Text style={styles.vaccineName}>{vaccine.name}</Text>
+                <Text style={styles.vaccineName}>
+                  {(vaccine as any).catalog?.displayName ?? vaccine.name}
+                </Text>
                 {status && (
                   <View
                     style={[styles.vaccineBadge, { backgroundColor: status.bg }]}

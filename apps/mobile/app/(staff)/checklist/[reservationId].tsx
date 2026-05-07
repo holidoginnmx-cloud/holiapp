@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -11,15 +11,20 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
+import ConfettiCannon from "react-native-confetti-cannon";
 import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
 import { formatName, utcDayKey, localDayKey } from "@/lib/format";
+
+const { width: SCREEN_W } = Dimensions.get("window");
 
 const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
   { key: "SAD", emoji: "😢", label: "Triste" },
@@ -40,7 +45,13 @@ export default function ChecklistForm() {
   const [bathroomBreaks, setBathroomBreaks] = useState(true);
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [handoffNotes, setHandoffNotes] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // Evidencias del día (fotos y/o videos). Cada nueva selección se agrega;
+  // las anteriores no se pisan. Al guardar, todas se suben como StayUpdates
+  // separados (una llamada al API).
+  type MediaPick = { uri: string; type: "image" | "video" };
+  const [mediaItems, setMediaItems] = useState<MediaPick[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const confettiRef = useRef<ConfettiCannon>(null);
 
   const { data: stay } = useQuery({
     queryKey: ["staff", "stay", reservationId],
@@ -77,46 +88,66 @@ export default function ChecklistForm() {
     }
   }, [existing?.id]);
 
-  async function pickPhoto(source: "camera" | "library") {
-    if (source === "camera") {
+  function assetToPick(asset: ImagePicker.ImagePickerAsset): MediaPick {
+    return {
+      uri: asset.uri,
+      type: asset.type === "video" ? "video" : "image",
+    };
+  }
+
+  async function pickMedia(
+    source: "camera-photo" | "camera-video" | "library",
+  ) {
+    if (source === "camera-photo" || source === "camera-video") {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara.");
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ["images"],
+        mediaTypes: source === "camera-video" ? ["videos"] : ["images"],
         quality: 0.8,
       });
       if (result.canceled) return;
-      setPhotoUri(result.assets[0].uri);
+      setMediaItems((prev) => [...prev, assetToPick(result.assets[0])]);
       return;
     }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos.");
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tu galería.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       quality: 0.8,
+      allowsMultipleSelection: true,
     });
     if (result.canceled) return;
-    setPhotoUri(result.assets[0].uri);
+    setMediaItems((prev) => [...prev, ...result.assets.map(assetToPick)]);
   }
 
-  function promptPhoto() {
-    Alert.alert("Foto del día", "¿Cómo quieres subir la foto?", [
+  function promptMedia() {
+    Alert.alert("Evidencia del día", "¿Qué quieres agregar?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Tomar foto", onPress: () => pickPhoto("camera") },
-      { text: "Elegir foto", onPress: () => pickPhoto("library") },
+      { text: "Tomar foto", onPress: () => pickMedia("camera-photo") },
+      { text: "Grabar video", onPress: () => pickMedia("camera-video") },
+      { text: "Elegir de galería", onPress: () => pickMedia("library") },
     ]);
+  }
+
+  function removeMediaAt(index: number) {
+    setMediaItems((prev) => prev.filter((_, i) => i !== index));
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!photoUri) throw new Error("Falta la foto del día");
-      const cloud = await uploadToCloudinary(photoUri, "checklists");
+      if (mediaItems.length === 0)
+        throw new Error("Agrega al menos una foto o video del día");
+      const uploads = await Promise.all(
+        mediaItems.map((it) =>
+          uploadToCloudinary(it.uri, "checklists", it.type),
+        ),
+      );
       // UTC midnight de la fecha LOCAL del staff. Así el server (en cualquier TZ)
       // y Postgres @db.Date guardan el día correcto sin shifts.
       const now = new Date();
@@ -146,7 +177,10 @@ export default function ChecklistForm() {
             .filter(Boolean)
             .join("\n") || null,
         reservationId: reservationId!,
-        mediaUrl: cloud.secure_url,
+        mediaItems: uploads.map((u, i) => ({
+          url: u.secure_url,
+          type: mediaItems[i].type,
+        })),
       });
     },
     onSuccess: async () => {
@@ -157,13 +191,12 @@ export default function ChecklistForm() {
         queryClient.refetchQueries({ queryKey: ["staff", "checklists", reservationId] }),
       ]);
       queryClient.invalidateQueries({ queryKey: ["staff"] });
-      Alert.alert("Reporte guardado", "Se notificó al dueño", [
-        {
-          text: "OK",
-          onPress: () =>
-            router.replace(`/(staff)/stay/${reservationId}` as any),
-        },
-      ]);
+      setShowSuccess(true);
+      setTimeout(() => confettiRef.current?.start(), 150);
+      setTimeout(() => {
+        setShowSuccess(false);
+        router.replace(`/(staff)/stay/${reservationId}` as any);
+      }, 3000);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -176,7 +209,7 @@ export default function ChecklistForm() {
     );
   }
 
-  const canSubmit = !!photoUri && !saveMutation.isPending;
+  const canSubmit = mediaItems.length > 0 && !saveMutation.isPending;
 
   return (
     <ScrollView style={styles.container}>
@@ -290,33 +323,56 @@ export default function ChecklistForm() {
         />
       </View>
 
-      {/* Photo */}
+      {/* Evidencia del día (fotos y/o videos) */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
-          Foto del día <Text style={styles.required}>*</Text>
+          Evidencia del día <Text style={styles.required}>*</Text>
         </Text>
-        {photoUri ? (
+        {mediaItems.length > 0 ? (
           <View>
-            <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+            <View style={styles.photoGrid}>
+              {mediaItems.map((item, idx) => (
+                <View key={`${item.uri}-${idx}`} style={styles.photoThumbWrap}>
+                  <Image source={{ uri: item.uri }} style={styles.photoThumb} />
+                  {item.type === "video" && (
+                    <View style={styles.videoOverlay}>
+                      <Ionicons
+                        name="play-circle"
+                        size={32}
+                        color={COLORS.white}
+                      />
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.photoRemoveButton}
+                    onPress={() => removeMediaAt(idx)}
+                    hitSlop={8}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={14} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
             <TouchableOpacity
               style={styles.photoChangeButton}
-              onPress={promptPhoto}
+              onPress={promptMedia}
               activeOpacity={0.7}
             >
-              <Ionicons name="refresh" size={16} color={COLORS.primary} />
-              <Text style={styles.photoChangeText}>Cambiar foto</Text>
+              <Ionicons name="add" size={16} color={COLORS.primary} />
+              <Text style={styles.photoChangeText}>Agregar más evidencia</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
             style={styles.photoButton}
-            onPress={promptPhoto}
+            onPress={promptMedia}
             activeOpacity={0.85}
           >
             <Ionicons name="camera" size={28} color={COLORS.primary} />
-            <Text style={styles.photoButtonText}>Tomar o elegir foto</Text>
+            <Text style={styles.photoButtonText}>Agregar fotos o videos</Text>
             <Text style={styles.photoHint}>
-              El dueño la verá en su reservación
+              Puedes subir varias. El dueño las verá en su reservación.
             </Text>
           </TouchableOpacity>
         )}
@@ -341,6 +397,35 @@ export default function ChecklistForm() {
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
+
+      <Modal
+        visible={showSuccess}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.successOverlay}>
+          <ConfettiCannon
+            ref={confettiRef}
+            count={160}
+            origin={{ x: SCREEN_W / 2, y: 0 }}
+            autoStart={false}
+            fadeOut
+            fallSpeed={3000}
+            explosionSpeed={420}
+            colors={[COLORS.primary, "#F7B84B", "#7AB5A8", "#E35F27", "#3a7cab"]}
+          />
+          <View style={styles.successCard}>
+            <View style={styles.successIconCircle}>
+              <Ionicons name="checkmark" size={44} color={COLORS.white} />
+            </View>
+            <Text style={styles.successTitle}>¡Listo!</Text>
+            <Text style={styles.successSubtitle}>
+              El reporte se ha enviado.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -494,6 +579,44 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: COLORS.bgSection,
   },
+  photoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  photoThumbWrap: {
+    width: "31%",
+    aspectRatio: 1,
+    position: "relative",
+  },
+  photoThumb: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+  },
+  photoRemoveButton: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.18)",
+    borderRadius: 10,
+  },
   photoChangeButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -546,5 +669,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginBottom: 4,
+  },
+  successOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  successCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 320,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successIconCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: COLORS.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  successSubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 21,
   },
 });

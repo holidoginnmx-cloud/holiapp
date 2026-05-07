@@ -18,6 +18,8 @@ export default function ProfileLayout() {
         headerStyle: { backgroundColor: COLORS.white },
         headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
         headerLeft: backButton,
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen name="credit-history" options={{ title: "Saldo a favor" }} />

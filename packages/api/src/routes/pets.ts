@@ -50,7 +50,12 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         },
         include: {
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
-          vaccines: { orderBy: { appliedAt: "desc" } },
+          vaccines: {
+            orderBy: { appliedAt: "desc" },
+            include: {
+              catalog: { select: { id: true, code: true, displayName: true } },
+            },
+          },
           reservations: {
             where: {
               status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
@@ -80,7 +85,12 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       const pet = await prisma.pet.findUnique({
         where: { id: request.params.id },
         include: {
-          vaccines: { orderBy: { appliedAt: "desc" } },
+          vaccines: {
+            orderBy: { appliedAt: "desc" },
+            include: {
+              catalog: { select: { id: true, code: true, displayName: true } },
+            },
+          },
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
       });
@@ -249,6 +259,52 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       });
 
       return { pet, reservations, behaviorTags };
+    }
+  );
+
+  // GET /pets/:id/alerts — incidentes/alertas del staff por mascota.
+  // Owner ve los suyos, staff/admin ven cualquiera.
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { resolved?: string };
+  }>(
+    "/pets/:id/alerts",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, ownerId: true },
+      });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+
+      const filterResolved = request.query.resolved;
+      const where: any = { petId: request.params.id };
+      if (filterResolved === "true") where.isResolved = true;
+      else if (filterResolved === "false") where.isResolved = false;
+
+      const alerts = await prisma.staffAlert.findMany({
+        where,
+        orderBy: [{ isResolved: "asc" }, { createdAt: "desc" }],
+        include: {
+          staff: { select: { id: true, firstName: true, lastName: true } },
+          reservation: {
+            select: {
+              id: true,
+              checkIn: true,
+              checkOut: true,
+              reservationType: true,
+              appointmentAt: true,
+              room: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+      return alerts;
     }
   );
 }

@@ -87,6 +87,30 @@ export default function HomeScreen() {
     ...(upcomingReservations ?? []),
   ].filter((r) => r.hasPendingChangeRequest);
 
+  // Vacunas vencidas o por vencer (≤30 días) por mascota.
+  // Si el backend ya marcó cartillaStatus = EXPIRED, se considera urgente
+  // aunque la lista de vacunas esté limpia (pets ya marcadas se siguen alertando).
+  const VACCINE_WINDOW_MS = 30 * 86_400_000;
+  const petsWithVaccineAlert = activePets
+    .map((p) => {
+      const expired = (p.vaccines ?? []).filter(
+        (v) => v.expiresAt && new Date(v.expiresAt).getTime() <= now
+      );
+      const expiringSoon = (p.vaccines ?? []).filter((v) => {
+        if (!v.expiresAt) return false;
+        const ts = new Date(v.expiresAt).getTime();
+        return ts > now && ts - now <= VACCINE_WINDOW_MS;
+      });
+      const cartillaExpired = (p as any).cartillaStatus === "EXPIRED";
+      return { pet: p, expired, expiringSoon, cartillaExpired };
+    })
+    .filter(
+      (x) =>
+        x.expired.length > 0 ||
+        x.expiringSoon.length > 0 ||
+        x.cartillaExpired
+    );
+
   const PRESTAY_WINDOW_MS = 48 * 60 * 60 * 1000;
   const prestayReservations =
     upcomingReservations?.filter(
@@ -186,7 +210,9 @@ export default function HomeScreen() {
         <TouchableOpacity
           key={`bal-${r.id}`}
           style={[styles.alert, styles.alertWarning]}
-          onPress={() => router.push(`/reservation/${r.id}` as any)}
+          onPress={() =>
+            router.push(`/reservation/detail/${r.id}?from=home` as any)
+          }
           activeOpacity={0.85}
         >
           <Ionicons name="alert-circle" size={20} color={COLORS.warningText} />
@@ -249,6 +275,62 @@ export default function HomeScreen() {
           <Ionicons name="chevron-forward" size={16} color={COLORS.warningText} />
         </TouchableOpacity>
       )}
+
+      {petsWithVaccineAlert.map(({ pet, expired, expiringSoon, cartillaExpired }) => {
+        const isExpired = expired.length > 0 || cartillaExpired;
+        const total = expired.length + expiringSoon.length;
+        const firstVaccine = expired[0] ?? expiringSoon[0];
+        const vaxName = firstVaccine
+          ? (firstVaccine as any).catalog?.displayName ?? firstVaccine.name
+          : null;
+        const isUrgent = isExpired;
+        return (
+          <TouchableOpacity
+            key={`vax-${pet.id}`}
+            style={[styles.alert, isUrgent ? styles.alertDanger : styles.alertWarning]}
+            onPress={() => router.push(`/pet/renew-cartilla/${pet.id}` as any)}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={isUrgent ? "alert-circle" : "medkit"}
+              size={20}
+              color={isUrgent ? COLORS.errorText : COLORS.warningText}
+            />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.alertTitle,
+                  isUrgent && { color: COLORS.errorText },
+                ]}
+              >
+                {cartillaExpired
+                  ? `Cartilla vencida — ${formatName(pet.name)}`
+                  : isExpired
+                  ? `Vacuna vencida — ${formatName(pet.name)}`
+                  : `Vacuna por vencer — ${formatName(pet.name)}`}
+              </Text>
+              <Text
+                style={[
+                  styles.alertSub,
+                  isUrgent && { color: COLORS.errorText },
+                ]}
+                numberOfLines={2}
+              >
+                {!vaxName
+                  ? "Renueva la cartilla para volver a reservar."
+                  : total > 1
+                  ? `${vaxName} y ${total - 1} más. Renuévalas pronto.`
+                  : `${vaxName}. Renuévala pronto para mantener tus reservaciones.`}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={isUrgent ? COLORS.errorText : COLORS.warningText}
+            />
+          </TouchableOpacity>
+        );
+      })}
 
       {changeAlerts.map((r) => (
         <View key={`chg-${r.id}`} style={[styles.alert, styles.alertInfo]}>
@@ -387,7 +469,9 @@ export default function HomeScreen() {
                   petName={res.pet.name}
                   petPhotoUrl={res.pet.photoUrl}
                   roomName={res.room?.name ?? null}
-                  onPress={() => router.push(`/reservation/${res.id}`)}
+                  onPress={() =>
+                    router.push(`/reservation/detail/${res.id}?from=home` as any)
+                  }
                 />
               ))}
             </>
@@ -405,7 +489,9 @@ export default function HomeScreen() {
                   checkIn={res.checkIn}
                   checkOut={res.checkOut}
                   totalAmount={Number(res.totalAmount)}
-                  onPress={() => router.push(`/reservation/${res.id}`)}
+                  onPress={() =>
+                    router.push(`/reservation/detail/${res.id}?from=home` as any)
+                  }
                 />
               ))}
             </>
@@ -556,6 +642,10 @@ const styles = StyleSheet.create({
   alertInfo: {
     backgroundColor: COLORS.infoBg,
     borderColor: COLORS.infoText,
+  },
+  alertDanger: {
+    backgroundColor: COLORS.errorBg,
+    borderColor: COLORS.errorText,
   },
   alertTitle: {
     fontSize: 14,

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { cancelReservation } from "@/lib/api";
+import { cancelReservation, issueRefund } from "@/lib/api";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
@@ -21,6 +21,12 @@ interface CancelReservationModalProps {
   petName: string;
   refundAmount: number;
   allowStripeRefund: boolean;
+  /**
+   * "cancel" (default): el cliente decide cancelar y elige refund en el mismo
+   * paso. "issue-refund": la reserva ya fue cancelada (típicamente por admin)
+   * y solo falta que el cliente elija cómo recibir el reembolso.
+   */
+  mode?: "cancel" | "issue-refund";
   onClose: () => void;
 }
 
@@ -34,22 +40,30 @@ export function CancelReservationModal({
   petName,
   refundAmount,
   allowStripeRefund,
+  mode = "cancel",
   onClose,
 }: CancelReservationModalProps) {
   const qc = useQueryClient();
   const [choice, setChoice] = useState<RefundChoice>(
     allowStripeRefund ? "STRIPE_REFUND" : "CREDIT"
   );
+  const isIssueRefund = mode === "issue-refund";
 
   const mutation = useMutation({
-    mutationFn: () => cancelReservation(reservationId, choice),
+    mutationFn: () =>
+      isIssueRefund
+        ? issueRefund(reservationId, choice)
+        : cancelReservation(reservationId, choice),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["reservation", reservationId] });
       qc.invalidateQueries({ queryKey: ["credit-ledger"] });
       qc.invalidateQueries({ queryKey: ["reservations"] });
       qc.invalidateQueries({ queryKey: ["me"] });
+      const successTitle = isIssueRefund
+        ? "Reembolso procesado"
+        : "Reservación cancelada";
       Alert.alert(
-        "Reservación cancelada",
+        successTitle,
         res.refundAmount > 0
           ? `Se procesaron ${formatMoney(res.refundAmount)} como ${
               res.refundChoice === "STRIPE_REFUND"
@@ -64,6 +78,10 @@ export function CancelReservationModal({
   });
 
   const handleConfirm = () => {
+    if (isIssueRefund) {
+      mutation.mutate();
+      return;
+    }
     Alert.alert(
       "Cancelar reservación",
       "Esta acción no se puede deshacer. ¿Continuar?",
@@ -83,14 +101,18 @@ export function CancelReservationModal({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Cancelar reservación</Text>
+            <Text style={styles.title}>
+              {isIssueRefund ? "Elige tu reembolso" : "Cancelar reservación"}
+            </Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}>
               <Ionicons name="close" size={24} color={COLORS.textTertiary} />
             </TouchableOpacity>
           </View>
 
           <Text style={styles.body}>
-            Estás por cancelar la reservación de {petName}.
+            {isIssueRefund
+              ? `Cancelamos la reserva de ${petName}. Elige cómo quieres recibir tu reembolso.`
+              : `Estás por cancelar la reservación de ${petName}.`}
           </Text>
 
           {refundAmount > 0 ? (
@@ -151,7 +173,10 @@ export function CancelReservationModal({
           )}
 
           <TouchableOpacity
-            style={[styles.confirmButton, mutation.isPending && { opacity: 0.5 }]}
+            style={[
+              isIssueRefund ? styles.confirmButtonPrimary : styles.confirmButton,
+              mutation.isPending && { opacity: 0.5 },
+            ]}
             onPress={handleConfirm}
             disabled={mutation.isPending}
             activeOpacity={0.85}
@@ -159,17 +184,21 @@ export function CancelReservationModal({
             {mutation.isPending ? (
               <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Text style={styles.confirmText}>Cancelar reservación</Text>
+              <Text style={styles.confirmText}>
+                {isIssueRefund ? "Confirmar reembolso" : "Cancelar reservación"}
+              </Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={onClose}
-            disabled={mutation.isPending}
-          >
-            <Text style={styles.backText}>No, volver</Text>
-          </TouchableOpacity>
+          {!isIssueRefund && (
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={onClose}
+              disabled={mutation.isPending}
+            >
+              <Text style={styles.backText}>No, volver</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -248,6 +277,13 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     backgroundColor: COLORS.errorText,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  confirmButtonPrimary: {
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",

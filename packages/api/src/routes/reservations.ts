@@ -13,11 +13,13 @@ import { notifyBathContracted } from "./services";
 import { createAuthMiddleware } from "../middleware/auth";
 import {
   reservationConfirmedTemplate,
-  refundIssuedTemplate,
   sendEmail,
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import { processRefund } from "../lib/refund";
+import { autoCheckoutOverdueStays, notifyExpiringVaccines } from "../lib/auto-actions";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
+import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -27,13 +29,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
 
-  // Auto-cancel overdue deposit reservations
+  // Auto-cancel overdue deposit reservations.
+  // DEPOSIT reservations are created in PENDING (anticipo pagado, saldo
+  // pendiente). They move to CONFIRMED only cuando el saldo se cubre.
+  // Si el deadline (check-in) ya pasó y el saldo nunca se completó,
+  // la reserva queda colgada en pendientes — la cancelamos.
   async function cancelOverdueDeposits() {
     const overdue = await prisma.reservation.findMany({
       where: {
         paymentType: "DEPOSIT",
         depositDeadline: { lt: new Date() },
-        status: "CONFIRMED",
+        status: { in: ["PENDING", "CONFIRMED"] },
       },
       include: { payments: true },
     });
@@ -56,6 +62,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     Querystring: { ownerId?: string; status?: ReservationStatus };
   }>("/reservations", { preHandler: [authMiddleware] }, async (request) => {
     await cancelOverdueDeposits();
+    await autoCheckoutOverdueStays(prisma);
     const { ownerId: queryOwnerId, status } = request.query;
     const isStaffOrAdmin =
       request.userRole === "ADMIN" || request.userRole === "STAFF";
@@ -71,7 +78,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         staff: { select: { id: true, firstName: true, lastName: true } },
         owner: { select: { id: true, firstName: true, lastName: true } },
         payments: {
-          where: { status: "PAID" },
+          where: { status: { in: ["PAID", "PARTIAL"] } },
           select: { amount: true },
         },
         changeRequests: {
@@ -190,7 +197,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // Calculate totalDays and totalAmount (weight-based pricing)
     const diffMs = checkOut.getTime() - checkIn.getTime();
     const totalDays = Math.ceil(diffMs / 86_400_000);
-    const pricePerDay = pet.weight && pet.weight >= 20 ? 450 : 350;
+    const pricingConfig = await getLodgingPricing(prisma);
+    const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
     const totalAmount = new Prisma.Decimal(pricePerDay).mul(totalDays);
 
     const reservation = await prisma.reservation.create({
@@ -330,7 +338,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const owner = await prisma.user.findUnique({ where: { id: ownerId } });
     if (!owner) return reply.status(404).send({ error: "Dueño no encontrado" });
 
-    // Verify all pets belong to owner
+    // Defense in depth: corre el chequeo de vacunas vencidas antes del guard.
+    // Esto asegura que si una vacuna venció y el admin no ha abierto el dashboard,
+    // igual se demote la cartilla a EXPIRED y se bloquee la reservación aquí.
+    await notifyExpiringVaccines(prisma);
+
+    // Verify all pets belong to owner (re-fetch para tener el cartillaStatus fresco)
     const pets = await prisma.pet.findMany({ where: { id: { in: petIds }, ownerId } });
     if (pets.length !== petIds.length) {
       return reply.status(400).send({ error: "Una o más mascotas no pertenecen al dueño" });
@@ -340,8 +353,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const blocked = pets.filter((p) => p.cartillaStatus !== "APPROVED");
     if (blocked.length > 0) {
       const names = blocked.map((p) => p.name).join(", ");
+      const someExpired = blocked.some((p) => p.cartillaStatus === "EXPIRED");
       return reply.status(400).send({
-        error: `Cartilla pendiente de aprobación: ${names}. Sube la cartilla y espera el visto bueno del equipo HDI.`,
+        error: someExpired
+          ? `Cartilla vencida: ${names}. Renueva la cartilla y espera el visto bueno del equipo HDI antes de reservar.`
+          : `Cartilla pendiente de aprobación: ${names}. Sube la cartilla y espera el visto bueno del equipo HDI.`,
         blockedPetIds: blocked.map((p) => p.id),
       });
     }
@@ -381,12 +397,13 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const diffMs = checkOut.getTime() - checkIn.getTime();
     const totalDays = Math.ceil(diffMs / 86_400_000);
     const groupId = petIds.length > 1 ? randomUUID() : null;
+    const pricingConfig = await getLodgingPricing(prisma);
 
     // Determine sizes
     const petSizes = pets.map((p) => ({
       pet: p,
       size: sizeFromWeight(p.weight ?? 0),
-      pricePerDay: p.weight && p.weight >= 20 ? 450 : 350,
+      pricePerDay: pricePerDayForWeight(p.weight, pricingConfig),
     }));
 
     // Find rooms
@@ -691,7 +708,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
       const reservation = await prisma.reservation.findUnique({
         where: { id: request.params.id },
-        include: { payments: true, pet: true },
+        select: { id: true, ownerId: true, status: true },
       });
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
@@ -705,106 +722,68 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Refund covers anything the owner has already paid, including partial
-      // deposits — exclude only refunds.
-      const paidPayments = reservation.payments.filter(
-        (p) => p.status === "PAID" || p.status === "PARTIAL",
-      );
-      const refundAmount = paidPayments.reduce((s, p) => s + Number(p.amount), 0);
-      const lastStripePayment = paidPayments
-        .filter((p) => p.stripePaymentIntentId)
-        .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { status: "CANCELLED" },
+      });
 
-      if (refundChoice === "STRIPE_REFUND" && !lastStripePayment) {
+      try {
+        const result = await processRefund(prisma, {
+          reservationId: reservation.id,
+          refundChoice,
+        });
+        return reply.send({ success: true, ...result });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Error procesando reembolso";
+        return reply.status(409).send({ error: message });
+      }
+    }
+  );
+
+  // POST /reservations/:id/issue-refund — cliente elige reembolso después de
+  // que el admin canceló la reserva. La reserva ya está CANCELLED y aún no
+  // tiene un Payment con status REFUNDED.
+  fastify.post<{ Params: { id: string } }>(
+    "/reservations/:id/issue-refund",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const parsed = CancelReservationSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { refundChoice } = parsed.data;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: { payments: true },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+      if (reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (reservation.status !== "CANCELLED") {
+        return reply.status(400).send({
+          error: "Solo puedes elegir reembolso en reservas canceladas",
+        });
+      }
+      if (reservation.payments.some((p) => p.status === "REFUNDED")) {
         return reply.status(409).send({
-          error: "El pago original no fue con tarjeta; elige saldo a favor",
+          error: "Ya se emitió un reembolso para esta reservación",
         });
       }
 
-      // Cargar email del dueño (para notificación post-transacción)
-      const ownerForEmail = await prisma.user.findUnique({
-        where: { id: reservation.ownerId },
-        select: { email: true, firstName: true },
-      });
-
-      await prisma.$transaction(async (tx) => {
-        await tx.reservation.update({
-          where: { id: reservation.id },
-          data: { status: "CANCELLED" },
+      try {
+        const result = await processRefund(prisma, {
+          reservationId: reservation.id,
+          refundChoice,
         });
-
-        if (refundAmount > 0) {
-          if (refundChoice === "STRIPE_REFUND" && lastStripePayment?.stripePaymentIntentId) {
-            const refund = await stripe.refunds.create({
-              payment_intent: lastStripePayment.stripePaymentIntentId,
-              amount: Math.round(refundAmount * 100),
-            });
-            await tx.payment.create({
-              data: {
-                amount: refundAmount,
-                method: "STRIPE",
-                status: "REFUNDED",
-                stripePaymentIntentId: refund.id,
-                paidAt: new Date(),
-                reservationId: reservation.id,
-                userId: reservation.ownerId,
-                notes: `Reembolso por cancelación de reservación`,
-              },
-            });
-            // Notificación se hace fuera del $transaction (side-effect con push)
-          } else {
-            const updatedUser = await tx.user.update({
-              where: { id: reservation.ownerId },
-              data: { creditBalance: { increment: refundAmount } },
-            });
-            await tx.creditLedger.create({
-              data: {
-                userId: reservation.ownerId,
-                type: "CREDIT_ADDED",
-                amount: refundAmount,
-                balanceAfter: Number(updatedUser.creditBalance),
-                description: `Saldo por cancelación de reservación de ${reservation.pet.name}`,
-                reservationId: reservation.id,
-              },
-            });
-            // Notificación se hace fuera del $transaction (side-effect con push)
-          }
-        }
-      });
-
-      // Notificación + push post-commit
-      if (refundAmount > 0) {
-        if (refundChoice === "STRIPE_REFUND" && lastStripePayment?.stripePaymentIntentId) {
-          await notifyUser(prisma, {
-            userId: reservation.ownerId,
-            type: "REFUND_ISSUED",
-            title: "Reembolso procesado 💳",
-            body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por la cancelación de ${reservation.pet.name}.`,
-            data: { reservationId: reservation.id, amount: refundAmount },
-          });
-        } else {
-          await notifyUser(prisma, {
-            userId: reservation.ownerId,
-            type: "CREDIT_ADDED",
-            title: "Saldo a favor acreditado 💰",
-            body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por la cancelación de ${reservation.pet.name}.`,
-            data: { reservationId: reservation.id, amount: refundAmount },
-          });
-        }
+        return reply.send({ success: true, ...result });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Error procesando reembolso";
+        return reply.status(409).send({ error: message });
       }
-
-      // Email post-cancelación
-      if (refundAmount > 0 && ownerForEmail?.email) {
-        const tpl = refundIssuedTemplate({
-          ownerFirstName: ownerForEmail.firstName,
-          amount: refundAmount,
-          petName: reservation.pet.name,
-          channel: refundChoice === "STRIPE_REFUND" ? "STRIPE" : "CREDIT",
-        });
-        await sendEmail({ to: ownerForEmail.email, ...tpl });
-      }
-
-      return reply.send({ success: true, refundAmount, refundChoice });
     }
   );
 }

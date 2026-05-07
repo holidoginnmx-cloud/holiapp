@@ -34,7 +34,6 @@ import {
   completeAddon,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { formatName, utcDayKey, localDayKey, formatPhoneInput } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
@@ -355,28 +354,28 @@ export default function StayDetail() {
         </View>
       </View>
 
-      {/* Owner Contact / Emergency Info */}
-      <View style={styles.ownerCard}>
-        <View style={styles.ownerCardHeader}>
-          <Ionicons name="person-circle-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.ownerCardTitle}>Datos del dueño</Text>
-        </View>
-        <View style={styles.ownerRow}>
-          <Ionicons name="person-outline" size={14} color={COLORS.textTertiary} />
-          <Text style={styles.ownerDetail}>
-            {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
-          </Text>
-        </View>
-        <View style={styles.ownerRow}>
-          <Ionicons name="mail-outline" size={14} color={COLORS.textTertiary} />
-          <Text style={styles.ownerDetail}>{stay.owner.email}</Text>
-        </View>
-        {stay.owner.phone && (
-          <View style={styles.ownerRow}>
-            <Ionicons name="call-outline" size={14} color={COLORS.textTertiary} />
-            <Text style={styles.ownerDetail}>{formatPhoneInput(stay.owner.phone)}</Text>
+      {/* Pet + Owner — un solo card */}
+      <View style={styles.card}>
+        {/* Owner strip (compacto) */}
+        <View style={styles.ownerStrip}>
+          <Ionicons
+            name="person-circle-outline"
+            size={20}
+            color={COLORS.primary}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ownerStripName}>
+              {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
+            </Text>
+            <Text style={styles.ownerStripContact} numberOfLines={1}>
+              {stay.owner.email}
+              {stay.owner.phone
+                ? ` · ${formatPhoneInput(stay.owner.phone)}`
+                : ""}
+            </Text>
           </View>
-        )}
+        </View>
+
         {stay.medicationNotes && (
           <View style={styles.medicationBanner}>
             <Ionicons name="medkit" size={16} color={COLORS.errorText} />
@@ -386,10 +385,9 @@ export default function StayDetail() {
             </View>
           </View>
         )}
-      </View>
 
-      {/* Pet Profile */}
-      <View style={styles.card}>
+        <View style={styles.cardDivider} />
+
         <View style={styles.petProfileRow}>
           {stay.pet.photoUrl ? (
             <Image
@@ -594,240 +592,219 @@ export default function StayDetail() {
         </TouchableOpacity>
       )}
 
-      {stay.status === "CHECKED_IN" && (
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionButtonSmall, { backgroundColor: COLORS.primary }]}
-            onPress={() =>
-              router.push(`/(staff)/checklist/${stay.id}` as any)
-            }
-          >
-            <Ionicons name="document-text-outline" size={18} color={COLORS.white} />
-            <Text style={styles.actionButtonSmallText}>
-              {todayChecklist ? "Ver reporte" : "Llenar reporte"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButtonSmall, { backgroundColor: COLORS.warningText }]}
-            onPress={() => {
-              const warnings: string[] = [];
-              if (!todayChecklist) warnings.push("No hay reporte diario de hoy");
-              if (todayUpdates.length === 0) warnings.push("No hay evidencias de hoy");
-              const unresolvedAlerts = stay.alerts.filter((a) => !a.isResolved);
-              if (unresolvedAlerts.length > 0)
-                warnings.push(`${unresolvedAlerts.length} alerta(s) sin resolver`);
-
-              if (warnings.length > 0) {
-                Alert.alert(
-                  "Check-out con pendientes",
-                  `Antes de finalizar:\n\n• ${warnings.join("\n• ")}\n\n¿Deseas continuar de todos modos?`,
-                  [
-                    { text: "Cancelar", style: "cancel" },
-                    {
-                      text: "Continuar",
-                      style: "destructive",
-                      onPress: () => checkoutMutation.mutate(),
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert("Check-out", "¿Finalizar la estancia?", [
-                  { text: "Cancelar", style: "cancel" },
-                  {
-                    text: "Finalizar",
-                    style: "destructive",
-                    onPress: () => checkoutMutation.mutate(),
-                  },
-                ]);
-              }
-            }}
-            disabled={checkoutMutation.isPending}
-          >
-            <Ionicons name="log-out-outline" size={18} color={COLORS.white} />
-            <Text style={styles.actionButtonSmallText}>Check-out</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Today's Checklist */}
-      {stay.status === "CHECKED_IN" && todayChecklist && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reporte de hoy</Text>
-          <ChecklistSummaryCard checklist={todayChecklist} />
-        </View>
-      )}
-
-      {/* Evidence — all days */}
-      {(stay.status === "CHECKED_IN" || stay.status === "CHECKED_OUT") && (
-        <View style={styles.section}>
+      {/* Comportamiento + Alertas — lado a lado */}
+      <View style={styles.sideBySideRow}>
+        <View style={[styles.section, styles.sideCol]}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              Evidencias ({stay.updates.length} total)
-            </Text>
+            <Text style={styles.sectionTitle}>Comportamiento</Text>
             {stay.status === "CHECKED_IN" && (
-              <TouchableOpacity
-                onPress={handleUploadEvidence}
-                disabled={uploadingEvidence}
-              >
-                {uploadingEvidence ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                ) : (
-                  <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-                )}
+              <TouchableOpacity onPress={() => setTagModalVisible(true)}>
+                <Ionicons name="add-circle" size={24} color={COLORS.primary} />
               </TouchableOpacity>
             )}
           </View>
-          {stay.updates.length === 0 ? (
-            <Text style={styles.emptyText}>Sin evidencias</Text>
+          {stay.pet.behaviorTags.length === 0 ? (
+            <Text style={styles.emptyText}>Sin etiquetas</Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {stay.updates.map((u) => (
-                <View key={u.id} style={styles.evidenceItem}>
-                  {u.mediaType === "image" ? (
-                    <Image
-                      source={{ uri: u.mediaUrl }}
-                      style={styles.evidenceImage}
-                    />
-                  ) : (
-                    <View style={[styles.evidenceImage, styles.videoPlaceholder]}>
-                      <Ionicons name="videocam" size={28} color={COLORS.primary} />
-                    </View>
-                  )}
-                  <Text style={styles.evidenceDate}>
-                    {new Date(u.createdAt).toLocaleDateString("es-MX", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </Text>
-                  {u.caption && (
-                    <Text style={styles.evidenceCaption} numberOfLines={1}>
-                      {u.caption}
+            <View style={styles.tagsRow}>
+              {stay.pet.behaviorTags.map((bt) => (
+                <BehaviorTagPill
+                  key={bt.id}
+                  tag={bt.tag}
+                  onDelete={
+                    stay.status === "CHECKED_IN"
+                      ? () => handleDeleteTag(bt.id, bt.tag)
+                      : undefined
+                  }
+                />
+              ))}
+            </View>
+          )}
+        </View>
+
+        {stay.status === "CHECKED_IN" && (
+          <View style={[styles.section, styles.sideCol]}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Alertas</Text>
+              <TouchableOpacity onPress={() => setAlertModalVisible(true)}>
+                <Ionicons name="warning" size={22} color={COLORS.warningText} />
+              </TouchableOpacity>
+            </View>
+            {stay.alerts.length === 0 ? (
+              <Text style={styles.emptyText}>Sin alertas</Text>
+            ) : (
+              stay.alerts.map((a) => (
+                <View
+                  key={a.id}
+                  style={[
+                    styles.alertRow,
+                    {
+                      backgroundColor: a.isResolved ? COLORS.bgSection : COLORS.warningBg,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={a.isResolved ? "checkmark-circle" : "alert-circle"}
+                    size={18}
+                    color={a.isResolved ? COLORS.successText : COLORS.warningText}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertType}>
+                      {ALERT_TYPES.find((t) => t.key === a.type)?.label ?? a.type}
                     </Text>
+                    <Text style={styles.alertDesc}>{a.description}</Text>
+                  </View>
+                  {!a.isResolved && (
+                    <TouchableOpacity
+                      style={styles.resolveButton}
+                      onPress={() =>
+                        Alert.alert("Resolver alerta", "¿Marcar como resuelta?", [
+                          { text: "Cancelar", style: "cancel" },
+                          { text: "Resolver", onPress: () => resolveAlertMutation.mutate(a.id) },
+                        ])
+                      }
+                      disabled={resolveAlertMutation.isPending}
+                    >
+                      <Ionicons name="checkmark" size={16} color={COLORS.successText} />
+                    </TouchableOpacity>
                   )}
                 </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      )}
+              ))
+            )}
 
-      {/* Behavior Tags */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Comportamiento</Text>
-          {stay.status === "CHECKED_IN" && (
-            <TouchableOpacity onPress={() => setTagModalVisible(true)}>
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {stay.pet.behaviorTags.length === 0 ? (
-          <Text style={styles.emptyText}>Sin etiquetas</Text>
-        ) : (
-          <View style={styles.tagsRow}>
-            {stay.pet.behaviorTags.map((bt) => (
-              <BehaviorTagPill
-                key={bt.id}
-                tag={bt.tag}
-                onDelete={
-                  stay.status === "CHECKED_IN"
-                    ? () => handleDeleteTag(bt.id, bt.tag)
-                    : undefined
-                }
-              />
-            ))}
+            {/* Aviso si aún no hay reporte de hoy */}
+            {!todayChecklist && (
+              <View style={styles.missingReportBanner}>
+                <Ionicons name="document-text-outline" size={18} color={COLORS.warningText} />
+                <Text style={styles.missingReportText}>
+                  Aún no se ha completado el reporte de hoy
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
 
-      {/* Alerts */}
-      {stay.status === "CHECKED_IN" && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Alertas</Text>
-            <TouchableOpacity onPress={() => setAlertModalVisible(true)}>
-              <Ionicons name="warning" size={22} color={COLORS.warningText} />
-            </TouchableOpacity>
+      {/* Historial de reportes — botón a pantalla dedicada */}
+      {stay.checklists.length > 0 && (
+        <TouchableOpacity
+          style={styles.checklistsCard}
+          onPress={() =>
+            router.push(`/reservation/checklists/${stay.id}` as any)
+          }
+          activeOpacity={0.85}
+          testID="staff-stay-checklists-link"
+        >
+          <View style={styles.checklistsIcon}>
+            <Ionicons name="document-text" size={22} color={COLORS.primary} />
           </View>
-          {stay.alerts.length === 0 ? (
-            <Text style={styles.emptyText}>Sin alertas</Text>
-          ) : (
-            stay.alerts.map((a) => (
-              <View
-                key={a.id}
-                style={[
-                  styles.alertRow,
-                  {
-                    backgroundColor: a.isResolved ? COLORS.bgSection : COLORS.warningBg,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={a.isResolved ? "checkmark-circle" : "alert-circle"}
-                  size={18}
-                  color={a.isResolved ? COLORS.successText : COLORS.warningText}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.alertType}>
-                    {ALERT_TYPES.find((t) => t.key === a.type)?.label ?? a.type}
-                  </Text>
-                  <Text style={styles.alertDesc}>{a.description}</Text>
-                </View>
-                {!a.isResolved && (
-                  <TouchableOpacity
-                    style={styles.resolveButton}
-                    onPress={() =>
-                      Alert.alert("Resolver alerta", "¿Marcar como resuelta?", [
-                        { text: "Cancelar", style: "cancel" },
-                        { text: "Resolver", onPress: () => resolveAlertMutation.mutate(a.id) },
-                      ])
-                    }
-                    disabled={resolveAlertMutation.isPending}
-                  >
-                    <Ionicons name="checkmark" size={16} color={COLORS.successText} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))
-          )}
-
-          {/* Aviso si aún no hay reporte de hoy */}
-          {!todayChecklist && (
-            <View style={styles.missingReportBanner}>
-              <Ionicons name="document-text-outline" size={18} color={COLORS.warningText} />
-              <Text style={styles.missingReportText}>
-                Aún no se ha completado el reporte de hoy
-              </Text>
-            </View>
-          )}
-        </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.checklistsTitle}>Historial de reportes</Text>
+            <Text style={styles.checklistsSubtitle}>
+              {stay.checklists.length}{" "}
+              {stay.checklists.length === 1 ? "reporte" : "reportes"} de la estancia
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+        </TouchableOpacity>
       )}
 
-      {/* Checklist History */}
-      {stay.checklists.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Historial de reportes</Text>
-          {stay.checklists.map((c) => {
-            const cDate = new Date(c.date);
-            cDate.setHours(0, 0, 0, 0);
-            const dayEnd = cDate.getTime() + 86_400_000;
-            const reportPhoto = stay.updates.find(
-              (u) =>
-                u.mediaType === "image" &&
-                new Date(u.createdAt).getTime() >= cDate.getTime() &&
-                new Date(u.createdAt).getTime() < dayEnd,
-            );
-            return (
-              <ChecklistSummaryCard
-                key={c.id}
-                checklist={c}
-                compact
-                photoUrl={reportPhoto?.mediaUrl ?? null}
-              />
-            );
-          })}
+      {/* Incidentes — botón a pantalla dedicada */}
+      <TouchableOpacity
+        style={styles.checklistsCard}
+        onPress={() =>
+          router.push(`/pet/incidents/${stay.pet.id}` as any)
+        }
+        activeOpacity={0.85}
+        testID="staff-stay-incidents-link"
+      >
+        <View style={styles.checklistsIcon}>
+          <Ionicons name="alert-circle" size={22} color={COLORS.primary} />
         </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.checklistsTitle}>Incidentes</Text>
+          <Text style={styles.checklistsSubtitle}>
+            Historial de alertas de {formatName(stay.pet.name)}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+      </TouchableOpacity>
+
+      {/* Acciones — última opción de la pantalla */}
+      {stay.status === "CHECKED_IN" && (
+        <>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.actionButtonSmall, { backgroundColor: COLORS.primary }]}
+              onPress={() =>
+                router.push(`/(staff)/checklist/${stay.id}` as any)
+              }
+            >
+              <Ionicons name="document-text-outline" size={18} color={COLORS.white} />
+              <Text style={styles.actionButtonSmallText}>
+                {todayChecklist ? "Ver reporte" : "Llenar reporte"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButtonSmall, { backgroundColor: COLORS.warningText }]}
+              onPress={() => {
+                const warnings: string[] = [];
+                if (!todayChecklist) warnings.push("No hay reporte diario de hoy");
+                if (todayUpdates.length === 0) warnings.push("No hay evidencias de hoy");
+                const unresolvedAlerts = stay.alerts.filter((a) => !a.isResolved);
+                if (unresolvedAlerts.length > 0)
+                  warnings.push(`${unresolvedAlerts.length} alerta(s) sin resolver`);
+
+                if (warnings.length > 0) {
+                  Alert.alert(
+                    "Check-out con pendientes",
+                    `Antes de finalizar:\n\n• ${warnings.join("\n• ")}\n\n¿Deseas continuar de todos modos?`,
+                    [
+                      { text: "Cancelar", style: "cancel" },
+                      {
+                        text: "Continuar",
+                        style: "destructive",
+                        onPress: () => checkoutMutation.mutate(),
+                      },
+                    ]
+                  );
+                } else {
+                  Alert.alert("Check-out", "¿Finalizar la estancia?", [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                      text: "Finalizar",
+                      style: "destructive",
+                      onPress: () => checkoutMutation.mutate(),
+                    },
+                  ]);
+                }
+              }}
+              disabled={checkoutMutation.isPending}
+            >
+              <Ionicons name="log-out-outline" size={18} color={COLORS.white} />
+              <Text style={styles.actionButtonSmallText}>Check-out</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: COLORS.primary, marginTop: 12 },
+            ]}
+            onPress={handleUploadEvidence}
+            disabled={uploadingEvidence}
+          >
+            {uploadingEvidence ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <>
+                <Ionicons name="camera-outline" size={20} color={COLORS.white} />
+                <Text style={styles.actionButtonText}>Subir evidencia</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </>
       )}
 
       <View style={{ height: 40 }} />
@@ -870,6 +847,10 @@ export default function StayDetail() {
                   <Ionicons name="close" size={24} color={COLORS.textTertiary} />
                 </TouchableOpacity>
               </View>
+
+              <Text style={styles.modalDescription}>
+                Reporta cualquier incidente, conducta inusual o problema de salud durante la estancia. El admin recibe la alerta y queda registrada en el historial de la mascota.
+              </Text>
 
               <ScrollView
                 horizontal
@@ -961,6 +942,9 @@ export default function StayDetail() {
                 <Ionicons name="close" size={24} color={COLORS.textTertiary} />
               </TouchableOpacity>
             </View>
+            <Text style={styles.modalDescription}>
+              Las etiquetas describen la personalidad y conducta del peludito según lo que observas durante la estancia. Sirven al equipo en visitas futuras y se acumulan en su historial.
+            </Text>
             <View style={styles.tagsGrid}>
               {BEHAVIOR_TAGS.map((bt) => (
                 <TouchableOpacity
@@ -982,6 +966,7 @@ export default function StayDetail() {
           </Pressable>
         </Pressable>
       </Modal>
+
     </ScrollView>
   );
 }
@@ -1188,16 +1173,26 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 20,
   },
+  sideBySideRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  sideCol: {
+    flex: 1,
+    marginHorizontal: 0,
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: COLORS.textPrimary,
-    marginBottom: 10,
   },
   emptyText: {
     fontSize: 13,
@@ -1208,15 +1203,27 @@ const styles = StyleSheet.create({
   evidenceItem: {
     marginRight: 10,
   },
+  evidenceImageWrap: {
+    width: 100,
+    height: 100,
+    position: "relative",
+  },
   evidenceImage: {
     width: 100,
     height: 100,
     borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
   },
-  videoPlaceholder: {
-    backgroundColor: COLORS.primaryLight,
+  evidencePlayOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.18)",
+    borderRadius: 10,
   },
   evidenceCaption: {
     fontSize: 11,
@@ -1264,12 +1271,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 8,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: COLORS.textPrimary,
+  },
+  modalDescription: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    lineHeight: 18,
+    marginBottom: 16,
   },
   alertTypeChip: {
     flexDirection: "row",
@@ -1338,39 +1351,26 @@ const styles = StyleSheet.create({
   tagOption: {
     padding: 4,
   },
-  // Owner contact card
-  ownerCard: {
-    backgroundColor: COLORS.white,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  ownerCardHeader: {
+  // Owner strip (within pet card)
+  ownerStrip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
+    gap: 10,
   },
-  ownerCardTitle: {
+  ownerStripName: {
     fontSize: 14,
     fontWeight: "700",
     color: COLORS.textPrimary,
   },
-  ownerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 3,
+  ownerStripContact: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 1,
   },
-  ownerDetail: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+  cardDivider: {
+    height: 1,
+    backgroundColor: COLORS.bgSection,
+    marginVertical: 12,
   },
   medicationBanner: {
     flexDirection: "row",
@@ -1449,5 +1449,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: COLORS.warningText,
+  },
+  checklistsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  checklistsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checklistsTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  checklistsSubtitle: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
 });

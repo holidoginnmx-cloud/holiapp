@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { useMemo } from "react";
 import {
   View,
   Text,
@@ -11,13 +12,13 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
-import { getAdminStats, getReservations, listAdminChangeRequests, getAdminAlerts } from "@/lib/api";
+import { getAdminStats, getReservations, listAdminChangeRequests, getAdminAlerts, getPendingCartillasCount } from "@/lib/api";
 import { Ionicons } from "@expo/vector-icons";
 import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
-import { AlertItem } from "@/components/AlertItem";
 import { ReservationCard } from "@/components/ReservationCard";
 import { formatName } from "@/lib/format";
+import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 function formatCurrency(amount: number): string {
   return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
@@ -25,6 +26,7 @@ function formatCurrency(amount: number): string {
 
 export default function AdminDashboard() {
   const firstName = useAuthStore((s) => s.firstName);
+  const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
 
   const {
@@ -61,12 +63,42 @@ export default function AdminDashboard() {
     refetchInterval: 60_000,
   });
 
+  const { data: cartillasPending } = useQuery({
+    queryKey: ["admin", "cartillas", "pending-count"],
+    queryFn: getPendingCartillasCount,
+    refetchInterval: 60_000,
+  });
+
   const today = new Date();
   const todayStr = today.toLocaleDateString("es-MX", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
+
+  // Total de alertas: staff (manuales) + sin evidencia + vacunas por vencer + cartillas pendientes.
+  const totalAlertsCount =
+    (unresolvedAlerts?.length ?? 0) +
+    (stats?.staysWithoutUpdates.length ?? 0) +
+    (stats?.expiringVaccines.length ?? 0) +
+    (cartillasPending?.pending ?? 0);
+
+  // Counts que llevan badge "nuevos desde la última visita".
+  const counts = useMemo(
+    () => ({
+      checkins: stats?.todayCheckIns,
+      checkouts: stats?.todayCheckOuts,
+      alerts: totalAlertsCount,
+      cartillas: cartillasPending?.pending,
+    }),
+    [
+      stats?.todayCheckIns,
+      stats?.todayCheckOuts,
+      totalAlertsCount,
+      cartillasPending?.pending,
+    ]
+  );
+  const { badges, markSeen } = useDashboardSeen(userId, counts);
 
   if (isLoading) {
     return (
@@ -95,7 +127,7 @@ export default function AdminDashboard() {
       {pendingCount > 0 && (
         <TouchableOpacity
           style={styles.changeRequestsBanner}
-          onPress={() => router.push("/(admin)/change-requests" as any)}
+          onPress={() => router.push("/admin/change-requests" as any)}
           activeOpacity={0.85}
         >
           <View style={styles.changeRequestsIcon}>
@@ -121,12 +153,18 @@ export default function AdminDashboard() {
             value={stats?.checkedInCount ?? 0}
             icon="paw"
             color={COLORS.primary}
+            onPress={() => router.push("/(admin)/reservations" as any)}
           />
           <StatCard
             label="Check-ins hoy"
             value={stats?.todayCheckIns ?? 0}
             icon="log-in-outline"
             color={COLORS.successText}
+            badge={badges.checkins}
+            onPress={() => {
+              markSeen("checkins");
+              router.push("/admin/checkins" as any);
+            }}
           />
         </View>
         <View style={styles.statsRow}>
@@ -135,26 +173,42 @@ export default function AdminDashboard() {
             value={stats?.todayCheckOuts ?? 0}
             icon="log-out-outline"
             color={COLORS.warningText}
+            badge={badges.checkouts}
+            onPress={() => {
+              markSeen("checkouts");
+              router.push("/admin/checkouts" as any);
+            }}
           />
-          <StatCard
-            label="Cuartos libres"
-            value={`${stats?.availableRooms ?? 0}/${stats?.totalActiveRooms ?? 0}`}
-            icon="bed-outline"
-            color={COLORS.infoText}
-          />
-        </View>
-        <View style={styles.statsRow}>
           <StatCard
             label="Ingresos del mes"
             value={formatCurrency(stats?.monthRevenue ?? 0)}
             icon="cash-outline"
             color={COLORS.successText}
+            onPress={() => router.push("/admin/revenue" as any)}
+          />
+        </View>
+        <View style={styles.statsRow}>
+          <StatCard
+            label="Alertas"
+            value={totalAlertsCount}
+            icon="warning-outline"
+            color={totalAlertsCount > 0 ? COLORS.errorText : COLORS.successText}
+            badge={badges.alerts}
+            onPress={() => {
+              markSeen("alerts");
+              router.push("/admin/alerts" as any);
+            }}
           />
           <StatCard
-            label="Alertas staff"
-            value={unresolvedAlerts?.length ?? 0}
-            icon="warning-outline"
-            color={(unresolvedAlerts?.length ?? 0) > 0 ? COLORS.errorText : COLORS.successText}
+            label="Cartillas"
+            value={cartillasPending?.pending ?? 0}
+            icon="document-text-outline"
+            color={(cartillasPending?.pending ?? 0) > 0 ? COLORS.warningText : COLORS.successText}
+            badge={badges.cartillas}
+            onPress={() => {
+              markSeen("cartillas");
+              router.push("/admin/cartillas" as any);
+            }}
           />
         </View>
       </View>
@@ -180,7 +234,7 @@ export default function AdminDashboard() {
                   totalAmount={Number(item.totalAmount)}
                   ownerName={undefined}
                   onPress={() =>
-                    router.push(`/(admin)/reservation/${item.id}` as any)
+                    router.push(`/admin/reservation/${item.id}` as any)
                   }
                 />
               </View>
@@ -203,80 +257,21 @@ export default function AdminDashboard() {
               checkOut={item.checkOut}
               totalAmount={Number(item.totalAmount)}
               onPress={() =>
-                router.push(`/(admin)/reservation/${item.id}` as any)
+                router.push(`/admin/reservation/${item.id}` as any)
               }
             />
           ))}
         </View>
       )}
 
-      {/* Staff Alerts */}
-      {unresolvedAlerts && unresolvedAlerts.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Alertas del staff</Text>
-          {unresolvedAlerts.slice(0, 5).map((a) => (
-            <AlertItem
-              key={a.id}
-              icon="warning-outline"
-              text={`${formatName(a.pet.name)} — ${a.type === "NOT_EATING" ? "No come" : a.type === "LETHARGIC" ? "Decaído" : a.type === "HEALTH_CONCERN" ? "Salud" : a.type === "INCIDENT" ? "Incidente" : "Comportamiento"}: ${a.description.slice(0, 60)}${a.description.length > 60 ? "..." : ""}`}
-              severity="error"
-              onPress={() => router.push("/(admin)/alerts" as any)}
-            />
-          ))}
-          {unresolvedAlerts.length > 5 && (
-            <TouchableOpacity onPress={() => router.push("/(admin)/alerts" as any)}>
-              <Text style={styles.seeAll}>Ver todas ({unresolvedAlerts.length})</Text>
-            </TouchableOpacity>
-          )}
+      {/* Empty state */}
+      {!activeReservations?.length && !upcomingReservations?.length && (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>
+            Todo en orden. No hay actividad pendiente.
+          </Text>
         </View>
       )}
-
-      {/* Alerts */}
-      {stats &&
-        (stats.expiringVaccines.length > 0 ||
-          stats.staysWithoutUpdates.length > 0) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Alertas</Text>
-
-            {stats.staysWithoutUpdates.map((s) => (
-              <AlertItem
-                key={s.reservationId}
-                icon="camera-outline"
-                text={`${s.petName} no tiene evidencia hoy (${s.ownerName})`}
-                severity="error"
-                onPress={() =>
-                  router.push(
-                    `/(admin)/reservation/${s.reservationId}` as any
-                  )
-                }
-              />
-            ))}
-
-            {stats.expiringVaccines.map((v) => (
-              <AlertItem
-                key={v.id}
-                icon="medical-outline"
-                text={`${v.name} de ${v.petName} vence pronto (${v.ownerName})`}
-                severity="warning"
-                onPress={() =>
-                  router.push(`/pet/${v.petId}` as any)
-                }
-              />
-            ))}
-          </View>
-        )}
-
-      {/* Empty state */}
-      {!activeReservations?.length &&
-        !upcomingReservations?.length &&
-        !stats?.expiringVaccines.length &&
-        !stats?.staysWithoutUpdates.length && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              Todo en orden. No hay actividad pendiente.
-            </Text>
-          </View>
-        )}
     </ScrollView>
   );
 }
@@ -309,12 +304,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   statsGrid: {
-    gap: 10,
-    marginBottom: 24,
+    gap: 8,
+    marginBottom: 20,
   },
   statsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   section: {
     marginBottom: 24,

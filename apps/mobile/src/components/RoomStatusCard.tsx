@@ -26,55 +26,86 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
   const isOccupied = room.currentReservation !== null;
   const isInactive = !room.isActive;
 
-  let statusLabel: string;
-  let statusBg: string;
-  let statusColor: string;
-
-  if (isInactive) {
-    statusLabel = "Inactivo";
-    statusBg = COLORS.bgSection;
-    statusColor = COLORS.textDisabled;
-  } else if (isOccupied) {
-    statusLabel = "Ocupado";
-    statusBg = COLORS.errorBg;
-    statusColor = COLORS.errorText;
-  } else {
-    statusLabel = "Disponible";
-    statusBg = COLORS.successBg;
-    statusColor = COLORS.successText;
-  }
+  const statusStyle = isInactive
+    ? {
+        label: "Inactivo",
+        bg: COLORS.bgSection,
+        color: COLORS.textDisabled,
+        accent: COLORS.border,
+      }
+    : isOccupied
+    ? {
+        label: "Ocupado",
+        bg: COLORS.errorBg,
+        color: COLORS.errorText,
+        accent: COLORS.errorText,
+      }
+    : {
+        label: "Disponible",
+        bg: COLORS.successBg,
+        color: COLORS.successText,
+        accent: COLORS.successText,
+      };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.header}>
-        <View style={styles.nameRow}>
-          <Ionicons name="bed-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.name}>{room.name}</Text>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.accentBar, { backgroundColor: statusStyle.accent }]} />
+      <View style={styles.body}>
+        <View style={styles.header}>
+          <View style={styles.nameRow}>
+            <View style={styles.bedIconWrap}>
+              <Ionicons name="bed" size={16} color={COLORS.primary} />
+            </View>
+            <Text style={styles.name} numberOfLines={1}>
+              {room.name}
+            </Text>
+          </View>
+          <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.badgeText, { color: statusStyle.color }]}>
+              {statusStyle.label}
+            </Text>
+          </View>
         </View>
-        <View style={[styles.badge, { backgroundColor: statusBg }]}>
-          <Text style={[styles.badgeText, { color: statusColor }]}>
-            {statusLabel}
-          </Text>
-        </View>
-      </View>
 
-      {isOccupied && room.currentReservation && (
-        <View style={styles.occupantRow}>
-          <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
-          <Text style={styles.occupantText}>
-            {formatName(room.currentReservation.petName)} — {formatName(room.currentReservation.ownerName)}
-          </Text>
-          <Text style={styles.checkoutText}>
-            Sale {formatDate(room.currentReservation.checkOut)}
-          </Text>
-        </View>
-      )}
+        {isOccupied && room.currentReservation && (
+          <View style={styles.occupantRow}>
+            <Ionicons name="paw" size={14} color={COLORS.errorText} />
+            <Text style={styles.occupantText} numberOfLines={1}>
+              {formatName(room.currentReservation.petName)} —{" "}
+              {formatName(room.currentReservation.ownerName)}
+            </Text>
+            <View style={styles.checkoutPill}>
+              <Ionicons
+                name="log-out-outline"
+                size={11}
+                color={COLORS.errorText}
+              />
+              <Text style={styles.checkoutText}>
+                Sale {formatDate(room.currentReservation.checkOut)}
+              </Text>
+            </View>
+          </View>
+        )}
 
-      <View style={styles.details}>
-        <Text style={styles.meta} numberOfLines={2} ellipsizeMode="tail">
-          Cap. {room.capacity} ·{" "}
-          {(room.sizeAllowed as string[]).map((s) => SIZE_LABELS[s] || s).join(", ")}
-        </Text>
+        <View style={styles.metaRow}>
+          <View style={styles.metaChip}>
+            <Ionicons
+              name="people-outline"
+              size={11}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.metaText}>Cap. {room.capacity}</Text>
+          </View>
+          {(room.sizeAllowed as string[]).map((s) => (
+            <View key={s} style={styles.metaChip}>
+              <Text style={styles.metaText}>{SIZE_LABELS[s] || s}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -82,73 +113,113 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: "row",
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
     marginBottom: 12,
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.07,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
+  },
+  accentBar: {
+    width: 4,
+  },
+  body: {
+    flex: 1,
+    padding: 14,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  bedIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
   name: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: COLORS.textPrimary,
+    flex: 1,
   },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 999,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   occupantRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     marginTop: 10,
     backgroundColor: COLORS.errorBgLight,
-    borderRadius: 8,
-    padding: 8,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   occupantText: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontWeight: "700",
     flex: 1,
   },
-  checkoutText: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-  },
-  details: {
+  checkoutPill: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    gap: 3,
+    backgroundColor: COLORS.errorBg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  checkoutText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.errorText,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: COLORS.bgSection,
   },
-  meta: {
-    fontSize: 12,
-    color: COLORS.textDisabled,
-    flex: 1,
-    flexShrink: 1,
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.bgSection,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  metaText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
   },
 });

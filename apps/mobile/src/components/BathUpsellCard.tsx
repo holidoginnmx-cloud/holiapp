@@ -77,19 +77,47 @@ export function BathUpsellCard({ reservation }: Props) {
     const extras: string[] = [];
     if (v.deslanado) extras.push("Deslanado");
     if (v.corte) extras.push("Corte");
-    const suffix = extras.length > 0 ? ` + ${extras.join(" + ")}` : "";
+    const variantLabel =
+      extras.length > 0 ? `Baño · ${extras.join(" + ")}` : "Baño · Estándar";
     return (
       <View style={styles.contractedCard}>
         <View style={styles.contractedHeader}>
-          <Ionicons name="water" size={20} color={COLORS.primary} />
-          <Text style={styles.contractedTitle}>Baño contratado</Text>
+          <View style={styles.contractedIconWrap}>
+            <Ionicons name="water" size={18} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.contractedTitle}>Baño contratado</Text>
+            <Text style={styles.contractedSubtitle}>
+              Servicio confirmado
+            </Text>
+          </View>
+          <View style={styles.contractedStatusPill}>
+            <Ionicons
+              name="checkmark-circle"
+              size={11}
+              color={COLORS.successText}
+            />
+            <Text style={styles.contractedStatusText}>Listo</Text>
+          </View>
         </View>
-        <Text style={styles.contractedBody}>
-          Baño{suffix} — ${Number(existingBath.unitPrice).toLocaleString("es-MX")}
-        </Text>
-        <Text style={styles.contractedNote}>
-          Se entregará bañado al momento del check-out.
-        </Text>
+
+        <View style={styles.contractedDetailRow}>
+          <Text style={styles.contractedDetailLabel}>{variantLabel}</Text>
+          <Text style={styles.contractedPrice}>
+            ${Number(existingBath.unitPrice).toLocaleString("es-MX")}
+          </Text>
+        </View>
+
+        <View style={styles.contractedNoteBox}>
+          <Ionicons
+            name="information-circle"
+            size={14}
+            color={COLORS.infoText}
+          />
+          <Text style={styles.contractedNote}>
+            Se entregará bañado al momento del check-out.
+          </Text>
+        </View>
       </View>
     );
   }
@@ -255,31 +283,90 @@ const styles = StyleSheet.create({
   },
   // Contracted state
   contractedCard: {
-    backgroundColor: COLORS.bgSection,
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   contractedHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
+  },
+  contractedIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
   contractedTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.textPrimary,
   },
-  contractedBody: {
-    fontSize: 14,
+  contractedSubtitle: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  contractedStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.successBg,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  contractedStatusText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.successText,
+    letterSpacing: 0.3,
+  },
+  contractedDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  contractedDetailLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  contractedPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  contractedNoteBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.infoBg,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
   },
   contractedNote: {
+    flex: 1,
     fontSize: 12,
-    color: COLORS.textTertiary,
+    color: COLORS.infoText,
+    lineHeight: 17,
+    fontWeight: "600",
   },
 });

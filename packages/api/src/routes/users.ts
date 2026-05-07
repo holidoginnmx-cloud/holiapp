@@ -229,8 +229,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     "/users/me/role",
     { preHandler: [createAuthMiddleware(prisma)] },
     async (request, reply) => {
-      // TEMP: producción habilitada mientras seguimos iterando post-lanzamiento.
-      // Volver a bloquear antes de la versión final.
+      if (process.env.NODE_ENV === "production") {
+        return reply.status(403).send({ error: "forbidden in production" });
+      }
 
       const parsed = UpdateUserSchema.pick({ role: true }).safeParse(
         request.body

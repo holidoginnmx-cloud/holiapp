@@ -93,8 +93,12 @@ export function toUTCDayISO(d: Date): string {
  */
 export function formatPhoneInput(input: string | null | undefined): string {
   if (!input) return "";
-  let digits = String(input).replace(/\D/g, "");
-  // Strip leading "52" only if user already typed past 10 local digits
+  // Drop our own "+52" prefix first; otherwise its "52" digits get folded back
+  // into the parsed local number on every keystroke and the field locks onto
+  // "+52 (525) ...".
+  const raw = String(input).replace(/^\s*\+52/, "");
+  let digits = raw.replace(/\D/g, "");
+  // Handle paste of an E.164-style "52XXXXXXXXXX" without the "+".
   if (digits.length > 10 && digits.startsWith("52")) {
     digits = digits.slice(2);
   }
@@ -118,4 +122,36 @@ export function phoneToTelUri(input: string | null | undefined): string {
   const hasPlus = trimmed.startsWith("+");
   const digits = trimmed.replace(/\D/g, "");
   return (hasPlus ? "+" : "") + digits;
+}
+
+/**
+ * Returns a human-friendly section label for a date relative to "now":
+ * "Hoy", "Ayer", weekday name (within last 7 days), or full date.
+ * Uses local timezone — pair with grouping logic that buckets by local day.
+ */
+export function dayGroupLabel(date: string | Date): string {
+  const d = new Date(date);
+  const now = new Date();
+  const dayKey = (x: Date) =>
+    `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+
+  if (dayKey(d) === dayKey(now)) return "Hoy";
+  if (dayKey(d) === dayKey(yest)) return "Ayer";
+
+  const diffDays = Math.floor(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
+      86_400_000,
+  );
+  if (diffDays < 7) {
+    const label = d.toLocaleDateString("es-MX", { weekday: "long" });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  return d.toLocaleDateString("es-MX", {
+    day: "numeric",
+    month: "long",
+    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
 }

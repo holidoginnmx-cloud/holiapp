@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx seed.ts",
     "db:seed:services": "tsx seed-services.ts",
+    "db:seed:rooms": "tsx seed-rooms.ts",
     "db:studio": "prisma studio",
     "lint": "tsc --noEmit"
   },

@@ -26,6 +26,8 @@ type Props = {
   icon?: keyof typeof Ionicons.glyphMap;
   /** Label text below the button */
   label?: string;
+  /** Allow the user to crop/edit before upload. Default true (square crop). Set false for documents like cartillas. */
+  allowsEditing?: boolean;
 };
 
 export function ImagePickerButton({
@@ -35,6 +37,7 @@ export function ImagePickerButton({
   size = 120,
   icon = "camera-outline",
   label = "Agregar foto",
+  allowsEditing = true,
 }: Props) {
   const [uploading, setUploading] = useState(false);
 
@@ -61,8 +64,8 @@ export function ImagePickerButton({
 
       const result = await launchFn({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1] as [number, number],
+        allowsEditing,
+        ...(allowsEditing ? { aspect: [1, 1] as [number, number] } : {}),
         quality: 0.8,
       });
 

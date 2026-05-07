@@ -11,35 +11,52 @@ interface NotificationItemProps {
   onPress?: () => void;
 }
 
-const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
-  CHECK_IN: "log-in-outline",
-  CHECK_OUT: "log-out-outline",
-  RESERVATION_CONFIRMED: "checkmark-circle-outline",
-  RESERVATION_REMINDER: "alarm-outline",
-  NEW_UPDATE: "camera-outline",
-  PAYMENT_RECEIVED: "card-outline",
-  GENERAL: "information-circle-outline",
-  DAILY_REPORT: "document-text-outline",
-  STAFF_ALERT: "warning-outline",
-  REVIEW_REQUEST: "star-outline",
-  RESERVATION_CHANGE_REQUESTED: "calendar-outline",
-  RESERVATION_CHANGE_APPROVED: "checkmark-circle-outline",
-  RESERVATION_CHANGE_REJECTED: "close-circle-outline",
-  REFUND_ISSUED: "cash-outline",
-  CREDIT_ADDED: "wallet-outline",
-  CREDIT_APPLIED: "wallet-outline",
-  STAFF_ASSIGNED: "person-add-outline",
-  NEW_RESERVATION: "paw-outline",
-  CHECKLIST_REMINDER: "document-text-outline",
+type TypeStyle = {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
 };
 
-function formatDate(date: string | Date): string {
-  const d = new Date(date);
-  return d.toLocaleDateString("es-MX", {
+const TYPE_STYLE: Record<string, TypeStyle> = {
+  CHECK_IN: { icon: "log-in-outline", tint: COLORS.successText },
+  CHECK_OUT: { icon: "log-out-outline", tint: COLORS.textTertiary },
+  RESERVATION_REMINDER: { icon: "alarm-outline", tint: COLORS.warningText },
+  NEW_UPDATE: { icon: "camera-outline", tint: COLORS.primary },
+  PAYMENT_RECEIVED: { icon: "card-outline", tint: COLORS.successText },
+  GENERAL: { icon: "information-circle-outline", tint: COLORS.infoText },
+  DAILY_REPORT: { icon: "document-text-outline", tint: COLORS.primary },
+  STAFF_ALERT: { icon: "warning-outline", tint: COLORS.errorText },
+  REVIEW_REQUEST: { icon: "star-outline", tint: COLORS.star ?? COLORS.warningText },
+  RESERVATION_CHANGE_APPROVED: {
+    icon: "checkmark-circle-outline",
+    tint: COLORS.successText,
+  },
+  RESERVATION_CHANGE_REJECTED: {
+    icon: "close-circle-outline",
+    tint: COLORS.errorText,
+  },
+  REFUND_ISSUED: { icon: "cash-outline", tint: COLORS.successText },
+  CREDIT_ADDED: { icon: "wallet-outline", tint: COLORS.successText },
+  CREDIT_APPLIED: { icon: "wallet-outline", tint: COLORS.primary },
+  STAFF_ASSIGNED: { icon: "person-add-outline", tint: COLORS.primary },
+  NEW_RESERVATION: { icon: "paw-outline", tint: COLORS.primary },
+  CHECKLIST_REMINDER: {
+    icon: "document-text-outline",
+    tint: COLORS.warningText,
+  },
+};
+
+function relativeTime(date: string | Date): string {
+  const diff = Date.now() - new Date(date).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "Justo ahora";
+  if (min < 60) return `Hace ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `Hace ${hr}h`;
+  const d = Math.floor(hr / 24);
+  if (d < 7) return `Hace ${d}d`;
+  return new Date(date).toLocaleDateString("es-MX", {
     day: "numeric",
     month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -51,25 +68,50 @@ export function NotificationItem({
   createdAt,
   onPress,
 }: NotificationItemProps) {
-  const iconName = ICON_MAP[type] || ICON_MAP.GENERAL;
+  const cfg = TYPE_STYLE[type] ?? TYPE_STYLE.GENERAL;
+  const tint = cfg.tint;
 
   return (
     <TouchableOpacity
-      style={[styles.container, !isRead && styles.unread]}
+      style={[
+        styles.container,
+        !isRead && { backgroundColor: `${tint}10` },
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.iconContainer, !isRead && styles.iconUnread]}>
-        <Ionicons name={iconName} size={22} color={isRead ? COLORS.textDisabled : COLORS.primary} />
+      <View
+        style={[styles.accentBar, { backgroundColor: !isRead ? tint : "transparent" }]}
+      />
+      <View style={styles.body}>
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: !isRead ? `${tint}25` : COLORS.bgSection },
+          ]}
+        >
+          <Ionicons
+            name={cfg.icon}
+            size={18}
+            color={isRead ? COLORS.textTertiary : tint}
+          />
+        </View>
+        <View style={styles.content}>
+          <View style={styles.titleRow}>
+            <Text
+              style={[styles.title, !isRead && styles.titleUnread]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {!isRead && <View style={[styles.dot, { backgroundColor: tint }]} />}
+          </View>
+          <Text style={styles.bodyText} numberOfLines={2}>
+            {body}
+          </Text>
+          <Text style={styles.date}>{relativeTime(createdAt)}</Text>
+        </View>
       </View>
-      <View style={styles.content}>
-        <Text style={[styles.title, !isRead && styles.titleUnread]}>{title}</Text>
-        <Text style={styles.body} numberOfLines={2}>
-          {body}
-        </Text>
-        <Text style={styles.date}>{formatDate(createdAt)}</Text>
-      </View>
-      {!isRead && <View style={styles.dot} />}
     </TouchableOpacity>
   );
 }
@@ -77,55 +119,61 @@ export function NotificationItem({
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 14,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.bgSection,
   },
-  unread: {
-    backgroundColor: COLORS.reviewBg,
+  accentBar: {
+    width: 3,
+  },
+  body: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: 14,
+    gap: 12,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.bgSection,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
-  },
-  iconUnread: {
-    backgroundColor: COLORS.reviewBgAlt,
   },
   content: {
     flex: 1,
+    minWidth: 0,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   title: {
-    fontSize: 15,
-    fontWeight: "600",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
     color: COLORS.textSecondary,
   },
   titleUnread: {
     color: COLORS.textPrimary,
-    fontWeight: "700",
+    fontWeight: "800",
   },
-  body: {
+  bodyText: {
     fontSize: 13,
-    color: COLORS.textTertiary,
-    marginTop: 2,
+    color: COLORS.textSecondary,
+    marginTop: 3,
     lineHeight: 18,
   },
   date: {
     fontSize: 11,
-    color: COLORS.textDisabled,
-    marginTop: 4,
+    color: COLORS.textTertiary,
+    marginTop: 6,
+    fontWeight: "600",
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginTop: 6,
   },
 });

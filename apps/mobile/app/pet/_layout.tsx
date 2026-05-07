@@ -20,11 +20,15 @@ export default function PetLayout() {
       screenOptions={{
         headerShown: true,
         headerTintColor: COLORS.primary,
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen name="[id]" options={{ title: "Detalle de mascota", headerLeft: backButton }} />
       <Stack.Screen name="create" options={{ title: "Nueva mascota", headerLeft: backButton }} />
       <Stack.Screen name="history" options={{ title: "Historial", headerLeft: backButton }} />
+      <Stack.Screen name="incidents/[id]" options={{ title: "Incidentes", headerLeft: backButton }} />
+      <Stack.Screen name="renew-cartilla/[id]" options={{ title: "Renovar cartilla", headerLeft: backButton }} />
     </Stack>
   );
 }

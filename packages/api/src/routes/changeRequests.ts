@@ -8,8 +8,8 @@ import {
   createAuthMiddleware,
   createAdminMiddleware,
 } from "../middleware/auth";
-import { computeChangeTotal } from "../lib/pricing";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { computeChangeTotal, getLodgingPricing } from "../lib/pricing";
+import { notifyUser } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -49,12 +49,14 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       (sum, a) => sum + Number(a.unitPrice),
       0
     );
+    const pricingConfig = await getLodgingPricing(prisma);
     const { newTotalDays, newTotal } = computeChangeTotal({
       petWeightKg: reservation.pet.weight,
       newCheckIn,
       newCheckOut,
       hasMedication: !!reservation.medicationNotes,
       existingBathTotal,
+      config: pricingConfig,
     });
     const currentTotal = Number(reservation.totalAmount);
     const delta = newTotal - currentTotal;
@@ -181,25 +183,6 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
             status: "PENDING",
           },
         });
-
-        const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-        await notifyUsers(prisma, admins.map((a) => a.id), {
-          type: "RESERVATION_CHANGE_REQUESTED" as const,
-          title: "Nueva solicitud de cambio 📅",
-          body: `${reservation.pet.name}: extender a ${newTotalDays(preview.newTotalDays)}, +$${preview.delta.toLocaleString("es-MX")}`,
-          data: { reservationId: reservation.id, changeRequestId: created.id },
-        });
-
-        // Notificar al staff asignado (si existe)
-        if (reservation.staffId) {
-          await notifyUser(prisma, {
-            userId: reservation.staffId,
-            type: "RESERVATION_CHANGE_REQUESTED" as any,
-            title: `Cambio solicitado: ${reservation.pet.name} 📅`,
-            body: `El dueño solicitó extender la estancia a ${newTotalDays(preview.newTotalDays)}. Pendiente de aprobación del admin.`,
-            data: { reservationId: reservation.id, changeRequestId: created.id },
-          });
-        }
 
         return reply.status(201).send({ request: created, requiresApproval: true });
       }

@@ -1,8 +1,9 @@
 import { COLORS } from "@/constants/colors";
+import { useMemo } from "react";
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -12,6 +13,7 @@ import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications, markNotificationAsRead } from "@/lib/api";
 import { NotificationItem } from "@/components/NotificationItem";
+import { dayGroupLabel } from "@/lib/format";
 
 export default function NotificationsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -28,6 +30,36 @@ export default function NotificationsScreen() {
     mutationFn: markNotificationAsRead,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
   });
+
+  const sections = useMemo(() => {
+    if (!notifications || notifications.length === 0) return [];
+    const groups = new Map<
+      string,
+      { title: string; sortKey: number; data: typeof notifications }
+    >();
+    for (const n of notifications) {
+      const d = new Date(n.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const sortKey = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+      ).getTime();
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.data.push(n);
+      } else {
+        groups.set(key, {
+          title: dayGroupLabel(d),
+          sortKey,
+          data: [n],
+        });
+      }
+    }
+    return Array.from(groups.values())
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .map(({ title, data }) => ({ title, data }));
+  }, [notifications]);
 
   if (isLoading) {
     return (
@@ -50,10 +82,16 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.container} testID="notifications-screen">
-      <FlatList
+      <SectionList
         testID="notifications-list"
-        data={notifications}
+        sections={sections}
         keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{title}</Text>
+          </View>
+        )}
         renderItem={({ item }) => (
           <NotificationItem
             type={item.type}
@@ -63,9 +101,36 @@ export default function NotificationsScreen() {
             createdAt={item.createdAt}
             onPress={() => {
               if (!item.isRead) markOneMutation.mutate(item.id);
-              const reservationId = (item.data as { reservationId?: string } | null)?.reservationId;
+              const data = item.data as
+                | { reservationId?: string; action?: string }
+                | null;
+              const reservationId = data?.reservationId;
+
+              // CREDIT_ADDED: lleva al historial de saldo a favor.
+              if (item.type === "CREDIT_ADDED") {
+                router.push("/profile/credit-history" as any);
+                return;
+              }
+
+              // DAILY_REPORT: lleva directo a los reportes diarios.
+              if (item.type === "DAILY_REPORT" && reservationId) {
+                router.push(`/reservation/checklists/${reservationId}` as any);
+                return;
+              }
+
+              // action=CHOOSE_REFUND: abre el detalle con el modal de elegir
+              // entre reembolso a tarjeta vs saldo a favor. Lo dispara tanto el
+              // admin-cancel (type GENERAL) como REFUND_ISSUED.
+              if (data?.action === "CHOOSE_REFUND" && reservationId) {
+                router.push(
+                  `/reservation/detail/${reservationId}?action=choose-refund` as any
+                );
+                return;
+              }
+
+              // Resto: detalle de la reservación si trae id.
               if (reservationId) {
-                router.push(`/reservation/${reservationId}` as any);
+                router.push(`/reservation/detail/${reservationId}` as any);
               }
             }}
           />
@@ -90,6 +155,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 60,
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
+    backgroundColor: COLORS.white,
+  },
+  sectionHeaderText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   emptyText: {
     fontSize: 15,

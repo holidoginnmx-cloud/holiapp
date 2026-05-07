@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { StripeProvider } from "@stripe/stripe-react-native";
@@ -58,14 +58,23 @@ function ClerkTokenSync() {
 
   // Gate de consentimientos legales: solo aplica a OWNER. STAFF/ADMIN entran
   // al dashboard interno y no pasan por el flujo de reserva.
+  // Solo corre una vez por sign-in del OWNER. No reactivar en cada navegación
+  // o causaría redirects spurios a /legal/onboarding → home cuando el owner
+  // navega a un detalle (reservation, pet, etc).
+  const legalCheckedRef = useRef(false);
   useEffect(() => {
-    if (!isSignedIn || !dbUserId || role !== "OWNER") return;
+    if (!isSignedIn || !dbUserId || role !== "OWNER") {
+      legalCheckedRef.current = false;
+      return;
+    }
+    if (legalCheckedRef.current) return;
     // No redirigir si ya estamos en legal, auth o welcome
     const inLegal = segments[0] === "legal";
     const inAuth = segments[0] === "(auth)";
     const inWelcome = segments[0] === "welcome";
     if (inLegal || inAuth || inWelcome) return;
 
+    legalCheckedRef.current = true;
     getMyLegalStatus()
       .then(async (status) => {
         if (!status.canBook) {
@@ -79,6 +88,7 @@ function ClerkTokenSync() {
       })
       .catch((err) => {
         console.error("[legal] status check failed:", err);
+        legalCheckedRef.current = false; // permite reintentar en siguiente nav
       });
   }, [isSignedIn, dbUserId, role, segments]);
 
@@ -104,7 +114,13 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
         <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: "slide_from_right",
+            animationTypeForReplace: "pop",
+          }}
+        >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(admin)" />

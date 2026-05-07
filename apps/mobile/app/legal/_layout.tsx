@@ -8,6 +8,8 @@ export default function LegalLayout() {
         headerShown: true,
         headerTintColor: COLORS.primary,
         headerTitleStyle: { color: COLORS.textPrimary },
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen name="onboarding" options={{ title: "Consentimientos", headerBackVisible: false }} />

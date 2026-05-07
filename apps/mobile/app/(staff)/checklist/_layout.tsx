@@ -21,6 +21,8 @@ export default function ChecklistLayout() {
       screenOptions={{
         headerShown: true,
         headerTintColor: COLORS.primary,
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen name="[reservationId]" options={{ title: "Checklist diario", headerLeft: backButton }} />

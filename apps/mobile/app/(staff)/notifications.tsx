@@ -1,8 +1,9 @@
 import { COLORS } from "@/constants/colors";
+import { useMemo } from "react";
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -16,6 +17,7 @@ import {
   markAllNotificationsAsRead,
 } from "@/lib/api";
 import { NotificationItem } from "@/components/NotificationItem";
+import { dayGroupLabel } from "@/lib/format";
 
 export default function StaffNotificationsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -40,6 +42,36 @@ export default function StaffNotificationsScreen() {
   });
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
+
+  const sections = useMemo(() => {
+    if (!notifications || notifications.length === 0) return [];
+    const groups = new Map<
+      string,
+      { title: string; sortKey: number; data: typeof notifications }
+    >();
+    for (const n of notifications) {
+      const d = new Date(n.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const sortKey = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+      ).getTime();
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.data.push(n);
+      } else {
+        groups.set(key, {
+          title: dayGroupLabel(d),
+          sortKey,
+          data: [n],
+        });
+      }
+    }
+    return Array.from(groups.values())
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .map(({ title, data }) => ({ title, data }));
+  }, [notifications]);
 
   if (isLoading) {
     return (
@@ -77,9 +109,15 @@ export default function StaffNotificationsScreen() {
         </TouchableOpacity>
       )}
 
-      <FlatList
-        data={notifications}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{title}</Text>
+          </View>
+        )}
         renderItem={({ item }) => (
           <NotificationItem
             type={item.type}
@@ -129,6 +167,19 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: "700",
     fontSize: 14,
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
+    backgroundColor: COLORS.white,
+  },
+  sectionHeaderText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   emptyText: {
     fontSize: 15,

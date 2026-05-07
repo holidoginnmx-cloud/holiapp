@@ -4,11 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { TouchableOpacity } from "react-native";
 import { useAuth, useClerk } from "@clerk/clerk-expo";
-import { useQuery } from "@tanstack/react-query";
 
 import { useAuthStore } from "@/store/authStore";
-import { getPendingCartillasCount } from "@/lib/api";
-import { HeaderBackButton } from "@/components/HeaderBackButton";
 
 export default function AdminLayout() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -36,14 +33,6 @@ export default function AdminLayout() {
       router.replace("/(tabs)/home");
     }
   }, [role]);
-
-  const { data: pendingCartillas } = useQuery({
-    queryKey: ["admin", "cartillas", "pending-count"],
-    queryFn: getPendingCartillasCount,
-    enabled: role === "ADMIN",
-    refetchInterval: 30_000,
-  });
-  const pendingCount = pendingCartillas?.pending ?? 0;
 
   if (!isLoaded || !isSignedIn) return null;
 
@@ -99,62 +88,11 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
-        name="rooms"
-        options={{
-          title: "Cuartos",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bed-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="baths"
         options={{
           title: "Baños",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="water-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="cartillas"
-        options={{
-          title: "Cartillas",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="shield-checkmark-outline" size={size} color={color} />
-          ),
-          tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: COLORS.errorText,
-            color: COLORS.white,
-            fontSize: 11,
-            fontWeight: "700",
-          },
-        }}
-      />
-      <Tabs.Screen
-        name="alerts"
-        options={{
-          href: null,
-          title: "Alertas del staff",
-          headerLeft: () => (
-            <HeaderBackButton
-              onPress={() => router.replace("/(admin)/settings" as any)}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen name="change-requests" options={{ href: null }} />
-      <Tabs.Screen name="services" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen
-        name="bath-config"
-        options={{
-          href: null,
-          title: "Agenda de baños",
-          headerLeft: () => (
-            <HeaderBackButton
-              onPress={() => router.replace("/(admin)/settings" as any)}
-            />
           ),
         }}
       />
@@ -167,11 +105,6 @@ export default function AdminLayout() {
           ),
         }}
       />
-      {/* Hide detail screens from tab bar — headers handled by nested Stack layouts */}
-      <Tabs.Screen name="reservation" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="room" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="users" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="send-notification" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

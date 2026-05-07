@@ -32,6 +32,7 @@ interface PetCardProps {
   onPress?: () => void;
   onReserveHotel?: () => void;
   onReserveBath?: () => void;
+  onAddCartilla?: () => void;
 }
 
 type Chip = {
@@ -104,6 +105,13 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
       bg: COLORS.errorBg,
       fg: COLORS.errorText,
     });
+  } else if (pet.cartillaStatus === "EXPIRED") {
+    chips.push({
+      icon: "alarm-outline",
+      label: "Cartilla vencida",
+      bg: COLORS.errorBg,
+      fg: COLORS.errorText,
+    });
   } else {
     chips.push({
       icon: "time-outline",
@@ -122,12 +130,14 @@ export function PetCard({
   onPress,
   onReserveHotel,
   onReserveBath,
+  onAddCartilla,
 }: PetCardProps) {
+  const showAddCartilla = !!onAddCartilla && !pet.cartillaUrl;
   const chips = buildStatusChips(pet);
   const sizeLabel = SIZE_LABELS[pet.size] || pet.size;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
       <View style={styles.photoWrap}>
         <Image
           source={
@@ -139,6 +149,7 @@ export function PetCard({
           defaultSource={require("../../assets/pet-placeholder.png")}
         />
         <View style={styles.photoBadge}>
+          <Ionicons name="resize-outline" size={11} color={COLORS.primary} />
           <Text style={styles.photoBadgeText}>{sizeLabel}</Text>
         </View>
         <View style={styles.photoNameWrap}>
@@ -155,7 +166,9 @@ export function PetCard({
 
       <View style={styles.body}>
         <View style={styles.metaRow}>
-          <Ionicons name="paw" size={14} color={COLORS.primary} />
+          <View style={styles.metaIconWrap}>
+            <Ionicons name="paw" size={12} color={COLORS.primary} />
+          </View>
           <Text style={styles.breed} numberOfLines={1}>
             {pet.breed || "Sin raza especificada"}
           </Text>
@@ -189,7 +202,7 @@ export function PetCard({
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionPrimary]}
                 onPress={onReserveHotel}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
                 testID={`pet-${pet.id}-action-hotel`}
               >
                 <Ionicons name="bed" size={16} color={COLORS.white} />
@@ -200,7 +213,7 @@ export function PetCard({
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionSecondary]}
                 onPress={onReserveBath}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
                 testID={`pet-${pet.id}-action-bath`}
               >
                 <Ionicons name="water" size={16} color={COLORS.primary} />
@@ -210,6 +223,24 @@ export function PetCard({
           </View>
         )}
       </View>
+
+      {showAddCartilla && (
+        <TouchableOpacity
+          style={styles.addCartillaBtn}
+          onPress={onAddCartilla}
+          activeOpacity={0.85}
+          testID={`pet-${pet.id}-add-cartilla`}
+        >
+          <Ionicons name="medkit-outline" size={16} color={COLORS.warningText} />
+          <Text style={styles.addCartillaText}>Agregar cartilla</Text>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={COLORS.warningText}
+            style={styles.addCartillaChevron}
+          />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 }
@@ -230,24 +261,33 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 4 / 3,
     backgroundColor: COLORS.bgSection,
+    overflow: "hidden",
   },
   photo: {
     width: "100%",
     height: "100%",
-    resizeMode: "contain",
+    resizeMode: "cover",
   },
   photoBadge: {
     position: "absolute",
     top: 12,
     right: 12,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.96)",
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   photoBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.primary,
     letterSpacing: 0.3,
   },
@@ -255,40 +295,54 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 12,
+    bottom: 14,
   },
   photoName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
     color: COLORS.white,
-    textShadowColor: "rgba(0,0,0,0.35)",
+    letterSpacing: 0.3,
+    textShadowColor: "rgba(0,0,0,0.45)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
   photoOwner: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.9)",
+    color: "rgba(255,255,255,0.95)",
     marginTop: 2,
+    fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   body: {
     padding: 14,
-    gap: 10,
+    gap: 12,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+  },
+  metaIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
   metaDot: {
     width: 3,
     height: 3,
     borderRadius: 2,
     backgroundColor: COLORS.textDisabled,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
   },
   breed: {
     fontSize: 13,
-    color: COLORS.textTertiary,
+    color: COLORS.textSecondary,
+    fontWeight: "600",
     flexShrink: 1,
   },
   chipRow: {
@@ -319,23 +373,50 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
   actionPrimary: {
     backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   actionPrimaryText: {
     color: COLORS.white,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   actionSecondary: {
     backgroundColor: COLORS.primaryLight,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
   },
   actionSecondaryText: {
     color: COLORS.primary,
     fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  addCartillaBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.warningBg,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.06)",
+  },
+  addCartillaText: {
+    color: COLORS.warningText,
+    fontSize: 14,
     fontWeight: "700",
+  },
+  addCartillaChevron: {
+    marginLeft: "auto",
   },
 });

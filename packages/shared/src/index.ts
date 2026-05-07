@@ -10,7 +10,7 @@ export type Role = z.infer<typeof RoleEnum>;
 export const PetSizeEnum = z.enum(["XS", "S", "M", "L", "XL"]);
 export type PetSize = z.infer<typeof PetSizeEnum>;
 
-export const CartillaStatusEnum = z.enum(["PENDING", "APPROVED", "REJECTED"]);
+export const CartillaStatusEnum = z.enum(["PENDING", "APPROVED", "REJECTED", "EXPIRED"]);
 export type CartillaStatus = z.infer<typeof CartillaStatusEnum>;
 
 export const ReservationStatusEnum = z.enum([
@@ -50,6 +50,7 @@ export const NotificationTypeEnum = z.enum([
   "REFUND_ISSUED",
   "CREDIT_ADDED",
   "CREDIT_APPLIED",
+  "VACCINE_EXPIRING",
 ]);
 
 export const RefundChoiceEnum = z.enum(["STRIPE_REFUND", "CREDIT"]);
@@ -214,10 +215,32 @@ export const CreatePetSchema = PetSchema.omit({
 
 export const UpdatePetSchema = CreatePetSchema.partial().omit({ ownerId: true });
 
-export const ReviewCartillaSchema = z.object({
-  action: z.enum(["APPROVE", "REJECT"]),
-  reason: z.string().max(500).optional(),
+export const VaccineEntrySchema = z.object({
+  catalogId: z.string().cuid(),
+  appliedAt: z.coerce.date(),
+  expiresAt: z.coerce.date(),
+  vetName: z.string().max(120).optional(),
 });
+export type VaccineEntry = z.infer<typeof VaccineEntrySchema>;
+
+export const UpdateVaccineSchema = z.object({
+  catalogId: z.string().cuid().optional(),
+  appliedAt: z.coerce.date().optional(),
+  expiresAt: z.coerce.date().optional(),
+  vetName: z.string().max(120).nullable().optional(),
+});
+export type UpdateVaccine = z.infer<typeof UpdateVaccineSchema>;
+
+export const ReviewCartillaSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("APPROVE"),
+    vaccines: z.array(VaccineEntrySchema).optional(),
+  }),
+  z.object({
+    action: z.literal("REJECT"),
+    reason: z.string().max(500).optional(),
+  }),
+]);
 export type ReviewCartilla = z.infer<typeof ReviewCartillaSchema>;
 
 export type Pet = z.infer<typeof PetSchema>;
@@ -246,6 +269,20 @@ export const CreateVaccineSchema = VaccineSchema.omit({
 
 export type Vaccine = z.infer<typeof VaccineSchema>;
 export type CreateVaccine = z.infer<typeof CreateVaccineSchema>;
+
+// ========================
+// VaccineCatalog
+// ========================
+
+export const VaccineCatalogSchema = z.object({
+  id: z.string().cuid(),
+  code: z.string(),
+  displayName: z.string(),
+  defaultDurationDays: z.number().int().positive(),
+  description: z.string().nullable(),
+  isActive: z.boolean(),
+});
+export type VaccineCatalog = z.infer<typeof VaccineCatalogSchema>;
 
 // ========================
 // Room

@@ -87,106 +87,170 @@ export default function AdminClients() {
     return m;
   }, [users]);
 
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggleExpanded = (ownerId: string) =>
+    setExpanded((prev) => ({ ...prev, [ownerId]: !prev[ownerId] }));
+
   const renderOwner = ({ item }: { item: OwnerGroup }) => {
     const userInfo = userMap.get(item.id);
     const credit = userInfo?.creditBalance ?? 0;
     const phone = userInfo?.phone;
+    const isOpen = !!expanded[item.id];
+
+    // Aggregate cartilla status: red if any rejected/expired, ambar if any pending, green if all approved
+    const hasRejected = item.pets.some(
+      (p) => p.cartillaStatus === "REJECTED" || p.cartillaStatus === "EXPIRED"
+    );
+    const hasPending = item.pets.some(
+      (p) =>
+        p.cartillaStatus !== "APPROVED" &&
+        p.cartillaStatus !== "REJECTED" &&
+        p.cartillaStatus !== "EXPIRED"
+    );
+    const accentColor = hasRejected
+      ? COLORS.errorText
+      : hasPending
+      ? COLORS.warningText
+      : COLORS.successText;
 
     return (
       <View style={styles.ownerCard}>
-        {/* Owner header */}
-        <View style={styles.ownerHeader}>
-          <View style={styles.ownerAvatar}>
-            <Text style={styles.ownerAvatarText}>
-              {item.firstName[0]?.toUpperCase() ?? "?"}
-            </Text>
-          </View>
-          <View style={styles.ownerInfo}>
-            <Text style={styles.ownerName}>
-              {formatName(item.firstName)} {formatName(item.lastName)}
-            </Text>
-            <Text style={styles.ownerEmail}>{item.email}</Text>
-            <View style={styles.ownerMeta}>
-              {phone && (
-                <View style={styles.metaChip}>
-                  <Ionicons name="call-outline" size={11} color={COLORS.textTertiary} />
-                  <Text style={styles.metaText}>{formatPhoneInput(phone)}</Text>
-                </View>
-              )}
-              {credit > 0 && (
-                <View style={[styles.metaChip, { backgroundColor: COLORS.successBg }]}>
-                  <Ionicons name="wallet-outline" size={11} color={COLORS.successText} />
-                  <Text style={[styles.metaText, { color: COLORS.successText }]}>
-                    ${credit.toLocaleString("es-MX")}
+        <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
+        <View style={styles.cardBody}>
+          {/* Owner header (tap to toggle pets) */}
+          <TouchableOpacity
+            style={styles.ownerHeader}
+            activeOpacity={0.7}
+            onPress={() => toggleExpanded(item.id)}
+          >
+            <View style={styles.ownerAvatar}>
+              <Text style={styles.ownerAvatarText}>
+                {item.firstName[0]?.toUpperCase() ?? "?"}
+              </Text>
+            </View>
+            <View style={styles.ownerInfo}>
+              <Text style={styles.ownerName} numberOfLines={1}>
+                {formatName(item.firstName)} {formatName(item.lastName)}
+              </Text>
+              <Text style={styles.ownerEmail} numberOfLines={1}>
+                {item.email}
+              </Text>
+              <View style={styles.ownerMeta}>
+                {phone && (
+                  <View style={styles.metaChip}>
+                    <Ionicons
+                      name="call-outline"
+                      size={11}
+                      color={COLORS.textTertiary}
+                    />
+                    <Text style={styles.metaText}>
+                      {formatPhoneInput(phone)}
+                    </Text>
+                  </View>
+                )}
+                {credit > 0 && (
+                  <View
+                    style={[styles.metaChip, { backgroundColor: COLORS.successBg }]}
+                  >
+                    <Ionicons
+                      name="wallet-outline"
+                      size={11}
+                      color={COLORS.successText}
+                    />
+                    <Text
+                      style={[styles.metaText, { color: COLORS.successText }]}
+                    >
+                      ${credit.toLocaleString("es-MX")}
+                    </Text>
+                  </View>
+                )}
+                <View
+                  style={[styles.metaChip, { backgroundColor: COLORS.primaryLight }]}
+                >
+                  <Ionicons name="paw" size={11} color={COLORS.primary} />
+                  <Text style={[styles.metaText, { color: COLORS.primary }]}>
+                    {item.pets.length} mascota
+                    {item.pets.length !== 1 ? "s" : ""}
                   </Text>
                 </View>
-              )}
-              <View style={styles.metaChip}>
-                <Ionicons name="paw" size={11} color={COLORS.primary} />
-                <Text style={[styles.metaText, { color: COLORS.primary }]}>
-                  {item.pets.length} mascota{item.pets.length !== 1 ? "s" : ""}
-                </Text>
               </View>
             </View>
-          </View>
-        </View>
-
-        {/* Pets */}
-        <View style={styles.petsContainer}>
-          {item.pets.map((pet) => (
-            <TouchableOpacity
-              key={pet.id}
-              style={styles.petRow}
-              activeOpacity={0.7}
-              onPress={() => router.push(`/pet/${pet.id}` as any)}
+            <View
+              style={[
+                styles.expandBtn,
+                isOpen && { backgroundColor: COLORS.primaryLight },
+              ]}
             >
-              {pet.photoUrl ? (
-                <Image source={{ uri: pet.photoUrl }} style={styles.petPhoto} />
-              ) : (
-                <View style={[styles.petPhoto, styles.petPhotoPlaceholder]}>
-                  <Ionicons name="paw" size={16} color={COLORS.border} />
-                </View>
-              )}
-              <View style={styles.petInfo}>
-                <Text style={styles.petName}>{formatName(pet.name)}</Text>
-                <Text style={styles.petBreed}>{pet.breed ?? "Sin raza"}</Text>
-              </View>
-              <View
-                style={[
-                  styles.cartillaBadge,
-                  {
-                    backgroundColor:
-                      pet.cartillaStatus === "APPROVED"
-                        ? COLORS.successBg
-                        : pet.cartillaStatus === "REJECTED"
-                        ? COLORS.errorBg
-                        : COLORS.warningBg,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.cartillaBadgeText,
-                    {
-                      color:
-                        pet.cartillaStatus === "APPROVED"
-                          ? COLORS.successText
-                          : pet.cartillaStatus === "REJECTED"
-                          ? COLORS.errorText
-                          : COLORS.warningText,
-                    },
-                  ]}
-                >
-                  {pet.cartillaStatus === "APPROVED"
-                    ? "Aprobada"
-                    : pet.cartillaStatus === "REJECTED"
-                    ? "Rechazada"
-                    : "Pendiente"}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={COLORS.border} />
-            </TouchableOpacity>
-          ))}
+              <Ionicons
+                name={isOpen ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={isOpen ? COLORS.primary : COLORS.textTertiary}
+              />
+            </View>
+          </TouchableOpacity>
+
+          {/* Pets (collapsible) */}
+          {isOpen && (
+            <View style={styles.petsContainer}>
+              {item.pets.map((pet, idx) => {
+                const isLast = idx === item.pets.length - 1;
+                const cartilla = pet.cartillaStatus;
+                const cartillaStyle =
+                  cartilla === "APPROVED"
+                    ? { bg: COLORS.successBg, color: COLORS.successText, label: "Aprobada" }
+                    : cartilla === "REJECTED"
+                    ? { bg: COLORS.errorBg, color: COLORS.errorText, label: "Rechazada" }
+                    : { bg: COLORS.warningBg, color: COLORS.warningText, label: "Pendiente" };
+                return (
+                  <TouchableOpacity
+                    key={pet.id}
+                    style={[styles.petRow, isLast && styles.petRowLast]}
+                    activeOpacity={0.7}
+                    onPress={() => router.push(`/pet/${pet.id}` as any)}
+                  >
+                    {pet.photoUrl ? (
+                      <Image
+                        source={{ uri: pet.photoUrl }}
+                        style={styles.petPhoto}
+                      />
+                    ) : (
+                      <View style={[styles.petPhoto, styles.petPhotoPlaceholder]}>
+                        <Ionicons name="paw" size={16} color={COLORS.border} />
+                      </View>
+                    )}
+                    <View style={styles.petInfo}>
+                      <Text style={styles.petName} numberOfLines={1}>
+                        {formatName(pet.name)}
+                      </Text>
+                      <Text style={styles.petBreed} numberOfLines={1}>
+                        {pet.breed ?? "Sin raza"}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.cartillaBadge,
+                        { backgroundColor: cartillaStyle.bg },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.cartillaBadgeText,
+                          { color: cartillaStyle.color },
+                        ]}
+                      >
+                        {cartillaStyle.label}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={COLORS.border}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
       </View>
     );
@@ -297,15 +361,22 @@ const styles = StyleSheet.create({
     color: COLORS.textDisabled,
   },
   ownerCard: {
+    flexDirection: "row",
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    marginBottom: 14,
+    borderRadius: 14,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 2,
     overflow: "hidden",
+  },
+  accentBar: {
+    width: 4,
+  },
+  cardBody: {
+    flex: 1,
   },
   ownerHeader: {
     flexDirection: "row",
@@ -324,14 +395,15 @@ const styles = StyleSheet.create({
   ownerAvatarText: {
     color: COLORS.white,
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   ownerInfo: {
     flex: 1,
+    minWidth: 0,
   },
   ownerName: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.textPrimary,
   },
   ownerEmail: {
@@ -343,34 +415,45 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 6,
+    marginTop: 8,
   },
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
     backgroundColor: COLORS.bgSection,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   metaText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
     color: COLORS.textTertiary,
+  },
+  expandBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.bgSection,
+    alignItems: "center",
+    justifyContent: "center",
   },
   petsContainer: {
     borderTopWidth: 1,
     borderTopColor: COLORS.bgSection,
+    paddingHorizontal: 14,
   },
   petRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.bgSection,
+  },
+  petRowLast: {
+    borderBottomWidth: 0,
   },
   petPhoto: {
     width: 36,
@@ -384,23 +467,26 @@ const styles = StyleSheet.create({
   },
   petInfo: {
     flex: 1,
+    minWidth: 0,
   },
   petName: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   petBreed: {
     fontSize: 12,
     color: COLORS.textTertiary,
+    marginTop: 1,
   },
   cartillaBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: 999,
   },
   cartillaBadgeText: {
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
 });

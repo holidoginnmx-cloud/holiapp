@@ -320,7 +320,9 @@ export default function ReservationsScreen() {
             lastUpdateAt={item.lastUpdateAt}
             hasReview={item.hasReview}
             onPress={() => {
-              router.push(`/(tabs)/reservation/${item.id}` as any);
+              router.push(
+                `/reservation/detail/${item.id}?from=reservations` as any
+              );
             }}
           />
         )}

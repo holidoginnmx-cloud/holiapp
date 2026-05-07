@@ -6,6 +6,7 @@ import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth"
 import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser } from "../lib/notify";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
+import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -180,8 +181,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     }
 
     // Calculate total — lodging
+    const pricingConfig = await getLodgingPricing(prisma);
     const breakdown = pets.map((pet) => {
-      const pricePerDay = pet.weight && pet.weight >= 20 ? 450 : 350;
+      const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
       return {
         petId: pet.id,
         petName: pet.name,
@@ -512,15 +514,6 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           data: { status: "CONFIRMED" },
         });
       }
-
-      // Notificar al owner (in-app + push)
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
-        type: "PAYMENT_RECEIVED" as any,
-        title: "Pago registrado",
-        body: `Se registró un pago de $${amount.toLocaleString("es-MX")} (${method === "CASH" ? "efectivo" : "transferencia"}) para la estancia de ${reservation.pet.name}.`,
-        data: { reservationId, paymentId: payment.id },
-      });
 
       return reply.status(201).send(payment);
     }

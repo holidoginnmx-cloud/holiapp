@@ -19,6 +19,8 @@ export default function BathLayout() {
         headerTintColor: COLORS.primary,
         headerStyle: { backgroundColor: COLORS.white },
         headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        animation: "slide_from_right",
+        animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen

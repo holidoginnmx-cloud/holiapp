@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -41,10 +41,32 @@ function sizeLabel(size: string): string {
 
 export default function CreatePetScreen() {
   const router = useRouter();
-  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const { editId, focus } = useLocalSearchParams<{
+    editId?: string;
+    focus?: string;
+  }>();
   const userId = useAuthStore((s) => s.userId);
   const queryClient = useQueryClient();
   const isEditing = !!editId;
+
+  const scrollRef = useRef<ScrollView>(null);
+  const cartillaYRef = useRef<number | null>(null);
+  const didScrollToCartillaRef = useRef(false);
+
+  const formReadyRef = useRef(false);
+  const maybeScrollToCartilla = useCallback(() => {
+    if (didScrollToCartillaRef.current) return;
+    if (focus !== "cartilla") return;
+    if (cartillaYRef.current == null) return;
+    if (!formReadyRef.current) return;
+    didScrollToCartillaRef.current = true;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, cartillaYRef.current! - 12),
+        animated: true,
+      });
+    });
+  }, [focus]);
 
   // Form state
   const [name, setName] = useState("");
@@ -73,7 +95,7 @@ export default function CreatePetScreen() {
   const [personality, setPersonality] = useState("");
   const [cartillaUrl, setCartillaUrl] = useState("");
   const [cartillaStatus, setCartillaStatus] = useState<
-    "PENDING" | "APPROVED" | "REJECTED" | null
+    "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | null
   >(null);
   const [cartillaRejectionReason, setCartillaRejectionReason] = useState<
     string | null
@@ -114,8 +136,17 @@ export default function CreatePetScreen() {
       setCartillaUrl((existingPet as any).cartillaUrl || "");
       setCartillaStatus((existingPet as any).cartillaStatus ?? null);
       setCartillaRejectionReason((existingPet as any).cartillaRejectionReason ?? null);
+      formReadyRef.current = true;
+      maybeScrollToCartilla();
     }
-  }, [existingPet]);
+  }, [existingPet, maybeScrollToCartilla]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      formReadyRef.current = true;
+      maybeScrollToCartilla();
+    }
+  }, [isEditing, maybeScrollToCartilla]);
 
   const mutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -134,6 +165,40 @@ export default function CreatePetScreen() {
       );
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  // Al editar, la cartilla se persiste apenas se sube — no espera al
+  // botón Guardar. Optimistic update con revert si falla la API.
+  const cartillaMutation = useMutation({
+    mutationFn: (url: string) => updatePet(editId!, { cartillaUrl: url }),
+    onMutate: (url) => {
+      const previous = {
+        url: cartillaUrl,
+        status: cartillaStatus,
+        reason: cartillaRejectionReason,
+      };
+      setCartillaUrl(url);
+      if (url !== (existingPet as any)?.cartillaUrl) {
+        setCartillaStatus("PENDING");
+        setCartillaRejectionReason(null);
+      }
+      return previous;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pets"] });
+      queryClient.invalidateQueries({ queryKey: ["pet", editId] });
+    },
+    onError: (_e: Error, _url, ctx) => {
+      if (ctx) {
+        setCartillaUrl(ctx.url);
+        setCartillaStatus(ctx.status);
+        setCartillaRejectionReason(ctx.reason);
+      }
+      Alert.alert(
+        "Error",
+        "No pudimos enviar la cartilla. Inténtalo de nuevo."
+      );
+    },
   });
 
   const handleSave = () => {
@@ -201,6 +266,7 @@ export default function CreatePetScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
     <ScrollView
+      ref={scrollRef}
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
@@ -406,7 +472,13 @@ export default function CreatePetScreen() {
       </View>
 
       {/* Cartilla de vacunación */}
-      <View style={styles.section}>
+      <View
+        style={styles.section}
+        onLayout={(e) => {
+          cartillaYRef.current = e.nativeEvent.layout.y;
+          maybeScrollToCartilla();
+        }}
+      >
         <Text style={styles.sectionTitle}>Cartilla de vacunación</Text>
         <Text style={styles.cartillaHelp}>
           Sube una foto clara de la cartilla. Un miembro del equipo HDI la
@@ -417,9 +489,10 @@ export default function CreatePetScreen() {
           <ImagePickerButton
             imageUrl={cartillaUrl || null}
             onImageUploaded={(url) => {
-              setCartillaUrl(url);
-              // Local optimistic: once the image changes, it's pending again
-              if (url !== (existingPet as any)?.cartillaUrl) {
+              if (isEditing) {
+                cartillaMutation.mutate(url);
+              } else {
+                setCartillaUrl(url);
                 setCartillaStatus("PENDING");
                 setCartillaRejectionReason(null);
               }
@@ -428,6 +501,7 @@ export default function CreatePetScreen() {
             size={140}
             icon="shield-checkmark-outline"
             label="Cartilla"
+            allowsEditing={false}
           />
         </View>
 
@@ -462,6 +536,19 @@ export default function CreatePetScreen() {
               </Text>
               <Text style={[styles.cartillaBadgeSubtext, { color: COLORS.errorText }]}>
                 Sube una nueva para revisarla.
+              </Text>
+            </View>
+          </View>
+        )}
+        {cartillaUrl && cartillaStatus === "EXPIRED" && (
+          <View style={[styles.cartillaBadge, { backgroundColor: COLORS.errorBg }]}>
+            <Ionicons name="alarm-outline" size={16} color={COLORS.errorText} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cartillaBadgeText, { color: COLORS.errorText }]}>
+                Cartilla vencida
+              </Text>
+              <Text style={[styles.cartillaBadgeSubtext, { color: COLORS.errorText }]}>
+                Sube la cartilla actualizada para volver a reservar.
               </Text>
             </View>
           </View>

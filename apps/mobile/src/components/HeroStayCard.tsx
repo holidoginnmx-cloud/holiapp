@@ -36,67 +36,132 @@ export function HeroStayCard({
     queryFn: () => getStayUpdates(reservationId),
   });
   const latest = updates?.[0];
+  const hasCaption = !!latest?.caption;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.headerRow}>
-        {petPhotoUrl ? (
-          <Image source={{ uri: petPhotoUrl }} style={styles.photo} />
-        ) : (
-          <View style={[styles.photo, styles.photoFallback]}>
-            <Ionicons name="paw" size={26} color={COLORS.primary} />
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      <View style={styles.accentBar} />
+      <View style={styles.body}>
+        <View style={styles.headerRow}>
+          <View style={styles.photoRing}>
+            {petPhotoUrl ? (
+              <Image source={{ uri: petPhotoUrl }} style={styles.photo} />
+            ) : (
+              <View style={[styles.photo, styles.photoFallback]}>
+                <Ionicons name="paw" size={26} color={COLORS.primary} />
+              </View>
+            )}
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.petName} numberOfLines={1}>
+              {formatName(petName)}
+            </Text>
+            <View style={styles.statusRow}>
+              <View style={styles.statusBadge}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>Hospedado</Text>
+              </View>
+              {roomName && (
+                <View style={styles.roomChip}>
+                  <Ionicons
+                    name="bed-outline"
+                    size={11}
+                    color={COLORS.textTertiary}
+                  />
+                  <Text style={styles.roomText} numberOfLines={1}>
+                    {roomName}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={COLORS.textTertiary}
+          />
+        </View>
+
+        {latest && (
+          <View style={styles.updateRow}>
+            <View style={styles.updateThumbWrap}>
+              {latest.mediaUrl ? (
+                <Image
+                  source={{ uri: latest.mediaUrl }}
+                  style={styles.updateThumb}
+                />
+              ) : (
+                <View style={[styles.updateThumb, styles.updateThumbFallback]}>
+                  <Ionicons name="image" size={18} color={COLORS.border} />
+                </View>
+              )}
+              <View style={styles.cameraBadge}>
+                <Ionicons
+                  name={latest.mediaType === "video" ? "videocam" : "camera"}
+                  size={10}
+                  color={COLORS.white}
+                />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.updateText,
+                  !hasCaption && styles.updateTextFallback,
+                ]}
+                numberOfLines={2}
+              >
+                {latest.caption || "El staff compartió una actualización"}
+              </Text>
+              <Text style={styles.updateTime}>
+                {timeAgo(latest.createdAt)}
+              </Text>
+            </View>
           </View>
         )}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.petName} numberOfLines={1}>
-            {formatName(petName)}
-          </Text>
-          <View style={styles.statusRow}>
-            <View style={styles.statusBadge}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>Hospedado</Text>
-            </View>
-            {roomName && <Text style={styles.roomText}>· {roomName}</Text>}
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
       </View>
-
-      {latest && (
-        <View style={styles.updateRow}>
-          {latest.mediaUrl && (
-            <Image source={{ uri: latest.mediaUrl }} style={styles.updateThumb} />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.updateText} numberOfLines={2}>
-              {latest.caption || "El staff compartió una actualización"}
-            </Text>
-            <Text style={styles.updateTime}>{timeAgo(latest.createdAt)}</Text>
-          </View>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: "row",
     backgroundColor: COLORS.white,
     borderRadius: 16,
-    padding: 14,
     marginBottom: 12,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  accentBar: {
+    width: 4,
+    backgroundColor: COLORS.successText,
+  },
+  body: {
+    flex: 1,
+    padding: 14,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  photoRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    padding: 2,
+    backgroundColor: COLORS.successBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
   photo: {
     width: 56,
@@ -108,6 +173,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
   petName: {
     fontSize: 18,
     fontWeight: "800",
@@ -117,16 +186,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 2,
+    marginTop: 4,
+    flexWrap: "wrap",
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     backgroundColor: COLORS.successBg,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 999,
   },
   statusDot: {
     width: 6,
@@ -136,39 +206,76 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.successText,
+    letterSpacing: 0.3,
+  },
+  roomChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.bgSection,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    flexShrink: 1,
   },
   roomText: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontWeight: "700",
+    flexShrink: 1,
   },
   updateRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: COLORS.bgSection,
+  },
+  updateThumbWrap: {
+    position: "relative",
   },
   updateThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
     backgroundColor: COLORS.bgSection,
+  },
+  updateThumbFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   updateText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
+    color: COLORS.textPrimary,
+    fontWeight: "600",
     lineHeight: 18,
+  },
+  updateTextFallback: {
+    color: COLORS.textTertiary,
+    fontStyle: "italic",
+    fontWeight: "500",
   },
   updateTime: {
     fontSize: 11,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 });
