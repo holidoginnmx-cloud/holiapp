@@ -32,6 +32,8 @@ import {
   deleteBehaviorTag,
   resolveStaffAlert,
   completeAddon,
+  staffConfirmChangeRequestPickupPaid,
+  registerStayManualPayment,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
@@ -65,7 +67,13 @@ export default function StayDetail() {
   const [alertType, setAlertType] = useState<AlertType>("NOT_EATING");
   const [alertDescription, setAlertDescription] = useState("");
   const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [selectedTagKey, setSelectedTagKey] = useState<BehaviorTagValue | null>(null);
+  const [tagNotes, setTagNotes] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
+  const [paymentNotes, setPaymentNotes] = useState("");
 
   const { data: stay, isLoading, refetch } = useQuery({
     queryKey: ["staff", "stay", id],
@@ -107,6 +115,42 @@ export default function StayDetail() {
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
+  const confirmPickupPaidMutation = useMutation({
+    mutationFn: (crId: string) => staffConfirmChangeRequestPickupPaid(crId),
+    onSuccess: () => {
+      invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+      Alert.alert("Pago registrado", "Se notificó al dueño");
+    },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  const manualPaymentMutation = useMutation({
+    mutationFn: () =>
+      registerStayManualPayment(id!, {
+        amount: parseFloat(paymentAmount),
+        method: paymentMethod,
+        notes: paymentNotes.trim() || undefined,
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+      setPaymentModalVisible(false);
+      setPaymentAmount("");
+      setPaymentNotes("");
+      Alert.alert(
+        "Pago registrado",
+        `Se registró $${res.amount.toLocaleString("es-MX")} y se notificó al dueño.`,
+      );
+    },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  function closePaymentModal() {
+    setPaymentModalVisible(false);
+    setPaymentAmount("");
+    setPaymentNotes("");
+  }
+
   const checkoutMutation = useMutation({
     mutationFn: () => staffCheckout(id!),
     onSuccess: (data) => {
@@ -141,16 +185,18 @@ export default function StayDetail() {
   });
 
   const tagMutation = useMutation({
-    mutationFn: (tag: BehaviorTagValue) =>
+    mutationFn: ({ tag, notes }: { tag: BehaviorTagValue; notes: string | null }) =>
       addBehaviorTag({
         tag,
-        notes: null,
+        notes,
         stayId: id!,
         petId: stay!.petId,
       }),
     onSuccess: () => {
       invalidateAll();
       setTagModalVisible(false);
+      setSelectedTagKey(null);
+      setTagNotes("");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -412,6 +458,19 @@ export default function StayDetail() {
               </Text>
             )}
           </View>
+          <TouchableOpacity
+            style={styles.editPetButton}
+            onPress={() =>
+              router.push({
+                pathname: "/pet/create",
+                params: { editId: stay.pet.id },
+              } as any)
+            }
+            hitSlop={8}
+          >
+            <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.editPetButtonText}>Editar</Text>
+          </TouchableOpacity>
         </View>
         {stay.pet.notes && (
           <View style={styles.notesBox}>
@@ -558,6 +617,78 @@ export default function StayDetail() {
         })()}
       </View>
 
+      {/* Saldo pendiente — card propia con desglose de anticipo */}
+      {(() => {
+        if (stay.status === "CANCELLED") return null;
+        const payments = stay.payments ?? [];
+        const depositPaid = payments
+          .filter((p) => p.status === "PARTIAL")
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+        const otherPaid = payments
+          .filter((p) => p.status === "PAID")
+          .reduce((sum, p) => sum + Number(p.amount), 0);
+        const totalPaid = depositPaid + otherPaid;
+        const total = Number(stay.totalAmount);
+        const balance = Math.max(0, total - totalPaid);
+        if (balance <= 0.01) return null;
+        return (
+          <View style={styles.payCard}>
+            <View style={styles.payHeader}>
+              <Ionicons name="cash" size={18} color={COLORS.warningText} />
+              <Text style={styles.payTitle}>Saldo pendiente</Text>
+              <Text style={styles.payTotal}>
+                ${balance.toLocaleString("es-MX")}
+              </Text>
+            </View>
+
+            <View style={styles.payBreakdown}>
+              <View style={styles.payRow}>
+                <Text style={styles.payRowLabel}>Total estancia</Text>
+                <Text style={styles.payRowValue}>
+                  ${total.toLocaleString("es-MX")}
+                </Text>
+              </View>
+              {depositPaid > 0 && (
+                <View style={styles.payRow}>
+                  <Text style={styles.payRowLabel}>Anticipo pagado</Text>
+                  <Text style={styles.payRowValueDiscount}>
+                    −${depositPaid.toLocaleString("es-MX")}
+                  </Text>
+                </View>
+              )}
+              {otherPaid > 0 && (
+                <View style={styles.payRow}>
+                  <Text style={styles.payRowLabel}>Pagos posteriores</Text>
+                  <Text style={styles.payRowValueDiscount}>
+                    −${otherPaid.toLocaleString("es-MX")}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.registerPaymentBtn}
+              onPress={() => {
+                setPaymentAmount(balance.toFixed(2));
+                setPaymentMethod("CASH");
+                setPaymentNotes("");
+                setPaymentModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="add-circle-outline"
+                size={16}
+                color={COLORS.primary}
+              />
+              <Text style={styles.registerPaymentText}>
+                Registrar pago manual
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
+
       {/* Action Buttons */}
       {(stay.status === "CONFIRMED" || stay.status === "CHECKED_IN") &&
         !stay.staffId && (
@@ -611,6 +742,7 @@ export default function StayDetail() {
                 <BehaviorTagPill
                   key={bt.id}
                   tag={bt.tag}
+                  notes={bt.notes}
                   onDelete={
                     stay.status === "CHECKED_IN"
                       ? () => handleDeleteTag(bt.id, bt.tag)
@@ -729,6 +861,42 @@ export default function StayDetail() {
         </View>
         <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
       </TouchableOpacity>
+
+      {/* Cobros pendientes al recoger (extensiones aprobadas) */}
+      {stay.status === "CHECKED_IN" &&
+        (stay.changeRequests ?? [])
+          .filter(
+            (cr) =>
+              cr.status === "APPROVED" &&
+              Number(cr.deltaAmount) > 0 &&
+              cr.payOnPickup &&
+              !cr.paidAt,
+          )
+          .map((cr) => (
+            <TouchableOpacity
+              key={cr.id}
+              style={styles.pickupChargeBtn}
+              onPress={() =>
+                Alert.alert(
+                  "Confirmar pago",
+                  `¿Recibiste $${Number(cr.deltaAmount).toLocaleString("es-MX")} de ${formatName(stay.pet.name)} por la extensión?`,
+                  [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                      text: "Sí, recibido",
+                      onPress: () => confirmPickupPaidMutation.mutate(cr.id),
+                    },
+                  ],
+                )
+              }
+              disabled={confirmPickupPaidMutation.isPending}
+            >
+              <Ionicons name="cash-outline" size={18} color={COLORS.warningText} />
+              <Text style={styles.pickupChargeBtnText}>
+                Cobrar ${Number(cr.deltaAmount).toLocaleString("es-MX")} al recoger (extensión)
+              </Text>
+            </TouchableOpacity>
+          ))}
 
       {/* Acciones — última opción de la pantalla */}
       {stay.status === "CHECKED_IN" && (
@@ -925,46 +1093,220 @@ export default function StayDetail() {
         visible={tagModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setTagModalVisible(false)}
+        onRequestClose={() => {
+          setTagModalVisible(false);
+          setSelectedTagKey(null);
+          setTagNotes("");
+        }}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setTagModalVisible(false)}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Agregar etiqueta</Text>
-              <TouchableOpacity
-                onPress={() => setTagModalVisible(false)}
-                hitSlop={12}
-                testID="tag-modal-close"
-              >
-                <Ionicons name="close" size={24} color={COLORS.textTertiary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalDescription}>
-              Las etiquetas describen la personalidad y conducta del peludito según lo que observas durante la estancia. Sirven al equipo en visitas futuras y se acumulan en su historial.
-            </Text>
-            <View style={styles.tagsGrid}>
-              {BEHAVIOR_TAGS.map((bt) => (
-                <TouchableOpacity
-                  key={bt.key}
-                  style={styles.tagOption}
-                  onPress={() => tagMutation.mutate(bt.key)}
-                  disabled={tagMutation.isPending}
-                >
-                  <BehaviorTagPill tag={bt.key} />
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.modalButtonCancel}
-              onPress={() => setTagModalVisible(false)}
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => {
+              setTagModalVisible(false);
+              setSelectedTagKey(null);
+              setTagNotes("");
+            }}
+          >
+            <Pressable
+              style={[styles.modalContent, { maxHeight: "85%" }]}
+              onPress={(e) => e.stopPropagation()}
             >
-              <Text style={styles.modalButtonCancelText}>Cancelar</Text>
-            </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Agregar etiqueta</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setTagModalVisible(false);
+                    setSelectedTagKey(null);
+                    setTagNotes("");
+                  }}
+                  hitSlop={12}
+                  testID="tag-modal-close"
+                >
+                  <Ionicons name="close" size={24} color={COLORS.textTertiary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.modalDescription}>
+                Las etiquetas describen la personalidad y conducta del peludito según lo que observas durante la estancia. Sirven al equipo en visitas futuras y se acumulan en su historial.
+              </Text>
+              <View style={styles.tagsGrid}>
+                {BEHAVIOR_TAGS.map((bt) => {
+                  const isSelected = selectedTagKey === bt.key;
+                  return (
+                    <TouchableOpacity
+                      key={bt.key}
+                      style={[
+                        styles.tagOption,
+                        isSelected && styles.tagOptionSelected,
+                      ]}
+                      onPress={() => setSelectedTagKey(bt.key)}
+                      disabled={tagMutation.isPending}
+                    >
+                      <BehaviorTagPill tag={bt.key} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {selectedTagKey && (
+                <>
+                  <Text style={styles.tagNotesLabel}>
+                    Comentario (opcional)
+                  </Text>
+                  <TextInput
+                    style={styles.textArea}
+                    placeholder="Ej: Solo es agresivo si le vas a dar la comida"
+                    placeholderTextColor={COLORS.textDisabled}
+                    value={tagNotes}
+                    onChangeText={setTagNotes}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </>
+              )}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalButtonCancel}
+                  onPress={() => {
+                    setTagModalVisible(false);
+                    setSelectedTagKey(null);
+                    setTagNotes("");
+                  }}
+                >
+                  <Text style={styles.modalButtonCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButtonConfirm,
+                    !selectedTagKey && { opacity: 0.5 },
+                  ]}
+                  onPress={() =>
+                    selectedTagKey &&
+                    tagMutation.mutate({
+                      tag: selectedTagKey,
+                      notes: tagNotes.trim() || null,
+                    })
+                  }
+                  disabled={!selectedTagKey || tagMutation.isPending}
+                >
+                  <Text style={styles.modalButtonConfirmText}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal de pago manual (estilo admin/baño) */}
+      <Modal
+        visible={paymentModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closePaymentModal}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <Pressable style={styles.payModalOverlay} onPress={closePaymentModal}>
+            <Pressable
+              style={styles.payModalContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={styles.payModalTitle}>Registrar pago manual</Text>
+
+              <Text style={styles.payInputLabel}>Monto</Text>
+              <TextInput
+                style={styles.payModalInput}
+                placeholder="0.00"
+                placeholderTextColor={COLORS.textDisabled}
+                value={paymentAmount}
+                onChangeText={setPaymentAmount}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={styles.payInputLabel}>Método</Text>
+              <View style={styles.payMethodRow}>
+                {(["CASH", "TRANSFER"] as const).map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.payMethodChip,
+                      paymentMethod === m && styles.payMethodChipActive,
+                    ]}
+                    onPress={() => setPaymentMethod(m)}
+                  >
+                    <Ionicons
+                      name={
+                        m === "CASH"
+                          ? "cash-outline"
+                          : "swap-horizontal-outline"
+                      }
+                      size={16}
+                      color={
+                        paymentMethod === m
+                          ? COLORS.white
+                          : COLORS.textTertiary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.payMethodChipText,
+                        paymentMethod === m && { color: COLORS.white },
+                      ]}
+                    >
+                      {m === "CASH" ? "Efectivo" : "Transferencia"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.payInputLabel}>Notas (opcional)</Text>
+              <TextInput
+                style={[styles.payModalInput, { minHeight: 60 }]}
+                placeholder="Referencia, número de operación, etc."
+                placeholderTextColor={COLORS.textDisabled}
+                value={paymentNotes}
+                onChangeText={setPaymentNotes}
+                multiline
+              />
+
+              <View style={styles.payModalButtons}>
+                <TouchableOpacity
+                  style={styles.payModalBtnCancel}
+                  onPress={closePaymentModal}
+                  disabled={manualPaymentMutation.isPending}
+                >
+                  <Text style={styles.payModalBtnCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.payModalBtnConfirm,
+                    (!paymentAmount ||
+                      parseFloat(paymentAmount) <= 0 ||
+                      manualPaymentMutation.isPending) && { opacity: 0.5 },
+                  ]}
+                  onPress={() => manualPaymentMutation.mutate()}
+                  disabled={
+                    !paymentAmount ||
+                    parseFloat(paymentAmount) <= 0 ||
+                    manualPaymentMutation.isPending
+                  }
+                >
+                  <Text style={styles.payModalBtnConfirmText}>
+                    {manualPaymentMutation.isPending
+                      ? "Registrando..."
+                      : "Registrar"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
     </ScrollView>
@@ -1023,8 +1365,23 @@ const styles = StyleSheet.create({
   },
   petProfileRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 14,
     marginBottom: 12,
+  },
+  editPetButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  editPetButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
   petPhoto: {
     width: 70,
@@ -1119,6 +1476,167 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.bgSection,
   },
+  // Saldo pendiente — card propia
+  payCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.warningText,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  payHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  payTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.warningText,
+  },
+  payTotal: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: COLORS.warningText,
+  },
+  payBreakdown: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+    gap: 6,
+  },
+  payRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  payRowLabel: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    fontWeight: "600",
+  },
+  payRowValue: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+  },
+  payRowValueDiscount: {
+    fontSize: 13,
+    color: COLORS.successText,
+    fontWeight: "700",
+  },
+  registerPaymentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
+    backgroundColor: COLORS.primaryLight,
+  },
+  registerPaymentText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  // Modal pago manual
+  payModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  payModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  payModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    marginBottom: 16,
+  },
+  payInputLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  payModalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    textAlignVertical: "top",
+  },
+  payMethodRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  payMethodChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+  },
+  payMethodChipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  payMethodChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
+  },
+  payModalButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 20,
+  },
+  payModalBtnCancel: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+    alignItems: "center",
+  },
+  payModalBtnCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
+  },
+  payModalBtnConfirm: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+  },
+  payModalBtnConfirmText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
   stayInfoItem: {
     alignItems: "center",
   },
@@ -1154,6 +1672,24 @@ const styles = StyleSheet.create({
     gap: 12,
     marginHorizontal: 16,
     marginTop: 16,
+  },
+  pickupChargeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    borderWidth: 1,
+    borderColor: COLORS.warningText,
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  pickupChargeBtnText: {
+    color: COLORS.warningText,
+    fontSize: 14,
+    fontWeight: "700",
   },
   actionButtonSmall: {
     flex: 1,
@@ -1350,6 +1886,18 @@ const styles = StyleSheet.create({
   },
   tagOption: {
     padding: 4,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  tagOptionSelected: {
+    borderColor: COLORS.primary,
+  },
+  tagNotesLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginBottom: 6,
   },
   // Owner strip (within pet card)
   ownerStrip: {

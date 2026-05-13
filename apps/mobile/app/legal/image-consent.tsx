@@ -22,7 +22,7 @@ export default function ImageConsentScreen() {
 
           <Text style={styles.h2}>Qué autorizas al aceptar</Text>
           <Text style={styles.p}>
-            • Uso de la imagen de tu mascota en las redes sociales de HolidogInn
+            • Uso de la imagen de tu mascota en las redes sociales de Holidog Inn
             (Instagram, Facebook, TikTok).{"\n"}
             • Uso en materiales de marketing (folletos, sitio web, WhatsApp).{"\n"}
             • Uso en la galería pública de la app si la habilitamos en el futuro.
@@ -32,7 +32,7 @@ export default function ImageConsentScreen() {
           <Text style={styles.p}>
             • Venta de imágenes a terceros.{"\n"}
             • Publicación de datos personales tuyos (nombre, dirección, etc.).{"\n"}
-            • Uso de imágenes de tu mascota fuera de los canales de HolidogInn.
+            • Uso de imágenes de tu mascota fuera de los canales de Holidog Inn.
           </Text>
 
           <Text style={styles.h2}>Puedes revocar en cualquier momento</Text>

@@ -70,7 +70,44 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
     return updated;
   });
 
-  // GET /rooms/available — cuartos disponibles para fechas y tamaño de mascota
+  // DELETE /rooms/:id — eliminar (solo admin)
+  // Bloquea si hay reservaciones activas (no CHECKED_OUT ni CANCELLED).
+  // Reservaciones históricas mantienen su registro: roomId pasa a null por ON DELETE SET NULL.
+  fastify.delete<{ Params: { id: string } }>(
+    "/rooms/:id",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const room = await prisma.room.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!room) {
+        return reply.status(404).send({ error: "Cuarto no encontrado" });
+      }
+
+      const activeCount = await prisma.reservation.count({
+        where: {
+          roomId: request.params.id,
+          status: {
+            notIn: ["CHECKED_OUT", "CANCELLED"] as ReservationStatus[],
+          },
+        },
+      });
+
+      if (activeCount > 0) {
+        return reply.status(409).send({
+          error:
+            "El cuarto tiene reservaciones activas. Cancélalas o márcalas como check-out antes de eliminar.",
+        });
+      }
+
+      await prisma.room.delete({ where: { id: request.params.id } });
+      return reply.status(204).send();
+    }
+  );
+
+  // GET /rooms/available — cuartos con capacidad disponible para fechas y tamaño.
+  // Toma en cuenta `capacity`: un cuarto se considera disponible mientras la
+  // cantidad de reservaciones activas solapadas sea menor a su capacidad.
   fastify.get<{
     Querystring: { checkIn: string; checkOut: string; petSize: string };
   }>("/rooms/available", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -84,23 +121,34 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
         .send({ error: "checkOut debe ser posterior a checkIn" });
     }
 
-    const rooms = await prisma.room.findMany({
+    const candidateRooms = await prisma.room.findMany({
       where: {
         isActive: true,
         sizeAllowed: { has: petSize as PetSize },
-        reservations: {
-          none: {
-            status: { notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatus[] },
-            AND: [
-              { checkIn: { lt: checkOutDate } },
-              { checkOut: { gt: checkInDate } },
-            ],
+      },
+      include: {
+        _count: {
+          select: {
+            reservations: {
+              where: {
+                reservationType: "STAY",
+                status: {
+                  notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatus[],
+                },
+                AND: [
+                  { checkIn: { lt: checkOutDate } },
+                  { checkOut: { gt: checkInDate } },
+                ],
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    return rooms;
+    return candidateRooms
+      .filter((r) => r._count.reservations < r.capacity)
+      .map(({ _count, ...rest }) => rest);
   });
 }

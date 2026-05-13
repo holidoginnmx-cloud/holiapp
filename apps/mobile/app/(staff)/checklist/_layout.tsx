@@ -8,7 +8,7 @@ export default function ChecklistLayout() {
 
   const handleBack = () => {
     if (reservationId) {
-      router.replace(`/(staff)/stay/${reservationId}` as any);
+      router.replace(`/staff/stay/${reservationId}` as any);
     } else {
       router.replace("/(staff)/stays" as any);
     }

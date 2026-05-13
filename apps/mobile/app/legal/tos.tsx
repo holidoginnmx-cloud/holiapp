@@ -7,14 +7,14 @@ export default function TosScreen() {
     <LegalDocScreen
       documentType="TOS"
       title="Términos y condiciones"
-      subtitle="Las reglas del servicio de hospedaje y estética canina HolidogInn."
+      subtitle="Las reglas del servicio de hospedaje y estética canina Holidog Inn."
       body={
         <>
           <Text style={styles.h2}>1. Objeto</Text>
           <Text style={styles.p}>
-            HolidogInn presta servicios de hospedaje, cuidado y estética canina en sus
+            Holidog Inn presta servicios de hospedaje, cuidado y estética canina en sus
             instalaciones en Hermosillo, Sonora. Estos términos regulan la relación
-            entre HolidogInn y el cliente (tú).
+            entre Holidog Inn y el cliente (tú).
           </Text>
 
           <Text style={styles.h2}>2. Requisitos para reservar</Text>
@@ -35,21 +35,21 @@ export default function TosScreen() {
           <Text style={styles.h2}>4. Comportamiento de la mascota</Text>
           <Text style={styles.p}>
             El cliente se obliga a declarar con honestidad el perfil conductual,
-            alergias, medicación y condiciones de salud de la mascota. HolidogInn
+            alergias, medicación y condiciones de salud de la mascota. Holidog Inn
             se reserva el derecho de no admitir o dar de alta anticipadamente a
             una mascota que represente riesgo para el resto.
           </Text>
 
           <Text style={styles.h2}>5. Limitación de responsabilidad</Text>
           <Text style={styles.p}>
-            HolidogInn aplica protocolos de cuidado razonables. El cliente entiende
+            Holidog Inn aplica protocolos de cuidado razonables. El cliente entiende
             que la convivencia entre animales implica un riesgo inherente que no
             puede eliminarse por completo.
           </Text>
 
           <Text style={styles.h2}>6. Vigencia y modificaciones</Text>
           <Text style={styles.p}>
-            HolidogInn puede modificar estos términos. Los cambios materiales
+            Holidog Inn puede modificar estos términos. Los cambios materiales
             generan una nueva versión que el cliente deberá aceptar antes de
             reservar nuevamente.
           </Text>

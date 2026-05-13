@@ -44,6 +44,9 @@ export type ReservationListItem = Reservation & {
   hasPendingChangeRequest: boolean;
   lastUpdateAt: string | null;
   hasReview: boolean;
+  reviewRating: number | null;
+  hasDeslanado: boolean;
+  hasCorte: boolean;
 };
 
 export type BathVariant = {
@@ -63,17 +66,33 @@ export type ReservationAddonWithVariant = {
   unitPrice: string;
   paidWith: "BOOKING" | "STANDALONE";
   paymentId: string | null;
+  completedAt: string | null;
+  // Extras (deslanado/corte) — el precio lo define staff post-servicio.
+  // `extraPrice` es el total; `extraDeslanadoPrice`/`extraCortePrice` el desglose.
+  extraPrice: string | null;
+  extraDeslanadoPrice: string | null;
+  extraCortePrice: string | null;
+  extraDescription: string | null;
+  extraPaymentStatus: "PENDING_PAYMENT" | "PAY_ON_PICKUP" | "PAID" | null;
+  extraSetById: string | null;
+  extraSetAt: string | null;
+  extraPaidAt: string | null;
+  extraStripePaymentIntentId: string | null;
   createdAt: string;
   variant: BathVariant & {
     serviceType: { id: string; code: string; name: string };
   };
 };
 
+export type StayUpdateWithStaff = StayUpdate & {
+  staff: { id: string; firstName: string; lastName: string } | null;
+};
+
 export type ReservationDetail = Reservation & {
   pet: Pet;
   room: Room | null;
   payments: Payment[];
-  updates: StayUpdate[];
+  updates: StayUpdateWithStaff[];
   owner: { id: string; firstName: string; lastName: string; email: string };
   staff: { id: string; firstName: string; lastName: string; avatarUrl: string | null } | null;
   review?: Review | null;
@@ -110,6 +129,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(msg);
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return res.json();
 }
 
@@ -128,9 +150,10 @@ export type PetForBooking = Pet & {
     id: string;
     checkIn: string;
     checkOut: string;
-    status: "PENDING" | "CONFIRMED" | "CHECKED_IN";
+    status: "CONFIRMED" | "CHECKED_IN";
     paymentType: "FULL" | "DEPOSIT" | null;
     totalAmount: string;
+    hasBalance: boolean;
   }[];
 };
 
@@ -150,6 +173,48 @@ export const updatePet = (id: string, data: Record<string, unknown>) =>
   apiFetch<Pet>(`${ENDPOINTS.pets}/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+
+// ─── Dewormings ─────────────────────────────────────────
+
+export type DewormingType = "INTERNAL" | "EXTERNAL" | "BOTH";
+
+export type Deworming = {
+  id: string;
+  type: DewormingType;
+  productName: string | null;
+  appliedAt: string;
+  expiresAt: string | null;
+  vetName: string | null;
+  fileUrl: string | null;
+  notes: string | null;
+  petId: string;
+  createdAt: string;
+};
+
+export const getDewormings = (petId: string) =>
+  apiFetch<Deworming[]>(`${ENDPOINTS.pets}/${petId}/dewormings`);
+
+export const addDeworming = (
+  petId: string,
+  data: {
+    type: DewormingType;
+    productName?: string | null;
+    appliedAt: string;
+    expiresAt?: string | null;
+    vetName?: string | null;
+    fileUrl?: string | null;
+    notes?: string | null;
+  },
+) =>
+  apiFetch<Deworming>(`${ENDPOINTS.pets}/${petId}/dewormings`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const deleteDeworming = (petId: string, id: string) =>
+  apiFetch<void>(`${ENDPOINTS.pets}/${petId}/dewormings/${id}`, {
+    method: "DELETE",
   });
 
 export const addVaccine = (petId: string, data: Record<string, unknown>) =>
@@ -374,6 +439,7 @@ export const createBathIntent = (data: {
   corte: boolean;
   appointmentAt: string;
   notes?: string;
+  paymentType?: "DEPOSIT" | "FULL";
 }) =>
   apiFetch<{
     clientSecret: string | null;
@@ -383,6 +449,7 @@ export const createBathIntent = (data: {
     price: number;
     depositAmount: number;
     remainingAmount: number;
+    paymentType: "DEPOSIT" | "FULL";
     variantId: string;
   }>(`${ENDPOINTS.baths}/create-intent`, {
     method: "POST",
@@ -421,6 +488,21 @@ export type StaffBath = Reservation & {
     email: string;
   };
   addons: ReservationAddonWithVariant[];
+  // StayUpdates con foto subida al completar el baño.
+  updates: {
+    id: string;
+    mediaUrl: string;
+    mediaType: string;
+    caption: string | null;
+    createdAt: string;
+  }[];
+  // Payments PAID (para calcular deposit remainder).
+  payments: {
+    id: string;
+    amount: string;
+    method: "CASH" | "CARD" | "TRANSFER" | "STRIPE" | "CREDIT";
+    paidAt: string | null;
+  }[];
 };
 
 export const getStaffBaths = (date?: string) =>
@@ -433,6 +515,84 @@ export const completeStaffBath = (id: string, mediaUrl: string) =>
     method: "POST",
     body: JSON.stringify({ mediaUrl }),
   });
+
+// ─── Extras de baño (deslanado/corte cobrado por staff post-servicio) ──
+
+export type AddonExtraStatus =
+  | "PENDING_PAYMENT"
+  | "PAY_ON_PICKUP"
+  | "PAID";
+
+export const setBathExtrasPrice = (
+  addonId: string,
+  payload: { extraDeslanadoPrice?: number; extraCortePrice?: number },
+) =>
+  apiFetch<ReservationAddonWithVariant>(
+    `/staff/addons/${addonId}/set-extras`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+
+export const confirmExtrasPaidAtPickup = (
+  addonId: string,
+  payload: { method?: "CASH" | "TRANSFER" } = {},
+) =>
+  apiFetch<ReservationAddonWithVariant>(
+    `/staff/addons/${addonId}/confirm-pickup-paid`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+
+// Staff registra un pago manual (efectivo/transferencia) con monto específico.
+// Soporta pagos parciales. Cuando el acumulado cubre todo el saldo, el
+// endpoint marca extras como PAID y concluye el baño.
+export const registerBathManualPayment = (
+  reservationId: string,
+  payload: {
+    amount: number;
+    method?: "CASH" | "TRANSFER";
+    notes?: string;
+  },
+) =>
+  apiFetch<{ success: boolean; amount: number; concluded: boolean }>(
+    `/staff/baths/${reservationId}/register-manual-payment`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+
+export const createExtrasPaymentIntent = (
+  reservationId: string,
+  addonId: string,
+) =>
+  apiFetch<{
+    clientSecret: string;
+    paymentIntentId: string;
+    amount: number;
+  }>(`/reservations/${reservationId}/addons/${addonId}/extras/intent`, {
+    method: "POST",
+  });
+
+export const confirmExtrasPayment = (
+  reservationId: string,
+  addonId: string,
+  paymentIntentId: string,
+) =>
+  apiFetch<{ success: boolean }>(
+    `/reservations/${reservationId}/addons/${addonId}/extras/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({ paymentIntentId }),
+    },
+  );
+
+export const chooseExtrasPayOnPickup = (
+  reservationId: string,
+  addonId: string,
+) =>
+  apiFetch<{ success: boolean }>(
+    `/reservations/${reservationId}/addons/${addonId}/extras/pay-on-pickup`,
+    { method: "POST" },
+  );
 
 export type ChecklistWithStaff = DailyChecklist & {
   staff: { id: string; firstName: string; lastName: string };
@@ -447,6 +607,9 @@ export const getOwnerChecklists = (reservationId: string) =>
 
 export const getStayUpdates = (reservationId: string) =>
   apiFetch<StayUpdate[]>(`${ENDPOINTS.stayUpdates}/${reservationId}`);
+
+export const deleteStayUpdate = (id: string) =>
+  apiFetch<void>(`${ENDPOINTS.stayUpdates}/${id}`, { method: "DELETE" });
 
 // ─── Payments ────────────────────────────────────────────
 
@@ -509,24 +672,28 @@ export interface AdminStats {
   }[];
 }
 
+export interface RoomOccupant {
+  reservationId: string;
+  pet: {
+    id: string;
+    name: string;
+    breed: string | null;
+    size: "XS" | "S" | "M" | "L" | "XL";
+    photoUrl: string | null;
+  };
+  owner: { id: string; name: string };
+  staff: { id: string; name: string } | null;
+  checkIn: string;
+  checkOut: string;
+  // legacy
+  petName: string;
+  ownerName: string;
+}
+
 export interface RoomWithStatus extends Room {
-  currentReservation: {
-    reservationId: string;
-    pet: {
-      id: string;
-      name: string;
-      breed: string | null;
-      size: "XS" | "S" | "M" | "L" | "XL";
-      photoUrl: string | null;
-    };
-    owner: { id: string; name: string };
-    staff: { id: string; name: string } | null;
-    checkIn: string;
-    checkOut: string;
-    // legacy
-    petName: string;
-    ownerName: string;
-  } | null;
+  currentReservations: RoomOccupant[];
+  /** @deprecated usar `currentReservations`; queda por compat hasta migrar UI vieja. */
+  currentReservation: RoomOccupant | null;
 }
 
 export type PetWithOwner = Pet & {
@@ -705,6 +872,7 @@ export type CartillaVaccine = {
 
 export type PetWithCartilla = Pet & {
   cartillaUrl: string | null;
+  cartillaPhotos: string[];
   cartillaStatus: CartillaStatusValue | null;
   cartillaReviewedAt: string | null;
   cartillaReviewedById: string | null;
@@ -722,6 +890,7 @@ export type PetWithCartilla = Pet & {
     lastName: string;
   } | null;
   vaccines?: CartillaVaccine[];
+  dewormings?: Deworming[];
 };
 
 export const getCartillas = (status: CartillaStatusValue = "PENDING") =>
@@ -750,6 +919,13 @@ export type ReviewCartillaPayload =
         appliedAt: string;
         expiresAt: string;
         vetName?: string;
+      }[];
+      dewormings?: {
+        type: DewormingType;
+        productName?: string | null;
+        appliedAt: string;
+        expiresAt?: string | null;
+        notes?: string | null;
       }[];
     }
   | { action: "REJECT"; reason?: string };
@@ -799,6 +975,11 @@ export const createRoom = (data: Omit<Room, "id" | "createdAt" | "updatedAt">) =
     body: JSON.stringify(data),
   });
 
+export const deleteRoom = (id: string) =>
+  apiFetch<void>(`${ENDPOINTS.rooms}/${id}`, {
+    method: "DELETE",
+  });
+
 export const updateUser = (id: string, data: Partial<User>) =>
   apiFetch<User>(`${ENDPOINTS.users}/${id}`, {
     method: "PATCH",
@@ -842,6 +1023,15 @@ export type StaffStayDetail = Reservation & {
   alerts: (StaffAlert & { staff: { id: string; firstName: string; lastName: string } })[];
   staff: { id: string; firstName: string; lastName: string } | null;
   addons?: ReservationAddonWithVariant[];
+  changeRequests?: ChangeRequest[];
+  // Pagos cobrados (PAID o PARTIAL=anticipo) — para calcular saldo pendiente.
+  payments: {
+    id: string;
+    amount: string;
+    method: "CASH" | "CARD" | "TRANSFER" | "STRIPE" | "CREDIT";
+    status: "PAID" | "PARTIAL";
+    paidAt: string | null;
+  }[];
 };
 
 export type StaffStats = {
@@ -860,6 +1050,12 @@ export const getStaffStats = () =>
 export const getStaffStays = (status?: string) =>
   apiFetch<StaffStay[]>(`/staff/stays${status ? `?status=${status}` : ""}`);
 
+// Todas las estancias (sin filtrar por staffId, todos los status excepto
+// CANCELLED). Para el calendario de staff donde cualquier staff ve agenda
+// completa de hotel.
+export const getStaffStaysAll = () =>
+  apiFetch<StaffStay[]>("/staff/stays?all=true");
+
 export const getStaffStaysUnassigned = () =>
   apiFetch<StaffStay[]>("/staff/stays/unassigned");
 
@@ -876,6 +1072,21 @@ export const staffCheckout = (id: string) =>
   apiFetch<{ reservation: Reservation; warnings: string[] }>(
     `/staff/stays/${id}/checkout`,
     { method: "POST", body: JSON.stringify({}) }
+  );
+
+// Staff registra pago manual (efectivo/transferencia) para una estancia.
+// Útil cuando el owner liquida el saldo del anticipo al check-in.
+export const registerStayManualPayment = (
+  reservationId: string,
+  payload: {
+    amount: number;
+    method?: "CASH" | "TRANSFER";
+    notes?: string;
+  },
+) =>
+  apiFetch<{ success: boolean; amount: number; payment: Payment }>(
+    `/staff/stays/${reservationId}/register-manual-payment`,
+    { method: "POST", body: JSON.stringify(payload) },
   );
 
 export const createDailyChecklist = (
@@ -963,6 +1174,8 @@ export type ChangeRequest = {
   rejectionReason: string | null;
   approvedById: string | null;
   approvedAt: string | null;
+  payOnPickup: boolean;
+  paidAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1019,6 +1232,43 @@ export const rejectChangeRequest = (id: string, reason: string) =>
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+
+export const changeRequestPayNowIntent = (
+  reservationId: string,
+  changeRequestId: string,
+) =>
+  apiFetch<{ clientSecret: string; paymentIntentId: string }>(
+    `/reservations/${reservationId}/change-requests/${changeRequestId}/pay-now-intent`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+
+export const changeRequestPayNowConfirm = (
+  reservationId: string,
+  changeRequestId: string,
+  stripePaymentIntentId: string,
+) =>
+  apiFetch<{ success?: boolean; alreadyConfirmed?: boolean }>(
+    `/reservations/${reservationId}/change-requests/${changeRequestId}/pay-now-confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({ stripePaymentIntentId }),
+    },
+  );
+
+export const changeRequestPayOnPickup = (
+  reservationId: string,
+  changeRequestId: string,
+) =>
+  apiFetch<ChangeRequest>(
+    `/reservations/${reservationId}/change-requests/${changeRequestId}/pay-on-pickup`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+
+export const staffConfirmChangeRequestPickupPaid = (changeRequestId: string) =>
+  apiFetch<{ success: true }>(
+    `/staff/change-requests/${changeRequestId}/confirm-pickup-paid`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
 
 export const cancelReservation = (
   reservationId: string,

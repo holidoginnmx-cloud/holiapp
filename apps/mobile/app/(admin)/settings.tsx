@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
@@ -96,7 +96,11 @@ export default function AdminSettings() {
   };
 
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Profile */}
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
@@ -155,8 +159,8 @@ export default function AdminSettings() {
         <MenuItem
           icon="warning-outline"
           iconTint={COLORS.warningText}
-          label="Alertas del staff"
-          subtitle="Incidentes, salud y comportamiento reportados"
+          label="Alertas"
+          subtitle="Incidentes, salud, comportamiento y vacunas por vencer"
           onPress={() => router.push("/admin/alerts" as any)}
         />
         <MenuItem
@@ -170,6 +174,13 @@ export default function AdminSettings() {
           }
           badge={cartillasCount}
           onPress={() => router.push("/admin/cartillas" as any)}
+        />
+        <MenuItem
+          icon="cash-outline"
+          iconTint={COLORS.successText}
+          label="Ingresos"
+          subtitle="Resumen de ingresos del mes y desglose"
+          onPress={() => router.push("/admin/revenue" as any)}
           isLast
         />
       </View>
@@ -183,7 +194,7 @@ export default function AdminSettings() {
           isLast
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -191,7 +202,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.bgPage,
+  },
+  content: {
     padding: 16,
+    paddingBottom: 40,
   },
   profileCard: {
     flexDirection: "row",

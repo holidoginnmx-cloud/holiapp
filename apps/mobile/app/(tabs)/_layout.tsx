@@ -54,6 +54,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
+        animation: "shift",
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

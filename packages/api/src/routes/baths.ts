@@ -140,6 +140,75 @@ async function notifyBathBooked(
   });
 }
 
+// ────────────────────────────────────────────────────────────
+//  Helper: cerrar baño suelto cuando ya quedó listo + sin saldo.
+//  Bañó "concluido" = foto subida (addon.completedAt) Y sin extras
+//  pendientes Y sin saldo de deposit. Si todo cuadra, status → CHECKED_OUT.
+//  No-op si la reservación no es BATH o ya está CHECKED_OUT/CANCELLED.
+// ────────────────────────────────────────────────────────────
+export async function maybeConcludeStandaloneBath(
+  prisma: Prisma.TransactionClient | import("@holidoginn/db").PrismaClient,
+  reservationId: string,
+): Promise<boolean> {
+  const reservation = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    include: {
+      payments: { where: { status: "PAID" } },
+      addons: { include: { variant: { include: { serviceType: true } } } },
+    },
+  });
+  if (!reservation) return false;
+  if (reservation.reservationType !== "BATH") return false;
+  if (
+    reservation.status === "CHECKED_OUT" ||
+    reservation.status === "CANCELLED"
+  ) {
+    return false;
+  }
+
+  // Bath físicamente terminado: addon de baño con completedAt.
+  const bathAddon = reservation.addons.find(
+    (a) => a.variant?.serviceType?.code === "BATH",
+  );
+  if (!bathAddon?.completedAt) return false;
+
+  // Extras: si tienen precio definido, deben estar PAID.
+  const extrasPending = reservation.addons.some(
+    (a) =>
+      a.variant?.serviceType?.code === "BATH" &&
+      a.extraPrice !== null &&
+      a.extraPaymentStatus !== "PAID",
+  );
+  if (extrasPending) return false;
+
+  // Si la variante incluye extras pero aún no se han cotizado, falta cobrar.
+  const extrasNotPriced = reservation.addons.some(
+    (a) =>
+      a.variant?.serviceType?.code === "BATH" &&
+      (a.variant.deslanado || a.variant.corte) &&
+      a.extraPrice === null,
+  );
+  if (extrasNotPriced) return false;
+
+  // Deposit balance: suma de payments PAID debe cubrir totalAmount.
+  const totalPaid = reservation.payments.reduce(
+    (sum, p) => sum + Number(p.amount),
+    0,
+  );
+  const totalDue = Number(reservation.totalAmount);
+  if (totalPaid + 0.01 < totalDue) return false;
+
+  await prisma.reservation.update({
+    where: { id: reservationId },
+    data: { status: "CHECKED_OUT" },
+  });
+  await prisma.reservationChangeRequest.updateMany({
+    where: { reservationId, status: "PENDING" },
+    data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
+  });
+  return true;
+}
+
 export default async function bathsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
@@ -256,7 +325,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
-      const { petId, deslanado, corte, appointmentAt, notes } = parsed.data;
+      const { petId, deslanado, corte, appointmentAt, notes, paymentType } = parsed.data;
 
       const pet = await prisma.pet.findUnique({ where: { id: petId } });
       if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
@@ -358,11 +427,14 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       });
       const ownerCredit = Number(owner?.creditBalance ?? 0);
       const price = Number(variant.price);
-      // Owner pays a fixed deposit now; remainder is collected in person at drop-off.
-      const depositAmount = Math.min(BATH_DEPOSIT_AMOUNT, price);
-      const creditApplied = Math.min(ownerCredit, depositAmount);
-      const chargeAmount = depositAmount - creditApplied;
-      const remainingAmount = price - depositAmount;
+      // Owner elige cuánto pagar ahora:
+      //  - DEPOSIT: anticipo fijo (BATH_DEPOSIT_AMOUNT) y resto al recoger.
+      //  - FULL: precio total. Si el total es ≤ anticipo, queda como FULL.
+      const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+      const chargeBase = paymentType === "FULL" ? price : baseDeposit;
+      const creditApplied = Math.min(ownerCredit, chargeBase);
+      const chargeAmount = chargeBase - creditApplied;
+      const remainingAmount = price - chargeBase;
 
       if (chargeAmount === 0) {
         return reply.send({
@@ -371,8 +443,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           coveredByCredit: true,
           creditApplied,
           price,
-          depositAmount,
+          depositAmount: chargeBase,
           remainingAmount,
+          paymentType,
           variantId: variant.id,
         });
       }
@@ -387,7 +460,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           variantId: variant.id,
           appointmentAt: appointmentDate.toISOString(),
           creditApplied: String(creditApplied),
-          depositAmount: String(depositAmount),
+          depositAmount: String(chargeBase),
+          paymentType,
           ...(notes ? { notes } : {}),
         },
       });
@@ -398,8 +472,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         coveredByCredit: false,
         creditApplied,
         price,
-        depositAmount,
+        depositAmount: chargeBase,
         remainingAmount,
+        paymentType,
         variantId: variant.id,
       });
     }
@@ -414,59 +489,112 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
     { preHandler: staffAuth },
     async (request, reply) => {
       const cfg = await ensureConfig(prisma);
-
-      let dateYMD = request.query.date;
-      if (!dateYMD) {
-        // Hoy en hora local Hermosillo
-        const now = new Date();
-        const local = new Date(now.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-        dateYMD = `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
-      } else if (!isValidDateYMD(dateYMD)) {
+      const dateQuery = request.query.date;
+      if (dateQuery && !isValidDateYMD(dateQuery)) {
         return reply.status(400).send({ error: "date debe ser YYYY-MM-DD" });
       }
 
-      const slots = buildSlotsForDay(dateYMD, cfg);
-      if (slots.length === 0) return { date: dateYMD, baths: [] };
+      // Hoy en hora local Hermosillo
+      const now = new Date();
+      const localNow = new Date(now.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
+      const todayYMD = `${localNow.getUTCFullYear()}-${String(localNow.getUTCMonth() + 1).padStart(2, "0")}-${String(localNow.getUTCDate()).padStart(2, "0")}`;
+      const dateYMD = dateQuery ?? todayYMD;
 
-      const dayStart = slots[0];
-      const dayEnd = new Date(
-        slots[slots.length - 1].getTime() + cfg.slotMinutes * 60000,
+      // Rango: si se pasó date explícito, ese día solo. Si no, hoy + 30 días
+      // (vista "todos los baños próximos" que usa el mobile por defecto).
+      const RANGE_DAYS = dateQuery ? 1 : 31;
+
+      const [yY, mY, dY] = dateYMD.split("-").map(Number);
+      const dayStartLocal = new Date(
+        Date.UTC(yY, mY - 1, dY, TZ_OFFSET_HOURS, 0),
+      );
+      const rangeEndLocal = new Date(
+        dayStartLocal.getTime() + RANGE_DAYS * 24 * 3600 * 1000,
       );
 
-      const baths = await prisma.reservation.findMany({
-        where: {
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: { gte: dayStart, lt: dayEnd },
-        },
-        include: {
-          pet: {
-            select: {
-              id: true,
-              name: true,
-              breed: true,
-              weight: true,
-              photoUrl: true,
-              size: true,
-              notes: true,
-            },
-          },
-          owner: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              phone: true,
-              email: true,
-            },
-          },
-          addons: {
-            include: {
-              variant: { include: { serviceType: true } },
-            },
+      // Para vista de un solo día, restringimos las citas BATH al rango de
+      // slots configurados. Para vista multi-día, permitimos todo el rango.
+      const slots = buildSlotsForDay(dateYMD, cfg);
+      const dayStart = dateQuery && slots[0] ? slots[0] : dayStartLocal;
+      const dayEnd =
+        dateQuery && slots.length > 0
+          ? new Date(slots[slots.length - 1].getTime() + cfg.slotMinutes * 60000)
+          : rangeEndLocal;
+
+      const includeOpts = {
+        pet: {
+          select: {
+            id: true,
+            name: true,
+            breed: true,
+            weight: true,
+            photoUrl: true,
+            size: true,
+            notes: true,
           },
         },
-        orderBy: { appointmentAt: "asc" },
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+          },
+        },
+        addons: {
+          include: {
+            variant: { include: { serviceType: true } },
+          },
+        },
+        // Foto subida al completar el baño (StayUpdate con mediaUrl).
+        updates: {
+          where: { mediaType: "image" },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        },
+        // Para calcular saldo pendiente (deposit remainder) en el mobile.
+        payments: {
+          where: { status: "PAID" },
+          select: { id: true, amount: true, method: true, paidAt: true },
+        },
+      } as const;
+
+      const [standalone, staysWithBath] = await Promise.all([
+        prisma.reservation.findMany({
+          where: {
+            reservationType: "BATH",
+            status: { not: "CANCELLED" },
+            appointmentAt: { gte: dayStart, lt: dayEnd },
+          },
+          include: includeOpts,
+          orderBy: { appointmentAt: "asc" },
+        }),
+        prisma.reservation.findMany({
+          where: {
+            reservationType: "STAY",
+            status: { in: ["CONFIRMED", "CHECKED_IN"] },
+            checkOut: { gte: dayStartLocal, lt: rangeEndLocal },
+            addons: {
+              some: { variant: { serviceType: { code: "BATH" } } },
+            },
+          },
+          include: includeOpts,
+          orderBy: { checkOut: "asc" },
+        }),
+      ]);
+
+      // Para que el mobile pueda usar el mismo render, exponemos appointmentAt
+      // = checkOut en los stays con baño (el baño se hace antes del check-out).
+      const stayBaths = staysWithBath.map((r) => ({
+        ...r,
+        appointmentAt: r.checkOut,
+      }));
+
+      const baths = [...standalone, ...stayBaths].sort((a, b) => {
+        const ta = a.appointmentAt ? a.appointmentAt.getTime() : 0;
+        const tb = b.appointmentAt ? b.appointmentAt.getTime() : 0;
+        return ta - tb;
       });
 
       return { date: dateYMD, baths };
@@ -493,34 +621,54 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           pet: { select: { id: true, name: true } },
-          addons: true,
+          addons: { include: { variant: { include: { serviceType: true } } } },
         },
       });
       if (!reservation) {
         return reply.status(404).send({ error: "Cita no encontrada" });
       }
-      if (reservation.reservationType !== "BATH") {
-        return reply.status(400).send({ error: "La reservación no es una cita de baño" });
-      }
-      if (reservation.status === "CHECKED_OUT") {
-        return reply.status(409).send({ error: "La cita ya fue completada" });
-      }
       if (reservation.status === "CANCELLED") {
         return reply.status(400).send({ error: "La cita está cancelada" });
       }
 
+      const isStandaloneBath = reservation.reservationType === "BATH";
+      const isStayWithBath =
+        reservation.reservationType === "STAY" &&
+        reservation.addons.some(
+          (a) => a.variant?.serviceType?.code === "BATH",
+        );
+
+      if (!isStandaloneBath && !isStayWithBath) {
+        return reply
+          .status(400)
+          .send({ error: "La reservación no tiene baño contratado" });
+      }
+
+      // Standalone: si ya está CHECKED_OUT, ya se completó.
+      // STAY con baño: si ya hay addon BATH con completedAt, también.
+      if (isStandaloneBath && reservation.status === "CHECKED_OUT") {
+        return reply.status(409).send({ error: "La cita ya fue completada" });
+      }
+      const bathAddon = reservation.addons.find(
+        (a) => a.variant?.serviceType?.code === "BATH",
+      );
+      if (isStayWithBath && bathAddon?.completedAt) {
+        return reply.status(409).send({ error: "El baño ya fue completado" });
+      }
+
       await prisma.$transaction(async (tx) => {
-        await tx.reservation.update({
-          where: { id: reservation.id },
-          data: { status: "CHECKED_OUT" },
-        });
+        // Marca el addon de baño como físicamente terminado (foto subida).
+        // Para baños sueltos, la reservación NO se cierra aquí — se cierra
+        // cuando se liquida el saldo (extras + deposit). Ver maybeConcludeStandaloneBath.
         await tx.reservationAddon.updateMany({
-          where: { reservationId: reservation.id, completedAt: null },
+          where: {
+            reservationId: reservation.id,
+            completedAt: null,
+            ...(isStandaloneBath
+              ? {}
+              : { variant: { serviceType: { code: "BATH" } } }),
+          },
           data: { completedAt: new Date() },
-        });
-        await tx.reservationChangeRequest.updateMany({
-          where: { reservationId: reservation.id, status: "PENDING" },
-          data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
         });
         await tx.stayUpdate.create({
           data: {
@@ -534,16 +682,153 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         });
       });
 
+      // Si es baño suelto sin saldo pendiente, concluir inmediatamente.
+      if (isStandaloneBath) {
+        await maybeConcludeStandaloneBath(prisma, reservation.id);
+      }
+
       // Notificar al dueño
       await notifyUser(prisma, {
         userId: reservation.ownerId,
         type: "CHECK_OUT",
         title: "¡Baño listo! 🛁",
-        body: `${reservation.pet.name} ya está listo. Puedes pasar a recogerlo.`,
+        body: `${reservation.pet.name} ya está listo${isStandaloneBath ? ". Puedes pasar a recogerlo." : ", ahora a continuar la estancia."}`,
         data: { reservationId: reservation.id, kind: "BATH_COMPLETED" },
       });
 
       return reply.send({ success: true });
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  POST /staff/baths/:id/register-manual-payment
+  //  Staff registra un pago manual (efectivo/transferencia) con monto
+  //  específico. Crea un Payment record y, si el total acumulado cubre
+  //  el saldo (deposit + extras), marca extras como PAID y concluye.
+  //  Soporta pagos parciales: el staff puede registrar varios.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{
+    Params: { id: string };
+    Body: { amount?: number; method?: "CASH" | "TRANSFER"; notes?: string };
+  }>(
+    "/staff/baths/:id/register-manual-payment",
+    { preHandler: staffAuth },
+    async (request, reply) => {
+      const method = request.body?.method ?? "CASH";
+      const amount = request.body?.amount;
+      if (!["CASH", "TRANSFER"].includes(method)) {
+        return reply.status(400).send({ error: "Método inválido" });
+      }
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        return reply.status(400).send({
+          error: "El monto debe ser un número mayor a 0",
+        });
+      }
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: {
+          pet: { select: { id: true, name: true } },
+          payments: { where: { status: "PAID" } },
+          addons: { include: { variant: { include: { serviceType: true } } } },
+        },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Baño no encontrado" });
+      }
+      if (reservation.reservationType !== "BATH") {
+        return reply.status(400).send({
+          error: "Este endpoint sólo aplica a baños sueltos",
+        });
+      }
+      if (reservation.status === "CANCELLED") {
+        return reply.status(400).send({ error: "La reservación está cancelada" });
+      }
+      if (reservation.status === "CHECKED_OUT") {
+        return reply.status(409).send({ error: "El baño ya está concluido" });
+      }
+
+      const totalPaidBefore = reservation.payments.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
+      const pendingExtraAddons = reservation.addons.filter(
+        (a) =>
+          a.variant?.serviceType?.code === "BATH" &&
+          a.extraPrice !== null &&
+          a.extraPaymentStatus !== "PAID",
+      );
+      const extrasTotal = pendingExtraAddons.reduce(
+        (sum, a) => sum + Number(a.extraPrice ?? 0),
+        0,
+      );
+      const reservationTotal = Number(reservation.totalAmount);
+      const totalOwed = reservationTotal + extrasTotal;
+      const balance = Math.max(0, totalOwed - totalPaidBefore);
+      if (balance <= 0.01) {
+        return reply.status(400).send({
+          error: "No hay saldo pendiente para registrar.",
+        });
+      }
+      // Tolerar un sobrepago de hasta 1 peso (centavos por redondeo).
+      if (amount - balance > 1) {
+        return reply.status(400).send({
+          error: `El monto excede el saldo pendiente ($${balance.toLocaleString(
+            "es-MX",
+          )}).`,
+        });
+      }
+
+      const noteText =
+        request.body?.notes?.trim() ||
+        `Pago manual (${method}) registrado por staff`;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.create({
+          data: {
+            amount: new Prisma.Decimal(amount),
+            method,
+            status: "PAID",
+            paidAt: new Date(),
+            reservationId: reservation.id,
+            userId: reservation.ownerId,
+            notes: noteText,
+          },
+        });
+        // Si el acumulado cubre todo el saldo, marca extras pendientes como
+        // PAID (su Payment ya quedó registrado en el record que acabamos de
+        // crear más los anteriores).
+        if (totalPaidBefore + amount + 0.01 >= totalOwed) {
+          for (const a of pendingExtraAddons) {
+            await tx.reservationAddon.update({
+              where: { id: a.id },
+              data: {
+                extraPaymentStatus: "PAID",
+                extraPaidAt: new Date(),
+              },
+            });
+          }
+        }
+      });
+
+      const concluded = await maybeConcludeStandaloneBath(
+        prisma,
+        reservation.id,
+      );
+
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "GENERAL",
+        title: "Pago recibido",
+        body: `Recibimos $${amount.toLocaleString("es-MX")} del baño de ${reservation.pet.name}. ¡Gracias!`,
+        data: { reservationId: reservation.id, kind: "BATH_PAID" },
+      });
+
+      return reply.send({
+        success: true,
+        amount,
+        concluded,
+      });
     },
   );
 
@@ -610,6 +895,85 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────
+  //  POST /internal/reservation-reminders-90min
+  //  Recordatorio 1.5 horas antes de la hora de cita:
+  //   - BATH: 1.5h antes de appointmentAt
+  //   - STAY: 1.5h antes de checkIn
+  //  Idempotente: usa Notification.data.kind === "REMINDER_90MIN" para evitar
+  //  duplicados.
+  // ────────────────────────────────────────────────────────────
+  fastify.post("/internal/reservation-reminders-90min", async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && request.headers["x-cron-secret"] !== secret) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+
+    const now = new Date();
+    // Ventana de 1h centrada en t-1.5h. Toleramos cron cada ~30 min.
+    const windowStart = new Date(now.getTime() + 60 * 60 * 1000);   // +60 min
+    const windowEnd = new Date(now.getTime() + 120 * 60 * 1000);    // +120 min
+
+    const upcoming = await prisma.reservation.findMany({
+      where: {
+        status: { notIn: ["CANCELLED", "CHECKED_OUT"] },
+        OR: [
+          {
+            reservationType: "BATH",
+            appointmentAt: { gte: windowStart, lt: windowEnd },
+          },
+          {
+            reservationType: "STAY",
+            checkIn: { gte: windowStart, lt: windowEnd },
+          },
+        ],
+      },
+      include: {
+        pet: { select: { name: true } },
+      },
+    });
+
+    let sent = 0;
+    for (const res of upcoming) {
+      const alreadyReminded = await prisma.notification.findFirst({
+        where: {
+          userId: res.ownerId,
+          type: "RESERVATION_REMINDER",
+          data: { path: ["kind"], equals: "REMINDER_90MIN" },
+          AND: [{ data: { path: ["reservationId"], equals: res.id } }],
+        },
+      });
+      if (alreadyReminded) continue;
+
+      const target = res.reservationType === "BATH" ? res.appointmentAt : res.checkIn;
+      if (!target) continue;
+
+      const when = target.toLocaleString("es-MX", {
+        timeZone: "America/Hermosillo",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const isBath = res.reservationType === "BATH";
+      const title = isBath
+        ? `Baño de ${res.pet.name} en 1.5 horas 🛁`
+        : `Check-in de ${res.pet.name} en 1.5 horas 🏨`;
+      const body = isBath
+        ? `${res.pet.name} tiene cita a las ${when}. ¡Te esperamos!`
+        : `${res.pet.name} entra al hotel a las ${when}. Prepara su cartilla y maletita.`;
+
+      await notifyUser(prisma, {
+        userId: res.ownerId,
+        type: "RESERVATION_REMINDER",
+        title,
+        body,
+        data: { reservationId: res.id, kind: "REMINDER_90MIN" },
+      });
+      sent++;
+    }
+
+    return reply.send({ sent, checked: upcoming.length });
+  });
+
+  // ────────────────────────────────────────────────────────────
   //  POST /baths/confirm — tras PI exitoso, crea la Reservation BATH
   //  Soporta también pagos 100% con crédito (paymentIntentId opcional).
   // ────────────────────────────────────────────────────────────
@@ -633,6 +997,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let creditApplied = 0;
       let stripeAmount = 0;
       let paymentIntentId: string | null = null;
+      let chosenPaymentType: "DEPOSIT" | "FULL" = "DEPOSIT";
 
       if (body.paymentIntentId) {
         const parsed = ConfirmBathSchema.safeParse(body);
@@ -654,6 +1019,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         creditApplied = Number(pi.metadata.creditApplied || 0);
         stripeAmount = pi.amount / 100;
         paymentIntentId = pi.id;
+        if (pi.metadata?.paymentType === "FULL") {
+          chosenPaymentType = "FULL";
+        }
       } else {
         // Flujo 100% con crédito — el servidor recibe los datos directamente.
         if (!body.petId || !body.variantId || !body.appointmentAt) {
@@ -697,8 +1065,11 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           }
 
           const price = Number(variant.price);
-          const depositAmount = Math.min(BATH_DEPOSIT_AMOUNT, price);
-          const isPartial = depositAmount < price;
+          // El paymentType viene del intent (owner eligió DEPOSIT o FULL).
+          // Si el total es ≤ anticipo, no hay saldo aunque haya elegido DEPOSIT.
+          const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+          const paidNow = chosenPaymentType === "FULL" ? price : baseDeposit;
+          const isPartial = paidNow < price;
           const reservation = await tx.reservation.create({
             data: {
               reservationType: "BATH",
@@ -707,8 +1078,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               totalAmount: new Prisma.Decimal(price),
               notes,
               legalAccepted: true,
-              // DEPOSIT when there's a balance to collect on arrival;
-              // FULL when credit/price covered everything at booking time.
+              // DEPOSIT cuando aún hay saldo por cobrar al recoger;
+              // FULL cuando el owner ya pagó todo (en línea o con crédito).
               paymentType: isPartial ? "DEPOSIT" : "FULL",
               depositDeadline: isPartial ? appointmentAt : null,
               ownerId,
@@ -744,7 +1115,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           if (creditApplied > 0) {
             await tx.user.update({
               where: { id: ownerId },
-              data: { creditBalance: { decrement: creditApplied } },
+              data: {
+                creditBalance: { decrement: creditApplied },
+                lastCreditEntryAt: new Date(),
+              },
             });
             const user = await tx.user.findUnique({
               where: { id: ownerId },

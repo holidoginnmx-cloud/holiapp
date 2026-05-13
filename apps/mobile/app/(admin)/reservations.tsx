@@ -96,6 +96,7 @@ export default function AdminReservations() {
         }
         showOwnerName
         showStaffName
+        adminView
         refreshing={isRefetching}
         onRefresh={refetch}
       />

@@ -178,29 +178,38 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         },
       });
 
-      const occupancyMap = new Map(
-        occupiedReservations.map((r) => [
-          r.roomId,
-          {
-            reservationId: r.id,
-            pet: r.pet,
-            owner: { id: r.owner.id, name: `${r.owner.firstName} ${r.owner.lastName}` },
-            staff: r.staff
-              ? { id: r.staff.id, name: `${r.staff.firstName} ${r.staff.lastName}` }
-              : null,
-            checkIn: r.checkIn,
-            checkOut: r.checkOut,
-            // Mantengo legacy fields para no romper UI antigua
-            petName: r.pet.name,
-            ownerName: `${r.owner.firstName} ${r.owner.lastName}`,
-          },
-        ])
-      );
+      // Acumulamos por roomId — un cuarto puede tener varias mascotas
+      // hospedadas a la vez si su `capacity` es > 1.
+      const occupancyByRoom = new Map<string, typeof occupiedReservations>();
+      for (const r of occupiedReservations) {
+        if (!r.roomId) continue;
+        const list = occupancyByRoom.get(r.roomId) ?? [];
+        list.push(r);
+        occupancyByRoom.set(r.roomId, list);
+      }
 
-      return rooms.map((room) => ({
-        ...room,
-        currentReservation: occupancyMap.get(room.id) ?? null,
-      }));
+      return rooms.map((room) => {
+        const list = occupancyByRoom.get(room.id) ?? [];
+        const currentReservations = list.map((r) => ({
+          reservationId: r.id,
+          pet: r.pet,
+          owner: { id: r.owner.id, name: `${r.owner.firstName} ${r.owner.lastName}` },
+          staff: r.staff
+            ? { id: r.staff.id, name: `${r.staff.firstName} ${r.staff.lastName}` }
+            : null,
+          checkIn: r.checkIn,
+          checkOut: r.checkOut,
+          // Legacy fields para no romper UI vieja
+          petName: r.pet.name,
+          ownerName: `${r.owner.firstName} ${r.owner.lastName}`,
+        }));
+        return {
+          ...room,
+          currentReservations,
+          // Legacy: primera reservación. Deprecado; usar `currentReservations`.
+          currentReservation: currentReservations[0] ?? null,
+        };
+      });
     }
   );
 
@@ -574,8 +583,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Cuarto no disponible" });
       }
 
-      // Check room availability (solo hospedajes)
-      const conflict = await prisma.reservation.findFirst({
+      // Capacity guard: ocupación actual + esta reserva ≤ capacity.
+      const taken = await prisma.reservation.count({
         where: {
           reservationType: "STAY",
           roomId,
@@ -587,8 +596,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           ],
         },
       });
-      if (conflict) {
-        return reply.status(409).send({ error: "Cuarto ocupado en esas fechas" });
+      if (taken + 1 > room.capacity) {
+        return reply.status(409).send({
+          error: `Cuarto ${room.name} sin capacidad en esas fechas (${taken}/${room.capacity} ocupado).`,
+          code: "ROOM_AT_CAPACITY",
+        });
       }
 
       const updated = await prisma.reservation.update({
@@ -617,9 +629,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      if (!["PENDING", "CONFIRMED"].includes(reservation.status)) {
+      if (reservation.status !== "CONFIRMED") {
         return reply.status(400).send({
-          error: "Solo se pueden cancelar reservas pendientes o confirmadas",
+          error: "Solo se pueden cancelar reservas confirmadas",
         });
       }
 
@@ -680,7 +692,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       const updatedUser = await prisma.user.update({
         where: { id: user.id },
-        data: { creditBalance: { increment: amount } },
+        data: {
+          creditBalance: { increment: amount },
+          lastCreditEntryAt: new Date(),
+        },
       });
 
       await prisma.creditLedger.create({
@@ -742,6 +757,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               },
             },
           },
+          dewormings: {
+            orderBy: { appliedAt: "desc" },
+          },
         },
         orderBy: { updatedAt: "desc" },
       });
@@ -764,7 +782,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!pet.cartillaUrl) {
+      const hasCartilla =
+        pet.cartillaPhotos.length > 0 || Boolean(pet.cartillaUrl);
+      if (!hasCartilla) {
         return reply.status(400).send({ error: "La mascota no tiene cartilla subida" });
       }
 
@@ -772,8 +792,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       if (data.action === "APPROVE") {
         const vaccines = data.vaccines ?? [];
+        const dewormings = data.dewormings ?? [];
 
         // Validar catalogIds antes de la transacción para fallar rápido con 400.
+        let catalogMap = new Map<string, { id: string; displayName: string }>();
         if (vaccines.length > 0) {
           const catalogIds = [...new Set(vaccines.map((v) => v.catalogId))];
           const catalogs = await prisma.vaccineCatalog.findMany({
@@ -785,33 +807,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               .status(400)
               .send({ error: "Uno o más tipos de vacuna no son válidos" });
           }
-          const catalogMap = new Map(catalogs.map((c) => [c.id, c]));
+          catalogMap = new Map(catalogs.map((c) => [c.id, c]));
+        }
 
-          await prisma.$transaction([
-            prisma.pet.update({
-              where: { id: pet.id },
-              data: {
-                cartillaStatus: "APPROVED",
-                cartillaReviewedAt: reviewedAt,
-                cartillaReviewedById: request.userId,
-                cartillaRejectionReason: null,
-              },
-            }),
-            ...vaccines.map((v) =>
-              prisma.vaccine.create({
-                data: {
-                  petId: pet.id,
-                  catalogId: v.catalogId,
-                  name: catalogMap.get(v.catalogId)!.displayName,
-                  appliedAt: v.appliedAt,
-                  expiresAt: v.expiresAt,
-                  vetName: v.vetName ?? null,
-                },
-              })
-            ),
-          ]);
-        } else {
-          await prisma.pet.update({
+        await prisma.$transaction([
+          prisma.pet.update({
             where: { id: pet.id },
             data: {
               cartillaStatus: "APPROVED",
@@ -819,8 +819,32 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               cartillaReviewedById: request.userId,
               cartillaRejectionReason: null,
             },
-          });
-        }
+          }),
+          ...vaccines.map((v) =>
+            prisma.vaccine.create({
+              data: {
+                petId: pet.id,
+                catalogId: v.catalogId,
+                name: catalogMap.get(v.catalogId)!.displayName,
+                appliedAt: v.appliedAt,
+                expiresAt: v.expiresAt,
+                vetName: v.vetName ?? null,
+              },
+            })
+          ),
+          ...dewormings.map((d) =>
+            prisma.deworming.create({
+              data: {
+                petId: pet.id,
+                type: d.type,
+                productName: d.productName ?? null,
+                appliedAt: d.appliedAt,
+                expiresAt: d.expiresAt ?? null,
+                notes: d.notes ?? null,
+              },
+            })
+          ),
+        ]);
 
         await notifyUser(prisma, {
           userId: pet.ownerId,
@@ -942,4 +966,124 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       return { id: vaccine.id };
     }
   );
+
+  // ────────────────────────────────────────────────────────────
+  //  POST /internal/expire-credits — cron diario
+  //  Expira saldo a favor con >90 días sin actividad y manda
+  //  notificación de "expira pronto" 14 días antes.
+  //  Protegido por header x-cron-secret (si CRON_SECRET está configurado).
+  // ────────────────────────────────────────────────────────────
+  fastify.post("/internal/expire-credits", async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && request.headers["x-cron-secret"] !== secret) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+
+    const now = new Date();
+    const expireCutoff = new Date(now.getTime() - 90 * 86_400_000);
+    const warnCutoff = new Date(now.getTime() - 76 * 86_400_000);
+
+    // 1) Expirar saldos inactivos por más de 90 días.
+    const expirable = await prisma.user.findMany({
+      where: {
+        creditBalance: { gt: 0 },
+        lastCreditEntryAt: { lt: expireCutoff },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        email: true,
+        creditBalance: true,
+      },
+    });
+
+    let expired = 0;
+    for (const user of expirable) {
+      const amount = Number(user.creditBalance);
+      if (amount <= 0) continue;
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            creditBalance: 0,
+            lastCreditEntryAt: new Date(),
+          },
+        });
+        await tx.creditLedger.create({
+          data: {
+            userId: user.id,
+            type: "CREDIT_EXPIRED",
+            amount: -amount,
+            balanceAfter: 0,
+            description: "Saldo a favor expirado por 90 días de inactividad",
+          },
+        });
+        await tx.notification.create({
+          data: {
+            userId: user.id,
+            type: "GENERAL",
+            title: "Tu saldo a favor expiró",
+            body: `Tu saldo de $${amount.toLocaleString("es-MX")} expiró por inactividad. Si crees que es un error contáctanos.`,
+            data: { kind: "credit_expired", amount },
+          },
+        });
+      });
+      expired++;
+    }
+
+    // 2) Avisar 14 días antes (entre 76 y 90 días sin actividad).
+    const expiringSoon = await prisma.user.findMany({
+      where: {
+        creditBalance: { gt: 0 },
+        lastCreditEntryAt: {
+          lt: warnCutoff,
+          gte: expireCutoff,
+        },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        creditBalance: true,
+        lastCreditEntryAt: true,
+      },
+    });
+
+    let warned = 0;
+    for (const user of expiringSoon) {
+      // Idempotente: una sola advertencia por usuario por ventana de expiración.
+      // Buscamos notificación de "credit_expiring" creada después de lastCreditEntryAt.
+      const lastActivity = user.lastCreditEntryAt ?? new Date(0);
+      const existingWarning = await prisma.notification.findFirst({
+        where: {
+          userId: user.id,
+          type: "GENERAL",
+          createdAt: { gte: lastActivity },
+          data: { path: ["kind"], equals: "credit_expiring" },
+        },
+      });
+      if (existingWarning) continue;
+
+      const amount = Number(user.creditBalance);
+      const expiresInDays = Math.ceil(
+        (lastActivity.getTime() + 90 * 86_400_000 - now.getTime()) / 86_400_000,
+      );
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: "GENERAL",
+          title: "Tu saldo a favor expira pronto ⏰",
+          body: `Tienes $${amount.toLocaleString("es-MX")} de saldo que expirará en ${expiresInDays} días si no lo usas. Aplícalo en tu próxima reserva.`,
+          data: { kind: "credit_expiring", amount, expiresInDays },
+        },
+      });
+      warned++;
+    }
+
+    return reply.send({
+      expired,
+      warned,
+      checkedExpirable: expirable.length,
+      checkedExpiring: expiringSoon.length,
+    });
+  });
 }

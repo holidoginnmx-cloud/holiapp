@@ -23,7 +23,10 @@ const SIZE_LABELS: Record<string, string> = {
 };
 
 export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
-  const isOccupied = room.currentReservation !== null;
+  const occupants = room.currentReservations ?? [];
+  const occupiedCount = occupants.length;
+  const isFull = occupiedCount >= room.capacity;
+  const isPartial = occupiedCount > 0 && !isFull;
   const isInactive = !room.isActive;
 
   const statusStyle = isInactive
@@ -33,12 +36,19 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
         color: COLORS.textDisabled,
         accent: COLORS.border,
       }
-    : isOccupied
+    : isFull
     ? {
-        label: "Ocupado",
+        label: "Lleno",
         bg: COLORS.errorBg,
         color: COLORS.errorText,
         accent: COLORS.errorText,
+      }
+    : isPartial
+    ? {
+        label: `${occupiedCount}/${room.capacity}`,
+        bg: COLORS.warningBg,
+        color: COLORS.warningText,
+        accent: COLORS.warningText,
       }
     : {
         label: "Disponible",
@@ -71,25 +81,26 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
           </View>
         </View>
 
-        {isOccupied && room.currentReservation && (
-          <View style={styles.occupantRow}>
-            <Ionicons name="paw" size={14} color={COLORS.errorText} />
-            <Text style={styles.occupantText} numberOfLines={1}>
-              {formatName(room.currentReservation.petName)} —{" "}
-              {formatName(room.currentReservation.ownerName)}
-            </Text>
-            <View style={styles.checkoutPill}>
-              <Ionicons
-                name="log-out-outline"
-                size={11}
-                color={COLORS.errorText}
-              />
-              <Text style={styles.checkoutText}>
-                Sale {formatDate(room.currentReservation.checkOut)}
+        {occupants.length > 0 &&
+          occupants.map((occupant) => (
+            <View key={occupant.reservationId} style={styles.occupantRow}>
+              <Ionicons name="paw" size={14} color={COLORS.errorText} />
+              <Text style={styles.occupantText} numberOfLines={1}>
+                {formatName(occupant.pet.name)} —{" "}
+                {formatName(occupant.owner.name)}
               </Text>
+              <View style={styles.checkoutPill}>
+                <Ionicons
+                  name="log-out-outline"
+                  size={11}
+                  color={COLORS.errorText}
+                />
+                <Text style={styles.checkoutText}>
+                  Sale {formatDate(occupant.checkOut)}
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
+          ))}
 
         <View style={styles.metaRow}>
           <View style={styles.metaChip}>

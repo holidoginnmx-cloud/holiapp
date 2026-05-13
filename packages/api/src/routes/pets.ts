@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify";
-import { CreatePetSchema, UpdatePetSchema, CreateVaccineSchema } from "@holidoginn/shared";
+import {
+  CreatePetSchema,
+  UpdatePetSchema,
+  CreateVaccineSchema,
+  CreateDewormingSchema,
+} from "@holidoginn/shared";
 import { createAuthMiddleware } from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
 
@@ -58,7 +63,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           },
           reservations: {
             where: {
-              status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+              status: { in: ["CONFIRMED", "CHECKED_IN"] },
             },
             select: {
               id: true,
@@ -67,13 +72,30 @@ export default async function petsRoutes(fastify: FastifyInstance) {
               status: true,
               paymentType: true,
               totalAmount: true,
+              payments: {
+                where: { status: { in: ["PAID", "PARTIAL"] } },
+                select: { amount: true },
+              },
             },
             orderBy: { checkIn: "asc" },
           },
         },
         orderBy: { createdAt: "desc" },
       });
-      return pets;
+      return pets.map((p) => ({
+        ...p,
+        reservations: p.reservations.map((r) => {
+          const totalPaid = r.payments.reduce(
+            (sum, pay) => sum + Number(pay.amount),
+            0,
+          );
+          const { payments: _, ...rest } = r;
+          return {
+            ...rest,
+            hasBalance: Number(r.totalAmount) - totalPaid > 0.01,
+          };
+        }),
+      }));
     }
   );
 
@@ -125,10 +147,25 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Dueño no encontrado" });
       }
 
-      // If owner uploaded a cartilla in the create payload, mark it PENDING
-      const cartillaStatus = parsed.data.cartillaUrl ? "PENDING" as const : null;
+      // Si el owner subió cartilla en el create (uno o más fotos), marcar PENDING.
+      // Soportamos tanto `cartillaUrl` (legacy, single) como `cartillaPhotos`
+      // (nuevo, array). Si llega `cartillaUrl` y no `cartillaPhotos`, lo
+      // promovemos al array para que el flujo nuevo lo encuentre.
+      const photos =
+        parsed.data.cartillaPhotos && parsed.data.cartillaPhotos.length > 0
+          ? parsed.data.cartillaPhotos
+          : parsed.data.cartillaUrl
+            ? [parsed.data.cartillaUrl]
+            : [];
+      const hasCartilla = photos.length > 0;
+      const cartillaStatus = hasCartilla ? "PENDING" as const : null;
       const pet = await prisma.pet.create({
-        data: { ...parsed.data, cartillaStatus },
+        data: {
+          ...parsed.data,
+          cartillaPhotos: photos,
+          cartillaUrl: parsed.data.cartillaUrl ?? photos[0] ?? null,
+          cartillaStatus,
+        },
       });
 
       if (cartillaStatus === "PENDING") {
@@ -157,18 +194,40 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      // Staff y admin pueden editar cualquier mascota; owner solo la suya.
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
-      // If the cartilla image changed, reset review state to PENDING.
-      // Owners cannot set cartillaStatus directly — schema already excludes it.
+      // Si cambió la cartilla, resetear el estado de revisión a PENDING.
+      // Owners no pueden setear cartillaStatus (el schema lo excluye).
+      // Staff editando un perfil NO puede modificar cartilla (debe pasar por
+      // el flujo de revisión de admin).
       const data: Record<string, unknown> = { ...parsed.data };
-      if (
-        Object.prototype.hasOwnProperty.call(parsed.data, "cartillaUrl") &&
-        parsed.data.cartillaUrl !== pet.cartillaUrl
-      ) {
-        data.cartillaStatus = parsed.data.cartillaUrl ? "PENDING" : null;
+      if (request.userRole === "STAFF") {
+        delete data.cartillaUrl;
+        delete data.cartillaPhotos;
+      }
+
+      const incomingPhotos = data.cartillaPhotos as string[] | undefined;
+      const incomingUrl = data.cartillaUrl as string | null | undefined;
+      const photosChanged =
+        incomingPhotos !== undefined &&
+        JSON.stringify(incomingPhotos) !== JSON.stringify(pet.cartillaPhotos);
+      const urlChanged =
+        incomingUrl !== undefined && incomingUrl !== pet.cartillaUrl;
+
+      if (photosChanged || urlChanged) {
+        // Normalizamos: si llegó cartillaUrl pero no cartillaPhotos, lo promovemos
+        // al array (y viceversa para mantener compatibilidad con clients viejos).
+        if (incomingPhotos === undefined && incomingUrl !== undefined) {
+          data.cartillaPhotos = incomingUrl ? [incomingUrl] : [];
+        }
+        if (incomingUrl === undefined && incomingPhotos !== undefined) {
+          data.cartillaUrl = incomingPhotos[0] ?? null;
+        }
+        const finalPhotos = (data.cartillaPhotos as string[] | undefined) ?? [];
+        data.cartillaStatus = finalPhotos.length > 0 ? "PENDING" : null;
         data.cartillaReviewedAt = null;
         data.cartillaReviewedById = null;
         data.cartillaRejectionReason = null;
@@ -215,10 +274,91 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
+      // Validar catalogId contra el catálogo activo; siempre derivamos `name`
+      // del catálogo (no confiamos en el cliente para el nombre canónico).
+      const catalog = await prisma.vaccineCatalog.findFirst({
+        where: { id: parsed.data.catalogId, isActive: true },
+      });
+      if (!catalog) {
+        return reply.status(400).send({ error: "Tipo de vacuna inválido" });
+      }
+
       const vaccine = await prisma.vaccine.create({
-        data: { ...parsed.data, petId: request.params.id },
+        data: {
+          ...parsed.data,
+          name: catalog.displayName,
+          petId: request.params.id,
+        },
       });
       return reply.status(201).send(vaccine);
+    }
+  );
+
+  // GET /pets/:id/dewormings — listar desparasitaciones
+  fastify.get<{ Params: { id: string } }>(
+    "/pets/:id/dewormings",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({ where: { id: request.params.id } });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      const dewormings = await prisma.deworming.findMany({
+        where: { petId: request.params.id },
+        orderBy: { appliedAt: "desc" },
+      });
+      return dewormings;
+    }
+  );
+
+  // POST /pets/:id/dewormings — registrar desparasitación
+  fastify.post<{ Params: { id: string } }>(
+    "/pets/:id/dewormings",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const parsed = CreateDewormingSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const pet = await prisma.pet.findUnique({ where: { id: request.params.id } });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+
+      const deworming = await prisma.deworming.create({
+        data: { ...parsed.data, petId: request.params.id },
+      });
+      return reply.status(201).send(deworming);
+    }
+  );
+
+  // DELETE /pets/:petId/dewormings/:id — eliminar desparasitación
+  fastify.delete<{ Params: { petId: string; id: string } }>(
+    "/pets/:petId/dewormings/:id",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const deworming = await prisma.deworming.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!deworming || deworming.petId !== request.params.petId) {
+        return reply.status(404).send({ error: "Desparasitación no encontrada" });
+      }
+      const pet = await prisma.pet.findUnique({ where: { id: deworming.petId } });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      await prisma.deworming.delete({ where: { id: deworming.id } });
+      return reply.status(204).send();
     }
   );
 

@@ -15,7 +15,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
 });
 
-const MODIFIABLE_STATUSES = ["PENDING", "CONFIRMED", "CHECKED_IN"] as const;
+const MODIFIABLE_STATUSES = ["CONFIRMED", "CHECKED_IN"] as const;
 
 function startOfToday(): Date {
   const d = new Date();
@@ -120,7 +120,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
 
       if (!MODIFIABLE_STATUSES.includes(reservation.status as any)) {
         return reply.status(400).send({
-          error: "Solo se pueden modificar reservaciones pendientes, confirmadas o activas",
+          error: "Solo se pueden modificar reservaciones confirmadas o activas",
         });
       }
 
@@ -162,145 +162,41 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // ─── Extension path ────────────────────────────────────────
-      if (preview.delta > 0) {
-        const existingPending = await prisma.reservationChangeRequest.findFirst({
-          where: { reservationId: reservation.id, status: "PENDING" },
-        });
-        if (existingPending) {
-          return reply.status(409).send({ error: "Ya tienes una solicitud de cambio pendiente" });
+      // Validaciones específicas por sentido del cambio.
+      if (preview.delta < 0) {
+        if (!refundChoice) {
+          return reply.status(400).send({ error: "Selecciona reembolso o saldo a favor" });
         }
-
-        const created = await prisma.reservationChangeRequest.create({
-          data: {
-            reservationId: reservation.id,
-            requestedById: request.userId!,
-            newCheckIn,
-            newCheckOut,
-            newTotalDays: preview.newTotalDays,
-            newTotalAmount: preview.newTotal,
-            deltaAmount: preview.delta,
-            status: "PENDING",
-          },
-        });
-
-        return reply.status(201).send({ request: created, requiresApproval: true });
-      }
-
-      // ─── Shortening path (delta < 0) — immediate ──────────────
-      if (!refundChoice) {
-        return reply.status(400).send({ error: "Selecciona reembolso o saldo a favor" });
-      }
-      if (refundChoice === "STRIPE_REFUND" && preview.lastPaymentMethod !== "STRIPE") {
-        return reply.status(409).send({
-          error: "El pago original no fue con tarjeta; elige saldo a favor",
-        });
-      }
-
-      const refundAmount = -preview.delta; // positive
-
-      const resultTx = await prisma.$transaction(async (tx) => {
-        const updatedReservation = await tx.reservation.update({
-          where: { id: reservation.id },
-          data: {
-            checkIn: newCheckIn,
-            checkOut: newCheckOut,
-            totalDays: preview.newTotalDays,
-            totalAmount: preview.newTotal,
-            depositDeadline: reservation.paymentType === "DEPOSIT"
-              ? newCheckIn
-              : reservation.depositDeadline,
-          },
-        });
-
-        const changeRequest = await tx.reservationChangeRequest.create({
-          data: {
-            reservationId: reservation.id,
-            requestedById: request.userId!,
-            newCheckIn,
-            newCheckOut,
-            newTotalDays: preview.newTotalDays,
-            newTotalAmount: preview.newTotal,
-            deltaAmount: preview.delta,
-            refundChoice,
-            status: "APPROVED",
-            approvedById: request.userId!,
-            approvedAt: new Date(),
-          },
-        });
-
-        if (refundChoice === "STRIPE_REFUND") {
-          const lastStripePayment = reservation.payments
-            .filter(
-              (p) =>
-                (p.status === "PAID" || p.status === "PARTIAL") &&
-                p.stripePaymentIntentId,
-            )
-            .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
-          if (!lastStripePayment?.stripePaymentIntentId) {
-            throw new Error("No se encontró pago Stripe para reembolsar");
-          }
-          const refund = await stripe.refunds.create({
-            payment_intent: lastStripePayment.stripePaymentIntentId,
-            amount: Math.round(refundAmount * 100),
-          });
-          await tx.payment.create({
-            data: {
-              amount: refundAmount,
-              method: "STRIPE",
-              status: "REFUNDED",
-              stripePaymentIntentId: refund.id,
-              paidAt: new Date(),
-              reservationId: reservation.id,
-              userId: reservation.ownerId,
-              notes: `Reembolso por recorte de estadía (change request ${changeRequest.id})`,
-            },
-          });
-          await tx.notification.create({
-            data: {
-              userId: reservation.ownerId,
-              type: "REFUND_ISSUED",
-              title: "Reembolso procesado 💳",
-              body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por el recorte de ${reservation.pet.name}.`,
-              data: { reservationId: reservation.id, amount: refundAmount },
-            },
-          });
-        } else {
-          // CREDIT
-          const updatedUser = await tx.user.update({
-            where: { id: reservation.ownerId },
-            data: { creditBalance: { increment: refundAmount } },
-          });
-          await tx.creditLedger.create({
-            data: {
-              userId: reservation.ownerId,
-              type: "CREDIT_ADDED",
-              amount: refundAmount,
-              balanceAfter: Number(updatedUser.creditBalance),
-              description: `Saldo por recorte de estadía de ${reservation.pet.name}`,
-              reservationId: reservation.id,
-              changeRequestId: changeRequest.id,
-            },
-          });
-          await tx.notification.create({
-            data: {
-              userId: reservation.ownerId,
-              type: "CREDIT_ADDED",
-              title: "Saldo a favor acreditado 💰",
-              body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por el recorte de ${reservation.pet.name}.`,
-              data: { reservationId: reservation.id, amount: refundAmount },
-            },
+        if (refundChoice === "STRIPE_REFUND" && preview.lastPaymentMethod !== "STRIPE") {
+          return reply.status(409).send({
+            error: "El pago original no fue con tarjeta; elige saldo a favor",
           });
         }
+      }
 
-        return { updatedReservation, changeRequest };
+      // Una sola solicitud pendiente a la vez por reserva.
+      const existingPending = await prisma.reservationChangeRequest.findFirst({
+        where: { reservationId: reservation.id, status: "PENDING" },
+      });
+      if (existingPending) {
+        return reply.status(409).send({ error: "Ya tienes una solicitud de cambio pendiente" });
+      }
+
+      const created = await prisma.reservationChangeRequest.create({
+        data: {
+          reservationId: reservation.id,
+          requestedById: request.userId!,
+          newCheckIn,
+          newCheckOut,
+          newTotalDays: preview.newTotalDays,
+          newTotalAmount: preview.newTotal,
+          deltaAmount: preview.delta,
+          refundChoice: preview.delta < 0 ? refundChoice : null,
+          status: "PENDING",
+        },
       });
 
-      return reply.status(201).send({
-        request: resultTx.changeRequest,
-        requiresApproval: false,
-        applied: true,
-      });
+      return reply.status(201).send({ request: created, requiresApproval: true });
     }
   );
 
@@ -361,17 +257,20 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const cr = await prisma.reservationChangeRequest.findUnique({
         where: { id: request.params.id },
-        include: { reservation: { include: { pet: true } } },
+        include: {
+          reservation: {
+            include: { pet: true, payments: true },
+          },
+        },
       });
       if (!cr) return reply.status(404).send({ error: "Solicitud no encontrada" });
       if (cr.status !== "PENDING") {
         return reply.status(400).send({ error: "Solicitud ya procesada" });
       }
-      if (Number(cr.deltaAmount) <= 0) {
-        return reply.status(400).send({
-          error: "Esta solicitud no requiere aprobación (recortes son inmediatos)",
-        });
-      }
+
+      const delta = Number(cr.deltaAmount);
+      const isShortening = delta < 0;
+      const refundAmount = isShortening ? -delta : 0;
 
       // Room availability check (exclude this reservation)
       if (cr.reservation.roomId) {
@@ -392,6 +291,34 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
             conflictingReservationId: conflict.id,
           });
         }
+      }
+
+      // Para recortes, validar que hay un pago Stripe reembolsable si así eligió.
+      let lastStripePaymentIntentId: string | null = null;
+      if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
+        const lastStripePayment = cr.reservation.payments
+          .filter(
+            (p) =>
+              (p.status === "PAID" || p.status === "PARTIAL") &&
+              p.stripePaymentIntentId,
+          )
+          .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
+        if (!lastStripePayment?.stripePaymentIntentId) {
+          return reply.status(409).send({
+            error: "No se encontró pago Stripe para reembolsar",
+          });
+        }
+        lastStripePaymentIntentId = lastStripePayment.stripePaymentIntentId;
+      }
+
+      // Refund Stripe (fuera de la transacción de DB para no bloquear).
+      let stripeRefundId: string | null = null;
+      if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
+        const refund = await stripe.refunds.create({
+          payment_intent: lastStripePaymentIntentId!,
+          amount: Math.round(refundAmount * 100),
+        });
+        stripeRefundId = refund.id;
       }
 
       await prisma.$transaction(async (tx) => {
@@ -415,27 +342,86 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
             approvedAt: new Date(),
           },
         });
-        await tx.notification.create({
-          data: {
-            userId: cr.reservation.ownerId,
-            type: "RESERVATION_CHANGE_APPROVED",
-            title: "Tu extensión fue aprobada ✅",
-            body: `Extendimos la estadía de ${cr.reservation.pet.name}. Tienes un saldo pendiente de $${Number(cr.deltaAmount).toLocaleString("es-MX")}.`,
+
+        if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
+          await tx.payment.create({
             data: {
+              amount: refundAmount,
+              method: "STRIPE",
+              status: "REFUNDED",
+              stripePaymentIntentId: stripeRefundId,
+              paidAt: new Date(),
               reservationId: cr.reservationId,
-              requiresPayment: true,
-              amount: Number(cr.deltaAmount),
+              userId: cr.reservation.ownerId,
+              notes: `Reembolso por recorte de estadía (change request ${cr.id})`,
             },
-          },
-        });
+          });
+          await tx.notification.create({
+            data: {
+              userId: cr.reservation.ownerId,
+              type: "REFUND_ISSUED",
+              title: "Reembolso procesado 💳",
+              body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por el recorte de ${cr.reservation.pet.name}.`,
+              data: { reservationId: cr.reservationId, amount: refundAmount },
+            },
+          });
+        } else if (isShortening && cr.refundChoice === "CREDIT") {
+          const updatedUser = await tx.user.update({
+            where: { id: cr.reservation.ownerId },
+            data: {
+              creditBalance: { increment: refundAmount },
+              lastCreditEntryAt: new Date(),
+            },
+          });
+          await tx.creditLedger.create({
+            data: {
+              userId: cr.reservation.ownerId,
+              type: "CREDIT_ADDED",
+              amount: refundAmount,
+              balanceAfter: Number(updatedUser.creditBalance),
+              description: `Saldo por recorte de estadía de ${cr.reservation.pet.name}`,
+              reservationId: cr.reservationId,
+              changeRequestId: cr.id,
+            },
+          });
+          await tx.notification.create({
+            data: {
+              userId: cr.reservation.ownerId,
+              type: "CREDIT_ADDED",
+              title: "Saldo a favor acreditado 💰",
+              body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por el recorte de ${cr.reservation.pet.name}.`,
+              data: { reservationId: cr.reservationId, amount: refundAmount },
+            },
+          });
+        } else {
+          // Extensión: notifica al owner que tiene que elegir cómo pagar el saldo extra.
+          await tx.notification.create({
+            data: {
+              userId: cr.reservation.ownerId,
+              type: "RESERVATION_CHANGE_APPROVED",
+              title: "Tu extensión fue aprobada ✅",
+              body: `Extendimos la estadía de ${cr.reservation.pet.name}. Tienes un saldo extra de $${delta.toLocaleString("es-MX")}. Elige cómo pagarlo en la app.`,
+              data: {
+                reservationId: cr.reservationId,
+                changeRequestId: cr.id,
+                requiresPayment: true,
+                amount: delta,
+              },
+            },
+          });
+        }
+
         // Notificar al staff asignado
         if (cr.reservation.staffId) {
+          const summary = isShortening
+            ? `La estancia se recortó a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}.`
+            : `La estancia se extendió a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}. Nuevas fechas ya aplicadas.`;
           await tx.notification.create({
             data: {
               userId: cr.reservation.staffId,
               type: "RESERVATION_CHANGE_APPROVED" as any,
-              title: `Extensión aprobada: ${cr.reservation.pet.name} ✅`,
-              body: `La estancia se extendió a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}. Nuevas fechas ya aplicadas.`,
+              title: `Cambio aprobado: ${cr.reservation.pet.name} ✅`,
+              body: summary,
               data: { reservationId: cr.reservationId },
             },
           });
@@ -495,8 +481,250 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true });
     }
   );
-}
 
-function newTotalDays(days: number): string {
-  return `${days} ${days === 1 ? "día" : "días"}`;
+  // ─── POST /reservations/:id/change-requests/:crId/pay-now-intent ──
+  //  Owner creates a Stripe PaymentIntent for the extension delta.
+  fastify.post<{ Params: { id: string; crId: string } }>(
+    "/reservations/:id/change-requests/:crId/pay-now-intent",
+    { preHandler: ownerAuth },
+    async (request, reply) => {
+      const cr = await prisma.reservationChangeRequest.findUnique({
+        where: { id: request.params.crId },
+        include: { reservation: { select: { ownerId: true, id: true } } },
+      });
+      if (!cr || cr.reservationId !== request.params.id) {
+        return reply.status(404).send({ error: "Solicitud no encontrada" });
+      }
+      if (cr.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (cr.status !== "APPROVED") {
+        return reply.status(400).send({ error: "La solicitud no está aprobada" });
+      }
+      if (cr.paidAt) {
+        return reply.status(400).send({ error: "Ya está pagada" });
+      }
+      const delta = Number(cr.deltaAmount);
+      if (delta <= 0) {
+        return reply.status(400).send({ error: "Esta solicitud no tiene saldo extra" });
+      }
+
+      const pi = await stripe.paymentIntents.create({
+        amount: Math.round(delta * 100),
+        currency: "mxn",
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          type: "extension-balance",
+          reservationId: cr.reservationId,
+          changeRequestId: cr.id,
+          ownerId: cr.reservation.ownerId,
+        },
+      });
+
+      return reply.send({ clientSecret: pi.client_secret, paymentIntentId: pi.id });
+    }
+  );
+
+  // ─── POST /reservations/:id/change-requests/:crId/pay-now-confirm ──
+  //  Owner llama aquí después de que Stripe SDK confirme el PaymentIntent.
+  //  Registra el Payment en DB y marca CR.paidAt. Idempotente.
+  fastify.post<{
+    Params: { id: string; crId: string };
+    Body: { stripePaymentIntentId: string };
+  }>(
+    "/reservations/:id/change-requests/:crId/pay-now-confirm",
+    { preHandler: ownerAuth },
+    async (request, reply) => {
+      const { stripePaymentIntentId } = request.body ?? {};
+      if (!stripePaymentIntentId) {
+        return reply.status(400).send({ error: "stripePaymentIntentId requerido" });
+      }
+      const cr = await prisma.reservationChangeRequest.findUnique({
+        where: { id: request.params.crId },
+        include: {
+          reservation: {
+            select: {
+              id: true,
+              ownerId: true,
+              pet: { select: { name: true } },
+            },
+          },
+        },
+      });
+      if (!cr || cr.reservationId !== request.params.id) {
+        return reply.status(404).send({ error: "Solicitud no encontrada" });
+      }
+      if (cr.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (cr.status !== "APPROVED") {
+        return reply.status(400).send({ error: "La solicitud no está aprobada" });
+      }
+
+      const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
+      if (pi.status !== "succeeded") {
+        return reply.status(400).send({ error: "El pago no fue completado" });
+      }
+      if (pi.metadata?.changeRequestId !== cr.id) {
+        return reply.status(400).send({ error: "PaymentIntent no corresponde a esta solicitud" });
+      }
+
+      const amount = pi.amount / 100;
+
+      // Idempotencia: si ya existe Payment por este PI, no duplicar.
+      const existingPayment = await prisma.payment.findUnique({
+        where: { stripePaymentIntentId },
+      });
+      if (existingPayment && cr.paidAt) {
+        return reply.send({ alreadyConfirmed: true });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        if (!existingPayment) {
+          await tx.payment.create({
+            data: {
+              amount,
+              method: "STRIPE",
+              status: "PAID",
+              stripePaymentIntentId,
+              paidAt: new Date(),
+              reservationId: cr.reservationId,
+              userId: cr.reservation.ownerId,
+              notes: `Saldo extra por extensión (change request ${cr.id})`,
+            },
+          });
+        }
+        if (!cr.paidAt) {
+          await tx.reservationChangeRequest.update({
+            where: { id: cr.id },
+            data: { paidAt: new Date() },
+          });
+        }
+      });
+
+      return reply.send({ success: true });
+    }
+  );
+
+  // ─── POST /reservations/:id/change-requests/:crId/pay-on-pickup ───
+  //  Owner opta por pagar al recoger; staff cobra en sucursal.
+  fastify.post<{ Params: { id: string; crId: string } }>(
+    "/reservations/:id/change-requests/:crId/pay-on-pickup",
+    { preHandler: ownerAuth },
+    async (request, reply) => {
+      const cr = await prisma.reservationChangeRequest.findUnique({
+        where: { id: request.params.crId },
+        include: {
+          reservation: {
+            select: {
+              id: true,
+              ownerId: true,
+              staffId: true,
+              pet: { select: { name: true } },
+            },
+          },
+        },
+      });
+      if (!cr || cr.reservationId !== request.params.id) {
+        return reply.status(404).send({ error: "Solicitud no encontrada" });
+      }
+      if (cr.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (cr.status !== "APPROVED") {
+        return reply.status(400).send({ error: "La solicitud no está aprobada" });
+      }
+      if (cr.paidAt) {
+        return reply.status(400).send({ error: "Ya está pagada" });
+      }
+      if (Number(cr.deltaAmount) <= 0) {
+        return reply.status(400).send({ error: "Esta solicitud no tiene saldo extra" });
+      }
+
+      const updated = await prisma.reservationChangeRequest.update({
+        where: { id: cr.id },
+        data: { payOnPickup: true },
+      });
+
+      // Notifica al staff asignado para que sepa que va a cobrar en sucursal.
+      if (cr.reservation.staffId) {
+        await notifyUser(prisma, {
+          userId: cr.reservation.staffId,
+          type: "GENERAL",
+          title: `Cobrar al recoger: ${cr.reservation.pet.name}`,
+          body: `El dueño pagará el saldo de $${Number(cr.deltaAmount).toLocaleString("es-MX")} al recoger.`,
+          data: { reservationId: cr.reservationId, changeRequestId: cr.id },
+        });
+      }
+
+      return reply.send(updated);
+    }
+  );
+
+  // ─── POST /staff/change-requests/:crId/confirm-pickup-paid ────────
+  //  Staff confirma que el owner pagó el saldo extra en sucursal.
+  fastify.post<{ Params: { crId: string } }>(
+    "/staff/change-requests/:crId/confirm-pickup-paid",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      if (request.userRole !== "STAFF" && request.userRole !== "ADMIN") {
+        return reply.status(403).send({ error: "Acceso restringido a personal" });
+      }
+      const cr = await prisma.reservationChangeRequest.findUnique({
+        where: { id: request.params.crId },
+        include: {
+          reservation: {
+            select: {
+              id: true,
+              ownerId: true,
+              pet: { select: { name: true } },
+            },
+          },
+        },
+      });
+      if (!cr) return reply.status(404).send({ error: "Solicitud no encontrada" });
+      if (cr.status !== "APPROVED") {
+        return reply.status(400).send({ error: "La solicitud no está aprobada" });
+      }
+      if (!cr.payOnPickup) {
+        return reply.status(400).send({
+          error: "El dueño no eligió 'pagar al recoger'",
+        });
+      }
+      if (cr.paidAt) {
+        return reply.status(400).send({ error: "Ya está pagada" });
+      }
+
+      const amount = Number(cr.deltaAmount);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.create({
+          data: {
+            amount,
+            method: "CASH",
+            status: "PAID",
+            paidAt: new Date(),
+            reservationId: cr.reservationId,
+            userId: cr.reservation.ownerId,
+            notes: `Saldo extra por extensión (change request ${cr.id}) cobrado al recoger`,
+          },
+        });
+        await tx.reservationChangeRequest.update({
+          where: { id: cr.id },
+          data: { paidAt: new Date() },
+        });
+        await tx.notification.create({
+          data: {
+            userId: cr.reservation.ownerId,
+            type: "PAYMENT_RECEIVED",
+            title: "Pago recibido ✅",
+            body: `Se registró tu pago de $${amount.toLocaleString("es-MX")} por la extensión de ${cr.reservation.pet.name}.`,
+            data: { reservationId: cr.reservationId, amount },
+          },
+        });
+      });
+
+      return reply.send({ success: true });
+    }
+  );
 }

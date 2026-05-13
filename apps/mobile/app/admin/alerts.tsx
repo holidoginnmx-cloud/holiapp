@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Animated,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,9 +20,8 @@ import {
   getAdminAlerts,
   resolveAdminAlert,
   getAdminStats,
-  getCartillas,
 } from "@/lib/api";
-import type { AdminAlert, AdminStats, PetWithCartilla } from "@/lib/api";
+import type { AdminAlert } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
@@ -44,7 +46,7 @@ const TABS = [
   { key: "resolved", label: "Resueltas" },
 ];
 
-type CategoryKey = "all" | "staff" | "evidence" | "vaccines" | "cartillas";
+type CategoryKey = "all" | "staff" | "evidence" | "vaccines";
 
 type UnifiedAlert =
   | { kind: "staff"; id: string; data: AdminAlert }
@@ -63,20 +65,46 @@ type UnifiedAlert =
       petName: string;
       ownerName: string;
       expiresAt: string;
-    }
-  | {
-      kind: "cartilla";
-      id: string;
-      petId: string;
-      petName: string;
-      ownerName: string;
     };
+
+const CATEGORY_KEYS: CategoryKey[] = ["all", "staff", "evidence", "vaccines"];
 
 export default function AdminAlerts() {
   const router = useRouter();
   const qc = useQueryClient();
+  const { width: pageWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<"unresolved" | "resolved">("unresolved");
   const [category, setCategory] = useState<CategoryKey>("all");
+  const pagerRef = useRef<ScrollView>(null);
+  // scrollX captura el offset horizontal del pager; un listener lo mapea
+  // a tabProgress (0..3) para que el underline siga al dedo en tiempo real.
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const tabProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+    const id = scrollX.addListener(({ value }) => {
+      tabProgress.setValue(value / pageWidth);
+    });
+    return () => scrollX.removeListener(id);
+  }, [pageWidth]);
+
+  // Sincroniza el pager cuando cambia la categoría (tap en chip).
+  useEffect(() => {
+    const idx = CATEGORY_KEYS.indexOf(category);
+    if (idx >= 0) {
+      pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: true });
+    }
+  }, [category, pageWidth]);
+
+  const onPagerMomentumEnd = (e: {
+    nativeEvent: { contentOffset: { x: number } };
+  }) => {
+    if (pageWidth <= 0) return;
+    const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+    const next = CATEGORY_KEYS[idx];
+    if (next && next !== category) setCategory(next);
+  };
 
   const showResolved = activeTab === "resolved";
 
@@ -86,18 +114,12 @@ export default function AdminAlerts() {
     refetchInterval: 30_000,
   });
 
-  // Las fuentes dinámicas (sin evidencia, vacunas, cartillas) sólo aplican al
-  // tab "Sin resolver". Se auto-resuelven cuando el problema subyacente se arregla.
+  // Las fuentes dinámicas (sin evidencia, vacunas) sólo aplican al tab
+  // "Sin resolver". Se auto-resuelven cuando el problema subyacente se arregla.
+  // Las cartillas pendientes viven en su propio panel, no aquí.
   const { data: stats } = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: getAdminStats,
-    refetchInterval: 60_000,
-    enabled: !showResolved,
-  });
-
-  const { data: pendingCartillas } = useQuery({
-    queryKey: ["admin", "cartillas", "PENDING"],
-    queryFn: () => getCartillas("PENDING"),
     refetchInterval: 60_000,
     enabled: !showResolved,
   });
@@ -112,60 +134,51 @@ export default function AdminAlerts() {
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
-  const unifiedAlerts = useMemo<UnifiedAlert[]>(() => {
-    if (showResolved) {
-      return (staffAlerts ?? []).map((a) => ({
+  // Para el modo resuelto: lista única (no hay sub-categorías).
+  const resolvedAlerts = useMemo<UnifiedAlert[]>(
+    () =>
+      (staffAlerts ?? []).map((a) => ({
         kind: "staff" as const,
         id: a.id,
         data: a,
-      }));
-    }
+      })),
+    [staffAlerts],
+  );
 
-    const items: UnifiedAlert[] = [];
-
-    if (category === "all" || category === "staff") {
-      for (const a of staffAlerts ?? []) {
-        items.push({ kind: "staff", id: a.id, data: a });
-      }
-    }
-    if (category === "all" || category === "evidence") {
-      for (const s of stats?.staysWithoutUpdates ?? []) {
-        items.push({
-          kind: "evidence",
-          id: `evidence-${s.reservationId}`,
-          reservationId: s.reservationId,
-          petName: s.petName,
-          ownerName: s.ownerName,
-        });
-      }
-    }
-    if (category === "all" || category === "vaccines") {
-      for (const v of stats?.expiringVaccines ?? []) {
-        items.push({
-          kind: "vaccine",
-          id: `vaccine-${v.id}`,
-          vaccineName: v.name,
-          petId: v.petId,
-          petName: v.petName,
-          ownerName: v.ownerName,
-          expiresAt: v.expiresAt,
-        });
-      }
-    }
-    if (category === "all" || category === "cartillas") {
-      for (const p of pendingCartillas ?? []) {
-        items.push({
-          kind: "cartilla",
-          id: `cartilla-${p.id}`,
-          petId: p.id,
-          petName: p.name,
-          ownerName: `${p.owner.firstName} ${p.owner.lastName}`,
-        });
-      }
-    }
-
-    return items;
-  }, [showResolved, category, staffAlerts, stats, pendingCartillas]);
+  // Para el modo sin resolver: una lista por cada categoría (para swipe).
+  const alertsByCategory = useMemo<Record<CategoryKey, UnifiedAlert[]>>(() => {
+    const staffItems: UnifiedAlert[] = (staffAlerts ?? []).map((a) => ({
+      kind: "staff" as const,
+      id: a.id,
+      data: a,
+    }));
+    const evidenceItems: UnifiedAlert[] = (stats?.staysWithoutUpdates ?? []).map(
+      (s) => ({
+        kind: "evidence" as const,
+        id: `evidence-${s.reservationId}`,
+        reservationId: s.reservationId,
+        petName: s.petName,
+        ownerName: s.ownerName,
+      }),
+    );
+    const vaccineItems: UnifiedAlert[] = (stats?.expiringVaccines ?? []).map(
+      (v) => ({
+        kind: "vaccine" as const,
+        id: `vaccine-${v.id}`,
+        vaccineName: v.name,
+        petId: v.petId,
+        petName: v.petName,
+        ownerName: v.ownerName,
+        expiresAt: v.expiresAt,
+      }),
+    );
+    return {
+      all: [...staffItems, ...evidenceItems, ...vaccineItems],
+      staff: staffItems,
+      evidence: evidenceItems,
+      vaccines: vaccineItems,
+    };
+  }, [staffAlerts, stats]);
 
   // Counts por categoría para los chips.
   const counts = useMemo(
@@ -173,19 +186,16 @@ export default function AdminAlerts() {
       staff: staffAlerts?.length ?? 0,
       evidence: stats?.staysWithoutUpdates.length ?? 0,
       vaccines: stats?.expiringVaccines.length ?? 0,
-      cartillas: pendingCartillas?.length ?? 0,
     }),
-    [staffAlerts, stats, pendingCartillas]
+    [staffAlerts, stats]
   );
-  const totalUnresolved =
-    counts.staff + counts.evidence + counts.vaccines + counts.cartillas;
+  const totalUnresolved = counts.staff + counts.evidence + counts.vaccines;
 
   const CATEGORIES: { key: CategoryKey; label: string; count: number }[] = [
     { key: "all", label: "Todas", count: totalUnresolved },
     { key: "staff", label: "Staff", count: counts.staff },
     { key: "evidence", label: "Sin evidencia", count: counts.evidence },
     { key: "vaccines", label: "Vacunas", count: counts.vaccines },
-    { key: "cartillas", label: "Cartillas", count: counts.cartillas },
   ];
 
   if (isLoading) {
@@ -339,37 +349,23 @@ export default function AdminAlerts() {
         ],
       });
     }
-    if (item.kind === "vaccine") {
-      const expires = new Date(item.expiresAt).toLocaleDateString("es-MX", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-      return renderSimpleAlert({
-        icon: "medical-outline",
-        color: COLORS.warningText,
-        bg: COLORS.warningBg,
-        title: "Vacuna por vencer",
-        description: `${item.vaccineName} de ${formatName(item.petName)} vence el ${expires}.`,
-        onPress: () => router.push(`/pet/${item.petId}` as any),
-        metaChips: [
-          { icon: "paw", text: formatName(item.petName) },
-          { icon: "person-outline", text: formatName(item.ownerName) },
-          { icon: "calendar-outline", text: expires },
-        ],
-      });
-    }
-    // cartilla
+    // vaccine
+    const expires = new Date(item.expiresAt).toLocaleDateString("es-MX", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
     return renderSimpleAlert({
-      icon: "document-text-outline",
+      icon: "medical-outline",
       color: COLORS.warningText,
       bg: COLORS.warningBg,
-      title: "Cartilla pendiente de revisión",
-      description: `${formatName(item.petName)} subió cartilla y espera tu aprobación.`,
-      onPress: () => router.push("/admin/cartillas" as any),
+      title: "Vacuna por vencer",
+      description: `${item.vaccineName} de ${formatName(item.petName)} vence el ${expires}.`,
+      onPress: () => router.push(`/pet/${item.petId}` as any),
       metaChips: [
         { icon: "paw", text: formatName(item.petName) },
         { icon: "person-outline", text: formatName(item.ownerName) },
+        { icon: "calendar-outline", text: expires },
       ],
     });
   };
@@ -400,36 +396,79 @@ export default function AdminAlerts() {
           tabs={CATEGORIES.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
           activeTab={category}
           onSelect={(key) => setCategory(key as CategoryKey)}
+          justified
+          progress={tabProgress}
         />
       )}
 
-      <FlatList
-        data={unifiedAlerts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-        }
-        ListEmptyComponent={
-          <View style={styles.center}>
-            <Ionicons
-              name={
-                showResolved
-                  ? "archive-outline"
-                  : "checkmark-circle-outline"
-              }
-              size={48}
-              color={COLORS.border}
-            />
-            <Text style={styles.emptyText}>
-              {showResolved
-                ? "No hay alertas resueltas"
-                : "No hay alertas pendientes"}
-            </Text>
-          </View>
-        }
-      />
+      {showResolved ? (
+        <FlatList
+          data={resolvedAlerts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Ionicons
+                name="archive-outline"
+                size={48}
+                color={COLORS.border}
+              />
+              <Text style={styles.emptyText}>No hay alertas resueltas</Text>
+            </View>
+          }
+        />
+      ) : (
+        <Animated.ScrollView
+          ref={pagerRef as any}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onPagerMomentumEnd}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: false },
+          )}
+          scrollEventThrottle={16}
+          contentOffset={{
+            x: Math.max(0, CATEGORY_KEYS.indexOf(category)) * pageWidth,
+            y: 0,
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {CATEGORY_KEYS.map((k) => (
+            <View key={k} style={{ width: pageWidth }}>
+              <FlatList
+                data={alertsByCategory[k]}
+                keyExtractor={(item) => item.id}
+                renderItem={renderItem}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefetching}
+                    onRefresh={refetch}
+                  />
+                }
+                ListEmptyComponent={
+                  <View style={styles.center}>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={48}
+                      color={COLORS.border}
+                    />
+                    <Text style={styles.emptyText}>
+                      No hay alertas pendientes
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+          ))}
+        </Animated.ScrollView>
+      )}
     </View>
   );
 }

@@ -11,7 +11,7 @@ export default function IncidentPolicyScreen() {
       body={
         <>
           <Text style={styles.p}>
-            En HolidogInn tu mascota es parte de la familia HDI. Cuidamos con
+            En Holidog Inn tu mascota es parte de la familia HDI. Cuidamos con
             estructura, rutina, comunicación constante y evidencia. Aun así,
             convivir con animales implica riesgos que no podemos eliminar por
             completo. Esta política te explica cómo actuamos ante un incidente
@@ -70,10 +70,10 @@ export default function IncidentPolicyScreen() {
           <Text style={styles.p}>
             Los costos de atención veterinaria derivados de un incidente son
             responsabilidad del dueño, salvo que el incidente haya ocurrido por
-            negligencia demostrable del staff de HolidogInn.
+            negligencia demostrable del staff de Holidog Inn.
           </Text>
           <Text style={styles.p}>
-            HolidogInn puede adelantar el pago al veterinario para garantizar
+            Holidog Inn puede adelantar el pago al veterinario para garantizar
             atención inmediata; el monto se reembolsa antes del check-out. Tu
             autorización de atención veterinaria firmada al crear la cuenta nos
             permite actuar sin demora ante una emergencia.
@@ -84,7 +84,7 @@ export default function IncidentPolicyScreen() {
             Como dueño, te comprometes a declarar al momento del check-in
             cualquier condición preexistente relevante (enfermedades crónicas,
             medicamentos, alergias, historial quirúrgico, ansiedad severa).
-            HolidogInn no es responsable por complicaciones derivadas de
+            Holidog Inn no es responsable por complicaciones derivadas de
             condiciones no declaradas.
           </Text>
 
@@ -107,7 +107,7 @@ export default function IncidentPolicyScreen() {
           </Text>
 
           <Text style={styles.h2}>7. Límites de responsabilidad</Text>
-          <Text style={styles.p}>HolidogInn no es responsable por:</Text>
+          <Text style={styles.p}>Holidog Inn no es responsable por:</Text>
           <Text style={styles.li}>
             • Empeoramiento de condiciones médicas preexistentes no declaradas.
           </Text>
@@ -123,7 +123,7 @@ export default function IncidentPolicyScreen() {
             • Decisiones veterinarias tomadas por el profesional tratante.
           </Text>
 
-          <Text style={styles.p}>HolidogInn sí es responsable por:</Text>
+          <Text style={styles.p}>Holidog Inn sí es responsable por:</Text>
           <Text style={styles.li}>
             • Negligencia demostrable del staff (ej. olvido de administrar
             medicamento indicado, descuido en el manejo que cause lesión
@@ -136,14 +136,14 @@ export default function IncidentPolicyScreen() {
           <Text style={styles.h2}>8. Contacto ante incidentes</Text>
           <Text style={styles.p}>
             Para emergencias o dudas posteriores a la estancia relacionadas con
-            el servicio, contáctanos por los canales de atención de HolidogInn
+            el servicio, contáctanos por los canales de atención de Holidog Inn
             dentro de las 48 horas siguientes al check-out.
           </Text>
 
           <Text style={styles.h2}>9. Aceptación</Text>
           <Text style={styles.p}>
             Al aceptar esta política, confirmas que leíste y entiendes las
-            condiciones bajo las cuales HolidogInn cuida a tu mascota,
+            condiciones bajo las cuales Holidog Inn cuida a tu mascota,
             incluyendo el protocolo de respuesta, la responsabilidad sobre
             costos veterinarios y los límites de responsabilidad descritos.
           </Text>

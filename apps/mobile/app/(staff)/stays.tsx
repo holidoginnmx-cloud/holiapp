@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   TextInput,
@@ -9,26 +9,86 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { getStaffStays } from "@/lib/api";
-import { CalendarView } from "@/components/CalendarView";
+import {
+  getStaffStaysAll,
+  getStaffBaths,
+  type StaffBath,
+} from "@/lib/api";
+import {
+  CalendarView,
+  type CalendarReservation,
+} from "@/components/CalendarView";
+
+// Los baños no se asignan a un staff específico — cualquiera puede verlos.
+// Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
+// con su Reservation desde getStaffStays.
+function bathToCalendarReservation(b: StaffBath): CalendarReservation {
+  const bathAddon = b.addons.find(
+    (a) => a.variant?.serviceType?.code === "BATH",
+  );
+  return {
+    id: b.id,
+    checkIn: b.checkIn,
+    checkOut: b.checkOut,
+    status: b.status,
+    totalAmount: Number(b.totalAmount),
+    reservationType: "BATH",
+    appointmentAt: b.appointmentAt,
+    paymentType: b.paymentType,
+    hasBalance: false,
+    hasDeslanado: bathAddon?.variant?.deslanado ?? false,
+    hasCorte: bathAddon?.variant?.corte ?? false,
+    pet: {
+      id: b.pet.id,
+      name: b.pet.name,
+      breed: b.pet.breed,
+      photoUrl: b.pet.photoUrl,
+    },
+    room: null,
+    owner: {
+      id: b.owner.id,
+      firstName: b.owner.firstName,
+      lastName: b.owner.lastName,
+    },
+    staff: null,
+    checklists: [],
+  };
+}
 
 export default function StaffStays() {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["staff", "stays"],
-    queryFn: () => getStaffStays(),
+  const { data: stays, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ["staff", "stays", "all"],
+    queryFn: () => getStaffStaysAll(),
   });
 
-  const filtered = (data ?? []).filter((s) => {
+  const {
+    data: bathsData,
+    refetch: refetchBaths,
+    isRefetching: isRefetchingBaths,
+  } = useQuery({
+    queryKey: ["staff-baths", "upcoming"],
+    queryFn: () => getStaffBaths(),
+  });
+
+  const combined: CalendarReservation[] = useMemo(() => {
+    const stayList = (stays ?? []) as unknown as CalendarReservation[];
+    const bathList = (bathsData?.baths ?? [])
+      .filter((b) => b.reservationType === "BATH")
+      .map(bathToCalendarReservation);
+    return [...stayList, ...bathList];
+  }, [stays, bathsData]);
+
+  const filtered = combined.filter((r) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      s.pet.name.toLowerCase().includes(q) ||
-      s.owner?.firstName?.toLowerCase().includes(q) ||
-      s.owner?.lastName?.toLowerCase().includes(q) ||
-      s.room?.name?.toLowerCase().includes(q)
+      r.pet.name.toLowerCase().includes(q) ||
+      r.owner?.firstName?.toLowerCase().includes(q) ||
+      r.owner?.lastName?.toLowerCase().includes(q) ||
+      r.room?.name?.toLowerCase().includes(q)
     );
   });
 
@@ -65,12 +125,20 @@ export default function StaffStays() {
 
       <CalendarView
         reservations={filtered}
-        onPressReservation={(id) =>
-          router.push(`/(staff)/stay/${id}` as any)
-        }
+        onPressReservation={(id) => {
+          const target = filtered.find((r) => r.id === id);
+          if (target?.reservationType === "BATH") {
+            router.push(`/staff/bath/${id}` as any);
+          } else {
+            router.push(`/staff/stay/${id}` as any);
+          }
+        }}
         showOwnerName
-        refreshing={isRefetching}
-        onRefresh={refetch}
+        refreshing={isRefetching || isRefetchingBaths}
+        onRefresh={() => {
+          refetch();
+          refetchBaths();
+        }}
       />
     </View>
   );

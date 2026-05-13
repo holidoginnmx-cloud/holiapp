@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +9,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Linking,
+  Modal,
+  Pressable,
+  Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +59,7 @@ function formatDate(date: string | Date): string {
 export default function PetDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const [cartillaFullSizeIdx, setCartillaFullSizeIdx] = useState<number | null>(null);
 
   const { data: pet, isLoading, error, refetch } = useQuery({
     queryKey: ["pet", id],
@@ -298,20 +303,79 @@ export default function PetDetailScreen() {
           })()}
         </View>
 
-        {(pet as any).cartillaUrl ? (
-          <Image
-            source={{ uri: (pet as any).cartillaUrl }}
-            style={styles.cartillaImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.cartillaEmpty}>
-            <Ionicons name="document-outline" size={32} color={COLORS.textDisabled} />
-            <Text style={styles.cartillaEmptyText}>
-              Sin cartilla subida. Necesaria para reservar.
-            </Text>
-          </View>
-        )}
+        {(() => {
+          const photos = ((pet as any).cartillaPhotos as string[] | undefined) ?? [];
+          const legacyUrl = (pet as any).cartillaUrl as string | null;
+          const allPhotos =
+            photos.length > 0 ? photos : legacyUrl ? [legacyUrl] : [];
+
+          if (allPhotos.length === 0) {
+            return (
+              <TouchableOpacity
+                style={styles.cartillaEmpty}
+                activeOpacity={0.7}
+                onPress={() =>
+                  router.push({
+                    pathname: "/pet/create",
+                    params: { editId: id!, focus: "cartilla" },
+                  } as any)
+                }
+              >
+                <Ionicons name="cloud-upload-outline" size={32} color={COLORS.primary} />
+                <Text style={styles.cartillaEmptyText}>
+                  Sin cartilla subida. Necesaria para reservar.
+                </Text>
+                <Text style={styles.cartillaEmptyCta}>Toca para subir</Text>
+              </TouchableOpacity>
+            );
+          }
+
+          if (allPhotos.length === 1) {
+            return (
+              <TouchableOpacity
+                onPress={() => setCartillaFullSizeIdx(0)}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={{ uri: allPhotos[0] }}
+                  style={styles.cartillaImage}
+                  resizeMode="cover"
+                />
+                <View style={styles.cartillaZoomHint}>
+                  <Ionicons name="expand-outline" size={14} color={COLORS.white} />
+                  <Text style={styles.cartillaZoomHintText}>Toca para ampliar</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
+          return (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cartillaGalleryRow}
+            >
+              {allPhotos.map((url, idx) => (
+                <TouchableOpacity
+                  key={`${url}-${idx}`}
+                  onPress={() => setCartillaFullSizeIdx(idx)}
+                  activeOpacity={0.85}
+                >
+                  <Image
+                    source={{ uri: url }}
+                    style={styles.cartillaGalleryThumb}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.cartillaGalleryIndex}>
+                    <Text style={styles.cartillaGalleryIndexText}>
+                      {idx + 1}/{allPhotos.length}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          );
+        })()}
 
         {(pet as any).cartillaStatus === "REJECTED" &&
           (pet as any).cartillaRejectionReason && (
@@ -366,6 +430,49 @@ export default function PetDetailScreen() {
       ) : (
         <Text style={styles.emptyText}>No hay vacunas registradas</Text>
       )}
+
+      <Modal
+        visible={cartillaFullSizeIdx !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCartillaFullSizeIdx(null)}
+      >
+        <Pressable
+          style={styles.fullSizeOverlay}
+          onPress={() => setCartillaFullSizeIdx(null)}
+        >
+          <TouchableOpacity
+            style={styles.fullSizeClose}
+            onPress={() => setCartillaFullSizeIdx(null)}
+            hitSlop={16}
+          >
+            <Ionicons name="close" size={28} color={COLORS.white} />
+          </TouchableOpacity>
+          {(() => {
+            if (cartillaFullSizeIdx === null) return null;
+            const photos = ((pet as any).cartillaPhotos as string[] | undefined) ?? [];
+            const legacyUrl = (pet as any).cartillaUrl as string | null;
+            const allPhotos =
+              photos.length > 0 ? photos : legacyUrl ? [legacyUrl] : [];
+            const url = allPhotos[cartillaFullSizeIdx];
+            if (!url) return null;
+            return (
+              <>
+                <Image
+                  source={{ uri: url }}
+                  style={styles.fullSizeImage}
+                  resizeMode="contain"
+                />
+                {allPhotos.length > 1 && (
+                  <Text style={styles.fullSizeIndex}>
+                    {cartillaFullSizeIdx + 1} / {allPhotos.length}
+                  </Text>
+                )}
+              </>
+            );
+          })()}
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -665,6 +772,81 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: COLORS.bgSection,
   },
+  cartillaZoomHint: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  cartillaZoomHintText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.white,
+  },
+  fullSizeOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.94)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullSizeClose: {
+    position: "absolute",
+    top: 60,
+    right: 20,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullSizeImage: {
+    width: Dimensions.get("window").width,
+    height: Dimensions.get("window").height * 0.85,
+  },
+  fullSizeIndex: {
+    position: "absolute",
+    bottom: 50,
+    alignSelf: "center",
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: "700",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  cartillaGalleryRow: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  cartillaGalleryThumb: {
+    width: 140,
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+  },
+  cartillaGalleryIndex: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  cartillaGalleryIndexText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
   cartillaEmpty: {
     alignItems: "center",
     justifyContent: "center",
@@ -677,6 +859,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textTertiary,
     textAlign: "center",
+  },
+  cartillaEmptyCta: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginTop: 2,
   },
   cartillaRejectionText: {
     fontSize: 12,

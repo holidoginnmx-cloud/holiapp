@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
+  Image,
   TextInput,
   ScrollView,
   TouchableOpacity,
@@ -93,7 +94,7 @@ export default function CreatePetScreen() {
   const [foodType, setFoodType] = useState("");
   const [feedingInstructions, setFeedingInstructions] = useState("");
   const [personality, setPersonality] = useState("");
-  const [cartillaUrl, setCartillaUrl] = useState("");
+  const [cartillaPhotos, setCartillaPhotos] = useState<string[]>([]);
   const [cartillaStatus, setCartillaStatus] = useState<
     "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | null
   >(null);
@@ -133,7 +134,17 @@ export default function CreatePetScreen() {
       setFoodType((existingPet as any).foodType || "");
       setFeedingInstructions((existingPet as any).feedingInstructions || "");
       setPersonality((existingPet as any).personality || "");
-      setCartillaUrl((existingPet as any).cartillaUrl || "");
+      const existingPhotos = (existingPet as any).cartillaPhotos as
+        | string[]
+        | undefined;
+      const legacyUrl = (existingPet as any).cartillaUrl as string | null;
+      setCartillaPhotos(
+        existingPhotos && existingPhotos.length > 0
+          ? existingPhotos
+          : legacyUrl
+            ? [legacyUrl]
+            : [],
+      );
       setCartillaStatus((existingPet as any).cartillaStatus ?? null);
       setCartillaRejectionReason((existingPet as any).cartillaRejectionReason ?? null);
       formReadyRef.current = true;
@@ -170,16 +181,26 @@ export default function CreatePetScreen() {
   // Al editar, la cartilla se persiste apenas se sube — no espera al
   // botón Guardar. Optimistic update con revert si falla la API.
   const cartillaMutation = useMutation({
-    mutationFn: (url: string) => updatePet(editId!, { cartillaUrl: url }),
-    onMutate: (url) => {
+    mutationFn: (photos: string[]) =>
+      updatePet(editId!, {
+        cartillaPhotos: photos,
+        // mantenemos cartillaUrl sincronizado al primer slot por compat con
+        // queries/clients viejos que aún lo lean.
+        cartillaUrl: photos[0] ?? null,
+      }),
+    onMutate: (photos) => {
       const previous = {
-        url: cartillaUrl,
+        photos: cartillaPhotos,
         status: cartillaStatus,
         reason: cartillaRejectionReason,
       };
-      setCartillaUrl(url);
-      if (url !== (existingPet as any)?.cartillaUrl) {
-        setCartillaStatus("PENDING");
+      setCartillaPhotos(photos);
+      const existing = (existingPet as any)?.cartillaPhotos as
+        | string[]
+        | undefined;
+      const changed = JSON.stringify(photos) !== JSON.stringify(existing ?? []);
+      if (changed) {
+        setCartillaStatus(photos.length > 0 ? "PENDING" : null);
         setCartillaRejectionReason(null);
       }
       return previous;
@@ -188,15 +209,15 @@ export default function CreatePetScreen() {
       queryClient.invalidateQueries({ queryKey: ["pets"] });
       queryClient.invalidateQueries({ queryKey: ["pet", editId] });
     },
-    onError: (_e: Error, _url, ctx) => {
+    onError: (_e: Error, _photos, ctx) => {
       if (ctx) {
-        setCartillaUrl(ctx.url);
+        setCartillaPhotos(ctx.photos);
         setCartillaStatus(ctx.status);
         setCartillaRejectionReason(ctx.reason);
       }
       Alert.alert(
         "Error",
-        "No pudimos enviar la cartilla. Inténtalo de nuevo."
+        "No pudimos enviar la cartilla. Inténtalo de nuevo.",
       );
     },
   });
@@ -242,7 +263,8 @@ export default function CreatePetScreen() {
       foodType: foodType.trim() || null,
       feedingInstructions: feedingInstructions.trim() || null,
       personality: personality.trim() || null,
-      cartillaUrl: cartillaUrl.trim() || null,
+      cartillaPhotos,
+      cartillaUrl: cartillaPhotos[0] ?? null,
     };
 
     if (!isEditing) {
@@ -481,36 +503,66 @@ export default function CreatePetScreen() {
       >
         <Text style={styles.sectionTitle}>Cartilla de vacunación</Text>
         <Text style={styles.cartillaHelp}>
-          Sube una foto clara de la cartilla. Un miembro del equipo HDI la
-          revisará antes de que puedas reservar.
+          Sube una o varias fotos de la cartilla (anverso, reverso, páginas
+          internas). Un miembro del equipo HDI las revisará antes de que puedas
+          reservar.
         </Text>
 
-        <View style={{ alignItems: "center" }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.cartillaPhotosRow}
+        >
+          {cartillaPhotos.map((url, idx) => (
+            <View key={`${url}-${idx}`} style={styles.cartillaThumbWrap}>
+              <Image source={{ uri: url }} style={styles.cartillaThumb} />
+              <TouchableOpacity
+                style={styles.cartillaThumbRemove}
+                onPress={() => {
+                  const next = cartillaPhotos.filter((_, i) => i !== idx);
+                  if (isEditing) {
+                    cartillaMutation.mutate(next);
+                  } else {
+                    setCartillaPhotos(next);
+                  }
+                }}
+                hitSlop={8}
+                testID={`cartilla-remove-${idx}`}
+              >
+                <Ionicons name="close" size={14} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          ))}
           <ImagePickerButton
-            imageUrl={cartillaUrl || null}
+            imageUrl={null}
             onImageUploaded={(url) => {
+              const next = [...cartillaPhotos, url];
               if (isEditing) {
-                cartillaMutation.mutate(url);
+                cartillaMutation.mutate(next);
               } else {
-                setCartillaUrl(url);
+                setCartillaPhotos(next);
                 setCartillaStatus("PENDING");
                 setCartillaRejectionReason(null);
               }
             }}
             folder="cartillas"
-            size={140}
-            icon="shield-checkmark-outline"
-            label="Cartilla"
+            size={110}
+            icon={
+              cartillaPhotos.length === 0
+                ? "shield-checkmark-outline"
+                : "add-circle-outline"
+            }
+            label={cartillaPhotos.length === 0 ? "Cartilla" : "Agregar más"}
             allowsEditing={false}
           />
-        </View>
+        </ScrollView>
 
-        {!cartillaUrl && (
+        {cartillaPhotos.length === 0 && (
           <Text style={styles.cartillaStatusMuted}>
             Sube la cartilla para poder reservar.
           </Text>
         )}
-        {cartillaUrl && cartillaStatus === "PENDING" && (
+        {cartillaPhotos.length > 0 && cartillaStatus === "PENDING" && (
           <View style={[styles.cartillaBadge, { backgroundColor: COLORS.warningBg }]}>
             <Ionicons name="time-outline" size={16} color={COLORS.warningText} />
             <Text style={[styles.cartillaBadgeText, { color: COLORS.warningText }]}>
@@ -518,7 +570,7 @@ export default function CreatePetScreen() {
             </Text>
           </View>
         )}
-        {cartillaUrl && cartillaStatus === "APPROVED" && (
+        {cartillaPhotos.length > 0 && cartillaStatus === "APPROVED" && (
           <View style={[styles.cartillaBadge, { backgroundColor: COLORS.successBg }]}>
             <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.successText} />
             <Text style={[styles.cartillaBadgeText, { color: COLORS.successText }]}>
@@ -526,7 +578,7 @@ export default function CreatePetScreen() {
             </Text>
           </View>
         )}
-        {cartillaUrl && cartillaStatus === "REJECTED" && (
+        {cartillaPhotos.length > 0 && cartillaStatus === "REJECTED" && (
           <View style={[styles.cartillaBadge, { backgroundColor: COLORS.errorBg }]}>
             <Ionicons name="close-circle-outline" size={16} color={COLORS.errorText} />
             <View style={{ flex: 1 }}>
@@ -540,7 +592,7 @@ export default function CreatePetScreen() {
             </View>
           </View>
         )}
-        {cartillaUrl && cartillaStatus === "EXPIRED" && (
+        {cartillaPhotos.length > 0 && cartillaStatus === "EXPIRED" && (
           <View style={[styles.cartillaBadge, { backgroundColor: COLORS.errorBg }]}>
             <Ionicons name="alarm-outline" size={16} color={COLORS.errorText} />
             <View style={{ flex: 1 }}>
@@ -876,6 +928,35 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     lineHeight: 18,
     marginTop: -8,
+  },
+  cartillaPhotosRow: {
+    gap: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  cartillaThumbWrap: {
+    position: "relative",
+    width: 110,
+    height: 110,
+  },
+  cartillaThumb: {
+    width: 110,
+    height: 110,
+    borderRadius: 14,
+    backgroundColor: COLORS.bgSection,
+  },
+  cartillaThumbRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.errorText,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   cartillaStatusMuted: {
     fontSize: 13,

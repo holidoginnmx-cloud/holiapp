@@ -12,16 +12,16 @@ export default function VetAuthorizationScreen() {
         <>
           <Text style={styles.h2}>Objeto</Text>
           <Text style={styles.p}>
-            Al aceptar, autorizas expresamente a HolidogInn a tomar las medidas
+            Al aceptar, autorizas expresamente a Holidog Inn a tomar las medidas
             razonables para la salud de tu mascota durante su estancia, incluyendo
             el traslado a un médico veterinario en caso de emergencia.
           </Text>
 
           <Text style={styles.h2}>Alcance de la autorización</Text>
           <Text style={styles.p}>
-            • HolidogInn intentará contactarte primero al teléfono registrado y a
+            • Holidog Inn intentará contactarte primero al teléfono registrado y a
             tu contacto de emergencia secundario.{"\n"}
-            • Si no hay respuesta y la urgencia lo requiere, HolidogInn podrá
+            • Si no hay respuesta y la urgencia lo requiere, Holidog Inn podrá
             trasladar a tu mascota al veterinario de cabecera registrado en el
             perfil, o al veterinario de emergencia más cercano si aquel no está
             disponible.{"\n"}
@@ -31,7 +31,7 @@ export default function VetAuthorizationScreen() {
 
           <Text style={styles.h2}>Costo</Text>
           <Text style={styles.p}>
-            Los honorarios del veterinario y medicamentos son a tu cargo. HolidogInn
+            Los honorarios del veterinario y medicamentos son a tu cargo. Holidog Inn
             adelantará el pago en caso necesario y lo cobrará contra tu tarjeta en
             archivo o al check-out.
           </Text>
@@ -45,7 +45,7 @@ export default function VetAuthorizationScreen() {
 
           <Text style={styles.h2}>Deslinde</Text>
           <Text style={styles.p}>
-            HolidogInn aplicará criterio razonable. El cliente entiende que no
+            Holidog Inn aplicará criterio razonable. El cliente entiende que no
             puede haber garantías médicas y que actuar de buena fe en una
             emergencia es lo que autoriza este documento.
           </Text>
@@ -53,7 +53,7 @@ export default function VetAuthorizationScreen() {
           <Text style={styles.foot}>
             Última actualización: abril 2026. La fecha y hora de tu aceptación
             quedan registradas en el sistema y aplican para todas tus mascotas
-            registradas en HolidogInn.
+            registradas en Holidog Inn.
           </Text>
         </>
       }

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -14,9 +14,11 @@ import {
   RefreshControl,
   FlatList,
   Platform,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import ImageView from "react-native-image-viewing";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getCartillas,
@@ -29,6 +31,7 @@ import {
   type VaccineCatalogEntry,
   type ReviewCartillaPayload,
   type CartillaVaccine,
+  type DewormingType,
 } from "@/lib/api";
 import { formatName, formatPhoneInput } from "@/lib/format";
 
@@ -44,6 +47,23 @@ type VaccineRow = {
   appliedAt: Date;
   expiresAt: Date;
 };
+
+type DewormingRow = {
+  type: DewormingType;
+  productName: string;
+  appliedAt: Date;
+  expiresAt: Date;
+  notes: string;
+};
+
+const DEWORMING_TYPES: { key: DewormingType; label: string }[] = [
+  { key: "INTERNAL", label: "Interna" },
+  { key: "EXTERNAL", label: "Externa" },
+  { key: "BOTH", label: "Ambas" },
+];
+
+// Próxima dosis sugerida para desparasitantes (común: 3 meses).
+const DEWORMING_DEFAULT_DAYS = 90;
 
 const addDays = (d: Date, days: number) =>
   new Date(d.getTime() + days * 86_400_000);
@@ -61,6 +81,21 @@ export default function AdminCartillas() {
   const [selectedPet, setSelectedPet] = useState<PetWithCartilla | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [zoomImages, setZoomImages] = useState<string[]>([]);
+  const [zoomIndex, setZoomIndex] = useState(0);
+  const [zoomVisible, setZoomVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const t = setTimeout(() => setSuccessMessage(null), 2000);
+    return () => clearTimeout(t);
+  }, [successMessage]);
+  const openZoom = (photos: string[], index: number) => {
+    setZoomImages(photos);
+    setZoomIndex(index);
+    setZoomVisible(true);
+  };
 
   // Captura de vacunas al aprobar.
   const [capturing, setCapturing] = useState(false);
@@ -68,6 +103,15 @@ export default function AdminCartillas() {
   const [catalogPickerForRow, setCatalogPickerForRow] = useState<number | null>(null);
   const [appliedPickerForRow, setAppliedPickerForRow] = useState<number | null>(null);
   const [expiresPickerForRow, setExpiresPickerForRow] = useState<number | null>(null);
+
+  // Captura de desparasitaciones al aprobar.
+  const [dewormingRows, setDewormingRows] = useState<DewormingRow[]>([]);
+  const [dewormingAppliedPickerForRow, setDewormingAppliedPickerForRow] = useState<
+    number | null
+  >(null);
+  const [dewormingExpiresPickerForRow, setDewormingExpiresPickerForRow] = useState<
+    number | null
+  >(null);
 
   // Edición de vacuna existente.
   const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null);
@@ -95,12 +139,32 @@ export default function AdminCartillas() {
       petId: string;
       payload: ReviewCartillaPayload;
     }) => reviewCartilla(petId, payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "cartillas"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "alerts"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
       queryClient.invalidateQueries({ queryKey: ["pets"] });
       closeModal();
+      if (variables.payload.action === "APPROVE") {
+        const vCount = variables.payload.vaccines?.length ?? 0;
+        const dCount = variables.payload.dewormings?.length ?? 0;
+        const parts: string[] = [];
+        if (vCount > 0) {
+          parts.push(vCount === 1 ? "1 vacuna" : `${vCount} vacunas`);
+        }
+        if (dCount > 0) {
+          parts.push(
+            dCount === 1 ? "1 desparasitación" : `${dCount} desparasitaciones`
+          );
+        }
+        setSuccessMessage(
+          parts.length > 0
+            ? `${parts.join(" y ")} agregada${
+                vCount + dCount === 1 ? "" : "s"
+              } correctamente`
+            : "Cartilla aprobada"
+        );
+      }
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -207,12 +271,16 @@ export default function AdminCartillas() {
     setCatalogPickerForRow(null);
     setAppliedPickerForRow(null);
     setExpiresPickerForRow(null);
+    setDewormingRows([]);
+    setDewormingAppliedPickerForRow(null);
+    setDewormingExpiresPickerForRow(null);
     cancelEdit();
   };
 
   const startCapture = () => {
     setCapturing(true);
     setVaccineRows([]);
+    setDewormingRows([]);
   };
 
   const addRow = () => {
@@ -254,32 +322,68 @@ export default function AdminCartillas() {
     );
   };
 
-  const submitApprove = (withVaccines: boolean) => {
+  // ─── Desparasitaciones ────────────────────────────────────
+  const addDewormingRow = () => {
+    const today = new Date();
+    setDewormingRows((rows) => [
+      ...rows,
+      {
+        type: "INTERNAL",
+        productName: "",
+        appliedAt: today,
+        expiresAt: addDays(today, DEWORMING_DEFAULT_DAYS),
+        notes: "",
+      },
+    ]);
+  };
+
+  const removeDewormingRow = (index: number) =>
+    setDewormingRows((rows) => rows.filter((_, i) => i !== index));
+
+  const updateDewormingRow = (index: number, patch: Partial<DewormingRow>) => {
+    setDewormingRows((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, ...patch } : r))
+    );
+  };
+
+  const updateDewormingApplied = (index: number, appliedAt: Date) => {
+    setDewormingRows((rows) =>
+      rows.map((r, i) =>
+        i === index
+          ? { ...r, appliedAt, expiresAt: addDays(appliedAt, DEWORMING_DEFAULT_DAYS) }
+          : r
+      )
+    );
+  };
+
+  const submitApprove = () => {
     if (!selectedPet) return;
 
-    if (withVaccines) {
-      const incomplete = vaccineRows.find((r) => !r.catalogId);
-      if (incomplete) {
-        Alert.alert("Datos incompletos", "Selecciona el tipo de vacuna en cada renglón.");
-        return;
-      }
-      reviewMutation.mutate({
-        petId: selectedPet.id,
-        payload: {
-          action: "APPROVE",
-          vaccines: vaccineRows.map((r) => ({
-            catalogId: r.catalogId!,
-            appliedAt: r.appliedAt.toISOString(),
-            expiresAt: r.expiresAt.toISOString(),
-          })),
-        },
-      });
-    } else {
-      reviewMutation.mutate({
-        petId: selectedPet.id,
-        payload: { action: "APPROVE" },
-      });
+    const incompleteVaccine = vaccineRows.find((r) => !r.catalogId);
+    if (incompleteVaccine) {
+      Alert.alert("Datos incompletos", "Selecciona el tipo de vacuna en cada renglón.");
+      return;
     }
+
+    const payload: ReviewCartillaPayload = { action: "APPROVE" };
+    if (vaccineRows.length > 0) {
+      payload.vaccines = vaccineRows.map((r) => ({
+        catalogId: r.catalogId!,
+        appliedAt: r.appliedAt.toISOString(),
+        expiresAt: r.expiresAt.toISOString(),
+      }));
+    }
+    if (dewormingRows.length > 0) {
+      payload.dewormings = dewormingRows.map((r) => ({
+        type: r.type,
+        productName: r.productName.trim() || null,
+        appliedAt: r.appliedAt.toISOString(),
+        expiresAt: r.expiresAt.toISOString(),
+        notes: r.notes.trim() || null,
+      }));
+    }
+
+    reviewMutation.mutate({ petId: selectedPet.id, payload });
   };
 
   return (
@@ -340,20 +444,40 @@ export default function AdminCartillas() {
                 onPress={() => setSelectedPet(pet)}
                 activeOpacity={0.7}
               >
-                {pet.cartillaUrl ? (
-                  <Image
-                    source={{ uri: pet.cartillaUrl }}
-                    style={styles.thumb}
-                  />
-                ) : (
-                  <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                    <Ionicons
-                      name="document-outline"
-                      size={28}
-                      color={COLORS.border}
-                    />
-                  </View>
-                )}
+                {(() => {
+                  const firstPhoto =
+                    pet.cartillaPhotos?.[0] ?? pet.cartillaUrl ?? null;
+                  const totalPhotos =
+                    pet.cartillaPhotos && pet.cartillaPhotos.length > 0
+                      ? pet.cartillaPhotos.length
+                      : pet.cartillaUrl
+                        ? 1
+                        : 0;
+                  if (!firstPhoto) {
+                    return (
+                      <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                        <Ionicons
+                          name="document-outline"
+                          size={28}
+                          color={COLORS.border}
+                        />
+                      </View>
+                    );
+                  }
+                  return (
+                    <View>
+                      <Image source={{ uri: firstPhoto }} style={styles.thumb} />
+                      {totalPhotos > 1 && (
+                        <View style={styles.thumbPhotoCount}>
+                          <Ionicons name="copy-outline" size={10} color={COLORS.white} />
+                          <Text style={styles.thumbPhotoCountText}>
+                            {totalPhotos}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
                 <View style={styles.cardInfo}>
                   <Text style={styles.petName}>{formatName(pet.name)}</Text>
                   <Text style={styles.ownerName}>
@@ -410,13 +534,58 @@ export default function AdminCartillas() {
                   {selectedPet.owner.phone ? ` · ${formatPhoneInput(selectedPet.owner.phone)}` : ""}
                 </Text>
 
-                {selectedPet.cartillaUrl && (
-                  <Image
-                    source={{ uri: selectedPet.cartillaUrl }}
-                    style={styles.fullImage}
-                    resizeMode="contain"
-                  />
-                )}
+                {(() => {
+                  const photos =
+                    selectedPet.cartillaPhotos &&
+                    selectedPet.cartillaPhotos.length > 0
+                      ? selectedPet.cartillaPhotos
+                      : selectedPet.cartillaUrl
+                        ? [selectedPet.cartillaUrl]
+                        : [];
+                  if (photos.length === 0) return null;
+                  if (photos.length === 1) {
+                    return (
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => openZoom(photos, 0)}
+                      >
+                        <Image
+                          source={{ uri: photos[0] }}
+                          style={styles.fullImage}
+                          resizeMode="contain"
+                        />
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      pagingEnabled
+                      style={{ marginVertical: 8 }}
+                    >
+                      {photos.map((url, idx) => (
+                        <View key={`${url}-${idx}`} style={styles.galleryPage}>
+                          <TouchableOpacity
+                            activeOpacity={0.9}
+                            onPress={() => openZoom(photos, idx)}
+                          >
+                            <Image
+                              source={{ uri: url }}
+                              style={styles.galleryImage}
+                              resizeMode="contain"
+                            />
+                          </TouchableOpacity>
+                          <View style={styles.galleryIndex}>
+                            <Text style={styles.galleryIndexText}>
+                              {idx + 1} / {photos.length}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  );
+                })()}
 
                 {selectedPet.cartillaStatus === "REJECTED" &&
                   selectedPet.cartillaRejectionReason && (
@@ -531,6 +700,109 @@ export default function AdminCartillas() {
                     </View>
                   )}
 
+                {/* Desparasitaciones registradas */}
+                {!capturing &&
+                  !rejecting &&
+                  !editingVaccineId &&
+                  selectedPet.dewormings &&
+                  selectedPet.dewormings.length > 0 && (
+                    <View style={styles.vaccinesSection}>
+                      <Text style={styles.vaccinesSectionTitle}>
+                        Desparasitaciones registradas ({selectedPet.dewormings.length})
+                      </Text>
+                      {selectedPet.dewormings.map((d) => {
+                        const expires = d.expiresAt ? new Date(d.expiresAt) : null;
+                        const now = new Date();
+                        const daysToExpire = expires
+                          ? Math.ceil(
+                              (expires.getTime() - now.getTime()) / 86_400_000
+                            )
+                          : null;
+                        const isExpired = daysToExpire !== null && daysToExpire < 0;
+                        const isExpiringSoon =
+                          daysToExpire !== null && daysToExpire >= 0 && daysToExpire <= 30;
+                        const badgeColor = isExpired
+                          ? COLORS.errorText
+                          : isExpiringSoon
+                          ? COLORS.warningText
+                          : COLORS.successText;
+                        const badgeBg = isExpired
+                          ? COLORS.errorBg
+                          : isExpiringSoon
+                          ? COLORS.warningBg
+                          : COLORS.successBg;
+                        const badgeText = isExpired
+                          ? `Vencida hace ${Math.abs(daysToExpire!)}d`
+                          : isExpiringSoon
+                          ? `Vence en ${daysToExpire}d`
+                          : expires
+                          ? `Vigente`
+                          : `Sin vencimiento`;
+                        const typeLabel =
+                          DEWORMING_TYPES.find((t) => t.key === d.type)?.label ?? d.type;
+                        return (
+                          <View key={d.id} style={styles.vaccineCard}>
+                            <View style={styles.vaccineCardHeader}>
+                              <Text style={styles.vaccineCardName}>
+                                {typeLabel}
+                                {d.productName ? ` · ${d.productName}` : ""}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.vaccineBadge,
+                                  { backgroundColor: badgeBg },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.vaccineBadgeText,
+                                    { color: badgeColor },
+                                  ]}
+                                >
+                                  {badgeText}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.vaccineCardRow}>
+                              <Ionicons
+                                name="calendar-outline"
+                                size={14}
+                                color={COLORS.textTertiary}
+                              />
+                              <Text style={styles.vaccineCardMeta}>
+                                Aplicada {formatShort(new Date(d.appliedAt))}
+                              </Text>
+                            </View>
+                            {expires && (
+                              <View style={styles.vaccineCardRow}>
+                                <Ionicons
+                                  name="alarm-outline"
+                                  size={14}
+                                  color={COLORS.textTertiary}
+                                />
+                                <Text style={styles.vaccineCardMeta}>
+                                  Próxima dosis {formatShort(expires)}
+                                </Text>
+                              </View>
+                            )}
+                            {d.notes ? (
+                              <View style={styles.vaccineCardRow}>
+                                <Ionicons
+                                  name="document-text-outline"
+                                  size={14}
+                                  color={COLORS.textTertiary}
+                                />
+                                <Text style={styles.vaccineCardMeta} numberOfLines={2}>
+                                  {d.notes}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
                 {/* Modo: editando una vacuna existente */}
                 {editingVaccineId && editRow && (
                   <View style={{ marginTop: 14 }}>
@@ -599,6 +871,8 @@ export default function AdminCartillas() {
                           value={editRow.appliedAt}
                           mode="date"
                           display={Platform.OS === "ios" ? "spinner" : "default"}
+                          themeVariant="light"
+                          textColor={COLORS.textPrimary}
                           maximumDate={new Date()}
                           onChange={(_, d) => {
                             setEditAppliedOpen(Platform.OS === "ios");
@@ -631,6 +905,8 @@ export default function AdminCartillas() {
                           value={editRow.expiresAt}
                           mode="date"
                           display={Platform.OS === "ios" ? "spinner" : "default"}
+                          themeVariant="light"
+                          textColor={COLORS.textPrimary}
                           minimumDate={editRow.appliedAt}
                           onChange={(_, d) => {
                             setEditExpiresOpen(Platform.OS === "ios");
@@ -806,6 +1082,8 @@ export default function AdminCartillas() {
                               value={row.expiresAt}
                               mode="date"
                               display={Platform.OS === "ios" ? "spinner" : "default"}
+                              themeVariant="light"
+                              textColor={COLORS.textPrimary}
                               minimumDate={row.appliedAt}
                               onChange={(_, d) => {
                                 setExpiresPickerForRow(
@@ -832,12 +1110,187 @@ export default function AdminCartillas() {
                       <Text style={styles.addRowText}>Agregar vacuna</Text>
                     </TouchableOpacity>
 
+                    {/* Desparasitaciones */}
+                    <Text style={[styles.captureTitle, { marginTop: 20 }]}>
+                      Desparasitaciones
+                    </Text>
+                    <Text style={styles.captureHint}>
+                      Registra las desparasitaciones visibles en la cartilla. La próxima
+                      dosis se sugiere a {DEWORMING_DEFAULT_DAYS} días; puedes editarla.
+                    </Text>
+
+                    {dewormingRows.map((row, idx) => (
+                      <View key={`dw-${idx}`} style={styles.vaccineRow}>
+                        <View style={styles.vaccineRowHeader}>
+                          <Text style={styles.vaccineRowTitle}>
+                            Desparasitación {idx + 1}
+                          </Text>
+                          <TouchableOpacity onPress={() => removeDewormingRow(idx)}>
+                            <Ionicons
+                              name="trash-outline"
+                              size={18}
+                              color={COLORS.errorText}
+                            />
+                          </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.label}>Tipo</Text>
+                        <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                          {DEWORMING_TYPES.map((opt) => {
+                            const active = row.type === opt.key;
+                            return (
+                              <TouchableOpacity
+                                key={opt.key}
+                                style={[
+                                  styles.dewormingChip,
+                                  active && styles.dewormingChipActive,
+                                ]}
+                                onPress={() =>
+                                  updateDewormingRow(idx, { type: opt.key })
+                                }
+                              >
+                                <Text
+                                  style={[
+                                    styles.dewormingChipText,
+                                    active && { color: COLORS.white },
+                                  ]}
+                                >
+                                  {opt.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        <Text style={styles.label}>Producto (opcional)</Text>
+                        <TextInput
+                          style={styles.dewormingInput}
+                          value={row.productName}
+                          onChangeText={(t) =>
+                            updateDewormingRow(idx, { productName: t })
+                          }
+                          placeholder="Bravecto, Nexgard, Drontal..."
+                          placeholderTextColor={COLORS.textDisabled}
+                        />
+
+                        <Text style={styles.label}>Fecha aplicada</Text>
+                        <TouchableOpacity
+                          style={styles.selectRow}
+                          onPress={() => setDewormingAppliedPickerForRow(idx)}
+                        >
+                          <Ionicons
+                            name="calendar-outline"
+                            size={18}
+                            color={COLORS.primary}
+                          />
+                          <Text style={styles.selectText}>
+                            {formatShort(row.appliedAt)}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.label}>
+                          Próxima dosis{" "}
+                          <Text style={styles.labelHint}>
+                            · sugerido +{DEWORMING_DEFAULT_DAYS} días
+                          </Text>
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.selectRow}
+                          onPress={() => setDewormingExpiresPickerForRow(idx)}
+                        >
+                          <Ionicons
+                            name="alarm-outline"
+                            size={18}
+                            color={COLORS.warningText}
+                          />
+                          <Text style={styles.selectText}>
+                            {formatShort(row.expiresAt)}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.label}>Notas (opcional)</Text>
+                        <TextInput
+                          style={[styles.dewormingInput, { minHeight: 60 }]}
+                          value={row.notes}
+                          onChangeText={(t) =>
+                            updateDewormingRow(idx, { notes: t })
+                          }
+                          placeholder="Observaciones..."
+                          placeholderTextColor={COLORS.textDisabled}
+                          multiline
+                        />
+
+                        {dewormingAppliedPickerForRow === idx && (
+                          <DateTimePicker
+                            value={row.appliedAt}
+                            mode="date"
+                            display={Platform.OS === "ios" ? "spinner" : "default"}
+                            maximumDate={new Date()}
+                            onChange={(_, d) => {
+                              setDewormingAppliedPickerForRow(
+                                Platform.OS === "ios" ? idx : null
+                              );
+                              if (d) updateDewormingApplied(idx, d);
+                            }}
+                          />
+                        )}
+                        {Platform.OS === "ios" &&
+                          dewormingAppliedPickerForRow === idx && (
+                            <TouchableOpacity
+                              style={styles.pickerDone}
+                              onPress={() => setDewormingAppliedPickerForRow(null)}
+                            >
+                              <Text style={styles.pickerDoneText}>Listo</Text>
+                            </TouchableOpacity>
+                          )}
+
+                        {dewormingExpiresPickerForRow === idx && (
+                          <DateTimePicker
+                            value={row.expiresAt}
+                            mode="date"
+                            display={Platform.OS === "ios" ? "spinner" : "default"}
+                            themeVariant="light"
+                            textColor={COLORS.textPrimary}
+                            minimumDate={row.appliedAt}
+                            onChange={(_, d) => {
+                              setDewormingExpiresPickerForRow(
+                                Platform.OS === "ios" ? idx : null
+                              );
+                              if (d) updateDewormingRow(idx, { expiresAt: d });
+                            }}
+                          />
+                        )}
+                        {Platform.OS === "ios" &&
+                          dewormingExpiresPickerForRow === idx && (
+                            <TouchableOpacity
+                              style={styles.pickerDone}
+                              onPress={() => setDewormingExpiresPickerForRow(null)}
+                            >
+                              <Text style={styles.pickerDoneText}>Listo</Text>
+                            </TouchableOpacity>
+                          )}
+                      </View>
+                    ))}
+
+                    <TouchableOpacity
+                      style={styles.addRowBtn}
+                      onPress={addDewormingRow}
+                    >
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={20}
+                        color={COLORS.primary}
+                      />
+                      <Text style={styles.addRowText}>Agregar desparasitación</Text>
+                    </TouchableOpacity>
+
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                       <TouchableOpacity
                         style={[styles.btn, styles.btnGhost, { flex: 1 }]}
                         onPress={() => {
                           setCapturing(false);
                           setVaccineRows([]);
+                          setDewormingRows([]);
                         }}
                       >
                         <Text style={[styles.btnText, { color: COLORS.textSecondary }]}>
@@ -846,7 +1299,7 @@ export default function AdminCartillas() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
-                        onPress={() => submitApprove(vaccineRows.length > 0)}
+                        onPress={submitApprove}
                         disabled={reviewMutation.isPending}
                       >
                         <Ionicons
@@ -857,7 +1310,7 @@ export default function AdminCartillas() {
                         <Text style={[styles.btnText, { color: COLORS.white }]}>
                           {reviewMutation.isPending
                             ? "..."
-                            : vaccineRows.length === 0
+                            : vaccineRows.length === 0 && dewormingRows.length === 0
                             ? "Aprobar sin capturar"
                             : "Aprobar y guardar"}
                         </Text>
@@ -1001,6 +1454,39 @@ export default function AdminCartillas() {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Visor fullscreen con pinch-zoom y swipe entre páginas. */}
+          {/* Va dentro del Modal de cartilla para que ImageView (que usa Modal interno) */}
+          {/* se monte en el contexto correcto en iOS (modales hermanos no se apilan). */}
+          <ImageView
+            images={zoomImages.map((uri) => ({ uri }))}
+            imageIndex={zoomIndex}
+            visible={zoomVisible}
+            onRequestClose={() => setZoomVisible(false)}
+            swipeToCloseEnabled
+            doubleTapToZoomEnabled
+          />
+        </View>
+      </Modal>
+
+      {/* Toast de éxito al aprobar cartilla / agregar vacunas. */}
+      <Modal
+        visible={!!successMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSuccessMessage(null)}
+      >
+        <View style={styles.toastOverlay} pointerEvents="none">
+          <View style={styles.toastCard}>
+            <View style={styles.toastIconWrap}>
+              <Ionicons
+                name="checkmark-circle"
+                size={48}
+                color={COLORS.successText}
+              />
+            </View>
+            <Text style={styles.toastText}>{successMessage}</Text>
+          </View>
         </View>
       </Modal>
     </View>
@@ -1049,6 +1535,47 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgSection,
   },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
+  thumbPhotoCount: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  thumbPhotoCountText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
+  galleryPage: {
+    width: Dimensions.get("window").width - 40,
+    paddingHorizontal: 4,
+  },
+  galleryImage: {
+    width: "100%",
+    height: 360,
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+  },
+  galleryIndex: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  galleryIndexText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
   cardInfo: { flex: 1, gap: 2 },
   petName: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
   ownerName: { fontSize: 13, color: COLORS.textSecondary },
@@ -1068,6 +1595,42 @@ const styles = StyleSheet.create({
     maxHeight: "92%",
   },
   modalClose: { position: "absolute", top: 12, right: 12, zIndex: 2, padding: 6 },
+  toastOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  toastCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    gap: 10,
+    minWidth: 220,
+    maxWidth: 320,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  toastIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.successBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toastText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    textAlign: "center",
+  },
   modalTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textPrimary },
   modalSubtitle: { fontSize: 14, color: COLORS.textTertiary, marginTop: 4 },
   fullImage: {
@@ -1297,5 +1860,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.errorBg,
     borderWidth: 1,
     borderColor: COLORS.errorText,
+  },
+  // Desparasitaciones
+  dewormingChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    alignItems: "center",
+  },
+  dewormingChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  dewormingChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  dewormingInput: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.white,
+    marginTop: 4,
   },
 });

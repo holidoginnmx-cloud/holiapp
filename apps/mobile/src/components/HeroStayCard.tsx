@@ -10,6 +10,8 @@ interface HeroStayCardProps {
   petName: string;
   petPhotoUrl: string | null;
   roomName: string | null;
+  checkIn?: string | Date | null;
+  checkOut?: string | Date | null;
   onPress: () => void;
 }
 
@@ -24,11 +26,46 @@ function timeAgo(date: string | Date): string {
   return `Hace ${days}d`;
 }
 
+function formatDayShort(date: string | Date): string {
+  return new Date(date).toLocaleDateString("es-MX", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatWeekday(date: string | Date): string {
+  return new Date(date).toLocaleDateString("es-MX", { weekday: "short" });
+}
+
+function startOfDay(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function stayProgress(
+  checkIn: string | Date,
+  checkOut: string | Date,
+): { current: number; total: number } | null {
+  const ci = startOfDay(new Date(checkIn));
+  const co = startOfDay(new Date(checkOut));
+  const total = Math.max(
+    1,
+    Math.round((co.getTime() - ci.getTime()) / 86_400_000),
+  );
+  const today = startOfDay(new Date());
+  const elapsed = Math.round((today.getTime() - ci.getTime()) / 86_400_000);
+  const current = Math.min(Math.max(1, elapsed + 1), total);
+  return { current, total };
+}
+
 export function HeroStayCard({
   reservationId,
   petName,
   petPhotoUrl,
   roomName,
+  checkIn,
+  checkOut,
   onPress,
 }: HeroStayCardProps) {
   const { data: updates } = useQuery({
@@ -36,7 +73,12 @@ export function HeroStayCard({
     queryFn: () => getStayUpdates(reservationId),
   });
   const latest = updates?.[0];
-  const hasCaption = !!latest?.caption;
+  // Si hay reporte, mostramos la última foto subida; si no, la foto de la
+  // mascota como antes. La estructura del card no cambia.
+  const photoUrl = latest?.mediaUrl ?? petPhotoUrl;
+  const isVideo = latest?.mediaType === "video";
+  const progress =
+    checkIn && checkOut ? stayProgress(checkIn, checkOut) : null;
 
   return (
     <TouchableOpacity
@@ -48,11 +90,20 @@ export function HeroStayCard({
       <View style={styles.body}>
         <View style={styles.headerRow}>
           <View style={styles.photoRing}>
-            {petPhotoUrl ? (
-              <Image source={{ uri: petPhotoUrl }} style={styles.photo} />
+            {photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={styles.photo} />
             ) : (
               <View style={[styles.photo, styles.photoFallback]}>
                 <Ionicons name="paw" size={26} color={COLORS.primary} />
+              </View>
+            )}
+            {latest && (
+              <View style={styles.cameraBadge}>
+                <Ionicons
+                  name={isVideo ? "videocam" : "camera"}
+                  size={10}
+                  color={COLORS.white}
+                />
               </View>
             )}
           </View>
@@ -78,6 +129,16 @@ export function HeroStayCard({
                 </View>
               )}
             </View>
+            {latest && (
+              <Text style={styles.updateLine} numberOfLines={1}>
+                <Text style={styles.updateCaption}>
+                  {latest.caption || "Nuevo reporte"}
+                </Text>
+                <Text style={styles.updateTime}>
+                  {"  ·  " + timeAgo(latest.createdAt)}
+                </Text>
+              </Text>
+            )}
           </View>
           <Ionicons
             name="chevron-forward"
@@ -86,40 +147,31 @@ export function HeroStayCard({
           />
         </View>
 
-        {latest && (
-          <View style={styles.updateRow}>
-            <View style={styles.updateThumbWrap}>
-              {latest.mediaUrl ? (
-                <Image
-                  source={{ uri: latest.mediaUrl }}
-                  style={styles.updateThumb}
-                />
-              ) : (
-                <View style={[styles.updateThumb, styles.updateThumbFallback]}>
-                  <Ionicons name="image" size={18} color={COLORS.border} />
+        {checkIn && checkOut && (
+          <View style={styles.dateHero}>
+            <View style={styles.datePill}>
+              <Text style={styles.datePillLabel}>CHECK-IN</Text>
+              <Text style={styles.datePillDay}>{formatDayShort(checkIn)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekday(checkIn)}</Text>
+            </View>
+
+            <View style={styles.dateConnector}>
+              <View style={styles.connectorLine} />
+              {progress && (
+                <View style={styles.progressBadge}>
+                  <Ionicons name="paw" size={11} color={COLORS.primary} />
+                  <Text style={styles.progressBadgeText}>
+                    Día {progress.current} de {progress.total}
+                  </Text>
                 </View>
               )}
-              <View style={styles.cameraBadge}>
-                <Ionicons
-                  name={latest.mediaType === "video" ? "videocam" : "camera"}
-                  size={10}
-                  color={COLORS.white}
-                />
-              </View>
+              <View style={styles.connectorLine} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.updateText,
-                  !hasCaption && styles.updateTextFallback,
-                ]}
-                numberOfLines={2}
-              >
-                {latest.caption || "El staff compartió una actualización"}
-              </Text>
-              <Text style={styles.updateTime}>
-                {timeAgo(latest.createdAt)}
-              </Text>
+
+            <View style={styles.datePill}>
+              <Text style={styles.datePillLabel}>CHECK-OUT</Text>
+              <Text style={styles.datePillDay}>{formatDayShort(checkOut)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekday(checkOut)}</Text>
             </View>
           </View>
         )}
@@ -162,6 +214,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.successBg,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
   photo: {
     width: 56,
@@ -172,6 +225,19 @@ const styles = StyleSheet.create({
   photoFallback: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   headerText: {
     flex: 1,
@@ -226,56 +292,76 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     flexShrink: 1,
   },
-  updateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.bgSection,
+  updateLine: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 16,
   },
-  updateThumbWrap: {
-    position: "relative",
-  },
-  updateThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-  },
-  updateThumbFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cameraBadge: {
-    position: "absolute",
-    bottom: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  updateText: {
-    fontSize: 13,
+  updateCaption: {
     color: COLORS.textPrimary,
     fontWeight: "600",
-    lineHeight: 18,
-  },
-  updateTextFallback: {
-    color: COLORS.textTertiary,
-    fontStyle: "italic",
-    fontWeight: "500",
   },
   updateTime: {
-    fontSize: 11,
     color: COLORS.textTertiary,
-    marginTop: 2,
     fontWeight: "700",
+  },
+  // Bloque CHECK-IN | progreso | CHECK-OUT
+  dateHero: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 6,
+    marginTop: 12,
+  },
+  datePill: {
+    flex: 1,
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    alignItems: "center",
+  },
+  datePillLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    color: COLORS.textTertiary,
+    marginBottom: 2,
+  },
+  datePillDay: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    textTransform: "capitalize",
+  },
+  datePillSub: {
+    fontSize: 10,
+    color: COLORS.textTertiary,
+    textTransform: "capitalize",
+    marginTop: 1,
+  },
+  dateConnector: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  connectorLine: {
+    flex: 1,
+    width: 1,
+    backgroundColor: COLORS.borderLight,
+    minHeight: 6,
+  },
+  progressBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginVertical: 3,
+  },
+  progressBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.primary,
   },
 });

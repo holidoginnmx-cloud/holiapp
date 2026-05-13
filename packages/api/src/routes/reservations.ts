@@ -30,16 +30,15 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
   const authMiddleware = createAuthMiddleware(prisma);
 
   // Auto-cancel overdue deposit reservations.
-  // DEPOSIT reservations are created in PENDING (anticipo pagado, saldo
-  // pendiente). They move to CONFIRMED only cuando el saldo se cubre.
-  // Si el deadline (check-in) ya pasó y el saldo nunca se completó,
-  // la reserva queda colgada en pendientes — la cancelamos.
+  // DEPOSIT reservations live en CONFIRMED con saldo pendiente. Si el
+  // deadline (check-in) ya pasó y el saldo nunca se completó, la reserva
+  // queda colgada — la cancelamos.
   async function cancelOverdueDeposits() {
     const overdue = await prisma.reservation.findMany({
       where: {
         paymentType: "DEPOSIT",
         depositDeadline: { lt: new Date() },
-        status: { in: ["PENDING", "CONFIRMED"] },
+        status: "CONFIRMED",
       },
       include: { payments: true },
     });
@@ -92,20 +91,32 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           take: 1,
         },
         review: {
-          select: { id: true },
+          select: { id: true, rating: true },
+        },
+        // Para tarjetas de baño: indicadores deslanado/corte. Sólo se incluyen
+        // los flags del variant; el precio y demás detalles viven en el detail.
+        addons: {
+          select: {
+            variant: { select: { deslanado: true, corte: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
     });
-    return reservations.map(({ payments, changeRequests, updates, review, ...r }) => {
+    return reservations.map(({ payments, changeRequests, updates, review, addons, ...r }) => {
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       const remaining = Number(r.totalAmount) - totalPaid;
+      const hasDeslanado = addons.some((a) => a.variant?.deslanado === true);
+      const hasCorte = addons.some((a) => a.variant?.corte === true);
       return {
         ...r,
         hasBalance: remaining > 0.01,
         hasPendingChangeRequest: (changeRequests?.length ?? 0) > 0,
         lastUpdateAt: updates?.[0]?.createdAt ?? null,
         hasReview: !!review,
+        reviewRating: review?.rating ?? null,
+        hasDeslanado,
+        hasCorte,
       };
     });
   });
@@ -121,7 +132,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           pet: true,
           room: true,
           payments: { orderBy: { createdAt: "desc" } },
-          updates: { orderBy: { createdAt: "desc" } },
+          updates: {
+            orderBy: { createdAt: "desc" },
+            include: {
+              staff: {
+                select: { id: true, firstName: true, lastName: true },
+              },
+            },
+          },
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
           staff: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
           review: true,
@@ -193,6 +211,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (!room) {
       return reply.status(404).send({ error: "Cuarto no encontrado" });
     }
+    if (!room.isActive) {
+      return reply.status(400).send({ error: "El cuarto no está activo" });
+    }
+
+    // Capacity guard: el cuarto no debe rebasar su capacidad en las fechas pedidas.
+    const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
+    if (taken + 1 > room.capacity) {
+      return reply.status(409).send({
+        error: `El cuarto ${room.name} no tiene capacidad disponible en esas fechas (${taken}/${room.capacity} ocupado).`,
+        code: "ROOM_AT_CAPACITY",
+      });
+    }
 
     // Calculate totalDays and totalAmount (weight-based pricing)
     const diffMs = checkOut.getTime() - checkIn.getTime();
@@ -209,7 +239,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         totalAmount,
         notes,
         legalAccepted,
-        status: "PENDING",
+        status: "CONFIRMED",
         ownerId,
         petId,
         roomId,
@@ -245,25 +275,51 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ── Helper: find available room for a pet size + dates ──
-  async function findAvailableRoom(petSize: PetSize, checkIn: Date, checkOut: Date) {
+  // ── Helper: cuenta cuántas reservas activas (no CANCELLED/CHECKED_OUT) solapan
+  // con la ventana [checkIn, checkOut) en un cuarto. Opcionalmente excluye un id
+  // (para edición de la misma reserva).
+  async function countOverlappingForRoom(
+    roomId: string,
+    checkIn: Date,
+    checkOut: Date,
+    excludeReservationId?: string,
+  ): Promise<number> {
+    return prisma.reservation.count({
+      where: {
+        roomId,
+        reservationType: "STAY",
+        status: { notIn: ["CANCELLED", "CHECKED_OUT"] as PrismaResStatus[] },
+        ...(excludeReservationId ? { id: { not: excludeReservationId } } : {}),
+        AND: [
+          { checkIn: { lt: checkOut } },
+          { checkOut: { gt: checkIn } },
+        ],
+      },
+    });
+  }
+
+  // ── Helper: find available room for a pet size + dates (capacity-aware) ──
+  // Toma en cuenta `capacity`: un cuarto se considera disponible mientras la
+  // cantidad de reservaciones activas solapadas sea menor a su capacidad.
+  // `addingCount` es cuántos perros nuevos se quieren meter (default 1).
+  async function findAvailableRoom(
+    petSize: PetSize,
+    checkIn: Date,
+    checkOut: Date,
+    addingCount: number = 1,
+  ) {
     const rooms = await prisma.room.findMany({
       where: {
         isActive: true,
         sizeAllowed: { has: petSize },
-        reservations: {
-          none: {
-            status: { notIn: ["CANCELLED", "CHECKED_OUT"] as PrismaResStatus[] },
-            AND: [
-              { checkIn: { lt: checkOut } },
-              { checkOut: { gt: checkIn } },
-            ],
-          },
-        },
       },
       orderBy: { createdAt: "asc" },
     });
-    return rooms[0] ?? null;
+    for (const room of rooms) {
+      const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
+      if (taken + addingCount <= room.capacity) return room;
+    }
+    return null;
   }
 
   function sizeFromWeight(kg: number): PetSize {
@@ -410,16 +466,21 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const assignments: { petId: string; roomId: string | null; amount: number }[] = [];
 
     if (roomPreference === "shared") {
-      // Find room for the largest pet size
+      // Find room for the largest pet size that fits TODAS las mascotas del grupo.
       const sizeOrder: PetSize[] = ["XS", "S", "M", "L", "XL"];
       const largestSize = petSizes.reduce((max, ps) =>
         sizeOrder.indexOf(ps.size) > sizeOrder.indexOf(max) ? ps.size : max,
         petSizes[0].size
       );
-      const room = await findAvailableRoom(largestSize, checkIn, checkOut);
+      const room = await findAvailableRoom(
+        largestSize,
+        checkIn,
+        checkOut,
+        petSizes.length,
+      );
       if (!room) {
         return reply.status(400).send({
-          error: `No hay cuartos disponibles para tamaño ${largestSize} en las fechas seleccionadas`,
+          error: `No hay cuartos con capacidad para ${petSizes.length} perros (tamaño ${largestSize}) en las fechas seleccionadas`,
         });
       }
       for (const ps of petSizes) {
@@ -430,17 +491,33 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
     } else {
-      // Separate: find a room per pet
+      // Separate: find a room per pet — y reservar lugares ya asignados en este
+      // mismo request para no asignar dos perros al mismo cuarto rebasando su
+      // capacidad dentro de la misma operación.
+      const localUsage = new Map<string, number>();
       for (const ps of petSizes) {
-        const room = await findAvailableRoom(ps.size, checkIn, checkOut);
-        if (!room) {
+        const rooms = await prisma.room.findMany({
+          where: { isActive: true, sizeAllowed: { has: ps.size } },
+          orderBy: { createdAt: "asc" },
+        });
+        let chosen: typeof rooms[number] | null = null;
+        for (const room of rooms) {
+          const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
+          const localTaken = localUsage.get(room.id) ?? 0;
+          if (taken + localTaken + 1 <= room.capacity) {
+            chosen = room;
+            localUsage.set(room.id, localTaken + 1);
+            break;
+          }
+        }
+        if (!chosen) {
           return reply.status(400).send({
             error: `No hay cuartos disponibles para ${ps.pet.name} (tamaño ${ps.size}) en las fechas seleccionadas`,
           });
         }
         assignments.push({
           petId: ps.pet.id,
-          roomId: room.id,
+          roomId: chosen.id,
           amount: ps.pricePerDay * totalDays,
         });
       }
@@ -533,7 +610,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             notes,
             medicationNotes: medNotes,
             legalAccepted,
-            status: paymentType === "DEPOSIT" ? "PENDING" : "CONFIRMED",
+            status: "CONFIRMED",
             groupId,
             paymentType,
             // Deposit deadline = check-in day. Owner can pay the balance in
@@ -606,7 +683,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (creditApplied > 0) {
       const updatedOwner = await prisma.user.update({
         where: { id: ownerId },
-        data: { creditBalance: { decrement: creditApplied } },
+        data: {
+          creditBalance: { decrement: creditApplied },
+          lastCreditEntryAt: new Date(),
+        },
       });
       await prisma.creditLedger.create({
         data: {
@@ -716,9 +796,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       if (reservation.ownerId !== request.userId) {
         return reply.status(403).send({ error: "No autorizado" });
       }
-      if (!["PENDING", "CONFIRMED"].includes(reservation.status)) {
+      if (reservation.status !== "CONFIRMED") {
         return reply.status(400).send({
-          error: "Solo puedes cancelar reservaciones pendientes o confirmadas",
+          error: "Solo puedes cancelar reservaciones confirmadas",
         });
       }
 

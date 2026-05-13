@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
+  Pressable,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -20,14 +21,19 @@ import { ReservationCard } from "@/components/ReservationCard";
 import { formatName } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
-function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
-}
+type SectionKey = "active" | "stays" | "baths";
 
 export default function AdminDashboard() {
   const firstName = useAuthStore((s) => s.firstName);
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
+    active: false,
+    stays: false,
+    baths: false,
+  });
+  const toggleSection = (key: SectionKey) =>
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const {
     data: stats,
@@ -49,6 +55,16 @@ export default function AdminDashboard() {
     queryKey: ["admin", "reservations", "CONFIRMED"],
     queryFn: () => getReservations({ status: "CONFIRMED" }),
   });
+
+  const { upcomingStays, upcomingBaths } = useMemo(() => {
+    const stays = (upcomingReservations ?? []).filter(
+      (r) => r.reservationType !== "BATH"
+    );
+    const baths = (upcomingReservations ?? []).filter(
+      (r) => r.reservationType === "BATH"
+    );
+    return { upcomingStays: stays, upcomingBaths: baths };
+  }, [upcomingReservations]);
 
   const { data: pendingChangeRequests } = useQuery({
     queryKey: ["admin", "change-requests", "PENDING"],
@@ -76,12 +92,12 @@ export default function AdminDashboard() {
     month: "long",
   });
 
-  // Total de alertas: staff (manuales) + sin evidencia + vacunas por vencer + cartillas pendientes.
+  // Total de alertas: staff (manuales) + sin evidencia + vacunas por vencer.
+  // Las cartillas pendientes viven en su propio tile y no cuentan como alerta.
   const totalAlertsCount =
     (unresolvedAlerts?.length ?? 0) +
     (stats?.staysWithoutUpdates.length ?? 0) +
-    (stats?.expiringVaccines.length ?? 0) +
-    (cartillasPending?.pending ?? 0);
+    (stats?.expiringVaccines.length ?? 0);
 
   // Counts que llevan badge "nuevos desde la última visita".
   const counts = useMemo(
@@ -153,7 +169,7 @@ export default function AdminDashboard() {
             value={stats?.checkedInCount ?? 0}
             icon="paw"
             color={COLORS.primary}
-            onPress={() => router.push("/(admin)/reservations" as any)}
+            onPress={() => router.push("/admin/hospedados" as any)}
           />
           <StatCard
             label="Check-ins hoy"
@@ -180,11 +196,19 @@ export default function AdminDashboard() {
             }}
           />
           <StatCard
-            label="Ingresos del mes"
-            value={formatCurrency(stats?.monthRevenue ?? 0)}
-            icon="cash-outline"
-            color={COLORS.successText}
-            onPress={() => router.push("/admin/revenue" as any)}
+            label="Reportes hoy"
+            value={(() => {
+              const total = stats?.checkedInCount ?? 0;
+              const missing = stats?.staysWithoutUpdates?.length ?? 0;
+              return total === 0 ? "—" : `${total - missing}/${total}`;
+            })()}
+            icon="document-text-outline"
+            color={
+              (stats?.staysWithoutUpdates?.length ?? 0) > 0
+                ? COLORS.warningText
+                : COLORS.successText
+            }
+            onPress={() => router.push("/admin/reportes-hoy" as any)}
           />
         </View>
         <View style={styles.statsRow}>
@@ -216,38 +240,90 @@ export default function AdminDashboard() {
       {/* Active Stays */}
       {activeReservations && activeReservations.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Estancias activas</Text>
-          <FlatList
-            data={activeReservations}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.horizontalList}
-            renderItem={({ item }) => (
-              <View style={styles.horizontalCard}>
-                <ReservationCard
-                  petName={item.pet.name}
-                  roomName={item.room?.name ?? null}
-                  status={item.status}
-                  checkIn={item.checkIn}
-                  checkOut={item.checkOut}
-                  totalAmount={Number(item.totalAmount)}
-                  ownerName={undefined}
-                  onPress={() =>
-                    router.push(`/admin/reservation/${item.id}` as any)
-                  }
-                />
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("active")}
+            hitSlop={8}
+            android_ripple={{ color: COLORS.bgSection }}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="home-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitleInline}>Estancias activas</Text>
+              <View style={styles.sectionCountBadge}>
+                <Text style={styles.sectionCountText}>
+                  {activeReservations.length}
+                </Text>
               </View>
-            )}
-          />
+            </View>
+            <Ionicons
+              name={collapsed.active ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
+            />
+          </Pressable>
+          {!collapsed.active && (
+            <FlatList
+              data={activeReservations}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.horizontalList}
+              renderItem={({ item }) => (
+                <View style={styles.horizontalCard}>
+                  <ReservationCard
+                    petName={item.pet.name}
+                    roomName={item.room?.name ?? null}
+                    status={item.status}
+                    checkIn={item.checkIn}
+                    checkOut={item.checkOut}
+                    reservationType={item.reservationType}
+                    appointmentAt={item.appointmentAt}
+                    totalAmount={Number(item.totalAmount)}
+                    paymentType={item.paymentType}
+                    hasBalance={item.hasBalance}
+                    hasPendingChangeRequest={item.hasPendingChangeRequest}
+                    lastUpdateAt={item.lastUpdateAt}
+                    hasReview={item.hasReview}
+                    reviewRating={item.reviewRating}
+                    adminView
+                    hasDeslanado={item.hasDeslanado}
+                    hasCorte={item.hasCorte}
+                    ownerName={undefined}
+                    onPress={() =>
+                      router.push(`/admin/reservation/${item.id}` as any)
+                    }
+                  />
+                </View>
+              )}
+            />
+          )}
         </View>
       )}
 
-      {/* Upcoming Arrivals */}
-      {upcomingReservations && upcomingReservations.length > 0 && (
+      {/* Upcoming Stays */}
+      {upcomingStays.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Proximas llegadas</Text>
-          {upcomingReservations.slice(0, 5).map((item) => (
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("stays")}
+            hitSlop={8}
+            android_ripple={{ color: COLORS.bgSection }}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitleInline}>Próximas llegadas</Text>
+              <View style={styles.sectionCountBadge}>
+                <Text style={styles.sectionCountText}>{upcomingStays.length}</Text>
+              </View>
+            </View>
+            <Ionicons
+              name={collapsed.stays ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
+            />
+          </Pressable>
+          {!collapsed.stays &&
+            upcomingStays.slice(0, 5).map((item) => (
             <ReservationCard
               key={item.id}
               petName={item.pet.name}
@@ -255,7 +331,71 @@ export default function AdminDashboard() {
               status={item.status}
               checkIn={item.checkIn}
               checkOut={item.checkOut}
+              reservationType={item.reservationType}
+              appointmentAt={item.appointmentAt}
               totalAmount={Number(item.totalAmount)}
+              paymentType={item.paymentType}
+              hasBalance={item.hasBalance}
+              hasPendingChangeRequest={item.hasPendingChangeRequest}
+              lastUpdateAt={item.lastUpdateAt}
+              hasReview={item.hasReview}
+              reviewRating={item.reviewRating}
+              adminView
+              hasDeslanado={item.hasDeslanado}
+              hasCorte={item.hasCorte}
+              ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
+              onPress={() =>
+                router.push(`/admin/reservation/${item.id}` as any)
+              }
+            />
+          ))}
+        </View>
+      )}
+
+      {/* Upcoming Baths */}
+      {upcomingBaths.length > 0 && (
+        <View style={styles.section}>
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("baths")}
+            hitSlop={8}
+            android_ripple={{ color: COLORS.bgSection }}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="water-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitleInline}>Próximos baños</Text>
+              <View style={styles.sectionCountBadge}>
+                <Text style={styles.sectionCountText}>{upcomingBaths.length}</Text>
+              </View>
+            </View>
+            <Ionicons
+              name={collapsed.baths ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
+            />
+          </Pressable>
+          {!collapsed.baths &&
+            upcomingBaths.slice(0, 5).map((item) => (
+            <ReservationCard
+              key={item.id}
+              petName={item.pet.name}
+              roomName={item.room?.name ?? null}
+              status={item.status}
+              checkIn={item.checkIn}
+              checkOut={item.checkOut}
+              reservationType={item.reservationType}
+              appointmentAt={item.appointmentAt}
+              totalAmount={Number(item.totalAmount)}
+              paymentType={item.paymentType}
+              hasBalance={item.hasBalance}
+              hasPendingChangeRequest={item.hasPendingChangeRequest}
+              lastUpdateAt={item.lastUpdateAt}
+              hasReview={item.hasReview}
+              reviewRating={item.reviewRating}
+              adminView
+              hasDeslanado={item.hasDeslanado}
+              hasCorte={item.hasCorte}
+              ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
               onPress={() =>
                 router.push(`/admin/reservation/${item.id}` as any)
               }
@@ -265,13 +405,15 @@ export default function AdminDashboard() {
       )}
 
       {/* Empty state */}
-      {!activeReservations?.length && !upcomingReservations?.length && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            Todo en orden. No hay actividad pendiente.
-          </Text>
-        </View>
-      )}
+      {!activeReservations?.length &&
+        !upcomingStays.length &&
+        !upcomingBaths.length && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>
+              Todo en orden. No hay actividad pendiente.
+            </Text>
+          </View>
+        )}
     </ScrollView>
   );
 }
@@ -319,6 +461,44 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.textPrimary,
     marginBottom: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionHeaderPressable: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  sectionHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  sectionTitleInline: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  sectionCountBadge: {
+    minWidth: 22,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionCountText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.primary,
   },
   horizontalList: {
     gap: 12,

@@ -412,14 +412,6 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       },
     });
 
-    // Balance paid — change status from PENDING to CONFIRMED
-    if (reservation.status === "PENDING") {
-      await prisma.reservation.update({
-        where: { id: reservationId },
-        data: { status: "CONFIRMED" },
-      });
-    }
-
     // Email "pago recibido"
     const owner = await prisma.user.findUnique({
       where: { id: reservation.ownerId },
@@ -498,22 +490,6 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           notes: notes || `Pago manual registrado por admin (${method})`,
         },
       });
-
-      // Check if reservation is now fully paid and update status if needed.
-      // Include PARTIAL (deposits) — they count toward the total.
-      const totalPaid = reservation.payments
-        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
-        .reduce((sum, p) => sum + Number(p.amount), 0) + amount;
-
-      if (
-        totalPaid >= Number(reservation.totalAmount) - 0.01 &&
-        reservation.status === "PENDING"
-      ) {
-        await prisma.reservation.update({
-          where: { id: reservationId },
-          data: { status: "CONFIRMED" },
-        });
-      }
 
       return reply.status(201).send(payment);
     }

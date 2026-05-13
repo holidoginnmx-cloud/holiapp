@@ -13,7 +13,6 @@ import { ReservationCard } from "./ReservationCard";
 
 // ─── Status → dot color ──────────────────────────────────
 const STATUS_DOT: Record<string, string> = {
-  PENDING: COLORS.warningText,
   CONFIRMED: COLORS.infoText,
   CHECKED_IN: COLORS.successText,
   CHECKED_OUT: COLORS.textDisabled,
@@ -34,7 +33,17 @@ export interface CalendarReservation {
   checkOut: string | Date | null;
   status: string;
   totalAmount: number | string;
-  pet: { id: string; name: string; breed?: string; photoUrl?: string | null };
+  reservationType?: "STAY" | "BATH";
+  appointmentAt?: string | Date | null;
+  paymentType?: string | null;
+  hasBalance?: boolean;
+  hasPendingChangeRequest?: boolean;
+  lastUpdateAt?: string | null;
+  hasReview?: boolean;
+  reviewRating?: number | null;
+  hasDeslanado?: boolean;
+  hasCorte?: boolean;
+  pet: { id: string; name: string; breed?: string | null; photoUrl?: string | null };
   room: { id: string; name: string } | null;
   owner?: { id: string; firstName: string; lastName: string };
   staff?: { id: string; firstName: string; lastName: string } | null;
@@ -46,6 +55,8 @@ interface Props {
   onPressReservation: (id: string) => void;
   showOwnerName?: boolean;
   showStaffName?: boolean;
+  /** Si true, las cards se pintan en modo admin (reemplaza "Deja tu reseña" por "Aún sin reseña"). */
+  adminView?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
 }
@@ -73,6 +84,7 @@ export function CalendarView({
   onPressReservation,
   showOwnerName = false,
   showStaffName = false,
+  adminView = false,
   refreshing = false,
   onRefresh,
 }: Props) {
@@ -106,6 +118,18 @@ export function CalendarView({
     // Track which days have checklists for active stays
     const checklistDays = new Set<string>();
     for (const r of reservations) {
+      // Baño: aparece sólo en el día de la cita.
+      if (r.reservationType === "BATH") {
+        if (!r.appointmentAt) continue;
+        const apt = new Date(r.appointmentAt);
+        if (apt.getFullYear() === year && apt.getMonth() === month) {
+          const key = toDateKey(apt);
+          if (!map[key]) map[key] = [];
+          map[key].push(r);
+        }
+        continue;
+      }
+      // Hospedaje: aparece en todos los días entre checkIn y checkOut.
       if (!r.checkIn || !r.checkOut) continue;
       const ci = new Date(r.checkIn);
       const co = new Date(r.checkOut);
@@ -135,6 +159,49 @@ export function CalendarView({
 
   // Reservations for selected day
   const selectedReservations = dayMap[selectedDate] ?? [];
+  const selectedStays = selectedReservations.filter(
+    (r) => r.reservationType !== "BATH"
+  );
+  const selectedBaths = selectedReservations.filter(
+    (r) => r.reservationType === "BATH"
+  );
+  const hasBothTypes = selectedStays.length > 0 && selectedBaths.length > 0;
+
+  const renderCard = (r: CalendarReservation) => (
+    <ReservationCard
+      key={r.id}
+      petName={r.pet.name}
+      roomName={r.room?.name ?? null}
+      status={r.status}
+      checkIn={r.checkIn}
+      checkOut={r.checkOut}
+      reservationType={r.reservationType}
+      appointmentAt={r.appointmentAt}
+      totalAmount={Number(r.totalAmount)}
+      paymentType={r.paymentType}
+      hasBalance={r.hasBalance}
+      hasPendingChangeRequest={r.hasPendingChangeRequest}
+      lastUpdateAt={r.lastUpdateAt}
+      hasReview={r.hasReview}
+      reviewRating={r.reviewRating}
+      adminView={adminView}
+      hasDeslanado={r.hasDeslanado}
+      hasCorte={r.hasCorte}
+      ownerName={
+        showOwnerName && r.owner
+          ? `${r.owner.firstName} ${r.owner.lastName}`
+          : undefined
+      }
+      staffName={
+        showStaffName
+          ? r.staff
+            ? `${r.staff.firstName} ${r.staff.lastName}`
+            : null
+          : undefined
+      }
+      onPress={() => onPressReservation(r.id)}
+    />
+  );
 
   const todayKey = toDateKey(today);
 
@@ -189,10 +256,23 @@ export function CalendarView({
           const isSelected = key === selectedDate;
           const dayReservations = dayMap[key] ?? [];
 
-          // Unique status colors for dots (max 3)
-          const dots = [
-            ...new Set(dayReservations.map((r) => STATUS_DOT[r.status]).filter(Boolean)),
-          ].slice(0, 3);
+          // Dots: tipo + status (color). Hospedaje = relleno, baño = anillo.
+          const stayDots = [
+            ...new Set(
+              dayReservations
+                .filter((r) => r.reservationType !== "BATH")
+                .map((r) => STATUS_DOT[r.status])
+                .filter(Boolean)
+            ),
+          ].slice(0, 2);
+          const bathDots = [
+            ...new Set(
+              dayReservations
+                .filter((r) => r.reservationType === "BATH")
+                .map((r) => STATUS_DOT[r.status])
+                .filter(Boolean)
+            ),
+          ].slice(0, 2);
 
           // Checklist indicator: has active stays on this day?
           const hasActiveStays = dayReservations.some((r) => r.status === "CHECKED_IN");
@@ -226,10 +306,20 @@ export function CalendarView({
                 </Text>
               </View>
               <View style={styles.dotsRow}>
-                {dots.map((color, di) => (
+                {stayDots.map((color, di) => (
                   <View
-                    key={di}
+                    key={`s-${di}`}
                     style={[styles.dot, { backgroundColor: color }]}
+                  />
+                ))}
+                {bathDots.map((color, di) => (
+                  <View
+                    key={`b-${di}`}
+                    style={[
+                      styles.dot,
+                      styles.dotBath,
+                      { borderColor: color },
+                    ]}
                   />
                 ))}
                 {showChecklistIcon && (
@@ -259,13 +349,29 @@ export function CalendarView({
           <View key={status} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: color }]} />
             <Text style={styles.legendText}>
-              {status === "PENDING" ? "Pendiente" :
-               status === "CONFIRMED" ? "Confirmada" :
+              {status === "CONFIRMED" ? "Confirmada" :
                status === "CHECKED_IN" ? "Hospedado" :
                status === "CHECKED_OUT" ? "Finalizada" : "Cancelada"}
             </Text>
           </View>
         ))}
+        <View style={styles.legendDivider} />
+        <View style={styles.legendItem}>
+          <View
+            style={[styles.legendDot, { backgroundColor: COLORS.textTertiary }]}
+          />
+          <Text style={styles.legendText}>Hospedaje</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[
+              styles.legendDot,
+              styles.dotBath,
+              { borderColor: COLORS.textTertiary },
+            ]}
+          />
+          <Text style={styles.legendText}>Baño</Text>
+        </View>
       </View>
 
       {/* ── Selected Day Reservations ── */}
@@ -285,31 +391,28 @@ export function CalendarView({
 
         {selectedReservations.length === 0 ? (
           <Text style={styles.emptyDay}>Sin reservaciones este día</Text>
+        ) : hasBothTypes ? (
+          <>
+            <View style={styles.groupHeader}>
+              <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.groupHeaderText}>Hospedajes</Text>
+              <View style={styles.groupCountBadge}>
+                <Text style={styles.groupCountText}>{selectedStays.length}</Text>
+              </View>
+            </View>
+            {selectedStays.map(renderCard)}
+
+            <View style={[styles.groupHeader, { marginTop: 12 }]}>
+              <Ionicons name="water-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.groupHeaderText}>Baños</Text>
+              <View style={styles.groupCountBadge}>
+                <Text style={styles.groupCountText}>{selectedBaths.length}</Text>
+              </View>
+            </View>
+            {selectedBaths.map(renderCard)}
+          </>
         ) : (
-          selectedReservations.map((r) => (
-            <ReservationCard
-              key={r.id}
-              petName={r.pet.name}
-              roomName={r.room?.name ?? null}
-              status={r.status}
-              checkIn={r.checkIn}
-              checkOut={r.checkOut}
-              totalAmount={Number(r.totalAmount)}
-              ownerName={
-                showOwnerName && r.owner
-                  ? `${r.owner.firstName} ${r.owner.lastName}`
-                  : undefined
-              }
-              staffName={
-                showStaffName
-                  ? r.staff
-                    ? `${r.staff.firstName} ${r.staff.lastName}`
-                    : null
-                  : undefined
-              }
-              onPress={() => onPressReservation(r.id)}
-            />
-          ))
+          selectedReservations.map(renderCard)
         )}
       </View>
     </ScrollView>
@@ -405,6 +508,10 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
+  dotBath: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+  },
   // Legend
   legend: {
     flexDirection: "row",
@@ -425,6 +532,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  legendDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: 4,
   },
   legendText: {
     fontSize: 11,
@@ -449,5 +562,31 @@ const styles = StyleSheet.create({
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 24,
+  },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  groupHeaderText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    letterSpacing: 0.2,
+  },
+  groupCountBadge: {
+    minWidth: 20,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  groupCountText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.primary,
   },
 });

@@ -125,16 +125,15 @@ async function handlePaymentIntentSucceeded(
     });
   }
 
-  // Si la reserva estaba PENDING (anticipo o balance), confirmarla cuando esté totalmente pagada.
-  if (payment.reservation.status === "PENDING") {
-    const allPayments = await prisma.payment.findMany({
-      where: { reservationId: payment.reservationId, status: "PAID" },
+  // Si el PI es de tipo extension-balance, marcar la change request como pagada.
+  if (pi.metadata?.type === "extension-balance" && pi.metadata?.changeRequestId) {
+    const cr = await prisma.reservationChangeRequest.findUnique({
+      where: { id: String(pi.metadata.changeRequestId) },
     });
-    const totalPaid = allPayments.reduce((s, p) => s + Number(p.amount), 0);
-    if (totalPaid >= Number(payment.reservation.totalAmount) - 0.01) {
-      await prisma.reservation.update({
-        where: { id: payment.reservationId },
-        data: { status: "CONFIRMED" },
+    if (cr && !cr.paidAt) {
+      await prisma.reservationChangeRequest.update({
+        where: { id: cr.id },
+        data: { paidAt: new Date() },
       });
     }
   }

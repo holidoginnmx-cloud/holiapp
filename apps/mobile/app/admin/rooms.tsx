@@ -23,9 +23,16 @@ export default function AdminRooms() {
   });
 
   const rooms = data ?? [];
-  const totalActive = rooms.filter((r) => r.isActive).length;
-  const occupied = rooms.filter((r) => r.currentReservation).length;
-  const occupancyPct = totalActive > 0 ? Math.round((occupied / totalActive) * 100) : 0;
+  const activeRooms = rooms.filter((r) => r.isActive);
+  // Ocupación real: mascotas hospedadas / capacidad total (no cuartos / cuartos)
+  // — un cuarto con capacity=2 y 1 perro es 50%, no 100%.
+  const totalCapacity = activeRooms.reduce((sum, r) => sum + r.capacity, 0);
+  const occupiedSpots = activeRooms.reduce(
+    (sum, r) => sum + (r.currentReservations?.length ?? 0),
+    0,
+  );
+  const occupancyPct =
+    totalCapacity > 0 ? Math.round((occupiedSpots / totalCapacity) * 100) : 0;
 
   return (
     <View style={styles.screen}>
@@ -76,7 +83,7 @@ export default function AdminRooms() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.occupancyTitle}>Ocupación</Text>
                     <Text style={styles.occupancyDetail}>
-                      {occupied} de {totalActive} cuartos ocupados
+                      {occupiedSpots} de {totalCapacity} lugares ocupados
                     </Text>
                   </View>
                   <Text

@@ -32,8 +32,7 @@ enum PetSize {
 }
 
 enum ReservationStatus {
-  PENDING     // Esperando confirmación
-  CONFIRMED   // Confirmada por el negocio
+  CONFIRMED   // Confirmada y agendada (con anticipo o pago completo)
   CHECKED_IN  // Mascota en el hotel
   CHECKED_OUT // Estancia finalizada
   CANCELLED   // Cancelada
@@ -70,6 +69,7 @@ enum CreditEntryType {
   CREDIT_ADDED
   CREDIT_APPLIED
   CREDIT_ADJUSTED
+  CREDIT_EXPIRED
 }
 
 enum NotificationType {
@@ -169,6 +169,9 @@ model User {
   role          Role     @default(OWNER)
   isActive      Boolean  @default(true)
   creditBalance Decimal  @default(0) @db.Decimal(10, 2)
+  // Última vez que el saldo a favor tuvo actividad (CREDIT_ADDED/APPLIED).
+  // Si 90 días pasan sin actividad y el balance es > 0, el cron lo expira.
+  lastCreditEntryAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -187,6 +190,7 @@ model User {
   checklists        DailyChecklist[]   @relation("StaffChecklists")
   behaviorTags      BehaviorTag[]      @relation("StaffBehaviorTags")
   staffAlerts       StaffAlert[]       @relation("StaffAlerts")
+  addonExtrasSet    ReservationAddon[] @relation("AddonExtraSetter")
 
   // Cambios y saldo
   changeRequests    ReservationChangeRequest[] @relation("ChangeRequestedBy")
@@ -234,7 +238,10 @@ model Pet {
   personality         String?
 
   // Cartilla de vacunación (documento oficial del vet)
+  // `cartillaUrl` (legacy) se mantiene por compatibilidad; el flujo nuevo
+  // usa `cartillaPhotos` para soportar múltiples fotos de la misma cartilla.
   cartillaUrl             String?
+  cartillaPhotos          String[]          @default([])
   cartillaStatus          CartillaStatus?   // null = aún no se ha subido
   cartillaReviewedAt      DateTime?
   cartillaReviewedById    String?
@@ -249,6 +256,7 @@ model Pet {
   ownerId      String
   owner        User           @relation(fields: [ownerId], references: [id])
   vaccines     Vaccine[]
+  dewormings   Deworming[]
   reservations Reservation[]
   updates      StayUpdate[]
   behaviorTags BehaviorTag[]
@@ -304,6 +312,36 @@ model VaccineCatalog {
 }
 
 // =============================================================
+//  DEWORMING — Desparasitaciones aplicadas a una mascota.
+//  Separado de Vaccine porque son tratamientos distintos (a veces solo
+//  internos, a veces externos, distintas frecuencias) y el dueño los
+//  declara aparte de la cartilla de vacunación.
+// =============================================================
+
+enum DewormingType {
+  INTERNAL    // Gusanos intestinales (oral)
+  EXTERNAL    // Pulgas/garrapatas (pipeta o collar)
+  BOTH        // Producto combinado
+}
+
+model Deworming {
+  id          String        @id @default(cuid())
+  type        DewormingType
+  productName String?       // "Bravecto", "Nexgard", "Drontal", etc.
+  appliedAt   DateTime
+  expiresAt   DateTime?     // Próxima dosis sugerida
+  vetName     String?
+  fileUrl     String?       // Foto del comprobante (opcional)
+  notes       String?
+  createdAt   DateTime      @default(now())
+
+  petId String
+  pet   Pet   @relation(fields: [petId], references: [id])
+
+  @@map("dewormings")
+}
+
+// =============================================================
 //  ROOM — Habitaciones o espacios del hotel
 // =============================================================
 
@@ -333,7 +371,7 @@ model Reservation {
   checkIn       DateTime?                           // solo STAY
   checkOut      DateTime?                           // solo STAY
   appointmentAt DateTime?                           // solo BATH: inicio de la cita
-  status        ReservationStatus @default(PENDING)
+  status        ReservationStatus @default(CONFIRMED)
   totalDays     Int?                                // solo STAY
   totalAmount   Decimal           @db.Decimal(10, 2)
   notes         String?
@@ -615,6 +653,22 @@ model ReservationAddon {
   completedAt   DateTime?                       // Fecha en que el staff completó el servicio
   createdAt     DateTime  @default(now())
 
+  // Precio adicional definido por staff DESPUÉS del servicio.
+  // Aplica para deslanado/corte: el owner no paga al reservar, el staff
+  // evalúa el estado del pelaje al terminar y define cuánto cuesta.
+  // `extraDeslanadoPrice` y `extraCortePrice` permiten desglosar el costo;
+  // `extraPrice` se mantiene como total (suma) para el flujo de pago.
+  extraPrice          Decimal?  @db.Decimal(10, 2)
+  extraDeslanadoPrice Decimal?  @db.Decimal(10, 2)
+  extraCortePrice     Decimal?  @db.Decimal(10, 2)
+  extraDescription    String?   // "Deslanado · $200 · Corte · $150"
+  extraPaymentStatus  AddonExtraPaymentStatus?
+  extraSetById        String?
+  extraSetBy          User?     @relation("AddonExtraSetter", fields: [extraSetById], references: [id])
+  extraSetAt          DateTime?
+  extraPaidAt         DateTime?
+  extraStripePaymentIntentId String?
+
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
@@ -625,6 +679,12 @@ model ReservationAddon {
   payment       Payment? @relation(fields: [paymentId], references: [id])
 
   @@map("reservation_addons")
+}
+
+enum AddonExtraPaymentStatus {
+  PENDING_PAYMENT   // Staff ya definió el precio; owner debe elegir cómo pagar
+  PAY_ON_PICKUP     // Owner eligió pagar al recoger; staff debe cobrar
+  PAID              // Cobrado (vía Stripe o registrado en sucursal)
 }
 
 // =============================================================
@@ -642,6 +702,10 @@ model ReservationChangeRequest {
   status          ChangeRequestStatus @default(PENDING)
   rejectionReason String?
   approvedAt      DateTime?
+  // Para extensiones (delta>0) — owner decide después de aprobación si paga
+  // ahora en app o al recoger en sucursal. paidAt se setea cuando se cobra.
+  payOnPickup     Boolean             @default(false)
+  paidAt          DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 

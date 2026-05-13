@@ -3,12 +3,12 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  Image,
   StatusBar,
   Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useVideoPlayer, VideoView } from "expo-video";
+import ImageView from "react-native-image-viewing";
 import { COLORS } from "@/constants/colors";
 
 export type MediaViewerItem = {
@@ -22,17 +22,33 @@ type Props = {
 };
 
 export function MediaViewer({ item, onClose }: Props) {
-  const visible = !!item;
   const isVideo = item?.type === "video";
+  const isImage = item?.type === "image";
   // Hook must be called unconditionally; pass empty source when no video.
   const player = useVideoPlayer(isVideo ? item!.url : null, (p) => {
     p.loop = false;
     if (isVideo) p.play();
   });
 
+  // Imágenes: ImageView ya trae pinch-zoom, double-tap y swipe-to-close.
+  if (isImage && item) {
+    return (
+      <ImageView
+        images={[{ uri: item.url }]}
+        imageIndex={0}
+        visible
+        onRequestClose={onClose}
+        swipeToCloseEnabled
+        doubleTapToZoomEnabled
+        backgroundColor="rgba(0,0,0,0.95)"
+      />
+    );
+  }
+
+  // Video: modal propio con expo-video.
   return (
     <Modal
-      visible={visible}
+      visible={isVideo}
       transparent
       animationType="fade"
       onRequestClose={onClose}
@@ -48,14 +64,6 @@ export function MediaViewer({ item, onClose }: Props) {
         >
           <Ionicons name="close" size={28} color={COLORS.white} />
         </TouchableOpacity>
-
-        {item?.type === "image" && (
-          <Image
-            source={{ uri: item.url }}
-            style={styles.media}
-            resizeMode="contain"
-          />
-        )}
 
         {isVideo && (
           <VideoView

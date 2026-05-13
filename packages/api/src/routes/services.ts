@@ -4,6 +4,7 @@ import { Prisma, PetSize, PrismaClient } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
+import { maybeConcludeStandaloneBath } from "./baths";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -257,6 +258,174 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
 
       return reply.send({ success: true, addon, payment });
     }
+  );
+
+  // ─── POST /reservations/:id/addons/:addonId/extras/intent ──
+  //  Owner crea PaymentIntent para pagar los extras (deslanado/corte)
+  //  cuyo precio fue definido por staff después del baño.
+  fastify.post<{ Params: { id: string; addonId: string } }>(
+    "/reservations/:id/addons/:addonId/extras/intent",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.addonId },
+        include: { reservation: { select: { id: true, ownerId: true } } },
+      });
+      if (!addon || addon.reservation.id !== request.params.id) {
+        return reply.status(404).send({ error: "Addon no encontrado" });
+      }
+      if (addon.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (!addon.extraPrice || addon.extraPaymentStatus !== "PENDING_PAYMENT") {
+        return reply.status(400).send({
+          error: "No hay extras pendientes de pago para este servicio",
+        });
+      }
+      const amount = Number(addon.extraPrice);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100),
+        currency: "mxn",
+        metadata: {
+          reservationId: addon.reservation.id,
+          addonId: addon.id,
+          type: "bath_extra",
+        },
+      });
+      return reply.send({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        amount,
+      });
+    },
+  );
+
+  // ─── POST /reservations/:id/addons/:addonId/extras/confirm ──
+  //  Confirma el pago vía Stripe y marca el addon como PAID.
+  fastify.post<{
+    Params: { id: string; addonId: string };
+    Body: { paymentIntentId: string };
+  }>(
+    "/reservations/:id/addons/:addonId/extras/confirm",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const { paymentIntentId } = request.body;
+      if (!paymentIntentId) {
+        return reply.status(400).send({ error: "paymentIntentId requerido" });
+      }
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      if (paymentIntent.status !== "succeeded") {
+        return reply.status(400).send({ error: "El pago no fue completado" });
+      }
+      if (paymentIntent.metadata.addonId !== request.params.addonId) {
+        return reply
+          .status(400)
+          .send({ error: "El pago no corresponde a este addon" });
+      }
+
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.addonId },
+        include: { reservation: { select: { id: true, ownerId: true } } },
+      });
+      if (!addon || addon.reservation.id !== request.params.id) {
+        return reply.status(404).send({ error: "Addon no encontrado" });
+      }
+      if (addon.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (addon.extraPaymentStatus === "PAID") {
+        return reply.send({ success: true, addon });
+      }
+
+      const [payment, updated] = await prisma.$transaction(async (tx) => {
+        const pay = await tx.payment.create({
+          data: {
+            amount: new Prisma.Decimal(paymentIntent.amount / 100),
+            method: "STRIPE",
+            status: "PAID",
+            stripePaymentIntentId: paymentIntentId,
+            paidAt: new Date(),
+            notes: `Extras de baño: ${addon.extraDescription ?? ""}`.trim(),
+            reservationId: addon.reservation.id,
+            userId: addon.reservation.ownerId,
+          },
+        });
+        const upd = await tx.reservationAddon.update({
+          where: { id: addon.id },
+          data: {
+            extraPaymentStatus: "PAID",
+            extraPaidAt: new Date(),
+            extraStripePaymentIntentId: paymentIntentId,
+          },
+          include: { variant: { include: { serviceType: true } } },
+        });
+        return [pay, upd] as const;
+      });
+
+      // Si era baño suelto y ya quedó todo saldado, concluirlo.
+      await maybeConcludeStandaloneBath(prisma, addon.reservation.id);
+
+      return reply.send({ success: true, addon: updated, payment });
+    },
+  );
+
+  // ─── POST /reservations/:id/addons/:addonId/extras/pay-on-pickup ──
+  //  Owner elige pagar al recoger. Sin cobro inmediato; marca el addon
+  //  para que el staff sepa que debe cobrar en persona.
+  fastify.post<{ Params: { id: string; addonId: string } }>(
+    "/reservations/:id/addons/:addonId/extras/pay-on-pickup",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.addonId },
+        include: {
+          reservation: {
+            select: { id: true, ownerId: true, pet: { select: { name: true } } },
+          },
+        },
+      });
+      if (!addon || addon.reservation.id !== request.params.id) {
+        return reply.status(404).send({ error: "Addon no encontrado" });
+      }
+      if (addon.reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (addon.extraPaymentStatus !== "PENDING_PAYMENT") {
+        return reply.status(400).send({
+          error: "Este addon no está en estado de elección de pago",
+        });
+      }
+
+      const updated = await prisma.reservationAddon.update({
+        where: { id: addon.id },
+        data: { extraPaymentStatus: "PAY_ON_PICKUP" },
+        include: { variant: { include: { serviceType: true } } },
+      });
+
+      // Avisar a admins y staff asignado que el cobro será en persona.
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN", isActive: true },
+        select: { id: true },
+      });
+      if (admins.length > 0) {
+        await notifyUsers(
+          prisma,
+          admins.map((a) => a.id),
+          {
+            type: "GENERAL",
+            title: "Extras de baño se pagarán al recoger",
+            body: `${addon.reservation.pet.name} — $${Number(addon.extraPrice).toLocaleString("es-MX")}`,
+            data: {
+              reservationId: addon.reservation.id,
+              addonId: addon.id,
+              kind: "BATH_EXTRA_PAY_ON_PICKUP",
+            },
+          },
+        );
+      }
+
+      return reply.send({ success: true, addon: updated });
+    },
   );
 
   // ═══════════════════════════════════════════════════════════

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   Linking,
+  ScrollView,
+  useWindowDimensions,
+  Animated,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -38,6 +43,9 @@ type GroupedReservation = {
   hasPendingChangeRequest: boolean;
   lastUpdateAt: string | null;
   hasReview: boolean;
+  reviewRating: number | null;
+  hasDeslanado: boolean;
+  hasCorte: boolean;
 };
 
 function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
@@ -79,6 +87,17 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       hasPendingChangeRequest: items.some((i) => i.hasPendingChangeRequest),
       lastUpdateAt: updateDates.sort().reverse()[0] ?? null,
       hasReview: items.every((i) => i.hasReview),
+      reviewRating: (() => {
+        const ratings = items
+          .map((i) => i.reviewRating)
+          .filter((r): r is number => typeof r === "number");
+        if (ratings.length === 0) return null;
+        return Math.round(
+          ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+        );
+      })(),
+      hasDeslanado: items.some((i) => i.hasDeslanado),
+      hasCorte: items.some((i) => i.hasCorte),
     });
   }
 
@@ -101,6 +120,9 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       hasPendingChangeRequest: r.hasPendingChangeRequest,
       lastUpdateAt: r.lastUpdateAt,
       hasReview: r.hasReview,
+      reviewRating: r.reviewRating,
+      hasDeslanado: r.hasDeslanado,
+      hasCorte: r.hasCorte,
     });
   }
 
@@ -110,7 +132,6 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
 const TABS = [
   { key: "CHECKED_IN", label: "Activas" },
   { key: "CONFIRMED", label: "Confirmadas" },
-  { key: "PENDING", label: "Pendientes" },
   { key: "history", label: "Historial" },
 ];
 
@@ -139,10 +160,6 @@ const EMPTY_STATES: Record<string, EmptyState> = {
     message: "No tienes reservaciones confirmadas por el momento",
     cta: "Nueva reservación",
   },
-  PENDING: {
-    icon: "time-outline",
-    message: "No tienes solicitudes pendientes",
-  },
   history: {
     icon: "archive-outline",
     message: "Aún no tienes estancias en tu historial",
@@ -161,10 +178,6 @@ const EMPTY_STATES_BATH: Record<string, EmptyState> = {
     cta: "Reservar baño",
     ctaHref: "/bath/create",
   },
-  PENDING: {
-    icon: "time-outline",
-    message: "No tienes solicitudes de baño pendientes",
-  },
   history: {
     icon: "archive-outline",
     message: "Aún no tienes baños en tu historial",
@@ -176,15 +189,51 @@ const EMPTY_STATES_BATH: Record<string, EmptyState> = {
 export default function ReservationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
+  const { width: pageWidth } = useWindowDimensions();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState(tab ?? "CHECKED_IN");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("STAY");
+  const pagerRef = useRef<ScrollView>(null);
+  // Sigue al pager scroll para que el underline siga al dedo en tiempo real.
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const tabProgress = useRef(new Animated.Value(0)).current;
+
+  // Mapea scrollX (pixels) → tabProgress (0..tabs.length-1).
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+    const id = scrollX.addListener(({ value }) => {
+      tabProgress.setValue(value / pageWidth);
+    });
+    return () => scrollX.removeListener(id);
+  }, [pageWidth]);
 
   useFocusEffect(
     useCallback(() => {
       if (tab && tab !== activeTab) setActiveTab(tab);
     }, [tab])
   );
+
+  // Sincroniza el pager cuando cambia activeTab (tap en pestaña o param de URL).
+  useEffect(() => {
+    const idx = TABS.findIndex((t) => t.key === activeTab);
+    if (idx >= 0) {
+      pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: true });
+    }
+  }, [activeTab, pageWidth]);
+
+  const onPagerMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (pageWidth <= 0) return;
+    const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+    const next = TABS[idx]?.key;
+    if (next && next !== activeTab) setActiveTab(next);
+  };
+
+  const filterByTab = (list: GroupedReservation[], tabKey: string) =>
+    list.filter((r) =>
+      tabKey === "history"
+        ? r.status === "CHECKED_OUT" || r.status === "CANCELLED"
+        : r.status === tabKey
+    );
 
   const {
     data: reservations,
@@ -205,18 +254,11 @@ export default function ReservationsScreen() {
   const tabCounts: Record<string, number> = {
     CHECKED_IN: byType.filter((r) => r.status === "CHECKED_IN").length,
     CONFIRMED: byType.filter((r) => r.status === "CONFIRMED").length,
-    PENDING: byType.filter((r) => r.status === "PENDING").length,
     history: byType.filter(
       (r) => r.status === "CHECKED_OUT" || r.status === "CANCELLED"
     ).length,
   };
   const tabsWithCounts = TABS.map((t) => ({ ...t, count: tabCounts[t.key] ?? 0 }));
-
-  const filtered = byType.filter((r) => {
-    if (activeTab === "history")
-      return r.status === "CHECKED_OUT" || r.status === "CANCELLED";
-    return r.status === activeTab;
-  });
 
   if (isLoading) {
     return (
@@ -237,8 +279,8 @@ export default function ReservationsScreen() {
     );
   }
 
-  const emptyState =
-    typeFilter === "BATH" ? EMPTY_STATES_BATH[activeTab] : EMPTY_STATES[activeTab];
+  const emptyStateFor = (tabKey: string) =>
+    typeFilter === "BATH" ? EMPTY_STATES_BATH[tabKey] : EMPTY_STATES[tabKey];
 
   return (
     <View style={styles.container} testID="reservations-screen">
@@ -296,63 +338,104 @@ export default function ReservationsScreen() {
           tabs={tabsWithCounts}
           activeTab={activeTab}
           onSelect={setActiveTab}
+          justified
+          progress={tabProgress}
         />
       </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.groupId ?? item.id}
-        renderItem={({ item }) => (
-          <ReservationCard
-            petName={item.petNames}
-            roomName={item.roomNames}
-            status={item.status}
-            checkIn={item.checkIn}
-            checkOut={item.checkOut}
-            reservationType={item.reservationType}
-            appointmentAt={item.appointmentAt}
-            totalAmount={item.totalAmount}
-            petCount={item.petCount}
-            paymentType={item.paymentType}
-            hasBalance={item.hasBalance}
-            hasPendingChangeRequest={item.hasPendingChangeRequest}
-            lastUpdateAt={item.lastUpdateAt}
-            hasReview={item.hasReview}
-            onPress={() => {
-              router.push(
-                `/reservation/detail/${item.id}?from=reservations` as any
-              );
-            }}
-          />
+      {/* Pager con swipe horizontal entre los 3 tabs */}
+      <Animated.ScrollView
+        ref={pagerRef as any}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onPagerMomentumEnd}
+        // Captura el offset horizontal en scrollX; un listener mapea a
+        // tabProgress (0..tabs.length-1) para el underline.
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: false },
         )}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons
-              name={emptyState?.icon ?? "calendar-outline"}
-              size={48}
-              color={COLORS.border}
-            />
-            <Text style={styles.emptyText}>
-              {emptyState?.message ?? "No tienes reservaciones en esta categoría"}
-            </Text>
-            {emptyState?.cta && (
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() =>
-                  router.push((emptyState.ctaHref ?? "/reservation/create") as any)
+        scrollEventThrottle={16}
+        // Arrancar en la página del tab activo sin animar.
+        contentOffset={{
+          x:
+            Math.max(0, TABS.findIndex((t) => t.key === activeTab)) * pageWidth,
+          y: 0,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {TABS.map((t) => {
+          const pageData = filterByTab(byType, t.key);
+          const empty = emptyStateFor(t.key);
+          return (
+            <View key={t.key} style={{ width: pageWidth }}>
+              <FlatList
+                data={pageData}
+                keyExtractor={(item) => item.groupId ?? item.id}
+                renderItem={({ item }) => (
+                  <ReservationCard
+                    petName={item.petNames}
+                    roomName={item.roomNames}
+                    status={item.status}
+                    checkIn={item.checkIn}
+                    checkOut={item.checkOut}
+                    reservationType={item.reservationType}
+                    appointmentAt={item.appointmentAt}
+                    totalAmount={item.totalAmount}
+                    petCount={item.petCount}
+                    paymentType={item.paymentType}
+                    hasBalance={item.hasBalance}
+                    hasPendingChangeRequest={item.hasPendingChangeRequest}
+                    lastUpdateAt={item.lastUpdateAt}
+                    hasReview={item.hasReview}
+                    reviewRating={item.reviewRating}
+                    hasDeslanado={item.hasDeslanado}
+                    hasCorte={item.hasCorte}
+                    onPress={() => {
+                      router.push(
+                        `/reservation/detail/${item.id}?from=reservations` as any
+                      );
+                    }}
+                  />
+                )}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefetching}
+                    onRefresh={refetch}
+                  />
                 }
-              >
-                <Text style={styles.emptyButtonText}>{emptyState.cta}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        }
-      />
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Ionicons
+                      name={empty?.icon ?? "calendar-outline"}
+                      size={48}
+                      color={COLORS.border}
+                    />
+                    <Text style={styles.emptyText}>
+                      {empty?.message ??
+                        "No tienes reservaciones en esta categoría"}
+                    </Text>
+                    {empty?.cta && (
+                      <TouchableOpacity
+                        style={styles.emptyButton}
+                        onPress={() =>
+                          router.push(
+                            (empty.ctaHref ?? "/reservation/create") as any
+                          )
+                        }
+                      >
+                        <Text style={styles.emptyButtonText}>{empty.cta}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                }
+              />
+            </View>
+          );
+        })}
+      </Animated.ScrollView>
     </View>
   );
 }

@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
+import { Prisma } from "@holidoginn/db";
 import {
   createAuthMiddleware,
   createStaffMiddleware,
@@ -12,6 +13,7 @@ import {
 } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { autoCheckoutOverdueStays } from "../lib/auto-actions";
+import { maybeConcludeStandaloneBath } from "./baths";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -62,10 +64,14 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   // ─── GET /staff/stays — estancias activas ─────────────────────
 
   fastify.get<{
-    Querystring: { status?: string };
+    Querystring: { status?: string; all?: string };
   }>("/staff/stays", { preHandler }, async (request) => {
     await autoCheckoutOverdueStays(prisma);
-    const status = request.query.status || "CHECKED_IN";
+    // `?all=true` → cualquier staff ve todas las estancias (no solo las
+    // asignadas a él) y todos los status excepto CANCELLED. Usado por el
+    // calendario de staff para ver agenda completa de hotel.
+    const isAll = request.query.all === "true";
+    const status = request.query.status || (isAll ? undefined : "CHECKED_IN");
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -77,8 +83,12 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     const stays = await prisma.reservation.findMany({
       where: {
         reservationType: "STAY",
-        status: status as any,
-        ...(request.userRole === "STAFF" ? { staffId: request.userId } : {}),
+        ...(status
+          ? { status: status as any }
+          : { status: { not: "CANCELLED" } }),
+        ...(request.userRole === "STAFF" && !isAll
+          ? { staffId: request.userId }
+          : {}),
       },
       include: {
         pet: {
@@ -234,11 +244,37 @@ export default async function staffRoutes(fastify: FastifyInstance) {
             include: { variant: { include: { serviceType: true } } },
             orderBy: { createdAt: "desc" },
           },
+          changeRequests: {
+            orderBy: { createdAt: "desc" },
+          },
+          // Pagos recibidos (PAID + PARTIAL=anticipo) para calcular saldo
+          // pendiente en el mobile. El anticipo se queda como PARTIAL
+          // permanente y los pagos siguientes son PAID — ambos representan
+          // dinero efectivamente cobrado.
+          payments: {
+            where: { status: { in: ["PAID", "PARTIAL"] } },
+            select: {
+              id: true,
+              amount: true,
+              method: true,
+              status: true,
+              paidAt: true,
+            },
+            orderBy: { paidAt: "desc" },
+          },
         },
       });
 
       if (!stay) {
         return reply.status(404).send({ error: "Estancia no encontrada" });
+      }
+
+      if (
+        request.userRole === "STAFF" &&
+        stay.staffId !== null &&
+        stay.staffId !== request.userId
+      ) {
+        return reply.status(403).send({ error: "Esta estancia no está asignada a ti" });
       }
 
       return stay;
@@ -398,6 +434,107 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
       return { reservation: updated, warnings };
     }
+  );
+
+  // ─── POST /staff/stays/:id/register-manual-payment ────────────
+  //  Staff registra un pago manual (efectivo/transferencia) para una
+  //  estancia. Útil cuando el owner paga el saldo del anticipo al hacer
+  //  check-in. Soporta pagos parciales: el staff puede registrar varios.
+  fastify.post<{
+    Params: { id: string };
+    Body: { amount?: number; method?: "CASH" | "TRANSFER"; notes?: string };
+  }>(
+    "/staff/stays/:id/register-manual-payment",
+    { preHandler },
+    async (request, reply) => {
+      const method = request.body?.method ?? "CASH";
+      const amount = request.body?.amount;
+      if (!["CASH", "TRANSFER"].includes(method)) {
+        return reply.status(400).send({ error: "Método inválido" });
+      }
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        return reply.status(400).send({
+          error: "El monto debe ser un número mayor a 0",
+        });
+      }
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: {
+          pet: { select: { id: true, name: true } },
+          payments: { where: { status: { in: ["PAID", "PARTIAL"] } } },
+        },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Estancia no encontrada" });
+      }
+      if (reservation.reservationType !== "STAY") {
+        return reply.status(400).send({
+          error: "Este endpoint sólo aplica a estancias (hospedaje)",
+        });
+      }
+      if (reservation.status === "CANCELLED") {
+        return reply.status(400).send({ error: "La reservación está cancelada" });
+      }
+      // Solo el staff asignado (o admin) puede registrar pagos.
+      if (
+        request.userRole === "STAFF" &&
+        reservation.staffId !== null &&
+        reservation.staffId !== request.userId
+      ) {
+        return reply
+          .status(403)
+          .send({ error: "Esta estancia no está asignada a ti" });
+      }
+
+      const totalPaidBefore = reservation.payments.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
+      const balance = Math.max(
+        0,
+        Number(reservation.totalAmount) - totalPaidBefore,
+      );
+      if (balance <= 0.01) {
+        return reply.status(400).send({
+          error: "No hay saldo pendiente para registrar.",
+        });
+      }
+      // Tolerar un sobrepago de hasta 1 peso (centavos por redondeo).
+      if (amount - balance > 1) {
+        return reply.status(400).send({
+          error: `El monto excede el saldo pendiente ($${balance.toLocaleString(
+            "es-MX",
+          )}).`,
+        });
+      }
+
+      const noteText =
+        request.body?.notes?.trim() ||
+        `Pago manual (${method}) registrado por staff`;
+
+      const payment = await prisma.payment.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          method,
+          status: "PAID",
+          paidAt: new Date(),
+          reservationId: reservation.id,
+          userId: reservation.ownerId,
+          notes: noteText,
+        },
+      });
+
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "GENERAL",
+        title: "Pago recibido",
+        body: `Recibimos $${amount.toLocaleString("es-MX")} de la estancia de ${reservation.pet.name}. ¡Gracias!`,
+        data: { reservationId: reservation.id, kind: "STAY_PAID" },
+      });
+
+      return reply.send({ success: true, amount, payment });
+    },
   );
 
   // ─── POST /staff/checklists — crear reporte diario ────────────
@@ -645,17 +782,62 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         },
       });
 
+      // Si existe un DailyChecklist para el día de esta evidencia, recontar
+      // sus photosCount/videosCount para mantenerlo sincronizado con los
+      // StayUpdates reales del día (incluyendo el que acabamos de crear).
+      // El día se ancla en UTC para consistencia con cómo se guarda
+      // `DailyChecklist.date` desde el form.
+      const dayStart = new Date(update.createdAt);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+      const existingChecklist = await prisma.dailyChecklist.findUnique({
+        where: {
+          reservationId_date: {
+            reservationId: data.reservationId,
+            date: dayStart,
+          },
+        },
+      });
+      if (existingChecklist) {
+        const [photosCount, videosCount] = await Promise.all([
+          prisma.stayUpdate.count({
+            where: {
+              reservationId: data.reservationId,
+              mediaType: "image",
+              createdAt: { gte: dayStart, lt: dayEnd },
+            },
+          }),
+          prisma.stayUpdate.count({
+            where: {
+              reservationId: data.reservationId,
+              mediaType: "video",
+              createdAt: { gte: dayStart, lt: dayEnd },
+            },
+          }),
+        ]);
+        await prisma.dailyChecklist.update({
+          where: { id: existingChecklist.id },
+          data: { photosCount, videosCount },
+        });
+      }
+
       // Notificación al dueño de nueva evidencia
       const pet = await prisma.pet.findUnique({
         where: { id: data.petId },
         select: { name: true },
       });
 
+      // El texto cambia según el tipo de reservación — "estancia" no aplica
+      // para baños sueltos.
+      const mediaWord = data.mediaType === "video" ? "video" : "foto";
+      const context = reservation.reservationType === "BATH" ? "baño" : "estancia";
       await notifyUser(prisma, {
         userId: reservation.ownerId,
         type: "NEW_UPDATE",
-        title: `Nueva ${data.mediaType === "video" ? "video" : "foto"} de ${pet?.name ?? "tu mascota"}`,
-        body: data.caption || `Se ha subido una nueva ${data.mediaType === "video" ? "video" : "foto"} de la estancia.`,
+        title: `Nueva ${mediaWord} de ${pet?.name ?? "tu mascota"}`,
+        body:
+          data.caption ||
+          `Se ha subido una nueva ${mediaWord} del ${context}.`,
         data: { reservationId: data.reservationId, updateId: update.id },
       });
 
@@ -798,6 +980,243 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
       return updated;
     }
+  );
+
+  // ─── POST /staff/addons/:id/set-extras — definir precio extra ─
+  //  Para deslanado/corte: el owner no pagó este precio al reservar
+  //  (los servicios extras tienen costo variable según el estado del pelaje).
+  //  Staff define el precio aquí; el owner lo verá como saldo a pagar.
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      // Nuevo desglose: cada extra se cotiza por separado.
+      extraDeslanadoPrice?: number;
+      extraCortePrice?: number;
+    };
+  }>(
+    "/staff/addons/:id/set-extras",
+    { preHandler },
+    async (request, reply) => {
+      const { extraDeslanadoPrice, extraCortePrice } = request.body;
+
+      const validatePrice = (
+        value: number | undefined,
+        label: string,
+      ): string | null => {
+        if (value === undefined) return null;
+        if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+          return `${label} debe ser un número mayor a 0`;
+        }
+        return null;
+      };
+      const desErr = validatePrice(extraDeslanadoPrice, "extraDeslanadoPrice");
+      if (desErr) return reply.status(400).send({ error: desErr });
+      const corErr = validatePrice(extraCortePrice, "extraCortePrice");
+      if (corErr) return reply.status(400).send({ error: corErr });
+      if (extraDeslanadoPrice === undefined && extraCortePrice === undefined) {
+        return reply
+          .status(400)
+          .send({ error: "Se requiere al menos un precio (deslanado o corte)" });
+      }
+
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.id },
+        include: {
+          variant: { include: { serviceType: true } },
+          reservation: {
+            select: {
+              id: true,
+              ownerId: true,
+              pet: { select: { name: true } },
+            },
+          },
+        },
+      });
+      if (!addon) {
+        return reply.status(404).send({ error: "Servicio no encontrado" });
+      }
+      if (addon.variant.serviceType.code !== "BATH") {
+        return reply
+          .status(400)
+          .send({ error: "El precio extra solo aplica a servicios de baño" });
+      }
+      if (addon.extraPaidAt) {
+        return reply
+          .status(409)
+          .send({ error: "El extra ya fue cobrado, no se puede modificar" });
+      }
+
+      // Validar que los precios enviados correspondan a extras realmente
+      // contratados en la variante.
+      if (extraDeslanadoPrice !== undefined && !addon.variant.deslanado) {
+        return reply.status(400).send({
+          error: "Este baño no incluye deslanado",
+        });
+      }
+      if (extraCortePrice !== undefined && !addon.variant.corte) {
+        return reply.status(400).send({
+          error: "Este baño no incluye corte",
+        });
+      }
+
+      // Conservar precios previos si no se reenvían en este request — permite
+      // setear uno primero y luego el otro.
+      const prevDes = addon.extraDeslanadoPrice
+        ? Number(addon.extraDeslanadoPrice)
+        : null;
+      const prevCor = addon.extraCortePrice
+        ? Number(addon.extraCortePrice)
+        : null;
+      const nextDes =
+        extraDeslanadoPrice !== undefined ? extraDeslanadoPrice : prevDes;
+      const nextCor =
+        extraCortePrice !== undefined ? extraCortePrice : prevCor;
+
+      // ¿Todos los extras aplicables tienen precio? Sólo entonces marcamos
+      // PENDING_PAYMENT y notificamos al owner.
+      const needsDes = addon.variant.deslanado;
+      const needsCor = addon.variant.corte;
+      const isComplete =
+        (!needsDes || nextDes !== null) && (!needsCor || nextCor !== null);
+
+      const parts: string[] = [];
+      if (nextDes !== null && needsDes) {
+        parts.push(`Deslanado $${nextDes.toLocaleString("es-MX")}`);
+      }
+      if (nextCor !== null && needsCor) {
+        parts.push(`Corte $${nextCor.toLocaleString("es-MX")}`);
+      }
+      const description = parts.join(" · ") || "Extras";
+      const total = (nextDes ?? 0) + (nextCor ?? 0);
+
+      const updated = await prisma.reservationAddon.update({
+        where: { id: request.params.id },
+        data: {
+          extraDeslanadoPrice:
+            nextDes !== null ? new Prisma.Decimal(nextDes) : null,
+          extraCortePrice:
+            nextCor !== null ? new Prisma.Decimal(nextCor) : null,
+          extraPrice: isComplete ? new Prisma.Decimal(total) : null,
+          extraDescription: description,
+          extraPaymentStatus: isComplete ? "PENDING_PAYMENT" : null,
+          extraSetById: request.userId!,
+          extraSetAt: new Date(),
+        },
+        include: { variant: { include: { serviceType: true } } },
+      });
+
+      // Solo notificar cuando el desglose esté completo (owner puede pagar).
+      if (isComplete) {
+        await notifyUser(prisma, {
+          userId: addon.reservation.ownerId,
+          type: "GENERAL",
+          title: `Saldo del baño de ${addon.reservation.pet.name}`,
+          body: `${description} (total $${total.toLocaleString("es-MX")}). Elige cómo pagarlo en la app.`,
+          data: {
+            reservationId: addon.reservation.id,
+            addonId: addon.id,
+            kind: "BATH_EXTRA_PRICED",
+          },
+        });
+
+        const admins = await prisma.user.findMany({
+          where: { role: "ADMIN", isActive: true },
+          select: { id: true },
+        });
+        if (admins.length > 0) {
+          await notifyUsers(
+            prisma,
+            admins.map((a) => a.id),
+            {
+              type: "GENERAL",
+              title: "Extras de baño cotizados",
+              body: `${addon.reservation.pet.name} — ${description} (total $${total.toLocaleString("es-MX")})`,
+              data: {
+                reservationId: addon.reservation.id,
+                addonId: addon.id,
+                kind: "BATH_EXTRA_PRICED",
+              },
+            },
+          );
+        }
+      }
+
+      return updated;
+    },
+  );
+
+  // ─── POST /staff/addons/:id/confirm-pickup-paid — marcar como cobrado ─
+  //  Cuando el owner eligió "Pagar al recoger", staff confirma aquí.
+  //  Se captura el método (CASH/TRANSFER) y se genera el Payment record para
+  //  que el cobro aparezca en la sección de Pagos del owner.
+  fastify.post<{
+    Params: { id: string };
+    Body: { method?: "CASH" | "TRANSFER" };
+  }>(
+    "/staff/addons/:id/confirm-pickup-paid",
+    { preHandler },
+    async (request, reply) => {
+      const method = request.body?.method ?? "CASH";
+      if (!["CASH", "TRANSFER"].includes(method)) {
+        return reply.status(400).send({ error: "Método inválido" });
+      }
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.id },
+        include: {
+          reservation: {
+            select: { id: true, ownerId: true, pet: { select: { name: true } } },
+          },
+        },
+      });
+      if (!addon) {
+        return reply.status(404).send({ error: "Servicio no encontrado" });
+      }
+      if (addon.extraPaymentStatus !== "PAY_ON_PICKUP") {
+        return reply
+          .status(400)
+          .send({ error: "Este servicio no está en modo 'pagar al recoger'" });
+      }
+
+      const extraAmount = addon.extraPrice ? Number(addon.extraPrice) : 0;
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedAddon = await tx.reservationAddon.update({
+          where: { id: request.params.id },
+          data: {
+            extraPaymentStatus: "PAID",
+            extraPaidAt: new Date(),
+          },
+          include: { variant: { include: { serviceType: true } } },
+        });
+        if (extraAmount > 0.01) {
+          await tx.payment.create({
+            data: {
+              amount: new Prisma.Decimal(extraAmount),
+              method,
+              status: "PAID",
+              paidAt: new Date(),
+              reservationId: addon.reservation.id,
+              userId: addon.reservation.ownerId,
+              notes: `Extras de baño (${method}) cobrado al recoger`,
+            },
+          });
+        }
+        return updatedAddon;
+      });
+
+      // Si era baño suelto y ya quedó todo saldado, concluirlo.
+      await maybeConcludeStandaloneBath(prisma, addon.reservation.id);
+
+      await notifyUser(prisma, {
+        userId: addon.reservation.ownerId,
+        type: "GENERAL",
+        title: "Pago de extras confirmado",
+        body: `Recibimos el pago de los extras del baño de ${addon.reservation.pet.name}. ¡Gracias!`,
+        data: { reservationId: addon.reservation.id, kind: "BATH_EXTRA_PAID" },
+      });
+
+      return updated;
+    },
   );
 
   // ─── POST /staff/behavior-tags — agregar etiqueta ─────────────

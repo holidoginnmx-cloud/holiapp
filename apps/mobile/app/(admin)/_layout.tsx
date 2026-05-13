@@ -39,6 +39,7 @@ export default function AdminLayout() {
   return (
     <Tabs
       screenOptions={{
+        animation: "shift",
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

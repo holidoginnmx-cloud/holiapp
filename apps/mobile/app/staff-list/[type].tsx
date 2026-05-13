@@ -170,7 +170,7 @@ export default function StaffListScreen() {
               icon="medkit-outline"
               text={`${formatName(stay.pet.name)} — Medicamento: ${stay.medicationNotes}`}
               severity="error"
-              onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
+              onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
             />
           ))}
           {staysWithoutChecklist.map((stay) => (
@@ -199,7 +199,7 @@ export default function StaffListScreen() {
                 icon="water-outline"
                 text={`${formatName(stay.pet.name)} — Baño pendiente${detail}`}
                 severity="info"
-                onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
+                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
               />
             );
           })}
@@ -211,7 +211,7 @@ export default function StaffListScreen() {
               key={stay.id}
               style={styles.stayCard}
               activeOpacity={0.85}
-              onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
+              onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
             >
               <Image
                 source={

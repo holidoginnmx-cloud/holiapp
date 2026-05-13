@@ -10,9 +10,10 @@ import {
   Modal,
   TextInput,
   Image,
+  Pressable,
 } from "react-native";
 import { useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -23,7 +24,12 @@ import {
   adminCancelReservation,
   adminAssignStaff,
   getUsers,
+  deleteStayUpdate,
+  completeStaffBath,
 } from "@/lib/api";
+import ImageView from "react-native-image-viewing";
+import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
+import * as ImagePicker from "expo-image-picker";
 import { formatName } from "@/lib/format";
 
 const STATUS_CONFIG: Record<
@@ -32,7 +38,6 @@ const STATUS_CONFIG: Record<
 > = {
   CHECKED_IN: { label: "Hospedado", bg: COLORS.successBg, text: COLORS.successText },
   CONFIRMED: { label: "Confirmada", bg: COLORS.infoBg, text: COLORS.infoText },
-  PENDING: { label: "Pendiente", bg: COLORS.warningBg, text: COLORS.warningText },
   CHECKED_OUT: { label: "Finalizada", bg: COLORS.bgSection, text: COLORS.textTertiary },
   CANCELLED: { label: "Cancelada", bg: COLORS.errorBg, text: COLORS.errorText },
 };
@@ -76,21 +81,6 @@ type StatusAction = {
 
 function getActions(currentStatus: string): StatusAction[] {
   switch (currentStatus) {
-    case "PENDING":
-      return [
-        {
-          label: "Confirmar",
-          status: "CONFIRMED",
-          color: COLORS.infoText,
-          icon: "checkmark-circle",
-        },
-        {
-          label: "Cancelar",
-          status: "CANCELLED",
-          color: COLORS.errorText,
-          icon: "close-circle",
-        },
-      ];
     case "CONFIRMED":
       return [
         {
@@ -129,6 +119,108 @@ export default function AdminReservationDetail() {
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [staffModalVisible, setStaffModalVisible] = useState(false);
+
+  const closePaymentModal = () => {
+    setPaymentModalVisible(false);
+    setPaymentAmount("");
+    setPaymentNotes("");
+  };
+
+  // Visor de fotos del baño y mutación para eliminar.
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+  const deletePhotoMutation = useMutation({
+    mutationFn: (updateId: string) => deleteStayUpdate(updateId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+    },
+    onError: (err: Error) =>
+      Alert.alert("No se pudo eliminar", err.message),
+  });
+
+  // Marcar baño completado (sube foto + cierra cita).
+  const [completingBath, setCompletingBath] = useState(false);
+
+  async function pickBathPhoto(
+    source: "camera" | "library",
+  ): Promise<string | null> {
+    if (source === "camera") {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso requerido", "Necesitamos acceso a la cámara.");
+        return null;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (result.canceled) return null;
+      return result.assets[0].uri;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled) return null;
+    return result.assets[0].uri;
+  }
+
+  async function uploadAndCompleteBath(source: "camera" | "library") {
+    const uri = await pickBathPhoto(source);
+    if (!uri || !id) return;
+    setCompletingBath(true);
+    try {
+      const cloud = await uploadToCloudinary(uri, "baths");
+      await completeStaffBath(id, cloud.secure_url);
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-baths"] });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "No se pudo completar el baño";
+      Alert.alert("Error", msg);
+    } finally {
+      setCompletingBath(false);
+    }
+  }
+
+  function askCompleteBath() {
+    if (!reservation) return;
+    Alert.alert(
+      "Foto del baño",
+      `Sube una foto de ${formatName(reservation.pet.name)} bañado para completar la cita.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Tomar foto",
+          onPress: () => uploadAndCompleteBath("camera"),
+        },
+        {
+          text: "Elegir foto",
+          onPress: () => uploadAndCompleteBath("library"),
+        },
+      ],
+    );
+  }
+
+  const confirmDeletePhoto = (updateId: string) => {
+    Alert.alert(
+      "Eliminar foto",
+      "¿Estás seguro? Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deletePhotoMutation.mutate(updateId),
+        },
+      ],
+    );
+  };
 
   const { data: reservation, isLoading } = useQuery({
     queryKey: ["reservation", id],
@@ -241,11 +333,71 @@ export default function AdminReservationDetail() {
     );
   }
 
-  const config = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.PENDING;
+  const config = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.CONFIRMED;
   const actions = getActions(reservation.status);
+  const isBath = reservation.reservationType === "BATH";
+  const bathAddon = reservation.addons?.find(
+    (a) => a.variant?.serviceType?.code === "BATH",
+  );
+  const bathExtras: string[] = [];
+  if (bathAddon?.variant?.deslanado) bathExtras.push("Deslanado");
+  if (bathAddon?.variant?.corte) bathExtras.push("Corte");
+
+  // Total que se muestra en la card de info. Para baños, suma los extras
+  // (Deslanado/Corte) ya definidos por el staff a la base de la reserva.
+  const extrasSum = (reservation.addons ?? []).reduce((sum, a) => {
+    const d = a.extraDeslanadoPrice ? Number(a.extraDeslanadoPrice) : 0;
+    const c = a.extraCortePrice ? Number(a.extraCortePrice) : 0;
+    if (d > 0 || c > 0) return sum + d + c;
+    return sum + (a.extraPrice ? Number(a.extraPrice) : 0);
+  }, 0);
+  const displayedTotal = isBath
+    ? Number(reservation.totalAmount) + extrasSum
+    : Number(reservation.totalAmount);
+
+  // Staff que completó el baño: tomamos del StayUpdate más reciente con
+  // caption del baño (lo registra el endpoint POST /staff/baths/:id/complete).
+  const bathCompletedUpdate = isBath
+    ? reservation.updates.find(
+        (u) =>
+          u.staff &&
+          (u.caption?.toLowerCase().includes("baño") ?? false),
+      ) ??
+      // Fallback: si no hay caption, usar el update más reciente con foto.
+      reservation.updates.find((u) => u.staff)
+    : null;
+  const bathStaff = bathCompletedUpdate?.staff ?? null;
+
+  const SIZE_LABELS: Record<string, string> = {
+    XS: "Extra pequeño",
+    S: "Pequeño",
+    M: "Mediano",
+    L: "Grande",
+    XL: "Extra grande",
+  };
+  const petMetaParts: string[] = [];
+  if (reservation.pet.size) {
+    petMetaParts.push(
+      `Talla ${SIZE_LABELS[reservation.pet.size] ?? reservation.pet.size}`,
+    );
+  }
+  if (reservation.pet.weight) {
+    petMetaParts.push(`${reservation.pet.weight} kg`);
+  }
+  if (reservation.pet.breed) {
+    petMetaParts.push(reservation.pet.breed);
+  }
 
   return (
     <>
+    <Stack.Screen
+      options={{
+        title:
+          reservation.reservationType === "BATH"
+            ? "Detalle del baño"
+            : "Detalle de reservación",
+      }}
+    />
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
@@ -278,8 +430,96 @@ export default function AdminReservationDetail() {
 
       {/* Info */}
       <View style={styles.card}>
+        {/* Bath hero — cita + variante + datos relevantes para el baño */}
+        {isBath && (
+          <View style={styles.bathHeroWrap}>
+            <View style={styles.bathHero}>
+              <View style={styles.bathBadge}>
+                <Ionicons name="water" size={14} color={COLORS.primary} />
+                <Text style={styles.bathBadgeText}>Baño</Text>
+              </View>
+              {reservation.appointmentAt && (
+                <View style={styles.bathInfoRow}>
+                  <Text style={styles.bathDay}>
+                    {formatDayShort(reservation.appointmentAt)}
+                  </Text>
+                  <Text style={styles.bathTime}>
+                    {new Date(reservation.appointmentAt).toLocaleTimeString(
+                      "es-MX",
+                      {
+                        timeZone: "America/Hermosillo",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      },
+                    )}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {bathExtras.length > 0 && (
+              <View style={styles.bathChipsRow}>
+                {bathExtras.map((e) => (
+                  <View key={e} style={styles.bathExtraChip}>
+                    <Ionicons name="cut" size={11} color={COLORS.primary} />
+                    <Text style={styles.bathExtraChipText}>{e}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {petMetaParts.length > 0 && (
+              <View style={styles.petMetaStrip}>
+                <Ionicons name="paw-outline" size={13} color={COLORS.textTertiary} />
+                <Text style={styles.petMetaText} numberOfLines={1}>
+                  {petMetaParts.join(" · ")}
+                </Text>
+              </View>
+            )}
+
+            {bathStaff && (
+              <View style={styles.bathStaffStrip}>
+                <Ionicons
+                  name="ribbon-outline"
+                  size={14}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.bathStaffText}>
+                  Bañó:{" "}
+                  <Text style={styles.bathStaffName}>
+                    {formatName(bathStaff.firstName)}{" "}
+                    {formatName(bathStaff.lastName)}
+                  </Text>
+                </Text>
+                {bathCompletedUpdate?.createdAt && (
+                  <Text style={styles.bathStaffDate}>
+                    {" · "}
+                    {formatDateTime(bathCompletedUpdate.createdAt)}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {reservation.pet.notes ? (
+              <View style={styles.petNotesBox}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={14}
+                  color={COLORS.warningText}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.petNotesLabel}>Notas de la mascota</Text>
+                  <Text style={styles.petNotesText}>
+                    {reservation.pet.notes}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+
         {/* Date hero — entrada → salida con noches al centro */}
-        {reservation.checkIn && reservation.checkOut && (
+        {!isBath && reservation.checkIn && reservation.checkOut && (
           <View style={styles.dateHero}>
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>ENTRADA</Text>
@@ -315,7 +555,8 @@ export default function AdminReservationDetail() {
           </View>
         )}
 
-        {/* Cuarto + Staff lado a lado */}
+        {/* Cuarto + Staff lado a lado (sólo hospedajes) */}
+        {!isBath && (
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
             <View style={styles.metaIconWrap}>
@@ -363,12 +604,13 @@ export default function AdminReservationDetail() {
             )}
           </TouchableOpacity>
         </View>
+        )}
 
         {/* Total */}
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>
-            ${Number(reservation.totalAmount).toLocaleString()}
+            ${displayedTotal.toLocaleString("es-MX")}
           </Text>
         </View>
 
@@ -387,8 +629,82 @@ export default function AdminReservationDetail() {
         )}
       </View>
 
-      {/* Servicios contratados */}
-      {reservation.addons && reservation.addons.length > 0 && (
+      {/* Fotos del baño — sólo baños, sólo imágenes (no videos). */}
+      {isBath &&
+        (() => {
+          const photos = reservation.updates.filter(
+            (u) => u.mediaType === "image" && !!u.mediaUrl,
+          );
+          if (photos.length === 0) return null;
+          return (
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionCardHeader}>
+                <Text style={styles.sectionCardTitle}>Fotos del baño</Text>
+                <View style={styles.countChip}>
+                  <Text style={styles.countChipText}>{photos.length}</Text>
+                </View>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.photosRow}
+              >
+                {photos.map((u, idx) => (
+                  <View key={u.id} style={styles.photoTile}>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        setPhotoViewerIndex(idx);
+                        setPhotoViewerVisible(true);
+                      }}
+                    >
+                      <Image
+                        source={{
+                          uri: cloudinaryResized(u.mediaUrl, 280, "fill"),
+                        }}
+                        style={styles.photoImage}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.photoDeleteBtn}
+                      onPress={() => confirmDeletePhoto(u.id)}
+                      disabled={deletePhotoMutation.isPending}
+                      hitSlop={6}
+                      testID={`bath-photo-delete-${u.id}`}
+                    >
+                      <Ionicons name="trash" size={14} color={COLORS.white} />
+                    </TouchableOpacity>
+                    {u.staff ? (
+                      <Text style={styles.photoCaption} numberOfLines={1}>
+                        {formatName(u.staff.firstName)}{" "}
+                        {formatName(u.staff.lastName)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </ScrollView>
+              <Text style={styles.photoHint}>
+                El dueño ve estas fotos. Elimina la que no cumpla con la
+                calidad esperada.
+              </Text>
+
+              <ImageView
+                images={photos.map((u) => ({
+                  uri: cloudinaryResized(u.mediaUrl, 1200, "limit"),
+                }))}
+                imageIndex={photoViewerIndex}
+                visible={photoViewerVisible}
+                onRequestClose={() => setPhotoViewerVisible(false)}
+                swipeToCloseEnabled
+                doubleTapToZoomEnabled
+              />
+            </View>
+          );
+        })()}
+
+      {/* Servicios contratados — sólo hospedajes (en baños el servicio es la
+          reserva misma y ya aparece en el hero). */}
+      {!isBath && reservation.addons && reservation.addons.length > 0 && (
         <View style={styles.sectionCard}>
           <View style={styles.sectionCardHeader}>
             <Text style={styles.sectionCardTitle}>Servicios contratados</Text>
@@ -455,18 +771,242 @@ export default function AdminReservationDetail() {
 
       {/* Payments */}
       <View style={styles.sectionCard}>
-        <View style={styles.sectionCardHeader}>
-          <Text style={styles.sectionCardTitle}>Pagos</Text>
-          <View style={styles.countChip}>
-            <Text style={styles.countChipText}>
-              {reservation.payments.length}
-            </Text>
-          </View>
-        </View>
-        {reservation.payments.length === 0 ? (
-          <Text style={styles.emptyText}>Sin pagos registrados</Text>
-        ) : (
-          reservation.payments.map((p, idx) => {
+        {(() => {
+          const extraStripeIdsForCount = new Set(
+            (reservation.addons ?? [])
+              .map((a) => a.extraStripePaymentIntentId)
+              .filter(Boolean) as string[],
+          );
+          const visiblePaymentsCount = isBath
+            ? reservation.payments.filter(
+                (p) =>
+                  !(p.notes && /^Extras/i.test(p.notes)) &&
+                  !(
+                    p.stripePaymentIntentId &&
+                    extraStripeIdsForCount.has(p.stripePaymentIntentId)
+                  ),
+              ).length
+            : reservation.payments.length;
+          return (
+            <View style={styles.sectionCardHeader}>
+              <Text style={styles.sectionCardTitle}>Pagos</Text>
+              <View style={styles.countChip}>
+                <Text style={styles.countChipText}>
+                  {visiblePaymentsCount}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Extras del baño (Deslanado / Corte cobrados post-servicio). */}
+        {isBath &&
+          (() => {
+            const extraRows: {
+              key: string;
+              label: string;
+              price: number;
+              status: "PAID" | "PENDING_PAYMENT" | "PAY_ON_PICKUP";
+              method: "CASH" | "TRANSFER" | "STRIPE" | null;
+              paidAt: string | null;
+            }[] = [];
+
+            for (const a of reservation.addons ?? []) {
+              if (!a.extraPaymentStatus) continue;
+              const status = a.extraPaymentStatus;
+              // Derivar método del pago vinculado.
+              let method: "CASH" | "TRANSFER" | "STRIPE" | null = null;
+              if (status === "PAID") {
+                // 1) Si el addon tiene PaymentIntent de Stripe, fue tarjeta.
+                if (a.extraStripePaymentIntentId) {
+                  method = "STRIPE";
+                } else {
+                  // 2) Buscar Payment con notes de extras (varios formatos
+                  //    usados por la API: "Extras (CASH)", "Extras de baño (...)").
+                  const extrasPayment = reservation.payments.find(
+                    (p) => p.notes != null && /^Extras/i.test(p.notes),
+                  );
+                  if (extrasPayment) {
+                    method = extrasPayment.method as any;
+                  } else if (a.extraPaidAt) {
+                    // 3) Fallback: el Payment PAID más cercano en tiempo a extraPaidAt.
+                    const target = new Date(a.extraPaidAt).getTime();
+                    const close = reservation.payments
+                      .filter((p) => p.status === "PAID" && p.paidAt)
+                      .map((p) => ({
+                        p,
+                        dt: Math.abs(
+                          new Date(p.paidAt!).getTime() - target,
+                        ),
+                      }))
+                      .sort((x, y) => x.dt - y.dt)[0];
+                    if (close && close.dt < 5 * 60_000) {
+                      method = close.p.method as any;
+                    }
+                  }
+                }
+              }
+              const dPrice = a.extraDeslanadoPrice
+                ? Number(a.extraDeslanadoPrice)
+                : 0;
+              const cPrice = a.extraCortePrice
+                ? Number(a.extraCortePrice)
+                : 0;
+              if (dPrice > 0) {
+                extraRows.push({
+                  key: `${a.id}-deslanado`,
+                  label: "Deslanado",
+                  price: dPrice,
+                  status,
+                  method,
+                  paidAt: a.extraPaidAt,
+                });
+              }
+              if (cPrice > 0) {
+                extraRows.push({
+                  key: `${a.id}-corte`,
+                  label: "Corte",
+                  price: cPrice,
+                  status,
+                  method,
+                  paidAt: a.extraPaidAt,
+                });
+              }
+              // Fallback: si hay extraPrice pero no se desglosó.
+              if (dPrice === 0 && cPrice === 0 && a.extraPrice) {
+                extraRows.push({
+                  key: `${a.id}-extra`,
+                  label: a.extraDescription ?? "Extras",
+                  price: Number(a.extraPrice),
+                  status,
+                  method,
+                  paidAt: a.extraPaidAt,
+                });
+              }
+            }
+
+            if (extraRows.length === 0) return null;
+
+            const methodInfo = (
+              m: "CASH" | "TRANSFER" | "STRIPE" | null,
+            ): {
+              icon: keyof typeof Ionicons.glyphMap;
+              label: string;
+            } => {
+              if (m === "CASH")
+                return { icon: "cash-outline", label: "Efectivo" };
+              if (m === "TRANSFER")
+                return {
+                  icon: "swap-horizontal-outline",
+                  label: "Transferencia",
+                };
+              if (m === "STRIPE")
+                return { icon: "card-outline", label: "Tarjeta" };
+              return { icon: "ellipsis-horizontal", label: "—" };
+            };
+
+            const statusBadge = (s: typeof extraRows[number]["status"]) =>
+              s === "PAID"
+                ? {
+                    bg: COLORS.successBg,
+                    color: COLORS.successText,
+                    label: "Pagado",
+                  }
+                : s === "PAY_ON_PICKUP"
+                ? {
+                    bg: COLORS.warningBg,
+                    color: COLORS.warningText,
+                    label: "Pagar al recoger",
+                  }
+                : {
+                    bg: COLORS.infoBg,
+                    color: COLORS.infoText,
+                    label: "Por cobrar",
+                  };
+
+            return (
+              <View style={styles.extrasGroup}>
+                <View style={styles.extrasGroupHeader}>
+                  <Ionicons name="cut" size={13} color={COLORS.primary} />
+                  <Text style={styles.extrasGroupTitle}>
+                    Extras del baño
+                  </Text>
+                </View>
+                {extraRows.map((row) => {
+                  const m = methodInfo(row.method);
+                  const b = statusBadge(row.status);
+                  return (
+                    <View key={row.key} style={styles.extraRow}>
+                      <View style={styles.addonIconWrap}>
+                        <Ionicons
+                          name={m.icon}
+                          size={18}
+                          color={COLORS.primary}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.paymentAmount}>
+                          {row.label} ·{" "}
+                          <Text style={styles.extraPriceInline}>
+                            ${row.price.toLocaleString("es-MX")}
+                          </Text>
+                        </Text>
+                        <Text style={styles.paymentMeta}>
+                          {m.label}
+                          {row.paidAt
+                            ? ` · ${formatDateTime(row.paidAt)}`
+                            : ""}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.paymentBadge,
+                          { backgroundColor: b.bg },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.paymentBadgeText,
+                            { color: b.color },
+                          ]}
+                        >
+                          {b.label}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                <View style={styles.extrasGroupDivider} />
+              </View>
+            );
+          })()}
+        {(() => {
+          // En baños, los pagos de extras ya se muestran desglosados arriba
+          // (Deslanado/Corte), así que ocultamos su Payment-suma de esta lista
+          // para evitar duplicar el monto.
+          const extraStripeIds = new Set(
+            (reservation.addons ?? [])
+              .map((a) => a.extraStripePaymentIntentId)
+              .filter(Boolean) as string[],
+          );
+          const displayedPayments = isBath
+            ? reservation.payments.filter((p) => {
+                if (p.notes && /^Extras/i.test(p.notes)) return false;
+                if (
+                  p.stripePaymentIntentId &&
+                  extraStripeIds.has(p.stripePaymentIntentId)
+                )
+                  return false;
+                return true;
+              })
+            : reservation.payments;
+
+          if (displayedPayments.length === 0) {
+            return (
+              <Text style={styles.emptyText}>Sin pagos registrados</Text>
+            );
+          }
+          return displayedPayments.map((p, idx) => {
             const methodIcon: keyof typeof Ionicons.glyphMap =
               p.method === "CASH"
                 ? "cash-outline"
@@ -485,7 +1025,7 @@ export default function AdminReservationDetail() {
               reservation.status !== "CANCELLED" &&
               reservation.status !== "CHECKED_OUT";
             const isLastPayment =
-              idx === reservation.payments.length - 1 && !willHaveCTA;
+              idx === displayedPayments.length - 1 && !willHaveCTA;
             return (
               <View
                 key={p.id}
@@ -496,7 +1036,10 @@ export default function AdminReservationDetail() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.paymentAmount}>
-                    ${Number(p.amount).toLocaleString("es-MX")}
+                    {isBath ? "Anticipo · " : ""}
+                    <Text style={isBath ? styles.extraPriceInline : undefined}>
+                      ${Number(p.amount).toLocaleString("es-MX")}
+                    </Text>
                   </Text>
                   <Text style={styles.paymentMeta}>
                     {p.method} ·{" "}
@@ -514,8 +1057,8 @@ export default function AdminReservationDetail() {
                 </View>
               </View>
             );
-          })
-        )}
+          });
+        })()}
         {reservation.status !== "CANCELLED" &&
           reservation.status !== "CHECKED_OUT" && (
             <TouchableOpacity
@@ -528,50 +1071,53 @@ export default function AdminReservationDetail() {
           )}
       </View>
 
-      {/* Reportes diarios — botón a pantalla dedicada */}
-      <TouchableOpacity
-        style={styles.checklistsCard}
-        onPress={() => router.push(`/reservation/checklists/${id}` as any)}
-        activeOpacity={0.85}
-        testID="admin-reservation-checklists-link"
-      >
-        <View style={styles.checklistsIcon}>
-          <Ionicons name="document-text" size={22} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.checklistsTitle}>Reportes diarios</Text>
-          <Text style={styles.checklistsSubtitle}>
-            {checklists && checklists.length > 0
-              ? `${checklists.length} ${checklists.length === 1 ? "reporte" : "reportes"} del equipo HDI`
-              : "Sin reportes aún"}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
-      </TouchableOpacity>
+      {/* Reportes diarios + Incidentes — sólo hospedajes */}
+      {!isBath && (
+        <>
+          <TouchableOpacity
+            style={styles.checklistsCard}
+            onPress={() => router.push(`/reservation/checklists/${id}` as any)}
+            activeOpacity={0.85}
+            testID="admin-reservation-checklists-link"
+          >
+            <View style={styles.checklistsIcon}>
+              <Ionicons name="document-text" size={22} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.checklistsTitle}>Reportes diarios</Text>
+              <Text style={styles.checklistsSubtitle}>
+                {checklists && checklists.length > 0
+                  ? `${checklists.length} ${checklists.length === 1 ? "reporte" : "reportes"} del equipo HDI`
+                  : "Sin reportes aún"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+          </TouchableOpacity>
 
-      {/* Incidentes — botón a pantalla dedicada */}
-      <TouchableOpacity
-        style={styles.checklistsCard}
-        onPress={() =>
-          router.push(`/pet/incidents/${reservation.pet.id}` as any)
-        }
-        activeOpacity={0.85}
-        testID="admin-reservation-incidents-link"
-      >
-        <View style={styles.checklistsIcon}>
-          <Ionicons name="alert-circle" size={22} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.checklistsTitle}>Incidentes</Text>
-          <Text style={styles.checklistsSubtitle}>
-            Historial de alertas del staff de {formatName(reservation.pet.name)}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.checklistsCard}
+            onPress={() =>
+              router.push(`/pet/incidents/${reservation.pet.id}` as any)
+            }
+            activeOpacity={0.85}
+            testID="admin-reservation-incidents-link"
+          >
+            <View style={styles.checklistsIcon}>
+              <Ionicons name="alert-circle" size={22} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.checklistsTitle}>Incidentes</Text>
+              <Text style={styles.checklistsSubtitle}>
+                Historial de alertas del staff de {formatName(reservation.pet.name)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        </>
+      )}
 
-      {/* Acciones primarias (Confirmar / Check-in / Check-out) */}
-      {actions.filter((a) => a.status !== "CANCELLED").length > 0 && (
+      {/* Acciones primarias (Confirmar / Check-in / Check-out) — sólo hospedajes */}
+      {!isBath && actions.filter((a) => a.status !== "CANCELLED").length > 0 && (
         <View style={styles.actionsRow}>
           {actions
             .filter((a) => a.status !== "CANCELLED")
@@ -589,6 +1135,38 @@ export default function AdminReservationDetail() {
             ))}
         </View>
       )}
+
+      {/* Marcar baño como completado — sólo si el baño no está completado/cancelado */}
+      {isBath &&
+        !bathStaff &&
+        reservation.status !== "CHECKED_OUT" &&
+        reservation.status !== "CANCELLED" && (
+          <TouchableOpacity
+            style={[
+              styles.completeBathBtn,
+              completingBath && styles.completeBathBtnDisabled,
+            ]}
+            onPress={askCompleteBath}
+            disabled={completingBath}
+            activeOpacity={0.85}
+            testID="admin-reservation-complete-bath"
+          >
+            {completingBath ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={COLORS.white}
+                />
+                <Text style={styles.completeBathBtnText}>
+                  Marcar como completado
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
       {/* Cancelar — al final para evitar taps accidentales */}
       {actions.some((a) => a.status === "CANCELLED") && (
@@ -608,9 +1186,14 @@ export default function AdminReservationDetail() {
     </ScrollView>
 
     {/* Payment Modal */}
-    <Modal visible={paymentModalVisible} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+    <Modal
+      visible={paymentModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={closePaymentModal}
+    >
+      <Pressable style={styles.modalOverlay} onPress={closePaymentModal}>
+        <Pressable style={styles.modalContent} onPress={() => {}}>
           <Text style={styles.modalTitle}>Registrar pago manual</Text>
 
           <Text style={styles.inputLabel}>Monto</Text>
@@ -664,11 +1247,7 @@ export default function AdminReservationDetail() {
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={styles.modalBtnCancel}
-              onPress={() => {
-                setPaymentModalVisible(false);
-                setPaymentAmount("");
-                setPaymentNotes("");
-              }}
+              onPress={closePaymentModal}
             >
               <Text style={styles.modalBtnCancelText}>Cancelar</Text>
             </TouchableOpacity>
@@ -685,8 +1264,8 @@ export default function AdminReservationDetail() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
 
     {/* Staff Picker Modal */}
@@ -865,6 +1444,121 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "stretch",
     gap: 8,
+  },
+  bathHeroWrap: {
+    gap: 10,
+  },
+  bathHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 12,
+    padding: 12,
+  },
+  bathChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  bathExtraChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  bathExtraChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  petMetaStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 2,
+  },
+  petMetaText: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    fontWeight: "600",
+    flex: 1,
+  },
+  bathStaffStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 2,
+  },
+  bathStaffText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "600",
+  },
+  bathStaffName: {
+    color: COLORS.primary,
+    fontWeight: "800",
+  },
+  bathStaffDate: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontWeight: "500",
+  },
+  petNotesBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.notesBg,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warningText,
+    borderRadius: 10,
+    padding: 10,
+  },
+  petNotesLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.notesText,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  petNotesText: {
+    fontSize: 13,
+    color: COLORS.notesText,
+    lineHeight: 18,
+  },
+  bathBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  bathBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  bathInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bathDay: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    textTransform: "capitalize",
+  },
+  bathTime: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
   },
   datePill: {
     flex: 1,
@@ -1113,6 +1807,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     marginBottom: 24,
   },
+  completeBathBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  completeBathBtnDisabled: { opacity: 0.7 },
+  completeBathBtnText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "800",
+  },
   cancelButtonText: {
     color: COLORS.errorText,
     fontSize: 14,
@@ -1220,6 +1930,44 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: COLORS.primary,
   },
+  // Bath photos
+  photosRow: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  photoTile: {
+    width: 140,
+    position: "relative",
+  },
+  photoImage: {
+    width: 140,
+    height: 140,
+    borderRadius: 12,
+    backgroundColor: COLORS.bgSection,
+  },
+  photoDeleteBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(220, 38, 38, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoCaption: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    marginTop: 6,
+  },
+  photoHint: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 8,
+    fontStyle: "italic",
+  },
   // Payment row
   paymentRow: {
     flexDirection: "row",
@@ -1228,6 +1976,39 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.bgSection,
+  },
+  extrasGroup: {
+    marginBottom: 4,
+  },
+  extrasGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  extrasGroupTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  extraRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.bgSection,
+  },
+  extraPriceInline: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  extrasGroupDivider: {
+    height: 6,
   },
   paymentAmount: {
     fontSize: 16,

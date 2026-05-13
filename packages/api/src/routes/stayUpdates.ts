@@ -1,11 +1,16 @@
 import { FastifyInstance } from "fastify";
 import { CreateStayUpdateSchema } from "@holidoginn/shared";
-import { createAuthMiddleware, createStaffMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createStaffMiddleware,
+  createAdminMiddleware,
+} from "../middleware/auth";
 
 export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
   const staffMiddleware = createStaffMiddleware();
+  const adminMiddleware = createAdminMiddleware();
 
   // GET /stay-updates/:reservationId — fotos de una reservación (owner o staff/admin)
   fastify.get<{ Params: { reservationId: string } }>(
@@ -63,6 +68,60 @@ export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
         data: parsed.data,
       });
       return reply.status(201).send(update);
+    }
+  );
+
+  // DELETE /stay-updates/:id — borrar una foto/update (solo admin)
+  // Útil cuando la foto subida por staff no cumple con la calidad esperada.
+  fastify.delete<{ Params: { id: string } }>(
+    "/stay-updates/:id",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const update = await prisma.stayUpdate.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!update) {
+        return reply.status(404).send({ error: "Foto no encontrada" });
+      }
+      await prisma.stayUpdate.delete({ where: { id: request.params.id } });
+
+      // Si existe un DailyChecklist para el día de la evidencia eliminada,
+      // recontar sus photosCount/videosCount.
+      const dayStart = new Date(update.createdAt);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+      const existingChecklist = await prisma.dailyChecklist.findUnique({
+        where: {
+          reservationId_date: {
+            reservationId: update.reservationId,
+            date: dayStart,
+          },
+        },
+      });
+      if (existingChecklist) {
+        const [photosCount, videosCount] = await Promise.all([
+          prisma.stayUpdate.count({
+            where: {
+              reservationId: update.reservationId,
+              mediaType: "image",
+              createdAt: { gte: dayStart, lt: dayEnd },
+            },
+          }),
+          prisma.stayUpdate.count({
+            where: {
+              reservationId: update.reservationId,
+              mediaType: "video",
+              createdAt: { gte: dayStart, lt: dayEnd },
+            },
+          }),
+        ]);
+        await prisma.dailyChecklist.update({
+          where: { id: existingChecklist.id },
+          data: { photosCount, videosCount },
+        });
+      }
+
+      return reply.status(204).send();
     }
   );
 }

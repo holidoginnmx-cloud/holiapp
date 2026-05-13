@@ -8,7 +8,10 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  FlatList,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
@@ -34,6 +37,7 @@ export default function SendNotificationScreen() {
   const mutation = useMutation({
     mutationFn: sendAdminNotification,
     onSuccess: (data) => {
+      Keyboard.dismiss();
       Alert.alert(
         "Enviada",
         `Notificacion enviada a ${data.sent} usuario${data.sent !== 1 ? "s" : ""}`,
@@ -41,11 +45,13 @@ export default function SendNotificationScreen() {
       );
     },
     onError: (err: Error) => {
-      Alert.alert("Error", err.message);
+      Keyboard.dismiss();
+      Alert.alert("Error", err.message ?? "No se pudo enviar la notificacion");
     },
   });
 
   const handleSend = () => {
+    Keyboard.dismiss();
     if (!title.trim()) {
       Alert.alert("Error", "Ingresa un titulo");
       return;
@@ -80,7 +86,18 @@ export default function SendNotificationScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
       <Text style={styles.title}>Enviar notificacion</Text>
 
       {/* Mode selector */}
@@ -205,7 +222,9 @@ export default function SendNotificationScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

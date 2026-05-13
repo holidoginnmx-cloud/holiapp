@@ -16,9 +16,10 @@ type PetReservationSummary = {
   id: string;
   checkIn: string;
   checkOut: string;
-  status: "PENDING" | "CONFIRMED" | "CHECKED_IN";
+  status: "CONFIRMED" | "CHECKED_IN";
   paymentType?: "FULL" | "DEPOSIT" | null;
   totalAmount?: string;
+  hasBalance?: boolean;
 };
 
 type PetWithContext = Pet & {
@@ -55,9 +56,11 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
   const reservations = pet.reservations ?? [];
   const checkedIn = reservations.find((r) => r.status === "CHECKED_IN");
   const upcoming = reservations
-    .filter((r) => r.status === "CONFIRMED" || r.status === "PENDING")
+    .filter((r) => r.status === "CONFIRMED")
     .sort((a, b) => +new Date(a.checkIn) - +new Date(b.checkIn))[0];
-  const pendingBalance = reservations.find((r) => r.status === "PENDING");
+  const pendingBalance = reservations.find(
+    (r) => r.paymentType === "DEPOSIT" && r.hasBalance === true,
+  );
 
   if (checkedIn) {
     chips.push({

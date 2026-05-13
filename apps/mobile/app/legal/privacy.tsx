@@ -12,7 +12,7 @@ export default function PrivacyScreen() {
         <>
           <Text style={styles.h2}>1. Responsable</Text>
           <Text style={styles.p}>
-            HolidogInn, con domicilio en Hermosillo, Sonora, es responsable del
+            Holidog Inn, con domicilio en Hermosillo, Sonora, es responsable del
             tratamiento de tus datos personales. Para dudas sobre privacidad escribe
             a holidoginnmx@gmail.com.
           </Text>

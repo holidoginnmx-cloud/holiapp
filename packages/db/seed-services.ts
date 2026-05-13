@@ -8,12 +8,20 @@ async function seedServices() {
     create: { code: "BATH", name: "Baño", isActive: true },
   });
 
-  // [base, +deslanado, +corte, +ambos]
+  // Precio del baño base por tamaño de mascota. El precio del deslanado/corte
+  // lo define el staff después del servicio según el estado del pelaje y se
+  // cobra aparte (no suma al precio base de la variante).
+  const BATH_BASE_PRICE: Record<"S" | "M" | "L" | "XL", number> = {
+    S: 300,
+    M: 350,
+    L: 450,
+    XL: 600,
+  };
   const bathPrices: Record<"S" | "M" | "L" | "XL", [number, number, number, number]> = {
-    S:  [300, 500, 500,  700],
-    M:  [350, 550, 550,  750],
-    L:  [450, 650, 650,  850],
-    XL: [600, 800, 800, 1000],
+    S:  [BATH_BASE_PRICE.S,  BATH_BASE_PRICE.S,  BATH_BASE_PRICE.S,  BATH_BASE_PRICE.S],
+    M:  [BATH_BASE_PRICE.M,  BATH_BASE_PRICE.M,  BATH_BASE_PRICE.M,  BATH_BASE_PRICE.M],
+    L:  [BATH_BASE_PRICE.L,  BATH_BASE_PRICE.L,  BATH_BASE_PRICE.L,  BATH_BASE_PRICE.L],
+    XL: [BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL],
   };
 
   let created = 0;

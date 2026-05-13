@@ -61,7 +61,7 @@ export default function AccountScreen() {
       const data = await exportMyData();
       const json = JSON.stringify(data, null, 2);
       await Share.share({
-        title: "HolidogInn — mis datos",
+        title: "Holidog Inn — mis datos",
         message: json,
       });
     } catch (err) {

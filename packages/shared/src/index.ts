@@ -14,7 +14,6 @@ export const CartillaStatusEnum = z.enum(["PENDING", "APPROVED", "REJECTED", "EX
 export type CartillaStatus = z.infer<typeof CartillaStatusEnum>;
 
 export const ReservationStatusEnum = z.enum([
-  "PENDING",
   "CONFIRMED",
   "CHECKED_IN",
   "CHECKED_OUT",
@@ -172,7 +171,9 @@ export const PetSchema = z.object({
   feedingInstructions: z.string().nullable(),
   diet: z.string().nullable(),
   personality: z.string().nullable(),
+  /** @deprecated usar `cartillaPhotos`; queda por compatibilidad. */
   cartillaUrl: z.string().nullable(),
+  cartillaPhotos: z.array(z.string()).default([]),
   cartillaStatus: CartillaStatusEnum.nullable(),
   cartillaReviewedAt: z.coerce.date().nullable(),
   cartillaReviewedById: z.string().nullable(),
@@ -210,7 +211,9 @@ export const CreatePetSchema = PetSchema.omit({
   feedingInstructions: z.string().nullable().default(null),
   diet: z.string().nullable().default(null),
   personality: z.string().nullable().default(null),
+  /** @deprecated usar `cartillaPhotos`. */
   cartillaUrl: z.string().nullable().default(null),
+  cartillaPhotos: z.array(z.string()).default([]),
 });
 
 export const UpdatePetSchema = CreatePetSchema.partial().omit({ ownerId: true });
@@ -231,10 +234,20 @@ export const UpdateVaccineSchema = z.object({
 });
 export type UpdateVaccine = z.infer<typeof UpdateVaccineSchema>;
 
+export const DewormingEntrySchema = z.object({
+  type: z.enum(["INTERNAL", "EXTERNAL", "BOTH"]),
+  productName: z.string().max(120).nullable().optional(),
+  appliedAt: z.coerce.date(),
+  expiresAt: z.coerce.date().nullable().optional(),
+  notes: z.string().max(500).nullable().optional(),
+});
+export type DewormingEntry = z.infer<typeof DewormingEntrySchema>;
+
 export const ReviewCartillaSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("APPROVE"),
     vaccines: z.array(VaccineEntrySchema).optional(),
+    dewormings: z.array(DewormingEntrySchema).optional(),
   }),
   z.object({
     action: z.literal("REJECT"),
@@ -257,6 +270,7 @@ export const VaccineSchema = z.object({
   expiresAt: z.coerce.date().nullable(),
   vetName: z.string().nullable(),
   fileUrl: z.string().nullable(),
+  catalogId: z.string().cuid().nullable(),
   petId: z.string(),
   createdAt: z.coerce.date(),
 });
@@ -265,10 +279,48 @@ export const CreateVaccineSchema = VaccineSchema.omit({
   id: true,
   petId: true,
   createdAt: true,
+}).extend({
+  // catalogId is required for new vaccines (was nullable in storage only for legacy rows).
+  catalogId: z.string().cuid(),
 });
 
 export type Vaccine = z.infer<typeof VaccineSchema>;
 export type CreateVaccine = z.infer<typeof CreateVaccineSchema>;
+
+// ========================
+// Deworming
+// ========================
+
+export const DewormingTypeEnum = z.enum(["INTERNAL", "EXTERNAL", "BOTH"]);
+export type DewormingTypeValue = z.infer<typeof DewormingTypeEnum>;
+
+export const DewormingSchema = z.object({
+  id: z.string().cuid(),
+  type: DewormingTypeEnum,
+  productName: z.string().nullable(),
+  appliedAt: z.coerce.date(),
+  expiresAt: z.coerce.date().nullable(),
+  vetName: z.string().nullable(),
+  fileUrl: z.string().nullable(),
+  notes: z.string().nullable(),
+  petId: z.string(),
+  createdAt: z.coerce.date(),
+});
+
+export const CreateDewormingSchema = DewormingSchema.omit({
+  id: true,
+  petId: true,
+  createdAt: true,
+}).extend({
+  productName: z.string().max(120).nullable().default(null),
+  vetName: z.string().max(120).nullable().default(null),
+  fileUrl: z.string().url().nullable().default(null),
+  notes: z.string().max(500).nullable().default(null),
+  expiresAt: z.coerce.date().nullable().default(null),
+});
+
+export type Deworming = z.infer<typeof DewormingSchema>;
+export type CreateDeworming = z.infer<typeof CreateDewormingSchema>;
 
 // ========================
 // VaccineCatalog
@@ -664,6 +716,9 @@ export const CreateBathIntentSchema = z.object({
   corte: z.boolean(),
   appointmentAt: z.string().datetime(),  // ISO UTC — debe ser un slot válido
   notes: z.string().max(500).optional(),
+  // DEPOSIT: solo cobra el anticipo ahora, el resto al recoger.
+  // FULL: cobra el precio total ahora.
+  paymentType: z.enum(["DEPOSIT", "FULL"]).default("DEPOSIT"),
 });
 export type CreateBathIntent = z.infer<typeof CreateBathIntentSchema>;
 

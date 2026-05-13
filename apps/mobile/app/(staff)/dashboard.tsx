@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,21 +9,37 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
-import { getStaffStays, getStaffStaysUnassigned, getStaffBaths } from "@/lib/api";
+import {
+  getStaffStays,
+  getStaffStaysUnassigned,
+  getStaffBaths,
+  type StaffBath,
+} from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
 import { formatName } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
+type SectionKey = "baths" | "active" | "unassigned" | "upcoming";
+
 export default function StaffDashboard() {
   const router = useRouter();
   const firstName = useAuthStore((s) => s.firstName);
   const userId = useAuthStore((s) => s.userId);
+  const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
+    baths: false,
+    active: false,
+    unassigned: false,
+    upcoming: false,
+  });
+  const toggleSection = (key: SectionKey) =>
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const {
     data: activeStays,
@@ -63,12 +79,21 @@ export default function StaffDashboard() {
     refetchInterval: 60_000,
   });
 
-  const pendingBaths = (bathsToday?.baths ?? []).filter(
-    (b) => b.status !== "CHECKED_OUT",
-  );
-  const doneBaths = (bathsToday?.baths ?? []).filter(
-    (b) => b.status === "CHECKED_OUT",
-  );
+  const isBathDone = (b: StaffBath) => {
+    if (b.reservationType === "BATH") return b.status === "CHECKED_OUT";
+    return !!b.addons?.find(
+      (a) => a.variant?.serviceType?.code === "BATH",
+    )?.completedAt;
+  };
+  // Mostramos todos los baños próximos (endpoint regresa hoy + 30 días).
+  // Ordenados por fecha ascendente, pendientes primero, completados al final.
+  const allBaths = bathsToday?.baths ?? [];
+  const byDateAsc = (a: StaffBath, b: StaffBath) =>
+    new Date(a.appointmentAt ?? 0).getTime() -
+    new Date(b.appointmentAt ?? 0).getTime();
+  const pendingBaths = allBaths.filter((b) => !isBathDone(b)).sort(byDateAsc);
+  const doneBaths = allBaths.filter((b) => isBathDone(b)).sort(byDateAsc);
+  const orderedBaths = [...pendingBaths, ...doneBaths];
 
   const isLoading = loadingActive || loadingConfirmed;
 
@@ -208,82 +233,153 @@ export default function StaffDashboard() {
         />
       </View>
 
-      {/* Baños de hoy — acceso rápido */}
-      {(bathsToday?.baths.length ?? 0) > 0 && (
-        <TouchableOpacity
-          style={styles.bathSummary}
-          activeOpacity={0.7}
-          onPress={() => router.push("/(staff)/baths" as any)}
-        >
-          <View style={styles.bathIconBubble}>
-            <Ionicons name="water" size={22} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.bathSummaryTitle}>Baños de hoy</Text>
-            <Text style={styles.bathSummaryMeta}>
-              {pendingBaths.length} pendientes · {doneBaths.length} completados
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
-        </TouchableOpacity>
+      {/* Próximos baños */}
+      {orderedBaths.length > 0 && (
+        <View style={styles.section}>
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("baths")}
+            hitSlop={8}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Próximos baños
+              </Text>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push("/(staff)/baths" as any);
+                }}
+                hitSlop={8}
+              >
+                <Text style={styles.sectionLink}>
+                  {pendingBaths.length} pendiente
+                  {pendingBaths.length === 1 ? "" : "s"} ›
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Ionicons
+              name={collapsed.baths ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
+            />
+          </Pressable>
+          {!collapsed.baths &&
+            orderedBaths.map((bath) => (
+              <BathCard
+                key={bath.id}
+                bath={bath}
+                done={isBathDone(bath)}
+                onPress={() => {
+                  if (bath.reservationType === "BATH") {
+                    router.push(`/staff/bath/${bath.id}` as any);
+                  } else {
+                    router.push(`/staff/stay/${bath.id}` as any);
+                  }
+                }}
+              />
+            ))}
+        </View>
       )}
 
       {/* Estancias activas — con foto de mascota y room */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Estancias activas</Text>
-        {(activeStays ?? []).length === 0 ? (
-          <Text style={styles.emptyText}>No hay estancias activas</Text>
-        ) : (
-          (activeStays ?? []).map((stay) => (
-            <StayCard
-              key={stay.id}
-              stay={stay}
-              statusLabel="Hospedado"
-              statusBg={COLORS.successBg}
-              statusColor={COLORS.successText}
-              accentColor={COLORS.successText}
-              onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
-              variant="active"
-            />
-          ))
-        )}
+        <Pressable
+          style={styles.sectionHeaderPressable}
+          onPress={() => toggleSection("active")}
+          hitSlop={8}
+        >
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+            Estancias activas
+          </Text>
+          <Ionicons
+            name={collapsed.active ? "chevron-down" : "chevron-up"}
+            size={18}
+            color={COLORS.textTertiary}
+          />
+        </Pressable>
+        {!collapsed.active &&
+          ((activeStays ?? []).length === 0 ? (
+            <Text style={styles.emptyText}>No hay estancias activas</Text>
+          ) : (
+            (activeStays ?? []).map((stay) => (
+              <StayCard
+                key={stay.id}
+                stay={stay}
+                statusLabel="Hospedado"
+                statusBg={COLORS.successBg}
+                statusColor={COLORS.successText}
+                accentColor={COLORS.successText}
+                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+                variant="active"
+              />
+            ))
+          ))}
       </View>
 
       {/* Sin asignar */}
       {(unassignedStays ?? []).length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sin staff asignado</Text>
-          {(unassignedStays ?? []).map((stay) => (
-            <AlertItem
-              key={stay.id}
-              icon="person-add-outline"
-              text={`${formatName(stay.pet.name)} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
-              severity="info"
-              onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("unassigned")}
+            hitSlop={8}
+          >
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+              Sin staff asignado
+            </Text>
+            <Ionicons
+              name={collapsed.unassigned ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
             />
-          ))}
+          </Pressable>
+          {!collapsed.unassigned &&
+            (unassignedStays ?? []).map((stay) => (
+              <AlertItem
+                key={stay.id}
+                icon="person-add-outline"
+                text={`${formatName(stay.pet.name)} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
+                severity="info"
+                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+              />
+            ))}
         </View>
       )}
 
       {/* Próximas llegadas — con foto */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Próximas llegadas</Text>
-        {(confirmedStays ?? []).length === 0 ? (
-          <Text style={styles.emptyText}>No hay llegadas próximas</Text>
-        ) : (
-          (confirmedStays ?? []).map((stay) => (
-            <StayCard
-              key={stay.id}
-              stay={stay}
-              statusLabel="Confirmada"
-              statusBg={COLORS.infoBg}
-              statusColor={COLORS.infoText}
-              accentColor={COLORS.infoText}
-              onPress={() => router.push(`/(staff)/stay/${stay.id}` as any)}
-              variant="upcoming"
-            />
-          ))
-        )}
+        <Pressable
+          style={styles.sectionHeaderPressable}
+          onPress={() => toggleSection("upcoming")}
+          hitSlop={8}
+        >
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+            Próximas llegadas
+          </Text>
+          <Ionicons
+            name={collapsed.upcoming ? "chevron-down" : "chevron-up"}
+            size={18}
+            color={COLORS.textTertiary}
+          />
+        </Pressable>
+        {!collapsed.upcoming &&
+          ((confirmedStays ?? []).length === 0 ? (
+            <Text style={styles.emptyText}>No hay llegadas próximas</Text>
+          ) : (
+            (confirmedStays ?? []).map((stay) => (
+              <StayCard
+                key={stay.id}
+                stay={stay}
+                statusLabel="Confirmada"
+                statusBg={COLORS.infoBg}
+                statusColor={COLORS.infoText}
+                accentColor={COLORS.infoText}
+                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+                variant="upcoming"
+              />
+            ))
+          ))}
       </View>
 
       <View style={{ height: 40 }} />
@@ -515,43 +611,191 @@ function StayCard({
   );
 }
 
+// ── Bath card del dashboard staff ────────────────────────────────
+// Mantiene el formato visual de StayCard (foto + info + chevron) pero usa
+// señas claras para distinguirse: acento azul, fondo de foto teñido,
+// "BAÑO" pill, hora de cita prominente y chips por variante (deslanado/corte).
+function BathCard({
+  bath,
+  done,
+  onPress,
+}: {
+  bath: StaffBath;
+  done: boolean;
+  onPress: () => void;
+}) {
+  const bathAddon = bath.addons.find(
+    (a) => a.variant?.serviceType?.code === "BATH",
+  );
+  const variant = bathAddon?.variant ?? bath.addons[0]?.variant;
+  const extras: string[] = [];
+  if (variant?.deslanado) extras.push("Deslanado");
+  if (variant?.corte) extras.push("Corte");
+
+  const isStayBath = bath.reservationType === "STAY";
+  const appointmentTime = bath.appointmentAt
+    ? new Date(bath.appointmentAt).toLocaleTimeString("es-MX", {
+        timeZone: "America/Hermosillo",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : "—";
+  const appointmentDayLabel = (() => {
+    if (!bath.appointmentAt) return "";
+    const tzHours = 7;
+    const ymd = (value: Date) => {
+      const d = new Date(value.getTime() - tzHours * 3600 * 1000);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    };
+    const appt = new Date(bath.appointmentAt);
+    const today = ymd(new Date());
+    const apptYmd = ymd(appt);
+    if (apptYmd === today) return "Hoy";
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (apptYmd === ymd(tomorrow)) return "Mañana";
+    return appt.toLocaleDateString("es-MX", {
+      timeZone: "America/Hermosillo",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  })();
+
+  return (
+    <TouchableOpacity
+      style={[styles.stayCard, done && styles.bathCardDone]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={[styles.stayAccent, { backgroundColor: COLORS.primary }]} />
+      <View style={styles.stayBody}>
+        <View style={styles.stayTopRow}>
+          <View style={styles.bathPhotoWrap}>
+            <Image
+              source={
+                bath.pet.photoUrl
+                  ? { uri: bath.pet.photoUrl }
+                  : require("../../assets/pet-placeholder.png")
+              }
+              style={styles.petPhoto}
+            />
+            <View style={styles.bathPhotoBadge}>
+              <Ionicons name="water" size={11} color={COLORS.white} />
+            </View>
+          </View>
+          <View style={styles.stayInfo}>
+            <View style={styles.stayHeader}>
+              <Text style={styles.stayPetName} numberOfLines={1}>
+                {formatName(bath.pet.name)}
+              </Text>
+              <View style={styles.bathTypePill}>
+                <Text style={styles.bathTypePillText}>
+                  {isStayBath ? "HOSPEDAJE" : "BAÑO"}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.stayOwnerName} numberOfLines={1}>
+              {formatName(bath.owner.firstName)}{" "}
+              {formatName(bath.owner.lastName)}
+            </Text>
+            <View style={styles.stayMeta}>
+              {extras.map((ex) => (
+                <View
+                  key={ex}
+                  style={[
+                    styles.metaChip,
+                    { backgroundColor: COLORS.primaryLight },
+                  ]}
+                >
+                  <Ionicons
+                    name={ex === "Corte" ? "cut" : "cut-outline"}
+                    size={11}
+                    color={COLORS.primary}
+                  />
+                  <Text
+                    style={[styles.metaText, { color: COLORS.primary }]}
+                  >
+                    {ex}
+                  </Text>
+                </View>
+              ))}
+              {done && (
+                <View
+                  style={[
+                    styles.metaChip,
+                    { backgroundColor: COLORS.successBg },
+                  ]}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={11}
+                    color={COLORS.successText}
+                  />
+                  <Text
+                    style={[styles.metaText, { color: COLORS.successText }]}
+                  >
+                    Listo
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* Hora de la cita (en lugar del strip de entrada/salida).
+            En baños de hospedaje no hay hora exacta — el backend usa checkOut
+            (suele ser 00:00). Mostramos solo el día + "antes del checkout". */}
+        <View style={styles.bathTimeRow}>
+          <Ionicons
+            name={isStayBath ? "calendar" : "time"}
+            size={14}
+            color={COLORS.primary}
+          />
+          <Text style={styles.bathTimeText}>
+            {appointmentDayLabel}
+            {isStayBath
+              ? " · antes del checkout"
+              : `${appointmentDayLabel ? " · " : ""}${appointmentTime}`}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.chevronWrap}>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.border} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPage,
   },
-  bathSummary: {
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  sectionHeaderPressable: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  sectionHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    flex: 1,
   },
-  bathIconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bathSummaryTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-  },
-  bathSummaryMeta: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    marginTop: 2,
+  sectionLink: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
   },
   loadingContainer: {
     flex: 1,
@@ -747,5 +991,54 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingRight: 12,
     paddingLeft: 4,
+  },
+  // Bath card variants
+  bathCardDone: {
+    opacity: 0.65,
+  },
+  bathPhotoWrap: {
+    position: "relative",
+    width: 60,
+    height: 60,
+  },
+  bathPhotoBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  bathTypePill: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  bathTypePillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    color: COLORS.white,
+  },
+  bathTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+  },
+  bathTimeText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.primary,
+    letterSpacing: -0.2,
   },
 });

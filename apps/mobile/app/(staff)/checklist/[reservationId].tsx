@@ -40,9 +40,9 @@ export default function ChecklistForm() {
 
   // Form state — campos visibles
   const [mood, setMood] = useState<MoodLevel>("HAPPY");
-  const [mealsCompleted, setMealsCompleted] = useState(true);
-  const [walksCompleted, setWalksCompleted] = useState(true);
-  const [bathroomBreaks, setBathroomBreaks] = useState(true);
+  const [mealsCompleted, setMealsCompleted] = useState(false);
+  const [walksCompleted, setWalksCompleted] = useState(false);
+  const [bathroomBreaks, setBathroomBreaks] = useState(false);
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [handoffNotes, setHandoffNotes] = useState("");
   // Evidencias del día (fotos y/o videos). Cada nueva selección se agrega;
@@ -156,17 +156,19 @@ export default function ChecklistForm() {
       );
       return createDailyChecklist({
         date: localDayUTC,
-        // Defaults para los campos del schema que ya no se preguntan
+        // Campos del schema que ya no se piden ni se muestran en la card.
+        // Se mantienen con valores neutrales para satisfacer el schema —
+        // si se removieran del schema en el futuro, también se quitan aquí.
         energy: "MEDIUM",
         socialization: "SOCIAL",
         rest: "GOOD",
+        playtime: false,
+        socializationDone: false,
         mood,
         mealsCompleted,
         mealsNotes: null,
         walksCompleted,
         bathroomBreaks,
-        playtime: true,
-        socializationDone: true,
         feedingNotes: null,
         behaviorNotes: null,
         additionalNotes:
@@ -195,7 +197,7 @@ export default function ChecklistForm() {
       setTimeout(() => confettiRef.current?.start(), 150);
       setTimeout(() => {
         setShowSuccess(false);
-        router.replace(`/(staff)/stay/${reservationId}` as any);
+        router.replace(`/staff/stay/${reservationId}` as any);
       }, 3000);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -212,7 +214,10 @@ export default function ChecklistForm() {
   const canSubmit = mediaItems.length > 0 && !saveMutation.isPending;
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
@@ -228,23 +233,6 @@ export default function ChecklistForm() {
           </Text>
         </View>
       </View>
-
-      {!existing && (
-        <TouchableOpacity
-          style={styles.normalDayButton}
-          onPress={() => {
-            setMood("HAPPY");
-            setMealsCompleted(true);
-            setWalksCompleted(true);
-            setBathroomBreaks(true);
-            Alert.alert("Listo", "Día normal aplicado. Sólo falta la foto.");
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="sunny-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.normalDayText}>Llenar como día normal</Text>
-        </TouchableOpacity>
-      )}
 
       {/* Mood */}
       <View style={styles.card}>

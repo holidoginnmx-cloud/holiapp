@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { buildWhatsappUrl } from "@/constants/business";
+import { BUSINESS, buildWhatsappUrl } from "@/constants/business";
 import {
   View,
   Text,
@@ -68,6 +68,13 @@ export default function HomeScreen() {
   const hasActiveStays = (activeReservations?.length ?? 0) > 0;
   const hasUpcoming = (upcomingReservations?.length ?? 0) > 0;
   const hasAnyReservation = hasActiveStays || hasUpcoming;
+
+  const upcomingStays = (upcomingReservations ?? []).filter(
+    (r) => r.reservationType !== "BATH"
+  );
+  const upcomingBaths = (upcomingReservations ?? []).filter(
+    (r) => r.reservationType === "BATH"
+  );
 
   // Alertas inteligentes
   const now = Date.now();
@@ -196,7 +203,9 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionWhatsapp]}
-          onPress={() => Linking.openURL(buildWhatsappUrl())}
+          onPress={() =>
+            Linking.openURL(buildWhatsappUrl(BUSINESS.whatsappOwnerInfoMessage))
+          }
           activeOpacity={0.85}
           testID="home-whatsapp-button"
         >
@@ -469,6 +478,8 @@ export default function HomeScreen() {
                   petName={res.pet.name}
                   petPhotoUrl={res.pet.photoUrl}
                   roomName={res.room?.name ?? null}
+                  checkIn={res.checkIn}
+                  checkOut={res.checkOut}
                   onPress={() =>
                     router.push(`/reservation/detail/${res.id}?from=home` as any)
                   }
@@ -477,10 +488,13 @@ export default function HomeScreen() {
             </>
           )}
 
-          {hasUpcoming && (
+          {upcomingStays.length > 0 && (
             <>
-              <Text style={styles.sectionTitle}>Próximas reservaciones</Text>
-              {upcomingReservations!.slice(0, 2).map((res) => (
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.sectionTitleInline}>Próximas estancias</Text>
+              </View>
+              {upcomingStays.slice(0, 2).map((res) => (
                 <ReservationCard
                   key={res.id}
                   petName={res.pet.name}
@@ -488,7 +502,52 @@ export default function HomeScreen() {
                   status={res.status}
                   checkIn={res.checkIn}
                   checkOut={res.checkOut}
+                  reservationType={res.reservationType}
+                  appointmentAt={res.appointmentAt}
                   totalAmount={Number(res.totalAmount)}
+                  paymentType={res.paymentType}
+                  hasBalance={res.hasBalance}
+                  hasPendingChangeRequest={res.hasPendingChangeRequest}
+                  lastUpdateAt={res.lastUpdateAt}
+                  hasReview={res.hasReview}
+                  reviewRating={res.reviewRating}
+                  hasDeslanado={res.hasDeslanado}
+                  hasCorte={res.hasCorte}
+                  onPress={() =>
+                    router.push(`/reservation/detail/${res.id}?from=home` as any)
+                  }
+                />
+              ))}
+            </>
+          )}
+
+          {upcomingBaths.length > 0 && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="water-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.sectionTitleInline}>
+                  Próximas citas de baño
+                </Text>
+              </View>
+              {upcomingBaths.slice(0, 2).map((res) => (
+                <ReservationCard
+                  key={res.id}
+                  petName={res.pet.name}
+                  roomName={res.room?.name ?? null}
+                  status={res.status}
+                  checkIn={res.checkIn}
+                  checkOut={res.checkOut}
+                  reservationType={res.reservationType}
+                  appointmentAt={res.appointmentAt}
+                  totalAmount={Number(res.totalAmount)}
+                  paymentType={res.paymentType}
+                  hasBalance={res.hasBalance}
+                  hasPendingChangeRequest={res.hasPendingChangeRequest}
+                  lastUpdateAt={res.lastUpdateAt}
+                  hasReview={res.hasReview}
+                  reviewRating={res.reviewRating}
+                  hasDeslanado={res.hasDeslanado}
+                  hasCorte={res.hasCorte}
                   onPress={() =>
                     router.push(`/reservation/detail/${res.id}?from=home` as any)
                   }
@@ -529,6 +588,18 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginBottom: 12,
     marginTop: 8,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  sectionTitleInline: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
   },
   heroEmpty: {
     backgroundColor: COLORS.white,

@@ -24,6 +24,8 @@ import {
   confirmBalancePayment,
 } from "@/lib/api";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
+import { BathExtrasPaymentCard } from "@/components/BathExtrasPaymentCard";
+import { ExtensionPaymentCard } from "@/components/ExtensionPaymentCard";
 import { formatName } from "@/lib/format";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
@@ -43,7 +45,6 @@ export function ErrorBoundary({ error }: { error: Error }) {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  PENDING: { label: "Pendiente", bg: COLORS.warningBg, text: COLORS.warningText },
   CONFIRMED: { label: "Confirmada", bg: COLORS.infoBg, text: COLORS.infoText },
   CHECKED_IN: { label: "En estancia", bg: COLORS.successBg, text: COLORS.successText },
   CHECKED_OUT: { label: "Concluida", bg: COLORS.bgSection, text: COLORS.textTertiary },
@@ -146,13 +147,22 @@ export default function ReservationDetailScreen() {
   const pendingChange: ChangeRequest | undefined = changeRequests?.find(
     (c) => c.status === "PENDING"
   );
+  const approvedExtension: ChangeRequest | undefined = changeRequests?.find(
+    (c) => c.status === "APPROVED" && Number(c.deltaAmount) > 0 && !c.paidAt,
+  );
+  const approvedExtensionPaidShortcut: ChangeRequest | undefined = changeRequests?.find(
+    (c) =>
+      c.status === "APPROVED" &&
+      Number(c.deltaAmount) > 0 &&
+      (c.payOnPickup || !!c.paidAt),
+  );
   const canModify =
     reservation &&
     reservation.reservationType !== "BATH" &&
-    ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(reservation.status) &&
+    ["CONFIRMED", "CHECKED_IN"].includes(reservation.status) &&
     !pendingChange;
   const canCancel =
-    reservation && ["PENDING", "CONFIRMED"].includes(reservation.status);
+    reservation && reservation.status === "CONFIRMED";
   // Count both PAID and PARTIAL — both are real money already paid by owner.
   const paidStripeAmount = reservation?.payments
     ?.filter((p: any) =>
@@ -223,7 +233,7 @@ export default function ReservationDetailScreen() {
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: "HolidogInn",
+        merchantDisplayName: "Holidog Inn",
         applePay: { merchantCountryCode: "MX" },
       });
       if (initError) {
@@ -270,29 +280,67 @@ export default function ReservationDetailScreen() {
   }
 
   const statusConfig = STATUS_CONFIG[reservation.status] ?? STATUS_CONFIG.PENDING;
+  const isBath = reservation.reservationType === "BATH";
+  const bathAddon = isBath
+    ? reservation.addons?.find(
+        (a) => a.variant?.serviceType?.code === "BATH",
+      )
+    : undefined;
+  const bathHasDeslanado = bathAddon?.variant?.deslanado === true;
+  const bathHasCorte = bathAddon?.variant?.corte === true;
+  // Cuando el staff ya definió el precio de los extras, el card de pago toma
+  // el lugar de la nota informativa.
+  const showBathExtrasNotice =
+    isBath &&
+    (bathHasDeslanado || bathHasCorte) &&
+    !bathAddon?.extraPaymentStatus &&
+    (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
+
+  // Para baño concluido con extras pagados: mostramos un único card con el
+  // desglose en vez de duplicar "Servicios adicionales" + "Extras pagado".
+  const bathExtraDeslanadoPrice = bathAddon?.extraDeslanadoPrice
+    ? Number(bathAddon.extraDeslanadoPrice)
+    : null;
+  const bathExtraCortePrice = bathAddon?.extraCortePrice
+    ? Number(bathAddon.extraCortePrice)
+    : null;
+  const bathExtraTotal = bathAddon?.extraPrice
+    ? Number(bathAddon.extraPrice)
+    : null;
+  const bathExtrasPaid =
+    isBath && bathAddon?.extraPaymentStatus === "PAID" && bathExtraTotal !== null;
 
   return (
     <>
-      {reservationRefund > 0 && (
-        <Stack.Screen
-          options={{
-            headerRight: () => (
-              <TouchableOpacity
-                onPress={() => router.push("/profile/credit-history" as any)}
-                style={styles.refundPill}
-                activeOpacity={0.85}
-                hitSlop={8}
-                testID="reservation-refund-pill"
-              >
-                <Ionicons name="wallet" size={13} color={COLORS.successText} />
-                <Text style={styles.refundPillText}>
-                  +${reservationRefund.toLocaleString("es-MX")}
-                </Text>
-              </TouchableOpacity>
-            ),
-          }}
-        />
-      )}
+      <Stack.Screen
+        options={{
+          title: isBath ? "Detalle del baño" : "Detalle de reservación",
+          ...(reservationRefund > 0
+            ? {
+                headerRight: () => (
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push("/profile/credit-history" as any)
+                    }
+                    style={styles.refundPill}
+                    activeOpacity={0.85}
+                    hitSlop={8}
+                    testID="reservation-refund-pill"
+                  >
+                    <Ionicons
+                      name="wallet"
+                      size={13}
+                      color={COLORS.successText}
+                    />
+                    <Text style={styles.refundPillText}>
+                      +${reservationRefund.toLocaleString("es-MX")}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              }
+            : {}),
+        }}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -499,6 +547,21 @@ export default function ReservationDetailScreen() {
         </View>
       )}
 
+      {/* Extension payment options (after approval) */}
+      {approvedExtension && (
+        <ExtensionPaymentCard
+          reservationId={reservation.id}
+          changeRequest={approvedExtension}
+        />
+      )}
+      {approvedExtensionPaidShortcut &&
+        approvedExtensionPaidShortcut.id !== approvedExtension?.id && (
+          <ExtensionPaymentCard
+            reservationId={reservation.id}
+            changeRequest={approvedExtensionPaidShortcut}
+          />
+        )}
+
       {/* Deposit balance banner */}
       {pendingChange && (
         <View style={styles.pendingChangeBanner}>
@@ -583,8 +646,132 @@ export default function ReservationDetailScreen() {
         </View>
       )}
 
-      {/* Bath upsell (CONFIRMED → CHECKED_IN) */}
-      <BathUpsellCard reservation={reservation} />
+      {/* Bath upsell: solo para STAYS donde se puede sumar un baño de salida. */}
+      {!isBath && <BathUpsellCard reservation={reservation} />}
+
+      {/* Baño primario: servicios contratados.
+          - Pagado: itemizado con precios y total, marca verde.
+          - Aún sin precio: chips + nota explicando cobro post-servicio.
+          - Con precio pero pendiente/al recoger: chips simples; el BathExtrasPaymentCard maneja la acción. */}
+      {isBath && (bathHasDeslanado || bathHasCorte) && (
+        <View
+          style={[
+            styles.bathServicesCard,
+            bathExtrasPaid && styles.bathServicesCardPaid,
+          ]}
+        >
+          <View style={styles.bathServicesHeader}>
+            <View
+              style={[
+                styles.bathServicesIconWrap,
+                bathExtrasPaid && {
+                  backgroundColor: COLORS.successBg,
+                },
+              ]}
+            >
+              <Ionicons
+                name={bathExtrasPaid ? "checkmark-circle" : "cut-outline"}
+                size={20}
+                color={bathExtrasPaid ? COLORS.successText : COLORS.primary}
+              />
+            </View>
+            <Text style={styles.bathServicesTitle}>Servicios adicionales</Text>
+            {bathExtrasPaid && (
+              <View style={styles.bathServicesPaidPill}>
+                <Text style={styles.bathServicesPaidPillText}>Pagado</Text>
+              </View>
+            )}
+          </View>
+
+          {bathExtrasPaid ? (
+            <View style={styles.bathServicesItemized}>
+              {bathHasDeslanado && (
+                <View style={styles.bathServicesRow}>
+                  <View style={styles.bathServicesRowLeft}>
+                    <Ionicons
+                      name="cut-outline"
+                      size={14}
+                      color={COLORS.primary}
+                    />
+                    <Text style={styles.bathServicesRowLabel}>Deslanado</Text>
+                  </View>
+                  <Text style={styles.bathServicesRowValue}>
+                    {bathExtraDeslanadoPrice !== null
+                      ? `$${bathExtraDeslanadoPrice.toLocaleString("es-MX")}`
+                      : "—"}
+                  </Text>
+                </View>
+              )}
+              {bathHasCorte && (
+                <View style={styles.bathServicesRow}>
+                  <View style={styles.bathServicesRowLeft}>
+                    <Ionicons name="cut" size={14} color={COLORS.primary} />
+                    <Text style={styles.bathServicesRowLabel}>Corte</Text>
+                  </View>
+                  <Text style={styles.bathServicesRowValue}>
+                    {bathExtraCortePrice !== null
+                      ? `$${bathExtraCortePrice.toLocaleString("es-MX")}`
+                      : "—"}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.bathServicesTotalRow}>
+                <Text style={styles.bathServicesTotalLabel}>Total</Text>
+                <Text style={styles.bathServicesTotalValue}>
+                  ${bathExtraTotal!.toLocaleString("es-MX")}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.bathServicesChips}>
+                {bathHasDeslanado && (
+                  <View style={styles.bathServiceChip}>
+                    <Ionicons name="cut-outline" size={13} color={COLORS.primary} />
+                    <Text style={styles.bathServiceChipText}>Deslanado</Text>
+                  </View>
+                )}
+                {bathHasCorte && (
+                  <View style={styles.bathServiceChip}>
+                    <Ionicons name="cut" size={13} color={COLORS.primary} />
+                    <Text style={styles.bathServiceChipText}>Corte</Text>
+                  </View>
+                )}
+              </View>
+              {showBathExtrasNotice && (
+                <View style={styles.bathServicesNoteBox}>
+                  <Ionicons
+                    name="information-circle"
+                    size={16}
+                    color={COLORS.infoText}
+                  />
+                  <Text style={styles.bathServicesNoteText}>
+                    El costo se calcula al terminar el baño según el esfuerzo y el
+                    estado del pelaje, y se cobra cuando recoges a tu mascota.
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
+
+      {/* Acciones de pago de extras (PENDING_PAYMENT / PAY_ON_PICKUP).
+          El estado PAID ya queda visualizado en el card unificado de servicios. */}
+      {reservation.addons
+        ?.filter(
+          (a) =>
+            a.variant?.serviceType?.code === "BATH" &&
+            a.extraPaymentStatus &&
+            a.extraPaymentStatus !== "PAID",
+        )
+        .map((a) => (
+          <BathExtrasPaymentCard
+            key={a.id}
+            reservationId={reservation.id}
+            addon={a}
+          />
+        ))}
 
       {/* Reportes diarios del staff — botón a pantalla dedicada */}
       {checklists && checklists.length > 0 && (
@@ -611,7 +798,7 @@ export default function ReservationDetailScreen() {
 
       {/* Review CTA or existing review */}
       {reservation.status === "CHECKED_OUT" && (
-        <View style={{ marginTop: 8 }}>
+        <View style={{ marginTop: 8, marginBottom: 16 }}>
           {reservation.review ? (
             <View style={styles.reviewCard}>
               <Text style={styles.reviewTitle}>Tu reseña</Text>
@@ -720,7 +907,9 @@ export default function ReservationDetailScreen() {
               size={18}
               color={COLORS.errorText}
             />
-            <Text style={styles.dangerButtonText}>Cancelar reservación</Text>
+            <Text style={styles.dangerButtonText}>
+              {isBath ? "Cancelar baño" : "Cancelar reservación"}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1360,5 +1549,131 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
+  },
+  // Bath services card (deslanado/corte + nota de cobro post-servicio)
+  bathServicesCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    gap: 12,
+  },
+  bathServicesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  bathServicesIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bathServicesTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  bathServicesChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  bathServiceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  bathServiceChipText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  bathServicesNoteBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.infoBg,
+    borderRadius: 10,
+    padding: 10,
+  },
+  bathServicesNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.infoText,
+    lineHeight: 17,
+    fontWeight: "600",
+  },
+  bathServicesCardPaid: {
+    borderColor: COLORS.successText,
+    backgroundColor: COLORS.successBg,
+  },
+  bathServicesPaidPill: {
+    backgroundColor: COLORS.successText,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  bathServicesPaidPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.white,
+    letterSpacing: 0.3,
+  },
+  bathServicesItemized: {
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  bathServicesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.bgSection,
+  },
+  bathServicesRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bathServicesRowLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  bathServicesRowValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  bathServicesTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  bathServicesTotalLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  bathServicesTotalValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.successText,
   },
 });

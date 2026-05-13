@@ -83,26 +83,24 @@ export function BathUpsellCard({ reservation }: Props) {
       <View style={styles.contractedCard}>
         <View style={styles.contractedHeader}>
           <View style={styles.contractedIconWrap}>
-            <Ionicons name="water" size={18} color={COLORS.primary} />
+            <Ionicons name="water" size={22} color={COLORS.white} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.contractedTitle}>Baño contratado</Text>
-            <Text style={styles.contractedSubtitle}>
-              Servicio confirmado
-            </Text>
+            <Text style={styles.contractedSubtitle}>{variantLabel}</Text>
           </View>
           <View style={styles.contractedStatusPill}>
             <Ionicons
               name="checkmark-circle"
-              size={11}
+              size={12}
               color={COLORS.successText}
             />
             <Text style={styles.contractedStatusText}>Listo</Text>
           </View>
         </View>
 
-        <View style={styles.contractedDetailRow}>
-          <Text style={styles.contractedDetailLabel}>{variantLabel}</Text>
+        <View style={styles.contractedPriceRow}>
+          <Text style={styles.contractedPriceLabel}>Total pagado</Text>
           <Text style={styles.contractedPrice}>
             ${Number(existingBath.unitPrice).toLocaleString("es-MX")}
           </Text>
@@ -115,7 +113,7 @@ export function BathUpsellCard({ reservation }: Props) {
             color={COLORS.infoText}
           />
           <Text style={styles.contractedNote}>
-            Se entregará bañado al momento del check-out.
+            Se entregará bañado el día del check-out.
           </Text>
         </View>
       </View>
@@ -138,7 +136,7 @@ export function BathUpsellCard({ reservation }: Props) {
 
       const { error: initError } = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: "HolidogInn",
+        merchantDisplayName: "Holidog Inn",
         applePay: { merchantCountryCode: "MX" },
       });
       if (initError) {
@@ -287,10 +285,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     elevation: 2,
   },
   contractedHeader: {
@@ -299,31 +299,31 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   contractedIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primaryLight,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   contractedTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "800",
     color: COLORS.textPrimary,
   },
   contractedSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.textTertiary,
     fontWeight: "600",
-    marginTop: 1,
+    marginTop: 2,
   },
   contractedStatusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: COLORS.successBg,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
   },
   contractedStatusText: {
@@ -332,24 +332,25 @@ const styles = StyleSheet.create({
     color: COLORS.successText,
     letterSpacing: 0.3,
   },
-  contractedDetailRow: {
+  contractedPriceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: COLORS.bgSection,
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 12,
+    paddingVertical: 12,
+    marginTop: 14,
   },
-  contractedDetailLabel: {
-    fontSize: 14,
+  contractedPriceLabel: {
+    fontSize: 13,
     fontWeight: "700",
-    color: COLORS.textPrimary,
-    flex: 1,
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   contractedPrice: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "800",
     color: COLORS.primary,
   },

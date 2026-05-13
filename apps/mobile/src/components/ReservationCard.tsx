@@ -20,6 +20,12 @@ interface ReservationCardProps {
   hasPendingChangeRequest?: boolean;
   lastUpdateAt?: string | null;
   hasReview?: boolean;
+  reviewRating?: number | null;
+  /** Si true, el card cambia la copy de "Deja tu reseña" por "Aún sin reseña"
+   * (vista admin/staff donde no se puede dejar reseña). */
+  adminView?: boolean;
+  hasDeslanado?: boolean;
+  hasCorte?: boolean;
   onPress?: () => void;
 }
 
@@ -38,12 +44,6 @@ const STATUS_CONFIG: Record<
     bg: COLORS.infoBg,
     text: COLORS.infoText,
     accent: COLORS.infoText,
-  },
-  PENDING: {
-    label: "Pendiente",
-    bg: COLORS.warningBg,
-    text: COLORS.warningText,
-    accent: COLORS.warningText,
   },
   CHECKED_OUT: {
     label: "Concluida",
@@ -94,6 +94,21 @@ function formatRelativeTime(date: string | Date): string {
   return `Hace ${diffDays}d`;
 }
 
+// Etiqueta amigable basada en la fecha (futuro). Devuelve null si ya pasó.
+function futureLabel(date: string | Date): string | null {
+  const target = new Date(date);
+  const today = new Date();
+  // Comparar a medianoche local para evitar saltos por la hora.
+  const a = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const b = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.round((a.getTime() - b.getTime()) / 86_400_000);
+  if (diffDays < 0) return null;
+  if (diffDays === 0) return "Hoy";
+  if (diffDays === 1) return "Mañana";
+  if (diffDays <= 14) return `En ${diffDays} días`;
+  return null;
+}
+
 export function ReservationCard({
   petName,
   roomName,
@@ -111,18 +126,27 @@ export function ReservationCard({
   hasPendingChangeRequest,
   lastUpdateAt,
   hasReview,
+  reviewRating,
+  adminView,
+  hasDeslanado,
+  hasCorte,
   onPress,
 }: ReservationCardProps) {
   const isBath = reservationType === "BATH";
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.CONFIRMED;
 
   const showDepositAlert =
     !!hasBalance &&
     paymentType === "DEPOSIT" &&
-    (status === "PENDING" || status === "CONFIRMED");
+    status === "CONFIRMED";
   const showChangeRequest = !!hasPendingChangeRequest;
   const showUpdatePreview = status === "CHECKED_IN" && !!lastUpdateAt;
   const showReviewCta = status === "CHECKED_OUT" && hasReview === false;
+  const showReviewRating =
+    status === "CHECKED_OUT" &&
+    hasReview === true &&
+    typeof reviewRating === "number" &&
+    reviewRating > 0;
   const showPetCount = (petCount ?? 1) > 1;
 
   const hasIndicators =
@@ -130,6 +154,7 @@ export function ReservationCard({
     showChangeRequest ||
     showUpdatePreview ||
     showReviewCta ||
+    showReviewRating ||
     showPetCount;
 
   const nights =
@@ -141,7 +166,12 @@ export function ReservationCard({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      <View style={[styles.accentBar, { backgroundColor: config.accent }]} />
+      <View
+        style={[
+          styles.accentBar,
+          { backgroundColor: isBath ? COLORS.primary : config.accent },
+        ]}
+      />
 
       <View style={styles.body}>
         <View style={styles.header}>
@@ -246,12 +276,47 @@ export function ReservationCard({
             )}
             {showReviewCta && (
               <View
-                style={[styles.indicatorBadge, { backgroundColor: "#FEF3C7" }]}
+                style={[
+                  styles.indicatorBadge,
+                  {
+                    backgroundColor: adminView ? COLORS.bgSection : "#FEF3C7",
+                  },
+                ]}
               >
-                <Ionicons name="star-outline" size={13} color={COLORS.star} />
-                <Text style={[styles.indicatorText, { color: COLORS.star }]}>
-                  Deja tu reseña
+                <Ionicons
+                  name="star-outline"
+                  size={13}
+                  color={adminView ? COLORS.textTertiary : COLORS.star}
+                />
+                <Text
+                  style={[
+                    styles.indicatorText,
+                    {
+                      color: adminView ? COLORS.textTertiary : COLORS.star,
+                    },
+                  ]}
+                >
+                  {adminView ? "Aún sin reseña" : "Deja tu reseña"}
                 </Text>
+              </View>
+            )}
+            {showReviewRating && (
+              <View
+                style={[
+                  styles.indicatorBadge,
+                  { backgroundColor: COLORS.primaryLight, gap: 3 },
+                ]}
+              >
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Ionicons
+                    key={i}
+                    name={i <= reviewRating! ? "paw" : "paw-outline"}
+                    size={12}
+                    color={
+                      i <= reviewRating! ? COLORS.primary : COLORS.textDisabled
+                    }
+                  />
+                ))}
               </View>
             )}
             {showPetCount && (
@@ -272,22 +337,58 @@ export function ReservationCard({
 
         {/* Date hero */}
         {isBath && appointmentAt ? (
-          <View style={styles.bathHero}>
-            <View style={styles.bathBadge}>
-              <Ionicons name="water" size={14} color={COLORS.primary} />
-              <Text style={styles.bathBadgeText}>Baño</Text>
+          <>
+            <View style={styles.bathHero}>
+              <View style={styles.bathBadge}>
+                <Ionicons name="water" size={14} color={COLORS.primary} />
+                <Text style={styles.bathBadgeText}>Baño</Text>
+              </View>
+              <View style={styles.bathInfoRow}>
+                <Text style={styles.bathDay}>
+                  {formatDayShort(appointmentAt)}
+                </Text>
+                <Text style={styles.bathTime}>
+                  {new Date(appointmentAt).toLocaleTimeString("es-MX", {
+                    timeZone: "America/Hermosillo",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              </View>
             </View>
-            <View style={styles.bathInfoRow}>
-              <Text style={styles.bathDay}>{formatDayShort(appointmentAt)}</Text>
-              <Text style={styles.bathTime}>
-                {new Date(appointmentAt).toLocaleTimeString("es-MX", {
-                  timeZone: "America/Hermosillo",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-          </View>
+            {(() => {
+              const when =
+                status === "CONFIRMED" ? futureLabel(appointmentAt) : null;
+              const showExtras = hasDeslanado || hasCorte;
+              if (!when && !showExtras) return null;
+              return (
+                <View style={styles.bathExtrasRow}>
+                  {when && (
+                    <View style={styles.bathExtraChipWhen}>
+                      <Ionicons
+                        name="time-outline"
+                        size={12}
+                        color={COLORS.infoText}
+                      />
+                      <Text style={styles.bathExtraChipWhenText}>{when}</Text>
+                    </View>
+                  )}
+                  {hasDeslanado && (
+                    <View style={styles.bathExtraChip}>
+                      <Ionicons name="cut-outline" size={12} color={COLORS.primary} />
+                      <Text style={styles.bathExtraChipText}>Deslanado</Text>
+                    </View>
+                  )}
+                  {hasCorte && (
+                    <View style={styles.bathExtraChip}>
+                      <Ionicons name="cut" size={12} color={COLORS.primary} />
+                      <Text style={styles.bathExtraChipText}>Corte</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+          </>
         ) : checkIn && checkOut ? (
           <View style={styles.dateHero}>
             <View style={styles.datePill}>
@@ -539,6 +640,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: COLORS.textTertiary,
+  },
+  bathExtrasRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  bathExtraChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  bathExtraChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  bathExtraChipWhen: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.infoBg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  bathExtraChipWhenText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.infoText,
   },
   // Total footer
   totalFooter: {

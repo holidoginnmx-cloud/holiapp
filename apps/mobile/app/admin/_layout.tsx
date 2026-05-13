@@ -30,7 +30,7 @@ export default function AdminRootLayout() {
       }}
     >
       <Stack.Screen name="cartillas" options={{ title: "Cartillas" }} />
-      <Stack.Screen name="alerts" options={{ title: "Alertas del staff" }} />
+      <Stack.Screen name="alerts" options={{ title: "Alertas" }} />
       <Stack.Screen
         name="change-requests"
         options={{ title: "Solicitudes de cambio" }}

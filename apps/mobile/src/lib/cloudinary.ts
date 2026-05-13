@@ -72,3 +72,28 @@ export function videoThumbnailUrl(url: string): string {
   }
   return url.replace(/\.(mp4|mov|webm|m4v|avi|mkv)$/i, ".jpg");
 }
+
+/**
+ * Devuelve una variante optimizada de una URL de Cloudinary aplicando
+ * transformaciones (resize + auto-quality + auto-format) directamente en la
+ * ruta. Si la URL no es de Cloudinary, se devuelve sin cambios.
+ *
+ * @param url      URL original (secure_url de Cloudinary).
+ * @param width    Ancho objetivo en píxeles (el alto se ajusta proporcional).
+ * @param mode     "fill" recorta para llenar (thumbnails cuadrados); "limit"
+ *                 escala sin recortar manteniendo aspect ratio (viewer).
+ */
+export function cloudinaryResized(
+  url: string,
+  width: number,
+  mode: "fill" | "limit" = "limit",
+): string {
+  if (!url.includes("res.cloudinary.com/") || !url.includes("/upload/")) {
+    return url;
+  }
+  const crop = mode === "fill" ? "c_fill" : "c_limit";
+  const transform = `${crop},w_${Math.round(width)},q_auto,f_auto`;
+  // Sólo insertamos si no hay transformaciones ya en el segmento siguiente a
+  // /upload/ (las transformaciones de Cloudinary van separadas por comas).
+  return url.replace("/upload/", `/upload/${transform}/`);
+}

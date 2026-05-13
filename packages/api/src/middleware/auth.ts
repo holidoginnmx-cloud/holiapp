@@ -64,15 +64,32 @@ export function createAuthMiddleware(prisma: PrismaClient) {
           .send({ error: "No se encontró email en la cuenta" });
       }
 
-      user = await prisma.user.create({
-        data: {
-          clerkId: clerkUserId,
-          email: primaryEmail.emailAddress,
-          firstName: clerkUser.firstName ?? "Usuario",
-          lastName: clerkUser.lastName ?? "",
-          role: "OWNER",
-        },
+      const existingByEmail = await prisma.user.findUnique({
+        where: { email: primaryEmail.emailAddress },
       });
+
+      if (existingByEmail) {
+        if (existingByEmail.clerkId && existingByEmail.clerkId !== clerkUserId) {
+          return reply.status(409).send({
+            error: "Este correo ya está vinculado a otra cuenta",
+          });
+        }
+
+        user = await prisma.user.update({
+          where: { id: existingByEmail.id },
+          data: { clerkId: clerkUserId },
+        });
+      } else {
+        user = await prisma.user.create({
+          data: {
+            clerkId: clerkUserId,
+            email: primaryEmail.emailAddress,
+            firstName: clerkUser.firstName ?? "Usuario",
+            lastName: clerkUser.lastName ?? "",
+            role: "OWNER",
+          },
+        });
+      }
     }
 
     request.userId = user.id;

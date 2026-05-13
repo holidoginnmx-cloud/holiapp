@@ -8,11 +8,12 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getAdminRoomStatus } from "@/lib/api";
+import { deleteRoom, getAdminRoomStatus } from "@/lib/api";
 import { formatName } from "@/lib/format";
 
 const SIZE_LABELS: Record<string, string> = {
@@ -33,6 +34,7 @@ function formatDate(date: string | Date): string {
 export default function RoomDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const { data: rooms, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "rooms"],
@@ -40,6 +42,42 @@ export default function RoomDetailScreen() {
   });
 
   const room = rooms?.find((r) => r.id === id);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteRoom(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      router.replace("/admin/rooms" as any);
+    },
+    onError: (err: Error) => {
+      Alert.alert("No se pudo eliminar", err.message);
+    },
+  });
+
+  const confirmDelete = () => {
+    if (!room) return;
+    const activeCount = room.currentReservations?.length ?? 0;
+    if (activeCount > 0) {
+      Alert.alert(
+        "Cuarto ocupado",
+        "Este cuarto tiene reservaciones activas. Cancélalas o márcalas como check-out antes de eliminar.",
+      );
+      return;
+    }
+    Alert.alert(
+      "Eliminar cuarto",
+      `¿Seguro que quieres eliminar "${room.name}"? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(),
+        },
+      ],
+    );
+  };
 
   if (isLoading) {
     return (
@@ -63,7 +101,7 @@ export default function RoomDetailScreen() {
     );
   }
 
-  const reservation = room.currentReservation;
+  const reservations = room.currentReservations ?? [];
 
   return (
     <ScrollView
@@ -145,76 +183,81 @@ export default function RoomDetailScreen() {
         </View>
       </View>
 
-      {/* Mascota hospedada actual */}
-      <Text style={styles.groupTitle}>Ocupación actual</Text>
-      {reservation ? (
-        <TouchableOpacity
-          style={styles.guestCard}
-          activeOpacity={0.85}
-          onPress={() =>
-            router.push(
-              `/admin/reservation/${reservation.reservationId}` as any
-            )
-          }
-          testID="room-guest-card"
-        >
-          <Image
-            source={
-              reservation.pet.photoUrl
-                ? { uri: reservation.pet.photoUrl }
-                : require("../../../assets/pet-placeholder.png")
+      {/* Mascotas hospedadas actualmente */}
+      <Text style={styles.groupTitle}>
+        Ocupación actual · {reservations.length}/{room.capacity}
+      </Text>
+      {reservations.length > 0 ? (
+        reservations.map((reservation) => (
+          <TouchableOpacity
+            key={reservation.reservationId}
+            style={styles.guestCard}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push(
+                `/admin/reservation/${reservation.reservationId}` as any
+              )
             }
-            style={styles.guestPhoto}
-            defaultSource={require("../../../assets/pet-placeholder.png")}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.guestName}>
-              {formatName(reservation.pet.name)}
-            </Text>
-            <Text style={styles.guestMeta}>
-              {reservation.pet.breed || "Sin raza especificada"} ·{" "}
-              {SIZE_LABELS[reservation.pet.size] ?? reservation.pet.size}
-            </Text>
-            <View style={styles.ownerRow}>
-              <Ionicons
-                name="person-outline"
-                size={13}
-                color={COLORS.textTertiary}
-              />
-              <Text style={styles.ownerText} numberOfLines={1}>
-                {formatName(reservation.owner.name)}
+            testID={`room-guest-card-${reservation.reservationId}`}
+          >
+            <Image
+              source={
+                reservation.pet.photoUrl
+                  ? { uri: reservation.pet.photoUrl }
+                  : require("../../../assets/pet-placeholder.png")
+              }
+              style={styles.guestPhoto}
+              defaultSource={require("../../../assets/pet-placeholder.png")}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guestName}>
+                {formatName(reservation.pet.name)}
               </Text>
-            </View>
-            <View style={styles.datesRow}>
-              <Ionicons
-                name="calendar-outline"
-                size={13}
-                color={COLORS.primary}
-              />
-              <Text style={styles.datesText}>
-                {formatDate(reservation.checkIn)} →{" "}
-                {formatDate(reservation.checkOut)}
+              <Text style={styles.guestMeta}>
+                {reservation.pet.breed || "Sin raza especificada"} ·{" "}
+                {SIZE_LABELS[reservation.pet.size] ?? reservation.pet.size}
               </Text>
-            </View>
-            {reservation.staff && (
-              <View style={styles.staffRow}>
+              <View style={styles.ownerRow}>
                 <Ionicons
-                  name="ribbon-outline"
+                  name="person-outline"
                   size={13}
                   color={COLORS.textTertiary}
                 />
-                <Text style={styles.staffText}>
-                  Asignado a {formatName(reservation.staff.name)}
+                <Text style={styles.ownerText} numberOfLines={1}>
+                  {formatName(reservation.owner.name)}
                 </Text>
               </View>
-            )}
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color={COLORS.textTertiary}
-          />
-        </TouchableOpacity>
+              <View style={styles.datesRow}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.datesText}>
+                  {formatDate(reservation.checkIn)} →{" "}
+                  {formatDate(reservation.checkOut)}
+                </Text>
+              </View>
+              {reservation.staff && (
+                <View style={styles.staffRow}>
+                  <Ionicons
+                    name="ribbon-outline"
+                    size={13}
+                    color={COLORS.textTertiary}
+                  />
+                  <Text style={styles.staffText}>
+                    Asignado a {formatName(reservation.staff.name)}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={COLORS.textTertiary}
+            />
+          </TouchableOpacity>
+        ))
       ) : (
         <View style={styles.emptyGuest}>
           <Ionicons name="bed-outline" size={28} color={COLORS.textDisabled} />
@@ -235,6 +278,27 @@ export default function RoomDetailScreen() {
       >
         <Ionicons name="create-outline" size={18} color={COLORS.white} />
         <Text style={styles.editBtnText}>Editar información</Text>
+      </TouchableOpacity>
+
+      {/* Botón eliminar */}
+      <TouchableOpacity
+        style={[
+          styles.deleteBtn,
+          deleteMutation.isPending && styles.deleteBtnDisabled,
+        ]}
+        onPress={confirmDelete}
+        activeOpacity={0.85}
+        disabled={deleteMutation.isPending}
+        testID="room-delete-btn"
+      >
+        {deleteMutation.isPending ? (
+          <ActivityIndicator color={COLORS.dangerText} />
+        ) : (
+          <>
+            <Ionicons name="trash-outline" size={18} color={COLORS.dangerText} />
+            <Text style={styles.deleteBtnText}>Eliminar cuarto</Text>
+          </>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -449,6 +513,26 @@ const styles = StyleSheet.create({
   },
   editBtnText: {
     color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.dangerText,
+  },
+  deleteBtnDisabled: {
+    opacity: 0.6,
+  },
+  deleteBtnText: {
+    color: COLORS.dangerText,
     fontSize: 15,
     fontWeight: "700",
   },

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,81 +10,234 @@ import {
   RefreshControl,
   Alert,
   Linking,
+  Modal,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  PanResponder,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
-import { getStaffBaths, completeStaffBath, type StaffBath } from "@/lib/api";
+import {
+  getStaffBaths,
+  completeStaffBath,
+  setBathExtrasPrice,
+  confirmExtrasPaidAtPickup,
+  type StaffBath,
+} from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { formatName, phoneToTelUri } from "@/lib/format";
+import { ReservationCard } from "@/components/ReservationCard";
+import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
-const SIZE_LABEL: Record<string, string> = {
-  XS: "XS",
-  S: "S",
-  M: "M",
-  L: "L",
-  XL: "XL",
-};
+type BathTypeFilter = "loose" | "stay";
 
-function todayYMD(): string {
-  const now = new Date();
-  // Hora Hermosillo (UTC-7)
-  const local = new Date(now.getTime() - 7 * 3600 * 1000);
+const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
+
+function localYMD(value: string | Date): string {
+  const d = new Date(value);
+  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
   return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
 }
 
-function addDaysYMD(ymd: string, delta: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d + delta));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+function todayYMD(): string {
+  return localYMD(new Date());
 }
 
-function formatTime(value: string | Date): string {
-  return new Date(value).toLocaleTimeString("es-MX", {
-    timeZone: "America/Hermosillo",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDate(ymd: string): string {
+function formatDayHeader(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
-  return date.toLocaleDateString("es-MX", {
+  const today = todayYMD();
+  const diffDays = Math.round(
+    (date.getTime() - new Date(`${today}T00:00:00.000Z`).getTime()) /
+      (24 * 3600 * 1000),
+  );
+  const label = date.toLocaleDateString("es-MX", {
     timeZone: "UTC",
-    weekday: "long",
+    weekday: "short",
     day: "numeric",
-    month: "long",
+    month: "short",
   });
+  if (diffDays === 0) return `Hoy · ${label}`;
+  if (diffDays === 1) return `Mañana · ${label}`;
+  return label;
 }
 
-function describeVariant(bath: StaffBath): string {
-  const variant = bath.addons[0]?.variant;
-  if (!variant) return "Baño";
-  const extras: string[] = [];
-  if (variant.deslanado) extras.push("Deslanado");
-  if (variant.corte) extras.push("Corte");
-  return extras.length > 0 ? `Baño + ${extras.join(" + ")}` : "Baño";
+function getBathAddon(bath: StaffBath) {
+  return bath.addons.find((a) => a.variant?.serviceType?.code === "BATH");
+}
+
+// Físicamente terminado (foto subida). No equivale a "concluido" — baños
+// sueltos quedan en este estado hasta que se liquide el saldo.
+function isBathPhysicallyDone(bath: StaffBath): boolean {
+  return !!getBathAddon(bath)?.completedAt;
+}
+
+// Concluido = totalmente cerrado (status CHECKED_OUT para sueltos, addon
+// completado para hospedajes — éstos no requieren liquidación aquí).
+function isBathConcluded(bath: StaffBath): boolean {
+  if (bath.reservationType === "BATH") return bath.status === "CHECKED_OUT";
+  return !!getBathAddon(bath)?.completedAt;
+}
+
+type Row =
+  | { type: "header"; title: string; count: number }
+  | { type: "item"; bath: StaffBath };
+
+// Agrupa pendientes por día (Hermosillo) y concluidos al final.
+function buildRows(baths: StaffBath[]): Row[] {
+  const pending = baths.filter((b) => !isBathConcluded(b));
+  const done = baths.filter((b) => isBathConcluded(b));
+  const out: Row[] = [];
+  const byDay = new Map<string, StaffBath[]>();
+  for (const b of pending) {
+    const ymd = b.appointmentAt ? localYMD(b.appointmentAt) : "—";
+    if (!byDay.has(ymd)) byDay.set(ymd, []);
+    byDay.get(ymd)!.push(b);
+  }
+  const sortedDays = Array.from(byDay.keys()).sort();
+  for (const ymd of sortedDays) {
+    const items = byDay.get(ymd)!;
+    out.push({
+      type: "header",
+      title: formatDayHeader(ymd),
+      count: items.length,
+    });
+    for (const b of items) out.push({ type: "item", bath: b });
+  }
+  if (done.length > 0) {
+    out.push({ type: "header", title: "Completados", count: done.length });
+    for (const b of done) out.push({ type: "item", bath: b });
+  }
+  return out;
 }
 
 export default function StaffBaths() {
   const queryClient = useQueryClient();
-  const [date, setDate] = useState<string>(() => todayYMD());
+  const router = useRouter();
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<BathTypeFilter>("loose");
+  // Ref espejo del filtro para que el PanResponder lea el valor actual sin
+  // recrearse en cada render (cierre estable).
+  const typeFilterRef = useRef<BathTypeFilter>(typeFilter);
+  typeFilterRef.current = typeFilter;
+
+  // Animated.Value que controla la posición del underline y del contenido
+  // (0..1). 0 = Suelto, 1 = Hospedaje. Lo actualiza el PanResponder en tiempo
+  // real para que tanto la línea como el contenido sigan al dedo.
+  const tabProgress = useRef(new Animated.Value(0)).current;
+
+  // Ancho del contenido (= screen width). Lo medimos via onLayout para precisión.
+  const [contentWidth, setContentWidth] = useState(
+    Dimensions.get("window").width,
+  );
+  const contentWidthRef = useRef(contentWidth);
+  contentWidthRef.current = contentWidth;
+
+  function snapToTab(target: BathTypeFilter) {
+    Animated.spring(tabProgress, {
+      toValue: target === "loose" ? 0 : 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 0,
+    }).start();
+  }
+
+  function selectTab(target: BathTypeFilter) {
+    if (target !== typeFilterRef.current) setTypeFilter(target);
+    snapToTab(target);
+  }
+
+  // PanResponder: detecta swipe horizontal en el contenido para cambiar de
+  // tab (Suelto ↔ Hospedaje). Mueve el underline pixel a pixel con el dedo,
+  // y al soltar hace snap al tab más cercano.
+  const swipePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => {
+        return Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5;
+      },
+      onPanResponderMove: (_e, g) => {
+        const w = contentWidthRef.current;
+        if (w <= 0) return;
+        const base = typeFilterRef.current === "loose" ? 0 : 1;
+        // Swipe izquierda (dx negativo) → progress aumenta hacia 1.
+        // Normalizamos por el ancho COMPLETO del contenido, no por tabWidth,
+        // para que el contenido se mueva 1:1 con el dedo.
+        const next = Math.max(0, Math.min(1, base + -g.dx / w));
+        tabProgress.setValue(next);
+      },
+      onPanResponderRelease: (_e, g) => {
+        const threshold = 50;
+        let target = typeFilterRef.current;
+        if (g.dx <= -threshold && typeFilterRef.current === "loose") {
+          target = "stay";
+        } else if (g.dx >= threshold && typeFilterRef.current === "stay") {
+          target = "loose";
+        }
+        selectTab(target);
+      },
+      onPanResponderTerminate: () => {
+        snapToTab(typeFilterRef.current);
+      },
+    }),
+  ).current;
+  // Modal de cotización abierto para un extra específico (deslanado/corte).
+  const [extrasAddon, setExtrasAddon] = useState<{
+    addonId: string;
+    petName: string;
+    kind: "deslanado" | "corte";
+    currentPrice: number | null;
+  } | null>(null);
+
+  const confirmPickupMutation = useMutation({
+    mutationFn: (vars: { addonId: string; method: "CASH" | "TRANSFER" }) =>
+      confirmExtrasPaidAtPickup(vars.addonId, { method: vars.method }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+    },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
 
   const { data, isLoading, isRefetching, refetch } = useQuery({
-    queryKey: ["staff-baths", date],
-    queryFn: () => getStaffBaths(date),
+    queryKey: ["staff-baths", "upcoming"],
+    queryFn: () => getStaffBaths(),
     refetchInterval: 60_000,
   });
 
-  const baths = data?.baths ?? [];
-  const { pending, done } = useMemo(() => {
+  const allBaths = data?.baths ?? [];
+
+  const counts = useMemo(() => {
     return {
-      pending: baths.filter((b) => b.status !== "CHECKED_OUT"),
-      done: baths.filter((b) => b.status === "CHECKED_OUT"),
+      loose: allBaths.filter((b) => b.reservationType === "BATH").length,
+      stay: allBaths.filter((b) => b.reservationType === "STAY").length,
     };
-  }, [baths]);
+  }, [allBaths]);
+
+  // Computamos baños por tipo. Renderizamos AMBAS listas a la vez para
+  // animar el swipe horizontal entre tabs.
+  const looseBaths = useMemo(
+    () => allBaths.filter((b) => b.reservationType === "BATH"),
+    [allBaths],
+  );
+  const stayBaths = useMemo(
+    () => allBaths.filter((b) => b.reservationType === "STAY"),
+    [allBaths],
+  );
+  const activeBaths = typeFilter === "loose" ? looseBaths : stayBaths;
+
+  const pending = useMemo(
+    () => activeBaths.filter((b) => !isBathConcluded(b)),
+    [activeBaths],
+  );
+  const revenue = useMemo(
+    () => activeBaths.reduce((sum, b) => sum + Number(b.totalAmount), 0),
+    [activeBaths],
+  );
 
   async function pickPhoto(source: "camera" | "library"): Promise<string | null> {
     if (source === "camera") {
@@ -142,213 +295,534 @@ export default function StaffBaths() {
   }
 
   const renderBath = ({ item }: { item: StaffBath }) => {
-    const isDone = item.status === "CHECKED_OUT";
-    const variantLine = describeVariant(item);
+    const physicallyDone = isBathPhysicallyDone(item);
+    const concluded = isBathConcluded(item);
     const ownerPhone = item.owner.phone;
+    const bathAddon = getBathAddon(item);
+    const hasDeslanado = bathAddon?.variant?.deslanado ?? false;
+    const hasCorte = bathAddon?.variant?.corte ?? false;
 
     return (
-      <View style={[styles.card, isDone && styles.cardDone]} testID={`bath-card-${item.id}`}>
-        <View style={styles.cardHeader}>
-          <View style={styles.timeBadge}>
-            <Ionicons name="time-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.timeText}>
-              {item.appointmentAt ? formatTime(item.appointmentAt) : "—"}
-            </Text>
-          </View>
-          {isDone && (
-            <View style={styles.doneBadge}>
-              <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
-              <Text style={styles.doneText}>Completado</Text>
-            </View>
-          )}
-        </View>
+      <View testID={`bath-card-${item.id}`} style={styles.bathBlock}>
+        <ReservationCard
+          petName={item.pet.name}
+          roomName={null}
+          status={item.status}
+          checkIn={item.checkIn}
+          checkOut={item.checkOut}
+          reservationType={item.reservationType}
+          appointmentAt={item.appointmentAt}
+          totalAmount={Number(item.totalAmount)}
+          ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
+          paymentType={item.paymentType}
+          hasBalance={false}
+          hasDeslanado={hasDeslanado}
+          hasCorte={hasCorte}
+          onPress={() =>
+            router.push(
+              item.reservationType === "BATH"
+                ? (`/staff/bath/${item.id}` as any)
+                : (`/staff/stay/${item.id}` as any),
+            )
+          }
+        />
 
-        <View style={styles.petRow}>
-          <View style={styles.avatar}>
-            <Ionicons name="paw" size={20} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.petName}>{formatName(item.pet.name)}</Text>
-            <Text style={styles.petMeta}>
-              {item.pet.weight ? `${item.pet.weight} kg · ` : ""}
-              {item.pet.breed || "Sin raza"} · Talla {SIZE_LABEL[item.pet.size]}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.row}>
-          <Ionicons name="water-outline" size={16} color={COLORS.textTertiary} />
-          <Text style={styles.rowText}>{variantLine}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Ionicons name="person-outline" size={16} color={COLORS.textTertiary} />
-          <Text style={styles.rowText}>
-            {formatName(item.owner.firstName)} {formatName(item.owner.lastName)}
-          </Text>
+        <View style={styles.actionsRow}>
           {ownerPhone && (
             <TouchableOpacity
               onPress={() => Linking.openURL(`tel:${phoneToTelUri(ownerPhone)}`)}
               style={styles.callBtn}
+              hitSlop={6}
+              testID={`bath-call-${item.id}`}
             >
-              <Ionicons name="call" size={14} color={COLORS.primary} />
-              <Text style={styles.callText}>Llamar</Text>
+              <Ionicons name="call" size={16} color={COLORS.primary} />
+              <Text style={styles.callBtnText}>Llamar</Text>
+            </TouchableOpacity>
+          )}
+          {!physicallyDone && (
+            <TouchableOpacity
+              style={[
+                styles.completeBtn,
+                completingId === item.id && styles.completeBtnDisabled,
+              ]}
+              onPress={() => handleComplete(item)}
+              disabled={completingId === item.id}
+              testID={`bath-complete-${item.id}`}
+            >
+              {completingId === item.id ? (
+                <ActivityIndicator color={COLORS.white} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={16} color={COLORS.white} />
+                  <Text style={styles.completeText}>Marcar listo</Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
         </View>
 
-        {item.pet.notes && (
-          <View style={styles.notes}>
-            <Ionicons
-              name="information-circle-outline"
-              size={14}
-              color={COLORS.warningText}
-            />
-            <Text style={styles.notesText}>{item.pet.notes}</Text>
-          </View>
-        )}
+        {/* Extras (deslanado/corte) — staff cotiza cada uno por separado.
+            Una vez completos, fluye por extraPaymentStatus. */}
+        {(() => {
+          if (!bathAddon) return null;
+          const hasExtras = bathAddon.variant.deslanado || bathAddon.variant.corte;
+          if (!hasExtras) return null;
 
-        {!isDone && (
-          <TouchableOpacity
-            style={[
-              styles.completeBtn,
-              completingId === item.id && styles.completeBtnDisabled,
-            ]}
-            onPress={() => handleComplete(item)}
-            disabled={completingId === item.id}
-            testID={`bath-complete-${item.id}`}
-          >
-            {completingId === item.id ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                <Text style={styles.completeText}>Marcar completado</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
+          if (bathAddon.extraPrice && bathAddon.extraPaymentStatus === "PAID") {
+            return (
+              <View style={styles.extrasStatusPaid}>
+                <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
+                <Text style={styles.extrasStatusPaidText}>
+                  Extras cobrados · ${Number(bathAddon.extraPrice).toLocaleString("es-MX")}
+                </Text>
+              </View>
+            );
+          }
+          if (bathAddon.extraPrice && bathAddon.extraPaymentStatus === "PAY_ON_PICKUP") {
+            return (
+              <TouchableOpacity
+                style={styles.extrasPickupBtn}
+                onPress={() => {
+                  Alert.alert(
+                    "Confirmar pago",
+                    `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(item.pet.name)}?`,
+                    [
+                      { text: "Cancelar", style: "cancel" },
+                      {
+                        text: "Efectivo",
+                        onPress: () =>
+                          confirmPickupMutation.mutate({
+                            addonId: bathAddon.id,
+                            method: "CASH",
+                          }),
+                      },
+                      {
+                        text: "Transferencia",
+                        onPress: () =>
+                          confirmPickupMutation.mutate({
+                            addonId: bathAddon.id,
+                            method: "TRANSFER",
+                          }),
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Ionicons name="cash-outline" size={14} color={COLORS.warningText} />
+                <Text style={styles.extrasPickupBtnText}>
+                  Cobrar ${Number(bathAddon.extraPrice).toLocaleString("es-MX")} al recoger
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+          if (bathAddon.extraPrice && bathAddon.extraPaymentStatus === "PENDING_PAYMENT") {
+            return (
+              <View style={styles.extrasPending}>
+                <Ionicons name="time-outline" size={14} color={COLORS.infoText} />
+                <Text style={styles.extrasPendingText}>
+                  Owner debe elegir cómo pagar ${Number(bathAddon.extraPrice).toLocaleString("es-MX")}
+                </Text>
+              </View>
+            );
+          }
+          // Modo cotización por extra (solo cuando el baño ya está físicamente listo).
+          if (!physicallyDone) return null;
+          const open = (kind: "deslanado" | "corte") =>
+            setExtrasAddon({
+              addonId: bathAddon.id,
+              petName: item.pet.name,
+              kind,
+              currentPrice:
+                kind === "deslanado"
+                  ? bathAddon.extraDeslanadoPrice
+                    ? Number(bathAddon.extraDeslanadoPrice)
+                    : null
+                  : bathAddon.extraCortePrice
+                    ? Number(bathAddon.extraCortePrice)
+                    : null,
+            });
+          return (
+            <View style={{ gap: 6 }}>
+              {bathAddon.variant.deslanado &&
+                (bathAddon.extraDeslanadoPrice ? (
+                  <View style={styles.extraSetChip}>
+                    <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
+                    <Text style={styles.extraSetChipLabel}>Deslanado</Text>
+                    <Text style={styles.extraSetChipPrice}>
+                      ${Number(bathAddon.extraDeslanadoPrice).toLocaleString("es-MX")}
+                    </Text>
+                    <TouchableOpacity onPress={() => open("deslanado")} hitSlop={8}>
+                      <Ionicons name="pencil" size={13} color={COLORS.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.extrasSetBtn}
+                    onPress={() => open("deslanado")}
+                  >
+                    <Ionicons name="pricetag-outline" size={14} color={COLORS.primary} />
+                    <Text style={styles.extrasSetBtnText}>Cobrar deslanado</Text>
+                  </TouchableOpacity>
+                ))}
+              {bathAddon.variant.corte &&
+                (bathAddon.extraCortePrice ? (
+                  <View style={styles.extraSetChip}>
+                    <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
+                    <Text style={styles.extraSetChipLabel}>Corte</Text>
+                    <Text style={styles.extraSetChipPrice}>
+                      ${Number(bathAddon.extraCortePrice).toLocaleString("es-MX")}
+                    </Text>
+                    <TouchableOpacity onPress={() => open("corte")} hitSlop={8}>
+                      <Ionicons name="pencil" size={13} color={COLORS.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.extrasSetBtn}
+                    onPress={() => open("corte")}
+                  >
+                    <Ionicons name="pricetag-outline" size={14} color={COLORS.primary} />
+                    <Text style={styles.extrasSetBtnText}>Cobrar corte</Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          );
+        })()}
       </View>
     );
   };
 
-  type Row =
-    | { type: "header"; title: string; count: number }
-    | { type: "item"; bath: StaffBath }
-    | { type: "empty"; msg: string };
-
-  const rows: Row[] = [];
-  const sections: { title: string; data: StaffBath[]; emptyMsg: string | null }[] = [
-    { title: "Pendientes", data: pending, emptyMsg: "No hay baños pendientes hoy" },
-    { title: "Completados", data: done, emptyMsg: null },
-  ];
-  for (const s of sections) {
-    if (s.data.length > 0) {
-      rows.push({ type: "header", title: s.title, count: s.data.length });
-      for (const b of s.data) rows.push({ type: "item", bath: b });
-    } else if (s.emptyMsg) {
-      rows.push({ type: "empty", msg: s.emptyMsg });
-    }
-  }
+  const rowsLoose = useMemo(() => buildRows(looseBaths), [looseBaths]);
+  const rowsStay = useMemo(() => buildRows(stayBaths), [stayBaths]);
 
   return (
     <View style={styles.container}>
-      {/* Date nav */}
-      <View style={styles.dateNav}>
-        <TouchableOpacity
-          onPress={() => setDate((d) => addDaysYMD(d, -1))}
-          style={styles.dateBtn}
-        >
-          <Ionicons name="chevron-back" size={20} color={COLORS.primary} />
-        </TouchableOpacity>
-        <View style={styles.dateDisplay}>
-          <Text style={styles.dateText}>{formatDate(date)}</Text>
-          {date !== todayYMD() && (
-            <TouchableOpacity onPress={() => setDate(todayYMD())}>
-              <Text style={styles.todayLink}>Ir a hoy</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity
-          onPress={() => setDate((d) => addDaysYMD(d, 1))}
-          style={styles.dateBtn}
-        >
-          <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
-        </TouchableOpacity>
+      <View style={styles.topBar}>
+        <Text style={styles.topTitle}>Próximos baños</Text>
+        <Text style={styles.topSub}>
+          {pending.length} pendiente{pending.length === 1 ? "" : "s"}
+          {" · "}
+          ${revenue.toLocaleString("es-MX")} en total
+        </Text>
       </View>
+
+      <FilterTabsUnderline
+        tabs={[
+          { key: "loose", label: "Suelto", count: counts.loose },
+          { key: "stay", label: "Hospedaje", count: counts.stay },
+        ]}
+        activeTab={typeFilter}
+        onSelect={(k) => selectTab(k as BathTypeFilter)}
+        justified
+        progress={tabProgress}
+      />
 
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} />
         </View>
       ) : (
-        <FlatList<Row>
-          data={rows}
-          keyExtractor={(item, i) =>
-            item.type === "item" ? item.bath.id : `${item.type}-${i}`
-          }
-          renderItem={({ item }) => {
-            if (item.type === "header") {
-              return (
-                <Text style={styles.sectionHeader}>
-                  {item.title} · {item.count}
-                </Text>
-              );
-            }
-            if (item.type === "empty") {
-              return (
-                <View style={styles.emptyCard}>
-                  <Ionicons name="water-outline" size={32} color={COLORS.border} />
-                  <Text style={styles.emptyText}>{item.msg}</Text>
-                </View>
-              );
-            }
-            return renderBath({ item: item.bath });
-          }}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyCard}>
-              <Ionicons name="water-outline" size={32} color={COLORS.border} />
-              <Text style={styles.emptyText}>Sin citas de baño este día</Text>
+        <View
+          style={styles.swipeWrap}
+          onLayout={(e) => setContentWidth(e.nativeEvent.layout.width)}
+          {...swipePan.panHandlers}
+        >
+          <Animated.View
+            style={[
+              styles.swipeTrack,
+              {
+                width: contentWidth * 2,
+                transform: [
+                  {
+                    translateX: tabProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -contentWidth],
+                      extrapolate: "clamp",
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={{ width: contentWidth }}>
+              <FlatList<Row>
+                data={rowsLoose}
+                keyExtractor={(item, i) =>
+                  item.type === "item" ? item.bath.id : `${item.type}-${i}`
+                }
+                renderItem={({ item }) => {
+                  if (item.type === "header") {
+                    return (
+                      <Text style={styles.sectionHeader}>
+                        {item.title} · {item.count}
+                      </Text>
+                    );
+                  }
+                  return renderBath({ item: item.bath });
+                }}
+                contentContainerStyle={styles.listContent}
+                refreshControl={
+                  <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyCard}>
+                    <Ionicons name="water-outline" size={32} color={COLORS.border} />
+                    <Text style={styles.emptyText}>No hay baños sueltos</Text>
+                  </View>
+                }
+              />
             </View>
-          }
+            <View style={{ width: contentWidth }}>
+              <FlatList<Row>
+                data={rowsStay}
+                keyExtractor={(item, i) =>
+                  item.type === "item" ? item.bath.id : `${item.type}-${i}`
+                }
+                renderItem={({ item }) => {
+                  if (item.type === "header") {
+                    return (
+                      <Text style={styles.sectionHeader}>
+                        {item.title} · {item.count}
+                      </Text>
+                    );
+                  }
+                  return renderBath({ item: item.bath });
+                }}
+                contentContainerStyle={styles.listContent}
+                refreshControl={
+                  <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyCard}>
+                    <Ionicons name="water-outline" size={32} color={COLORS.border} />
+                    <Text style={styles.emptyText}>No hay baños de hospedaje</Text>
+                  </View>
+                }
+              />
+            </View>
+          </Animated.View>
+        </View>
+      )}
+
+      {extrasAddon && (
+        <ExtrasPriceModal
+          addonId={extrasAddon.addonId}
+          petName={extrasAddon.petName}
+          kind={extrasAddon.kind}
+          currentPrice={extrasAddon.currentPrice}
+          onClose={() => setExtrasAddon(null)}
+          onSuccess={() => {
+            setExtrasAddon(null);
+            queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+          }}
         />
       )}
     </View>
   );
 }
 
+// ─── Modal para que staff defina precio del deslanado/corte ──
+
+function ExtrasPriceModal({
+  addonId,
+  petName,
+  kind,
+  currentPrice,
+  onClose,
+  onSuccess,
+}: {
+  addonId: string;
+  petName: string;
+  kind: "deslanado" | "corte";
+  currentPrice: number | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [priceStr, setPriceStr] = useState(
+    currentPrice ? String(currentPrice) : "",
+  );
+  const label = kind === "deslanado" ? "Deslanado" : "Corte";
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const price = Number(priceStr);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new Error("Ingresa un precio válido");
+      }
+      const payload =
+        kind === "deslanado"
+          ? { extraDeslanadoPrice: price }
+          : { extraCortePrice: price };
+      return setBathExtrasPrice(addonId, payload);
+    },
+    onSuccess: () => onSuccess(),
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <Pressable style={extrasStyles.overlay} onPress={onClose}>
+          <Pressable
+            style={extrasStyles.card}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={extrasStyles.header}>
+              <Text style={extrasStyles.title}>
+                Precio de {label.toLowerCase()}
+              </Text>
+              <TouchableOpacity onPress={onClose} hitSlop={12}>
+                <Ionicons name="close" size={22} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={extrasStyles.subtitle}>
+              {formatName(petName)} · el owner verá este monto desglosado en su reserva.
+            </Text>
+
+            <View style={extrasStyles.priceInputWrap}>
+              <Text style={extrasStyles.priceSymbol}>$</Text>
+              <TextInput
+                style={extrasStyles.priceInput}
+                value={priceStr}
+                onChangeText={setPriceStr}
+                placeholder="0"
+                placeholderTextColor={COLORS.textDisabled}
+                keyboardType="numeric"
+                autoFocus
+              />
+            </View>
+
+            <View style={extrasStyles.actions}>
+              <TouchableOpacity
+                style={extrasStyles.cancelBtn}
+                onPress={onClose}
+              >
+                <Text style={extrasStyles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  extrasStyles.saveBtn,
+                  mutation.isPending && { opacity: 0.7 },
+                ]}
+                onPress={() => mutation.mutate()}
+                disabled={mutation.isPending}
+              >
+                <Text style={extrasStyles.saveBtnText}>
+                  {mutation.isPending ? "Guardando..." : "Guardar precio"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const extrasStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    marginBottom: 16,
+  },
+  priceInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  priceSymbol: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: COLORS.textTertiary,
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: 26,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.bgSection,
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+  },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+  },
+  saveBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgPage },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  dateNav: {
-    flexDirection: "row",
-    alignItems: "center",
+  topBar: {
     backgroundColor: COLORS.white,
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bgSection,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  dateBtn: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  dateDisplay: { flex: 1, alignItems: "center" },
-  dateText: {
-    fontSize: 15,
-    fontWeight: "700",
+  topTitle: {
+    fontSize: 17,
+    fontWeight: "800",
     color: COLORS.textPrimary,
-    textTransform: "capitalize",
   },
-  todayLink: {
-    fontSize: 11,
-    color: COLORS.primary,
-    fontWeight: "600",
+  topSub: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
     marginTop: 2,
+    fontWeight: "600",
   },
+  swipeWrap: { flex: 1, overflow: "hidden" },
+  swipeTrack: { flex: 1, flexDirection: "row" },
   listContent: { padding: 16, paddingBottom: 40 },
   sectionHeader: {
     fontSize: 12,
@@ -356,109 +830,126 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 8,
     marginLeft: 4,
   },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+  bathBlock: {
+    marginBottom: 4,
   },
-  cardDone: {
-    opacity: 0.75,
-  },
-  cardHeader: {
+  actionsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 8,
   },
-  timeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  timeText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: COLORS.primary,
-  },
-  doneBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.successBg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  doneText: {
-    fontSize: 11,
-    color: COLORS.successText,
-    fontWeight: "700",
-  },
-  petRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  petName: { fontSize: 17, fontWeight: "700", color: COLORS.textPrimary },
-  petMeta: { fontSize: 13, color: COLORS.textTertiary, marginTop: 2 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  rowText: { fontSize: 13, color: COLORS.textSecondary, flex: 1 },
   callBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 999,
-  },
-  callText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
-  notes: {
-    flexDirection: "row",
+    justifyContent: "center",
     gap: 6,
-    backgroundColor: COLORS.notesBg,
-    padding: 8,
-    borderRadius: 8,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  notesText: { flex: 1, fontSize: 12, color: COLORS.notesText },
+  callBtnText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
   completeBtn: {
+    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
     backgroundColor: COLORS.primary,
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 4,
   },
   completeBtnDisabled: { opacity: 0.7 },
-  completeText: { color: COLORS.white, fontSize: 15, fontWeight: "700" },
+  completeText: { color: COLORS.white, fontSize: 14, fontWeight: "700" },
+  extrasSetBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    paddingVertical: 9,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  extrasSetBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  extrasStatusPaid: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: COLORS.successBg,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  extrasStatusPaidText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.successText,
+  },
+  extrasPickupBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.warningBg,
+    paddingVertical: 9,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  extrasPickupBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.warningText,
+  },
+  extraSetChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.successBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  extraSetChipLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.successText,
+  },
+  extraSetChipPrice: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.successText,
+  },
+  extrasPending: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: COLORS.infoBg,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  extrasPendingText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.infoText,
+  },
   emptyCard: {
     alignItems: "center",
     padding: 24,

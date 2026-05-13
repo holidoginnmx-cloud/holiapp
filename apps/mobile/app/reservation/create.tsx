@@ -120,9 +120,11 @@ export default function CreateReservationScreen() {
     const status = pet?.cartillaStatus as
       | "PENDING" | "APPROVED" | "REJECTED" | null | undefined;
 
-    // Detectar reserva con saldo pendiente (status=PENDING implica anticipo sin pago del balance)
+    // Detectar reserva con saldo pendiente (anticipo sin pago del balance)
     const pendingReservation = Array.isArray(pet?.reservations)
-      ? pet.reservations.find((r: any) => r.status === "PENDING")
+      ? pet.reservations.find(
+          (r: any) => r.paymentType === "DEPOSIT" && r.hasBalance === true,
+        )
       : null;
     const pendingBalance: PendingBalance | null = pendingReservation
       ? {
@@ -212,7 +214,27 @@ export default function CreateReservationScreen() {
     if (!alreadySelected && pet) {
       const { blockReason, warnings } = validatePet(pet, checkIn, checkOut);
       if (blockReason) {
-        Alert.alert("No se puede seleccionar", blockReason);
+        const cartillaStatus = (pet as any).cartillaStatus as
+          | "PENDING" | "APPROVED" | "REJECTED" | null | undefined;
+        // Si el bloqueo es por cartilla y la cartilla no está PENDING (en
+        // revisión), ofrecemos un atajo para subirla/actualizarla.
+        const offerCartillaUpload =
+          cartillaStatus !== "APPROVED" && cartillaStatus !== "PENDING";
+        if (offerCartillaUpload) {
+          Alert.alert("No se puede seleccionar", blockReason, [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Subir cartilla",
+              onPress: () =>
+                router.push({
+                  pathname: "/pet/create",
+                  params: { editId: pet.id, focus: "cartilla" },
+                } as any),
+            },
+          ]);
+        } else {
+          Alert.alert("No se puede seleccionar", blockReason);
+        }
         return;
       }
       if (warnings.length > 0) {
@@ -415,7 +437,7 @@ export default function CreateReservationScreen() {
       if (!intent.coveredByCredit && intent.clientSecret) {
         const { error: initError } = await initPaymentSheet({
           paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: "HolidogInn",
+          merchantDisplayName: "Holidog Inn",
           applePay: { merchantCountryCode: "MX" },
           appearance: {
             colors: {
@@ -516,7 +538,9 @@ export default function CreateReservationScreen() {
   // Avisos de saldo pendiente — una tarjeta por mascota con anticipo sin pagar
   const pendingBalanceAlerts = (pets ?? [])
     .map((p) => {
-      const pending = p.reservations?.find((r) => r.status === "PENDING");
+      const pending = p.reservations?.find(
+        (r) => r.paymentType === "DEPOSIT" && r.hasBalance === true,
+      );
       if (!pending) return null;
       return {
         petName: p.name,
@@ -635,37 +659,68 @@ export default function CreateReservationScreen() {
           </View>
         )}
 
-        {showCheckInPicker && (
-          <DateTimePicker
-            value={checkIn || tomorrow}
-            mode="date"
-            minimumDate={new Date()}
-            onChange={(_, date) => {
-              setShowCheckInPicker(Platform.OS === "ios");
-              if (date) {
-                setCheckIn(date);
-                if (checkOut && date >= checkOut) setCheckOut(null);
-              }
-            }}
-          />
-        )}
-        {showCheckOutPicker && (
-          <DateTimePicker
-            value={checkOut && checkOut >= minCheckOut ? checkOut : minCheckOut}
-            mode="date"
-            minimumDate={minCheckOut}
-            onChange={(_, date) => {
-              setShowCheckOutPicker(Platform.OS === "ios");
-              if (date) setCheckOut(date);
-            }}
-          />
+        {(showCheckInPicker || showCheckOutPicker) && (
+          <View style={styles.datePickersRow}>
+            {showCheckInPicker && (
+              <DateTimePicker
+                value={checkIn || tomorrow}
+                mode="date"
+                minimumDate={new Date()}
+                onChange={(_, date) => {
+                  setShowCheckInPicker(Platform.OS === "ios");
+                  if (date) {
+                    setCheckIn(date);
+                    if (checkOut && date >= checkOut) setCheckOut(null);
+                  }
+                }}
+              />
+            )}
+            {showCheckOutPicker && (
+              <DateTimePicker
+                value={checkOut && checkOut >= minCheckOut ? checkOut : minCheckOut}
+                mode="date"
+                minimumDate={minCheckOut}
+                onChange={(_, date) => {
+                  setShowCheckOutPicker(Platform.OS === "ios");
+                  if (date) setCheckOut(date);
+                }}
+              />
+            )}
+          </View>
         )}
       </View>
 
       {/* ── Mascotas (multi-select) ── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mascotas</Text>
-        <Text style={styles.hint}>Selecciona una o más mascotas</Text>
+      <View
+        style={[
+          styles.section,
+          selectedPetIds.length === 0 && pets?.length ? styles.petSectionHighlight : null,
+        ]}
+      >
+        <View style={styles.petTitleRow}>
+          <Text style={styles.sectionTitle}>
+            Mascotas{" "}
+            <Text style={styles.requiredAsterisk}>*</Text>
+          </Text>
+          {selectedPetIds.length > 0 && (
+            <View style={styles.petCountBadge}>
+              <Ionicons name="checkmark" size={12} color={COLORS.white} />
+              <Text style={styles.petCountBadgeText}>
+                {selectedPetIds.length} seleccionada{selectedPetIds.length === 1 ? "" : "s"}
+              </Text>
+            </View>
+          )}
+        </View>
+        {selectedPetIds.length === 0 && pets?.length ? (
+          <View style={styles.petCueBanner}>
+            <Ionicons name="paw" size={18} color={COLORS.primary} />
+            <Text style={styles.petCueBannerText}>
+              Toca la mascota que se hospedará para continuar
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.hint}>Selecciona una o más mascotas</Text>
+        )}
         {loadingPets ? (
           <ActivityIndicator color={COLORS.primary} />
         ) : !pets?.length ? (
@@ -827,56 +882,76 @@ export default function CreateReservationScreen() {
                   )}
                 </TouchableOpacity>
                 {state.enabled && (
-                  <View style={styles.bathOptionsRow}>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      style={[styles.bathChip, state.deslanado && styles.bathChipSelected]}
-                      onPress={() =>
-                        setBathByPet((prev) => ({
-                          ...prev,
-                          [pet.id]: { ...state, deslanado: !state.deslanado },
-                        }))
-                      }
-                    >
-                      <Ionicons
-                        name={state.deslanado ? "checkmark-circle" : "sparkles-outline"}
-                        size={15}
-                        color={state.deslanado ? COLORS.primary : COLORS.textTertiary}
-                      />
-                      <Text
-                        style={[
-                          styles.bathChipText,
-                          state.deslanado && styles.bathChipTextSelected,
-                        ]}
+                  <>
+                    <View style={styles.bathOptionsRow}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={[styles.bathChip, state.deslanado && styles.bathChipSelected]}
+                        onPress={() =>
+                          setBathByPet((prev) => ({
+                            ...prev,
+                            [pet.id]: { ...state, deslanado: !state.deslanado },
+                          }))
+                        }
                       >
-                        Deslanado
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      style={[styles.bathChip, state.corte && styles.bathChipSelected]}
-                      onPress={() =>
-                        setBathByPet((prev) => ({
-                          ...prev,
-                          [pet.id]: { ...state, corte: !state.corte },
-                        }))
-                      }
-                    >
-                      <Ionicons
-                        name={state.corte ? "checkmark-circle" : "cut-outline"}
-                        size={15}
-                        color={state.corte ? COLORS.primary : COLORS.textTertiary}
-                      />
-                      <Text
-                        style={[
-                          styles.bathChipText,
-                          state.corte && styles.bathChipTextSelected,
-                        ]}
+                        <Ionicons
+                          name={state.deslanado ? "checkmark-circle" : "sparkles-outline"}
+                          size={15}
+                          color={state.deslanado ? COLORS.primary : COLORS.textTertiary}
+                        />
+                        <Text
+                          style={[
+                            styles.bathChipText,
+                            state.deslanado && styles.bathChipTextSelected,
+                          ]}
+                        >
+                          Deslanado
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={[styles.bathChip, state.corte && styles.bathChipSelected]}
+                        onPress={() =>
+                          setBathByPet((prev) => ({
+                            ...prev,
+                            [pet.id]: { ...state, corte: !state.corte },
+                          }))
+                        }
                       >
-                        Corte
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                        <Ionicons
+                          name={state.corte ? "checkmark-circle" : "cut-outline"}
+                          size={15}
+                          color={state.corte ? COLORS.primary : COLORS.textTertiary}
+                        />
+                        <Text
+                          style={[
+                            styles.bathChipText,
+                            state.corte && styles.bathChipTextSelected,
+                          ]}
+                        >
+                          Corte
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {(state.deslanado || state.corte) && (
+                      <View style={styles.bathExtrasNote}>
+                        <Ionicons
+                          name="information-circle"
+                          size={14}
+                          color={COLORS.warningText}
+                        />
+                        <Text style={styles.bathExtrasNoteText}>
+                          El{" "}
+                          {state.deslanado && state.corte
+                            ? "deslanado y corte"
+                            : state.deslanado
+                              ? "deslanado"
+                              : "corte"}{" "}
+                          se cobra al traer a tu mascota. El precio depende del estado del pelaje.
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             );
@@ -1291,7 +1366,60 @@ const styles = StyleSheet.create({
   },
   dateText: { fontSize: 15, color: COLORS.textPrimary },
   nightsText: { fontSize: 14, fontWeight: "600", color: COLORS.primary, textAlign: "center" },
+  datePickersRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
   // Pets
+  petSectionHighlight: {
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    shadowOpacity: 0.12,
+  },
+  petTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  requiredAsterisk: {
+    color: COLORS.errorText,
+    fontWeight: "800",
+  },
+  petCountBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  petCountBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.white,
+  },
+  petCueBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: -4,
+  },
+  petCueBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
   petRow: { flexDirection: "row", gap: 12, paddingVertical: 4 },
   petChip: {
     alignItems: "center",
@@ -1533,6 +1661,22 @@ const styles = StyleSheet.create({
   bathChipTextSelected: {
     color: COLORS.primary,
     fontWeight: "700",
+  },
+  bathExtrasNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 6,
+    padding: 10,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 8,
+  },
+  bathExtrasNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.warningText,
+    fontWeight: "600",
+    lineHeight: 17,
   },
   creditHint: {
     flexDirection: "row",

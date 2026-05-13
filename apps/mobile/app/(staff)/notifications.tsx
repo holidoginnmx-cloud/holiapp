@@ -129,7 +129,7 @@ export default function StaffNotificationsScreen() {
               if (!item.isRead) markOneMutation.mutate(item.id);
               const reservationId = (item.data as { reservationId?: string } | null)?.reservationId;
               if (reservationId) {
-                router.push(`/(staff)/stay/${reservationId}` as any);
+                router.push(`/staff/stay/${reservationId}` as any);
               }
             }}
           />

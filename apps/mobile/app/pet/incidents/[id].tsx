@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Animated,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getPetAlerts, resolveAdminAlert, type PetAlert } from "@/lib/api";
 import { formatName } from "@/lib/format";
+import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
@@ -36,11 +40,13 @@ const SEVERITY: Record<
   INCIDENT: { icon: "alert-circle-outline", color: COLORS.errorText, bg: COLORS.errorBg },
 };
 
-const TABS: { key: "all" | "unresolved" | "resolved"; label: string }[] = [
-  { key: "all", label: "Todos" },
-  { key: "unresolved", label: "Sin resolver" },
-  { key: "resolved", label: "Resueltos" },
-];
+type TabKey = "all" | "unresolved" | "resolved";
+const TAB_KEYS: TabKey[] = ["all", "unresolved", "resolved"];
+const TAB_LABELS: Record<TabKey, string> = {
+  all: "Todos",
+  unresolved: "Sin resolver",
+  resolved: "Resueltos",
+};
 
 function formatDateTime(date: string | Date): string {
   return new Date(date).toLocaleDateString("es-MX", {
@@ -65,9 +71,36 @@ export default function PetIncidentsScreen() {
   const router = useRouter();
   const role = useAuthStore((s) => s.role);
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"all" | "unresolved" | "resolved">(
-    "all"
-  );
+  const { width: pageWidth } = useWindowDimensions();
+  const [activeTab, setActiveTab] = useState<TabKey>("all");
+  const pagerRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const tabProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+    const sid = scrollX.addListener(({ value }) => {
+      tabProgress.setValue(value / pageWidth);
+    });
+    return () => scrollX.removeListener(sid);
+  }, [pageWidth]);
+
+  // Sincroniza el pager cuando el usuario toca un chip.
+  useEffect(() => {
+    const idx = TAB_KEYS.indexOf(activeTab);
+    if (idx >= 0) {
+      pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: true });
+    }
+  }, [activeTab, pageWidth]);
+
+  const onPagerMomentumEnd = (e: {
+    nativeEvent: { contentOffset: { x: number } };
+  }) => {
+    if (pageWidth <= 0) return;
+    const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
+    const next = TAB_KEYS[idx];
+    if (next && next !== activeTab) setActiveTab(next);
+  };
 
   const {
     data: alerts,
@@ -103,13 +136,16 @@ export default function PetIncidentsScreen() {
   const all = alerts ?? [];
   const unresolved = all.filter((a) => !a.isResolved);
   const resolved = all.filter((a) => a.isResolved);
-
-  const filtered =
-    activeTab === "unresolved"
-      ? unresolved
-      : activeTab === "resolved"
-      ? resolved
-      : all;
+  const listsByTab: Record<TabKey, PetAlert[]> = {
+    all,
+    unresolved,
+    resolved,
+  };
+  const countByTab: Record<TabKey, number> = {
+    all: all.length,
+    unresolved: unresolved.length,
+    resolved: resolved.length,
+  };
 
   if (isLoading) {
     return (
@@ -132,45 +168,11 @@ export default function PetIncidentsScreen() {
 
   const reservationHref = (resId: string) => {
     if (role === "ADMIN") return `/admin/reservation/${resId}`;
-    if (role === "STAFF") return `/(staff)/stay/${resId}`;
+    if (role === "STAFF") return `/staff/stay/${resId}`;
     return `/reservation/detail/${resId}`;
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Tabs con counts */}
-      <View style={styles.tabsRow}>
-        {TABS.map((t) => {
-          const count =
-            t.key === "all"
-              ? all.length
-              : t.key === "unresolved"
-              ? unresolved.length
-              : resolved.length;
-          const active = activeTab === t.key;
-          return (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tab, active && styles.tabActive]}
-              onPress={() => setActiveTab(t.key)}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                {t.label} {count > 0 ? `(${count})` : ""}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-        }
-        renderItem={({ item }) => {
+  const renderItem = ({ item }: { item: PetAlert }) => {
           const sev = SEVERITY[item.type] ?? SEVERITY.INCIDENT;
           return (
             <TouchableOpacity
@@ -287,36 +289,86 @@ export default function PetIncidentsScreen() {
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name={
-                  activeTab === "resolved"
-                    ? "archive-outline"
-                    : "shield-checkmark-outline"
-                }
-                size={36}
-                color={COLORS.primary}
-              />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {activeTab === "resolved"
-                ? "Aún no hay incidentes resueltos"
-                : activeTab === "unresolved"
-                ? "Sin incidentes pendientes"
-                : "Esta mascota no tiene incidentes registrados"}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === "all"
-                ? "Cuando el equipo HDI registre alguna alerta durante una estancia, aparecerá aquí."
-                : ""}
-            </Text>
-          </View>
-        }
+    );
+  };
+
+  const renderEmpty = (tab: TabKey) => (
+    <View style={styles.empty}>
+      <View style={styles.emptyIcon}>
+        <Ionicons
+          name={
+            tab === "resolved"
+              ? "archive-outline"
+              : "shield-checkmark-outline"
+          }
+          size={36}
+          color={COLORS.primary}
+        />
+      </View>
+      <Text style={styles.emptyTitle}>
+        {tab === "resolved"
+          ? "Aún no hay incidentes resueltos"
+          : tab === "unresolved"
+          ? "Sin incidentes pendientes"
+          : "Esta mascota no tiene incidentes registrados"}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {tab === "all"
+          ? "Cuando el equipo HDI registre alguna alerta durante una estancia, aparecerá aquí."
+          : ""}
+      </Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <FilterTabsUnderline
+        tabs={TAB_KEYS.map((k) => ({
+          key: k,
+          label: TAB_LABELS[k],
+          count: countByTab[k],
+        }))}
+        activeTab={activeTab}
+        onSelect={(k) => setActiveTab(k as TabKey)}
+        justified
+        progress={tabProgress}
       />
+
+      <Animated.ScrollView
+        ref={pagerRef as any}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onPagerMomentumEnd}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: false },
+        )}
+        scrollEventThrottle={16}
+        contentOffset={{
+          x: Math.max(0, TAB_KEYS.indexOf(activeTab)) * pageWidth,
+          y: 0,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {TAB_KEYS.map((k) => (
+          <View key={k} style={{ width: pageWidth }}>
+            <FlatList
+              data={listsByTab[k]}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.list}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefetching}
+                  onRefresh={refetch}
+                />
+              }
+              renderItem={renderItem}
+              ListEmptyComponent={renderEmpty(k)}
+            />
+          </View>
+        ))}
+      </Animated.ScrollView>
     </View>
   );
 }

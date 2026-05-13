@@ -74,6 +74,7 @@ export default function CreateBathScreen() {
   );
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
+  const [paymentType, setPaymentType] = useState<"DEPOSIT" | "FULL">("DEPOSIT");
   const [date, setDate] = useState<Date>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -135,12 +136,13 @@ export default function CreateBathScreen() {
         deslanado,
         corte,
         appointmentAt: selectedSlotIso,
+        paymentType,
       });
 
       if (!intent.coveredByCredit && intent.clientSecret) {
         const { error: initError } = await initPaymentSheet({
           paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: "HolidogInn",
+          merchantDisplayName: "Holidog Inn",
           applePay: { merchantCountryCode: "MX" },
         });
         if (initError) {
@@ -279,10 +281,32 @@ export default function CreateBathScreen() {
               </View>
             </TouchableOpacity>
 
+            {(deslanado || corte) && (
+              <View style={styles.extrasNote}>
+                <Ionicons
+                  name="information-circle"
+                  size={16}
+                  color={COLORS.warningText}
+                />
+                <Text style={styles.extrasNoteText}>
+                  El costo de{" "}
+                  {deslanado && corte
+                    ? "deslanado y corte"
+                    : deslanado
+                      ? "deslanado"
+                      : "corte"}{" "}
+                  depende del estado del pelaje y se cobra cuando traes a tu
+                  mascota.
+                </Text>
+              </View>
+            )}
+
             {variant && (() => {
               const price = Number(variant.price);
-              const deposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
-              const remaining = price - deposit;
+              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+              const hasBalance = price > baseDeposit;
+              const payNow = paymentType === "FULL" ? price : baseDeposit;
+              const payLater = price - payNow;
               return (
                 <View style={styles.priceCard}>
                   <View style={styles.priceRow}>
@@ -291,17 +315,83 @@ export default function CreateBathScreen() {
                       ${price.toLocaleString("es-MX")}
                     </Text>
                   </View>
+
+                  {hasBalance && (
+                    <View style={styles.payChoiceRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.payChoice,
+                          paymentType === "DEPOSIT" && styles.payChoiceActive,
+                        ]}
+                        onPress={() => setPaymentType("DEPOSIT")}
+                        testID="bath-pay-deposit"
+                      >
+                        <Ionicons
+                          name={
+                            paymentType === "DEPOSIT"
+                              ? "radio-button-on"
+                              : "radio-button-off"
+                          }
+                          size={18}
+                          color={
+                            paymentType === "DEPOSIT"
+                              ? COLORS.primary
+                              : COLORS.textTertiary
+                          }
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.payChoiceTitle}>Pagar anticipo</Text>
+                          <Text style={styles.payChoiceSub}>
+                            ${baseDeposit.toLocaleString("es-MX")} ahora · $
+                            {(price - baseDeposit).toLocaleString("es-MX")} al
+                            entregar
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.payChoice,
+                          paymentType === "FULL" && styles.payChoiceActive,
+                        ]}
+                        onPress={() => setPaymentType("FULL")}
+                        testID="bath-pay-full"
+                      >
+                        <Ionicons
+                          name={
+                            paymentType === "FULL"
+                              ? "radio-button-on"
+                              : "radio-button-off"
+                          }
+                          size={18}
+                          color={
+                            paymentType === "FULL"
+                              ? COLORS.primary
+                              : COLORS.textTertiary
+                          }
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.payChoiceTitle}>Pagar total</Text>
+                          <Text style={styles.payChoiceSub}>
+                            ${price.toLocaleString("es-MX")} ahora · sin saldo
+                            pendiente
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  <View style={styles.priceDivider} />
                   <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>Anticipo (pagas ahora)</Text>
+                    <Text style={styles.priceLabel}>Pagas ahora</Text>
                     <Text style={styles.priceValue}>
-                      ${deposit.toLocaleString("es-MX")}
+                      ${payNow.toLocaleString("es-MX")}
                     </Text>
                   </View>
-                  {remaining > 0 && (
+                  {payLater > 0 && (
                     <View style={styles.priceRow}>
                       <Text style={styles.priceLabel}>Saldo al entregar</Text>
                       <Text style={styles.priceLineValue}>
-                        ${remaining.toLocaleString("es-MX")}
+                        ${payLater.toLocaleString("es-MX")}
                       </Text>
                     </View>
                   )}
@@ -410,12 +500,16 @@ export default function CreateBathScreen() {
               <ActivityIndicator color={COLORS.white} />
             ) : (() => {
               const price = Number(variant.price);
-              const deposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
+              const payNow = paymentType === "FULL" ? price : baseDeposit;
+              const isFull = paymentType === "FULL" || price <= baseDeposit;
               return (
                 <>
                   <Ionicons name="card" size={20} color={COLORS.white} />
                   <Text style={styles.payButtonText}>
-                    Pagar anticipo ${deposit.toLocaleString("es-MX")} y confirmar
+                    {isFull
+                      ? `Pagar $${payNow.toLocaleString("es-MX")} y confirmar`
+                      : `Pagar anticipo $${payNow.toLocaleString("es-MX")} y confirmar`}
                   </Text>
                 </>
               );
@@ -488,6 +582,22 @@ const styles = StyleSheet.create({
   },
   toggleTitle: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
   toggleSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
+  extrasNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  extrasNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.warningText,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
   priceCard: {
     backgroundColor: COLORS.white,
     padding: 16,
@@ -503,6 +613,40 @@ const styles = StyleSheet.create({
   priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontWeight: "600" },
   priceValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
   priceLineValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  payChoiceRow: {
+    gap: 8,
+    marginTop: 12,
+  },
+  payChoice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.white,
+  },
+  payChoiceActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  payChoiceTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  payChoiceSub: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 2,
+  },
+  priceDivider: {
+    height: 1,
+    backgroundColor: COLORS.bgSection,
+    marginVertical: 12,
+  },
   toleranceNote: {
     flexDirection: "row",
     alignItems: "center",

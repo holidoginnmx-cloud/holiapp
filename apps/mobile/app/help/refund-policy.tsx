@@ -45,7 +45,7 @@ export default function RefundPolicyScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.lead}>
-        En HolidogInn buscamos darte máxima flexibilidad sin comprometer la
+        En Holidog Inn buscamos darte máxima flexibilidad sin comprometer la
         calidad del servicio. Aquí encuentras todo sobre cambios, cancelaciones
         y reembolsos.
       </Text>

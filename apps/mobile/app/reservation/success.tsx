@@ -33,7 +33,7 @@ export default function ReservationSuccess() {
     hotel: {
       title: "¡Reservación confirmada!",
       subtitle:
-        "Tu mascota ya tiene lugar en HolidogInn. Recibirás seguimiento constante durante su estancia.",
+        "Tu mascota ya tiene lugar en Holidog Inn. Recibirás seguimiento constante durante su estancia.",
       primaryLabel: "Ver reservación",
       primaryIcon: "document-text-outline" as const,
     },

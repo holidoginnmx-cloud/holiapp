@@ -48,6 +48,7 @@ export default function StaffLayout() {
   return (
     <Tabs
       screenOptions={{
+        animation: "shift",
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {
@@ -121,7 +122,6 @@ export default function StaffLayout() {
         }}
       />
       {/* Hide detail screens from tab bar — headers handled by nested Stack layouts */}
-      <Tabs.Screen name="stay" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="checklist" options={{ href: null, headerShown: false }} />
     </Tabs>
   );

@@ -104,7 +104,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       const activeReservation = await prisma.reservation.findFirst({
         where: {
           ownerId: userId,
-          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+          status: { in: ["CONFIRMED", "CHECKED_IN"] },
           checkOut: { gte: now },
         },
       });

@@ -88,7 +88,10 @@ export async function processRefund(
     } else {
       const updatedUser = await tx.user.update({
         where: { id: reservation.ownerId },
-        data: { creditBalance: { increment: refundAmount } },
+        data: {
+          creditBalance: { increment: refundAmount },
+          lastCreditEntryAt: new Date(),
+        },
       });
       await tx.creditLedger.create({
         data: {

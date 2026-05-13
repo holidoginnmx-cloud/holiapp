@@ -14,11 +14,8 @@ export default function AdminCheckinsToday() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations", "checkins-today"],
     queryFn: async () => {
-      const [confirmed, pending] = await Promise.all([
-        getReservations({ status: "CONFIRMED" }),
-        getReservations({ status: "PENDING" }),
-      ]);
-      return [...confirmed, ...pending].filter(
+      const confirmed = await getReservations({ status: "CONFIRMED" });
+      return confirmed.filter(
         (r) => r.checkIn && utcDayKey(r.checkIn) === today
       );
     },
