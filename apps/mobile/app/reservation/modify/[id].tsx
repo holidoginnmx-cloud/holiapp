@@ -197,26 +197,34 @@ export default function ModifyReservationScreen() {
 
         {showCheckInPicker && newCheckIn && (
           <DateTimePicker
-            value={newCheckIn}
+            value={newCheckIn >= today ? newCheckIn : today}
             mode="date"
             minimumDate={today}
+            themeVariant="light"
+            textColor={COLORS.textPrimary}
             onChange={(_, date) => {
               setShowCheckInPicker(Platform.OS === "ios");
               if (date) setNewCheckIn(date);
             }}
           />
         )}
-        {showCheckOutPicker && newCheckOut && (
-          <DateTimePicker
-            value={newCheckOut}
-            mode="date"
-            minimumDate={isCheckedIn ? today : newCheckIn ?? today}
-            onChange={(_, date) => {
-              setShowCheckOutPicker(Platform.OS === "ios");
-              if (date) setNewCheckOut(date);
-            }}
-          />
-        )}
+        {showCheckOutPicker && newCheckOut && (() => {
+          const coMin = isCheckedIn ? today : newCheckIn ?? today;
+          const coValue = newCheckOut >= coMin ? newCheckOut : coMin;
+          return (
+            <DateTimePicker
+              value={coValue}
+              mode="date"
+              minimumDate={coMin}
+              themeVariant="light"
+              textColor={COLORS.textPrimary}
+              onChange={(_, date) => {
+                setShowCheckOutPicker(Platform.OS === "ios");
+                if (date) setNewCheckOut(date);
+              }}
+            />
+          );
+        })()}
       </View>
 
       {previewError && (

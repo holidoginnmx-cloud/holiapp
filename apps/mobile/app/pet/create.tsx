@@ -371,17 +371,25 @@ export default function CreatePetScreen() {
                 : "Seleccionar fecha"}
             </Text>
           </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={birthDate || new Date()}
-              mode="date"
-              maximumDate={new Date()}
-              onChange={(_, date) => {
-                setShowDatePicker(Platform.OS === "ios");
-                if (date) setBirthDate(date);
-              }}
-            />
-          )}
+          {showDatePicker && (() => {
+            const birthMax = new Date();
+            birthMax.setHours(23, 59, 59, 999);
+            const birthValue =
+              birthDate && birthDate <= birthMax ? birthDate : birthMax;
+            return (
+              <DateTimePicker
+                value={birthValue}
+                mode="date"
+                maximumDate={birthMax}
+                themeVariant="light"
+                textColor={COLORS.textPrimary}
+                onChange={(_, date) => {
+                  setShowDatePicker(Platform.OS === "ios");
+                  if (date) setBirthDate(date);
+                }}
+              />
+            );
+          })()}
         </View>
 
         <View style={styles.inputGroup}>

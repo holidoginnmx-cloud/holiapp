@@ -527,13 +527,28 @@ export default function CreateReservationScreen() {
     }
   };
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
 
-  const minCheckOut = checkIn
-    ? new Date(checkIn.getTime() + 86_400_000)
-    : tomorrow;
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const minCheckOut = useMemo(() => {
+    if (!checkIn) return tomorrow;
+    const d = new Date(checkIn.getTime() + 86_400_000);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [checkIn, tomorrow]);
+
+  const checkInValue =
+    checkIn && checkIn >= today ? checkIn : tomorrow;
 
   // Avisos de saldo pendiente — una tarjeta por mascota con anticipo sin pagar
   const pendingBalanceAlerts = (pets ?? [])
@@ -663,9 +678,11 @@ export default function CreateReservationScreen() {
           <View style={styles.datePickersRow}>
             {showCheckInPicker && (
               <DateTimePicker
-                value={checkIn || tomorrow}
+                value={checkInValue}
                 mode="date"
-                minimumDate={new Date()}
+                minimumDate={today}
+                themeVariant="light"
+                textColor={COLORS.textPrimary}
                 onChange={(_, date) => {
                   setShowCheckInPicker(Platform.OS === "ios");
                   if (date) {
@@ -680,6 +697,8 @@ export default function CreateReservationScreen() {
                 value={checkOut && checkOut >= minCheckOut ? checkOut : minCheckOut}
                 mode="date"
                 minimumDate={minCheckOut}
+                themeVariant="light"
+                textColor={COLORS.textPrimary}
                 onChange={(_, date) => {
                   setShowCheckOutPicker(Platform.OS === "ios");
                   if (date) setCheckOut(date);

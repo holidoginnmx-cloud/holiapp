@@ -35,6 +35,18 @@ import {
 } from "@/lib/api";
 import { formatName, formatPhoneInput } from "@/lib/format";
 
+function endOfToday(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function clampDate(value: Date, min?: Date, max?: Date): Date {
+  if (max && value > max) return max;
+  if (min && value < min) return min;
+  return value;
+}
+
 const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "PENDING", label: "Pendientes" },
   { key: "APPROVED", label: "Aprobadas" },
@@ -866,14 +878,16 @@ export default function AdminCartillas() {
                         </Text>
                       </TouchableOpacity>
 
-                      {editAppliedOpen && (
+                      {editAppliedOpen && (() => {
+                        const max = endOfToday();
+                        return (
                         <DateTimePicker
-                          value={editRow.appliedAt}
+                          value={clampDate(editRow.appliedAt, undefined, max)}
                           mode="date"
                           display={Platform.OS === "ios" ? "spinner" : "default"}
                           themeVariant="light"
                           textColor={COLORS.textPrimary}
-                          maximumDate={new Date()}
+                          maximumDate={max}
                           onChange={(_, d) => {
                             setEditAppliedOpen(Platform.OS === "ios");
                             if (d && editRow) {
@@ -890,7 +904,8 @@ export default function AdminCartillas() {
                             }
                           }}
                         />
-                      )}
+                        );
+                      })()}
                       {Platform.OS === "ios" && editAppliedOpen && (
                         <TouchableOpacity
                           style={styles.pickerDone}
@@ -902,7 +917,7 @@ export default function AdminCartillas() {
 
                       {editExpiresOpen && (
                         <DateTimePicker
-                          value={editRow.expiresAt}
+                          value={clampDate(editRow.expiresAt, editRow.appliedAt)}
                           mode="date"
                           display={Platform.OS === "ios" ? "spinner" : "default"}
                           themeVariant="light"
@@ -1053,20 +1068,25 @@ export default function AdminCartillas() {
                           </TouchableOpacity>
 
                           {/* DatePicker aplicada */}
-                          {appliedPickerForRow === idx && (
-                            <DateTimePicker
-                              value={row.appliedAt}
-                              mode="date"
-                              display={Platform.OS === "ios" ? "spinner" : "default"}
-                              maximumDate={new Date()}
-                              onChange={(_, d) => {
-                                setAppliedPickerForRow(
-                                  Platform.OS === "ios" ? idx : null
-                                );
-                                if (d) updateRowApplied(idx, d);
-                              }}
-                            />
-                          )}
+                          {appliedPickerForRow === idx && (() => {
+                            const max = endOfToday();
+                            return (
+                              <DateTimePicker
+                                value={clampDate(row.appliedAt, undefined, max)}
+                                mode="date"
+                                display={Platform.OS === "ios" ? "spinner" : "default"}
+                                themeVariant="light"
+                                textColor={COLORS.textPrimary}
+                                maximumDate={max}
+                                onChange={(_, d) => {
+                                  setAppliedPickerForRow(
+                                    Platform.OS === "ios" ? idx : null
+                                  );
+                                  if (d) updateRowApplied(idx, d);
+                                }}
+                              />
+                            );
+                          })()}
                           {Platform.OS === "ios" && appliedPickerForRow === idx && (
                             <TouchableOpacity
                               style={styles.pickerDone}
@@ -1079,7 +1099,7 @@ export default function AdminCartillas() {
                           {/* DatePicker vence */}
                           {expiresPickerForRow === idx && (
                             <DateTimePicker
-                              value={row.expiresAt}
+                              value={clampDate(row.expiresAt, row.appliedAt)}
                               mode="date"
                               display={Platform.OS === "ios" ? "spinner" : "default"}
                               themeVariant="light"
@@ -1220,20 +1240,25 @@ export default function AdminCartillas() {
                           multiline
                         />
 
-                        {dewormingAppliedPickerForRow === idx && (
-                          <DateTimePicker
-                            value={row.appliedAt}
-                            mode="date"
-                            display={Platform.OS === "ios" ? "spinner" : "default"}
-                            maximumDate={new Date()}
-                            onChange={(_, d) => {
-                              setDewormingAppliedPickerForRow(
-                                Platform.OS === "ios" ? idx : null
-                              );
-                              if (d) updateDewormingApplied(idx, d);
-                            }}
-                          />
-                        )}
+                        {dewormingAppliedPickerForRow === idx && (() => {
+                          const max = endOfToday();
+                          return (
+                            <DateTimePicker
+                              value={clampDate(row.appliedAt, undefined, max)}
+                              mode="date"
+                              display={Platform.OS === "ios" ? "spinner" : "default"}
+                              themeVariant="light"
+                              textColor={COLORS.textPrimary}
+                              maximumDate={max}
+                              onChange={(_, d) => {
+                                setDewormingAppliedPickerForRow(
+                                  Platform.OS === "ios" ? idx : null
+                                );
+                                if (d) updateDewormingApplied(idx, d);
+                              }}
+                            />
+                          );
+                        })()}
                         {Platform.OS === "ios" &&
                           dewormingAppliedPickerForRow === idx && (
                             <TouchableOpacity
@@ -1246,7 +1271,7 @@ export default function AdminCartillas() {
 
                         {dewormingExpiresPickerForRow === idx && (
                           <DateTimePicker
-                            value={row.expiresAt}
+                            value={clampDate(row.expiresAt, row.appliedAt)}
                             mode="date"
                             display={Platform.OS === "ios" ? "spinner" : "default"}
                             themeVariant="light"

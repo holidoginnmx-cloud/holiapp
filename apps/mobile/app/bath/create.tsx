@@ -78,6 +78,7 @@ export default function CreateBathScreen() {
   const [date, setDate] = useState<Date>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
     return d;
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -182,10 +183,18 @@ export default function CreateBathScreen() {
     }
   }
 
-  const maxDate = new Date();
-  maxDate.setDate(maxDate.getDate() + 30);
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + 1);
+  const { minDate, maxDate } = useMemo(() => {
+    const min = new Date();
+    min.setDate(min.getDate() + 1);
+    min.setHours(0, 0, 0, 0);
+    const max = new Date();
+    max.setDate(max.getDate() + 30);
+    max.setHours(23, 59, 59, 999);
+    return { minDate: min, maxDate: max };
+  }, []);
+
+  const pickerValue =
+    date < minDate ? minDate : date > maxDate ? maxDate : date;
 
   return (
     <KeyboardAvoidingView
@@ -427,11 +436,13 @@ export default function CreateBathScreen() {
             </TouchableOpacity>
             {showDatePicker && (
               <DateTimePicker
-                value={date}
+                value={pickerValue}
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 minimumDate={minDate}
                 maximumDate={maxDate}
+                themeVariant="light"
+                textColor={COLORS.textPrimary}
                 onChange={(_, d) => {
                   setShowDatePicker(Platform.OS === "ios");
                   if (d) {
