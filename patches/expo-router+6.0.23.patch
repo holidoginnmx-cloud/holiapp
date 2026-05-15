@@ -1,0 +1,12 @@
+diff --git a/node_modules/expo-router/build/head/url.js b/node_modules/expo-router/build/head/url.js
+index bdeeae9..d657ba3 100644
+--- a/node_modules/expo-router/build/head/url.js
++++ b/node_modules/expo-router/build/head/url.js
+@@ -72,7 +72,6 @@ function throwOrAlert(msg) {
+     // @ts-ignore: process is defined
+     process.env.NODE_ENV === 'production') {
+         console.error(msg);
+-        alert(msg);
+     }
+     else {
+         throw new Error(msg);
