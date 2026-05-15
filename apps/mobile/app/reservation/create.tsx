@@ -29,7 +29,7 @@ import {
   type MedicationByPet,
 } from "@/lib/api";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
 import { formatName } from "@/lib/format";
 
@@ -62,6 +62,17 @@ type BathState = { enabled: boolean; deslanado: boolean; corte: boolean };
 type MedicationState = { enabled: boolean; notes: string };
 
 export default function CreateReservationScreen() {
+  return (
+    <StripeProvider
+      publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
+      merchantIdentifier="merchant.com.holidoginnmx.app"
+    >
+      <CreateReservationScreenContent />
+    </StripeProvider>
+  );
+}
+
+function CreateReservationScreenContent() {
   const router = useRouter();
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);

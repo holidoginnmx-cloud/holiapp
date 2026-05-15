@@ -8,7 +8,6 @@ import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
-import { StripeProvider } from "@stripe/stripe-react-native";
 import { registerForPushNotifications } from "@/lib/pushNotifications";
 import { getMyLegalStatus } from "@/lib/api";
 
@@ -107,10 +106,6 @@ export default function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <StripeProvider
-        publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
-        merchantIdentifier="merchant.com.holidoginnmx.app"
-      >
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
         <StatusBar style="dark" />
@@ -140,7 +135,6 @@ export default function RootLayout() {
         </Stack>
         <DevRoleSwitcher />
       </QueryClientProvider>
-      </StripeProvider>
     </ClerkProvider>
   );
 }

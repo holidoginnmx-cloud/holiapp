@@ -14,7 +14,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import {
   getReservationById,
   getReservations,
@@ -89,6 +89,17 @@ function formatWeekday(date: string | Date): string {
 }
 
 export default function ReservationDetailScreen() {
+  return (
+    <StripeProvider
+      publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
+      merchantIdentifier="merchant.com.holidoginnmx.app"
+    >
+      <ReservationDetailScreenContent />
+    </StripeProvider>
+  );
+}
+
+function ReservationDetailScreenContent() {
   const { id, action } = useLocalSearchParams<{ id: string; action?: string; from?: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();

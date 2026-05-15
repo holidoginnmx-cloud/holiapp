@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { useAuthStore } from "@/store/authStore";
 import {
   getPetsByOwner,
@@ -63,6 +63,17 @@ function formatDateLong(d: Date): string {
 }
 
 export default function CreateBathScreen() {
+  return (
+    <StripeProvider
+      publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!}
+      merchantIdentifier="merchant.com.holidoginnmx.app"
+    >
+      <CreateBathScreenContent />
+    </StripeProvider>
+  );
+}
+
+function CreateBathScreenContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ petId?: string }>();
