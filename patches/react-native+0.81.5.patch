@@ -1,0 +1,16 @@
+diff --git a/node_modules/react-native/scripts/react-native-xcode.sh b/node_modules/react-native/scripts/react-native-xcode.sh
+index 1dcdf55..9b38616 100755
+--- a/node_modules/react-native/scripts/react-native-xcode.sh
++++ b/node_modules/react-native/scripts/react-native-xcode.sh
+@@ -163,7 +163,10 @@ fi
+   "${EXTRA_ARGS[@]}" \
+   $EXTRA_PACKAGER_ARGS
+ 
+-if [[ $USE_HERMES == false ]]; then
++if [[ $USE_HERMES == false || true ]]; then
++  # HolidogInn workaround: hermesc 0.81.5 crashes with "Operand must dominates the Instruction"
++  # bug on multiple functions in our bundle. Ship raw JS, Hermes engine interprets at runtime.
++  # See project_hermesc_alert_bug.md for details. Remove once Hermes/Expo SDK ships a fix.
+   cp "$BUNDLE_FILE" "$DEST/"
+   BUNDLE_FILE="$DEST/$BUNDLE_NAME.jsbundle"
+ else
