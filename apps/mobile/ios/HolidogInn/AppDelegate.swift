@@ -13,6 +13,20 @@ public class AppDelegate: ExpoAppDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    // DEBUG build 16: capture uncaught ObjC exceptions before the process dies
+    // so we can see which TurboModule is throwing on iOS 26. Logs to NSLog,
+    // visible via Settings → Privacy → Analytics → Analytics Data on device.
+    NSSetUncaughtExceptionHandler { exception in
+      NSLog("[HDI-CRASH] Uncaught exception: %@", exception.name.rawValue)
+      NSLog("[HDI-CRASH] Reason: %@", exception.reason ?? "(no reason)")
+      NSLog("[HDI-CRASH] UserInfo: %@", String(describing: exception.userInfo))
+      NSLog("[HDI-CRASH] Call stack:")
+      for symbol in exception.callStackSymbols {
+        NSLog("[HDI-CRASH]   %@", symbol)
+      }
+      NSLog("[HDI-CRASH] Return addresses: %@", String(describing: exception.callStackReturnAddresses))
+    }
+
     let delegate = ReactNativeDelegate()
     let factory = ExpoReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
