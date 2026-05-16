@@ -8,7 +8,7 @@ import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
-import { registerForPushNotifications } from "@/lib/pushNotifications";
+// import { registerForPushNotifications } from "@/lib/pushNotifications"; // DEBUG build 15: aislado para diagnosticar crash al abrir
 import { getMyLegalStatus } from "@/lib/api";
 
 const TOUR_SEEN_KEY = "welcome-tour-seen";
@@ -48,10 +48,12 @@ function ClerkTokenSync() {
   useEffect(() => {
     if (isSignedIn && userId) {
       syncUser();
-      // Registrar push token con el backend (best-effort, no bloquea)
-      registerForPushNotifications().catch((err) => {
-        console.error("[push] Error registrando token:", err);
-      });
+      // DEBUG build 15: registerForPushNotifications() aislado para diagnosticar
+      // crash al abrir. El módulo pushNotifications.ts llama Notifications.setNotificationHandler
+      // al import-time, lo que toca un TurboModule de expo-notifications.
+      // registerForPushNotifications().catch((err) => {
+      //   console.error("[push] Error registrando token:", err);
+      // });
     }
   }, [isSignedIn, userId]);
 
