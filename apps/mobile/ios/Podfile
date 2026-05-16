@@ -68,5 +68,16 @@ target 'HolidogInn' do
         end
       end
     end
+
+    # Inject MinimumOSVersion into hermes.framework Info.plist.
+    # The prebuilt + from-source hermes 0.81.5 ships without this key, which
+    # App Store Connect now rejects (codes 90360 + 90530). Match the app's
+    # iOS deployment target (15.1) declared elsewhere in this project.
+    hermes_plists = Dir.glob(File.join(__dir__, 'Pods/hermes-engine/**/hermes.framework/Info.plist'))
+    hermes_plists.each do |plist_path|
+      system "/usr/libexec/PlistBuddy -c \"Delete :MinimumOSVersion\" '#{plist_path}'" rescue nil
+      system "/usr/libexec/PlistBuddy -c \"Add :MinimumOSVersion string 15.1\" '#{plist_path}'"
+      puts "[HolidogInn] Patched MinimumOSVersion=15.1 into #{plist_path.sub(__dir__ + '/', '')}"
+    end
   end
 end
