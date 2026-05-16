@@ -69,15 +69,52 @@ target 'HolidogInn' do
       end
     end
 
-    # Inject MinimumOSVersion into hermes.framework Info.plist.
-    # The prebuilt + from-source hermes 0.81.5 ships without this key, which
-    # App Store Connect now rejects (codes 90360 + 90530). Match the app's
-    # iOS deployment target (15.1) declared elsewhere in this project.
+    # Inject MinimumOSVersion into hermes.framework Info.plist (source state).
+    # Hermes 0.81.5 ships hermes.framework without MinimumOSVersion, which Apple
+    # rejects on upload (codes 90360 + 90530). Patch the source destroot AND
+    # add a post-embed script phase below for the version that ends up in the IPA.
     hermes_plists = Dir.glob(File.join(__dir__, 'Pods/hermes-engine/**/hermes.framework/Info.plist'))
     hermes_plists.each do |plist_path|
       system "/usr/libexec/PlistBuddy -c \"Delete :MinimumOSVersion\" '#{plist_path}'" rescue nil
       system "/usr/libexec/PlistBuddy -c \"Add :MinimumOSVersion string 15.1\" '#{plist_path}'"
       puts "[HolidogInn] Patched MinimumOSVersion=15.1 into #{plist_path.sub(__dir__ + '/', '')}"
+    end
+
+    # Add a build phase to the main app target that patches the embedded
+    # hermes.framework Info.plist *after* Xcode embeds it but *before* code
+    # signing. The CMake build invoked during Xcode archive regenerates the
+    # framework with a broken/empty MinimumOSVersion, so we must fix it
+    # in the final embedded copy too.
+    app_target = installer.aggregate_targets.find { |t| t.name == 'Pods-HolidogInn' }
+    if app_target && app_target.user_project
+      app_proj = app_target.user_project
+      main_target = app_proj.targets.find { |t| t.name == 'HolidogInn' }
+      if main_target
+        phase_name = '[HolidogInn] Patch hermes.framework MinimumOSVersion'
+        existing = main_target.build_phases.find { |p| p.respond_to?(:name) && p.name == phase_name }
+        existing.remove_from_project if existing
+        phase = main_target.new_shell_script_build_phase(phase_name)
+        phase.shell_script = <<~SHELL
+          set -e
+          FW_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Frameworks/hermes.framework/Info.plist"
+          if [ -f "$FW_PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :MinimumOSVersion" "$FW_PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string ${IPHONEOS_DEPLOYMENT_TARGET}" "$FW_PLIST"
+            echo "[HolidogInn] Patched MinimumOSVersion=${IPHONEOS_DEPLOYMENT_TARGET} in embedded hermes.framework"
+          else
+            echo "[HolidogInn] hermes.framework Info.plist not found at $FW_PLIST — skipping"
+          fi
+        SHELL
+        phase.run_only_for_deployment_postprocessing = '0'
+        # Move the phase to run after [CP] Embed Pods Frameworks but before code signing.
+        embed_idx = main_target.build_phases.index { |p| p.respond_to?(:name) && p.name && p.name.include?('Embed Pods Frameworks') }
+        if embed_idx
+          # Move our new phase right after the embed phase.
+          main_target.build_phases.move_from(main_target.build_phases.size - 1, embed_idx + 1)
+        end
+        app_proj.save
+        puts "[HolidogInn] Added '#{phase_name}' build phase to HolidogInn target"
+      end
     end
   end
 end
