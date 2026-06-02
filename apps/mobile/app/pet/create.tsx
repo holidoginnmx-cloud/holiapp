@@ -535,6 +535,7 @@ export default function CreatePetScreen() {
                   }
                 }}
                 hitSlop={8}
+                disabled={isEditing && cartillaMutation.isPending}
                 testID={`cartilla-remove-${idx}`}
               >
                 <Ionicons name="close" size={14} color={COLORS.white} />
@@ -562,6 +563,7 @@ export default function CreatePetScreen() {
             }
             label={cartillaPhotos.length === 0 ? "Cartilla" : "Agregar más"}
             allowsEditing={false}
+            disabled={isEditing && cartillaMutation.isPending}
           />
         </ScrollView>
 

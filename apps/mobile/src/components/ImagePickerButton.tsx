@@ -28,6 +28,8 @@ type Props = {
   label?: string;
   /** Allow the user to crop/edit before upload. Default true (square crop). Set false for documents like cartillas. */
   allowsEditing?: boolean;
+  /** Disable from outside (e.g. while a parent mutation is in-flight). */
+  disabled?: boolean;
 };
 
 export function ImagePickerButton({
@@ -38,6 +40,7 @@ export function ImagePickerButton({
   icon = "camera-outline",
   label = "Agregar foto",
   allowsEditing = true,
+  disabled = false,
 }: Props) {
   const [uploading, setUploading] = useState(false);
 
@@ -95,7 +98,7 @@ export function ImagePickerButton({
     <TouchableOpacity
       style={[styles.container, { width: size, height: size }]}
       onPress={handlePress}
-      disabled={uploading}
+      disabled={uploading || disabled}
       activeOpacity={0.7}
     >
       {uploading ? (

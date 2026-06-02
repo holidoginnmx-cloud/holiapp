@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -30,25 +31,64 @@ export default function RenewCartillaScreen() {
     enabled: !!id,
   });
 
-  const cartillaStatus = (pet as any)?.cartillaStatus as
-    | "PENDING"
-    | "APPROVED"
-    | "REJECTED"
-    | "EXPIRED"
-    | null
-    | undefined;
+  const [cartillaPhotos, setCartillaPhotos] = useState<string[]>([]);
+  const [cartillaStatus, setCartillaStatus] = useState<
+    "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | null
+  >(null);
+  const [cartillaRejectionReason, setCartillaRejectionReason] = useState<
+    string | null
+  >(null);
 
+  useEffect(() => {
+    if (!pet) return;
+    const existingPhotos = (pet as any).cartillaPhotos as string[] | undefined;
+    const legacyUrl = (pet as any).cartillaUrl as string | null;
+    setCartillaPhotos(
+      existingPhotos && existingPhotos.length > 0
+        ? existingPhotos
+        : legacyUrl
+          ? [legacyUrl]
+          : [],
+    );
+    setCartillaStatus((pet as any).cartillaStatus ?? null);
+    setCartillaRejectionReason((pet as any).cartillaRejectionReason ?? null);
+  }, [pet]);
+
+  // La cartilla se persiste apenas se sube/elimina — no espera a un botón
+  // Guardar. Optimistic update con revert si falla la API.
   const cartillaMutation = useMutation({
-    mutationFn: (url: string) => updatePet(id!, { cartillaUrl: url }),
+    mutationFn: (photos: string[]) =>
+      updatePet(id!, {
+        cartillaPhotos: photos,
+        cartillaUrl: photos[0] ?? null,
+      }),
+    onMutate: (photos) => {
+      const previous = {
+        photos: cartillaPhotos,
+        status: cartillaStatus,
+        reason: cartillaRejectionReason,
+      };
+      setCartillaPhotos(photos);
+      const existing = (pet as any)?.cartillaPhotos as string[] | undefined;
+      const changed = JSON.stringify(photos) !== JSON.stringify(existing ?? []);
+      if (changed) {
+        setCartillaStatus(photos.length > 0 ? "PENDING" : null);
+        setCartillaRejectionReason(null);
+      }
+      return previous;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pet", id] });
       qc.invalidateQueries({ queryKey: ["pets"] });
-      Alert.alert(
-        "Cartilla enviada",
-        "Tu cartilla está en revisión. Te avisaremos cuando el equipo HDI la apruebe."
-      );
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (_e: Error, _photos, ctx) => {
+      if (ctx) {
+        setCartillaPhotos(ctx.photos);
+        setCartillaStatus(ctx.status);
+        setCartillaRejectionReason(ctx.reason);
+      }
+      Alert.alert("Error", "No pudimos enviar la cartilla. Inténtalo de nuevo.");
+    },
   });
 
   const { expiredVaccines, expiringVaccines } = useMemo(() => {
@@ -148,7 +188,7 @@ export default function RenewCartillaScreen() {
             <Text style={styles.stepNumberText}>2</Text>
           </View>
           <Text style={styles.stepText}>
-            Toma una foto clara de la nueva cartilla y súbela aquí abajo.
+            Toma fotos claras de la nueva cartilla (anverso, reverso, páginas internas) y súbelas aquí abajo.
           </Text>
         </View>
         <View style={styles.step}>
@@ -163,20 +203,53 @@ export default function RenewCartillaScreen() {
 
       {/* Upload */}
       <Text style={styles.uploadLabel}>Cartilla actualizada</Text>
-      <View style={{ alignItems: "center", marginTop: 8 }}>
+      <Text style={styles.cartillaHelp}>
+        Puedes subir varias fotos (una por una). Toca "Agregar más" para añadir páginas adicionales.
+      </Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.cartillaPhotosRow}
+      >
+        {cartillaPhotos.map((url, idx) => (
+          <View key={`${url}-${idx}`} style={styles.cartillaThumbWrap}>
+            <Image source={{ uri: url }} style={styles.cartillaThumb} />
+            <TouchableOpacity
+              style={styles.cartillaThumbRemove}
+              onPress={() => {
+                const next = cartillaPhotos.filter((_, i) => i !== idx);
+                cartillaMutation.mutate(next);
+              }}
+              hitSlop={8}
+              disabled={cartillaMutation.isPending}
+              testID={`cartilla-remove-${idx}`}
+            >
+              <Ionicons name="close" size={14} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+        ))}
         <ImagePickerButton
-          imageUrl={(pet as any).cartillaUrl ?? null}
-          onImageUploaded={(url) => cartillaMutation.mutate(url)}
+          imageUrl={null}
+          onImageUploaded={(url) => {
+            const next = [...cartillaPhotos, url];
+            cartillaMutation.mutate(next);
+          }}
           folder="cartillas"
-          size={180}
-          icon="shield-checkmark-outline"
-          label="Cartilla"
+          size={110}
+          icon={
+            cartillaPhotos.length === 0
+              ? "shield-checkmark-outline"
+              : "add-circle-outline"
+          }
+          label={cartillaPhotos.length === 0 ? "Cartilla" : "Agregar más"}
           allowsEditing={false}
+          disabled={cartillaMutation.isPending}
         />
-      </View>
+      </ScrollView>
 
       {/* Status badge */}
-      {cartillaStatus === "PENDING" && (
+      {cartillaPhotos.length > 0 && cartillaStatus === "PENDING" && (
         <View style={[styles.statusBadge, { backgroundColor: COLORS.warningBg }]}>
           <Ionicons name="time-outline" size={18} color={COLORS.warningText} />
           <Text style={[styles.statusText, { color: COLORS.warningText }]}>
@@ -184,7 +257,7 @@ export default function RenewCartillaScreen() {
           </Text>
         </View>
       )}
-      {cartillaStatus === "APPROVED" && (
+      {cartillaPhotos.length > 0 && cartillaStatus === "APPROVED" && (
         <View style={[styles.statusBadge, { backgroundColor: COLORS.successBg }]}>
           <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.successText} />
           <Text style={[styles.statusText, { color: COLORS.successText }]}>
@@ -192,15 +265,15 @@ export default function RenewCartillaScreen() {
           </Text>
         </View>
       )}
-      {cartillaStatus === "REJECTED" && (
+      {cartillaPhotos.length > 0 && cartillaStatus === "REJECTED" && (
         <View style={[styles.statusBadge, { backgroundColor: COLORS.errorBg }]}>
           <Ionicons name="close-circle-outline" size={18} color={COLORS.errorText} />
           <Text style={[styles.statusText, { color: COLORS.errorText }]}>
-            Cartilla rechazada{(pet as any).cartillaRejectionReason ? `: ${(pet as any).cartillaRejectionReason}` : "."} Sube una nueva.
+            Cartilla rechazada{cartillaRejectionReason ? `: ${cartillaRejectionReason}` : "."} Sube una nueva.
           </Text>
         </View>
       )}
-      {cartillaStatus === "EXPIRED" && (
+      {cartillaPhotos.length > 0 && cartillaStatus === "EXPIRED" && (
         <View style={[styles.statusBadge, { backgroundColor: COLORS.errorBg }]}>
           <Ionicons name="alarm-outline" size={18} color={COLORS.errorText} />
           <Text style={[styles.statusText, { color: COLORS.errorText }]}>
@@ -270,6 +343,42 @@ const styles = StyleSheet.create({
   stepNumberText: { color: COLORS.white, fontSize: 12, fontWeight: "800" },
   stepText: { flex: 1, fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
   uploadLabel: { fontSize: 14, fontWeight: "700", color: COLORS.textSecondary },
+  cartillaHelp: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  cartillaPhotosRow: {
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+  },
+  cartillaThumbWrap: {
+    position: "relative",
+    width: 110,
+    height: 110,
+  },
+  cartillaThumb: {
+    width: 110,
+    height: 110,
+    borderRadius: 14,
+    backgroundColor: COLORS.bgSection,
+  },
+  cartillaThumbRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.errorText,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",

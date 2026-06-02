@@ -211,26 +211,28 @@ export default async function petsRoutes(fastify: FastifyInstance) {
 
       const incomingPhotos = data.cartillaPhotos as string[] | undefined;
       const incomingUrl = data.cartillaUrl as string | null | undefined;
-      const photosChanged =
-        incomingPhotos !== undefined &&
-        JSON.stringify(incomingPhotos) !== JSON.stringify(pet.cartillaPhotos);
-      const urlChanged =
-        incomingUrl !== undefined && incomingUrl !== pet.cartillaUrl;
 
-      if (photosChanged || urlChanged) {
-        // Normalizamos: si llegó cartillaUrl pero no cartillaPhotos, lo promovemos
-        // al array (y viceversa para mantener compatibilidad con clients viejos).
-        if (incomingPhotos === undefined && incomingUrl !== undefined) {
-          data.cartillaPhotos = incomingUrl ? [incomingUrl] : [];
-        }
-        if (incomingUrl === undefined && incomingPhotos !== undefined) {
+      // `cartillaPhotos` (array) es la fuente de verdad. Si llega, manda.
+      // Si solo llega `cartillaUrl` (cliente viejo), NO sobreescribimos
+      // `cartillaPhotos`: solo actualizamos el legacy url. Esto evita perder
+      // fotos previas cuando un cliente que aún no soporta el array envía PATCH.
+      if (incomingPhotos !== undefined) {
+        const photosChanged =
+          JSON.stringify(incomingPhotos) !== JSON.stringify(pet.cartillaPhotos);
+        if (incomingUrl === undefined) {
           data.cartillaUrl = incomingPhotos[0] ?? null;
         }
-        const finalPhotos = (data.cartillaPhotos as string[] | undefined) ?? [];
-        data.cartillaStatus = finalPhotos.length > 0 ? "PENDING" : null;
-        data.cartillaReviewedAt = null;
-        data.cartillaReviewedById = null;
-        data.cartillaRejectionReason = null;
+        if (photosChanged) {
+          data.cartillaStatus = incomingPhotos.length > 0 ? "PENDING" : null;
+          data.cartillaReviewedAt = null;
+          data.cartillaReviewedById = null;
+          data.cartillaRejectionReason = null;
+        }
+      } else if (incomingUrl !== undefined && incomingUrl !== pet.cartillaUrl) {
+        request.log.warn(
+          { petId: pet.id, incomingUrl },
+          "Legacy PATCH with cartillaUrl only — preserving existing cartillaPhotos"
+        );
       }
 
       const updated = await prisma.pet.update({
