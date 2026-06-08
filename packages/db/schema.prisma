@@ -285,6 +285,7 @@ model Pet {
   behaviorTags BehaviorTag[]
   staffAlerts  StaffAlert[]
 
+  @@index([ownerId, isActive])  // GET /pets
   @@map("pets")
 }
 
@@ -312,6 +313,8 @@ model Vaccine {
   reminded7dAt  DateTime?
   reminded0dAt  DateTime?
 
+  @@index([petId])      // includes de vacunas por mascota (FK)
+  @@index([expiresAt])  // ventana de vencimiento (admin + recordatorios)
   @@map("vaccines")
 }
 
@@ -433,6 +436,12 @@ model Reservation {
   addons     ReservationAddon[]
   changeRequests ReservationChangeRequest[]
 
+  // Índices para evitar full table scans en las consultas más frecuentes.
+  @@index([ownerId, status])                       // GET /reservations (inicio, tab reservas)
+  @@index([status, checkOut])                      // autoCheckoutOverdueStays + checkouts del día
+  @@index([status, checkIn])                       // check-ins del día (admin)
+  @@index([paymentType, status, depositDeadline])  // cancelOverdueDeposits
+  @@index([roomId, status])                        // countOverlappingForRoom / ocupación
   @@map("reservations")
 }
 
@@ -458,6 +467,7 @@ model StayUpdate {
   staffId String?
   staff   User?   @relation("StaffUpdates", fields: [staffId], references: [id])
 
+  @@index([reservationId, createdAt])  // última actualización por reserva (orderBy desc take 1)
   @@map("stay_updates")
 }
 
@@ -601,6 +611,8 @@ model Payment {
 
   addons  ReservationAddon[]
 
+  @@index([reservationId])   // includes anidados en cada reserva (FK no indexada)
+  @@index([status, paidAt])  // agregados de ingresos/refunds (admin)
   @@map("payments")
 }
 

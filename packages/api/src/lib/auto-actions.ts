@@ -164,3 +164,35 @@ export async function autoCheckoutOverdueStays(
     });
   }
 }
+
+// Auto-cancela reservaciones con anticipo (DEPOSIT) vencido.
+// Las reservas DEPOSIT viven en CONFIRMED con saldo pendiente. Si el deadline
+// (check-in) ya pasó y el saldo nunca se completó, la reserva queda colgada — la
+// cancelamos. Se cancela en lote con un solo updateMany.
+export async function cancelOverdueDeposits(prisma: PrismaClient): Promise<void> {
+  const overdue = await prisma.reservation.findMany({
+    where: {
+      paymentType: "DEPOSIT",
+      depositDeadline: { lt: new Date() },
+      status: "CONFIRMED",
+    },
+    include: {
+      payments: {
+        where: { status: { in: ["PAID", "PARTIAL"] } },
+        select: { amount: true },
+      },
+    },
+  });
+  const toCancel = overdue
+    .filter((res) => {
+      const totalPaid = res.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      return totalPaid < Number(res.totalAmount);
+    })
+    .map((res) => res.id);
+  if (toCancel.length > 0) {
+    await prisma.reservation.updateMany({
+      where: { id: { in: toCancel } },
+      data: { status: "CANCELLED" },
+    });
+  }
+}

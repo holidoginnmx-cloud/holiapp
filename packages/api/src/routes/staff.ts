@@ -12,7 +12,7 @@ import {
   CreateStayUpdateSchema,
 } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
-import { autoCheckoutOverdueStays } from "../lib/auto-actions";
+import { triggerMaintenance } from "../lib/maintenance";
 import { maybeConcludeStandaloneBath } from "./baths";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
@@ -66,7 +66,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   fastify.get<{
     Querystring: { status?: string; all?: string };
   }>("/staff/stays", { preHandler }, async (request) => {
-    await autoCheckoutOverdueStays(prisma);
+    triggerMaintenance(prisma);
     // `?all=true` → cualquier staff ve todas las estancias (no solo las
     // asignadas a él) y todos los status excepto CANCELLED. Usado por el
     // calendario de staff para ver agenda completa de hotel.

@@ -136,7 +136,7 @@ function ReservationDetailScreenContent() {
   const { data: checklists } = useQuery({
     queryKey: ["reservation-checklists", id],
     queryFn: () => getOwnerChecklists(id!),
-    enabled: !!reservation,
+    enabled: !!id, // solo necesita id → arranca en paralelo (sin esperar a reservation)
     refetchInterval: 30_000,
   });
 
@@ -153,7 +153,7 @@ function ReservationDetailScreenContent() {
   const { data: changeRequests } = useQuery({
     queryKey: ["reservation", id, "change-requests"],
     queryFn: () => listChangeRequests(id!),
-    enabled: !!reservation,
+    enabled: !!id, // solo necesita id → arranca en paralelo (sin esperar a reservation)
   });
   const pendingChange: ChangeRequest | undefined = changeRequests?.find(
     (c) => c.status === "PENDING"

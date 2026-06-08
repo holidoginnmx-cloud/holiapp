@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { ReviewCartillaSchema, CartillaStatusEnum, UpdateVaccineSchema } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
-import { autoCheckoutOverdueStays, notifyExpiringVaccines } from "../lib/auto-actions";
+import { triggerMaintenance } from "../lib/maintenance";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -14,8 +14,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     "/admin/stats",
     { preHandler: [authMiddleware, adminMiddleware] },
     async () => {
-      await autoCheckoutOverdueStays(prisma);
-      await notifyExpiringVaccines(prisma);
+      triggerMaintenance(prisma);
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(todayStart.getTime() + 86_400_000);

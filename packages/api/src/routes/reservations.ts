@@ -17,7 +17,8 @@ import {
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { processRefund } from "../lib/refund";
-import { autoCheckoutOverdueStays, notifyExpiringVaccines } from "../lib/auto-actions";
+import { notifyExpiringVaccines } from "../lib/auto-actions";
+import { triggerMaintenance } from "../lib/maintenance";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
 
@@ -29,39 +30,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
 
-  // Auto-cancel overdue deposit reservations.
-  // DEPOSIT reservations live en CONFIRMED con saldo pendiente. Si el
-  // deadline (check-in) ya pasó y el saldo nunca se completó, la reserva
-  // queda colgada — la cancelamos.
-  async function cancelOverdueDeposits() {
-    const overdue = await prisma.reservation.findMany({
-      where: {
-        paymentType: "DEPOSIT",
-        depositDeadline: { lt: new Date() },
-        status: "CONFIRMED",
-      },
-      include: { payments: true },
-    });
-    for (const res of overdue) {
-      const totalPaid = res.payments
-        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
-        .reduce((sum, p) => sum + Number(p.amount), 0);
-      if (totalPaid < Number(res.totalAmount)) {
-        await prisma.reservation.update({
-          where: { id: res.id },
-          data: { status: "CANCELLED" },
-        });
-      }
-    }
-  }
-
   // GET /reservations — listar (acepta query ?ownerId= y ?status=)
   // OWNER siempre queda filtrado a sus propias reservas; STAFF/ADMIN pueden filtrar libremente.
   fastify.get<{
     Querystring: { ownerId?: string; status?: ReservationStatus };
   }>("/reservations", { preHandler: [authMiddleware] }, async (request) => {
-    await cancelOverdueDeposits();
-    await autoCheckoutOverdueStays(prisma);
+    // Mantenimiento (auto-checkout, anticipos vencidos, recordatorios) en
+    // segundo plano y con throttle — ya no bloquea esta lectura.
+    triggerMaintenance(prisma);
     const { ownerId: queryOwnerId, status } = request.query;
     const isStaffOrAdmin =
       request.userRole === "ADMIN" || request.userRole === "STAFF";

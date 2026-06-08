@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
+import compress from "@fastify/compress";
 import rateLimit from "@fastify/rate-limit";
 import rawBody from "fastify-raw-body";
 import { clerkPlugin } from "@clerk/fastify";
@@ -58,6 +59,10 @@ app.register(helmet, {
   // No servimos HTML, API pura — CSP por defecto de helmet está OK
   contentSecurityPolicy: false,
 });
+
+// Compresión de respuestas (gzip/brotli). Reduce el tamaño de los JSON de
+// listas sobre redes móviles. Solo comprime payloads mayores a ~1KB.
+app.register(compress, { global: true, threshold: 1024 });
 
 // Rate limit global: 100 req/min por IP
 app.register(rateLimit, {
