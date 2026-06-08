@@ -24,7 +24,7 @@
     "ios": {
       "bundleIdentifier": "com.holidoginn.app",
       "icon": "./assets/icon.png",
-      "buildNumber": "17",
+      "buildNumber": "18",
       "deploymentTarget": "13.4",
       "usesAppleSignIn": true,
       "infoPlist": {
