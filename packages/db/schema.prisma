@@ -9,8 +9,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooled, transaction mode (6543, pgbouncer=true) -> runtime app
+  directUrl = env("DIRECT_URL")     // session mode (5432) -> prisma migrate / deploy / introspect
 }
 
 // =============================================================
@@ -150,8 +151,27 @@ enum CartillaStatus {
 }
 
 enum ReservationType {
-  STAY   // Hospedaje con rango de fechas
-  BATH   // Cita de baño puntual (appointmentAt)
+  STAY     // Hospedaje con rango de fechas
+  BATH     // Cita de baño/estética puntual (appointmentAt)
+  DAYCARE  // Guardería: servicio de día sin pernocta (appointmentAt = llegada)
+}
+
+// Tipo de pago dentro del ledger de una reservación. Reemplaza el `pago_tipo`
+// de la web (ANTICIPO/ABONO/RESTANTE). FULL = pago único completo (default móvil).
+enum PaymentKind {
+  ANTICIPO   // Anticipo / depósito inicial
+  ABONO      // Abono parcial al saldo
+  RESTANTE   // Pago final del saldo restante
+  FULL       // Pago único completo
+}
+
+// Clasificación contable de egresos. Portado de `tipo_costo` de la web.
+enum CostType {
+  FIJO
+  VARIABLE
+  SUELDO
+  MARKETING
+  REINVERSION
 }
 
 // =============================================================
@@ -172,6 +192,9 @@ model User {
   // Última vez que el saldo a favor tuvo actividad (CREDIT_ADDED/APPLIED).
   // Si 90 días pasan sin actividad y el balance es > 0, el cron lo expira.
   lastCreditEntryAt DateTime?
+  // Clientes walk-in migrados del Excel/web: clerkId null, email placeholder.
+  // El middleware de auth los vincula por email cuando el cliente se registra.
+  originLegacy  Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -374,12 +397,17 @@ model Reservation {
   status        ReservationStatus @default(CONFIRMED)
   totalDays     Int?                                // solo STAY
   totalAmount   Decimal           @db.Decimal(10, 2)
+  // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
+  // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
+  depositAgreed Decimal?          @db.Decimal(10, 2)
   notes         String?
   medicationNotes String?          // Instrucciones de administración si la mascota toma medicamento
   legalAccepted Boolean          @default(false)
   groupId       String?            // Agrupa reservaciones multi-mascota
   paymentType     String?          // "FULL" o "DEPOSIT"
   depositDeadline DateTime?        // 48h antes del checkIn, solo para anticipos
+  // Reservaciones migradas del Excel histórico (web `origen_legacy`).
+  originLegacy  Boolean           @default(false)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -550,18 +578,26 @@ model Payment {
   amount        Decimal       @db.Decimal(10, 2)
   method        PaymentMethod
   status        PaymentStatus @default(UNPAID)
+  // Tipo de pago dentro del ledger (anticipo/abono/restante/completo).
+  // Soporta tanto pagos Stripe como renglones manuales (efectivo/transferencia)
+  // capturados por el admin. Regla: total reserva = SUM(payments.amount).
+  kind          PaymentKind   @default(FULL)
   reference     String?       // Referencia de transferencia o recibo
   stripePaymentIntentId String?  @unique
   paidAt        DateTime?
   notes         String?
+  // Pagos migrados del Excel histórico (web `pagos`).
+  originLegacy  Boolean       @default(false)
   createdAt     DateTime      @default(now())
 
   // Relaciones
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 
-  userId  String
-  user    User  @relation(fields: [userId], references: [id])
+  // Nullable: los pagos legacy de clientes walk-in pueden no tener cuenta de
+  // usuario asociada (se atan a la reservación). Pagos nuevos siempre traen user.
+  userId  String?
+  user    User?  @relation(fields: [userId], references: [id])
 
   addons  ReservationAddon[]
 
@@ -816,9 +852,72 @@ model LodgingPricing {
   id                     String   @id @default("singleton")
   pricePerDaySmall       Decimal  @default(350) @db.Decimal(10, 2)
   pricePerDayLarge       Decimal  @default(450) @db.Decimal(10, 2)
+  // Tarifas ProBarf (dieta) — preservadas desde `tarifas` de la web.
+  // Si el negocio deja de ofrecer ProBarf, basta con ignorarlas en el cálculo.
+  priceProbarfSmall      Decimal  @default(300) @db.Decimal(10, 2)
+  priceProbarfLarge      Decimal  @default(400) @db.Decimal(10, 2)
+  // Tarifa plana de guardería por día (← servicio GUARDERIA de la web).
+  daycarePricePerDay     Decimal  @default(250) @db.Decimal(10, 2)
   largeWeightKg          Float    @default(20)
   medicationSurchargePct Float    @default(0.10)  // 0.10 = 10%
   updatedAt              DateTime @updatedAt
 
   @@map("lodging_pricing")
+}
+
+// =============================================================
+//  HOTEL CONFIG — Parámetros globales del hotel (singleton)
+//  Portado de `config` de la web (cupo y nombre del hotel).
+// =============================================================
+
+model HotelConfig {
+  id          String   @id @default("singleton")
+  hotelName   String   @default("Holidog Inn")   // ← nombre_hotel
+  maxCapacity Int      @default(20)               // ← cupo_maximo
+  updatedAt   DateTime @updatedAt
+
+  @@map("hotel_config")
+}
+
+// =============================================================
+//  EXPENSE — Egresos / gastos del negocio
+//  Portado de `egresos` de la web. `category` es texto libre a propósito
+//  (el dueño crea categorías nuevas sin migración); solo `costType` es enum.
+//  El mes/año para reportes se calcula en las vistas SQL del dashboard.
+// =============================================================
+
+model Expense {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date              // ← fecha
+  description  String                          // ← descripcion
+  amount       Decimal  @db.Decimal(10, 2)     // ← monto
+  category     String                          // ← categoria (texto libre)
+  costType     CostType                        // ← tipo_costo
+  notes        String?                         // ← notas
+  // Egresos migrados del Excel histórico.
+  originLegacy Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([date])
+  @@index([category])
+  @@index([costType])
+  @@map("expenses")
+}
+
+// =============================================================
+//  SPONSOR — Patrocinadores. Portado de `patrocinios` de la web.
+//  Cada uno puede patrocinar el baño y/o el corral.
+// =============================================================
+
+model Sponsor {
+  id             String   @id @default(cuid())
+  name           String                       // ← nombre
+  sponsorsBath   Boolean  @default(false)      // ← patrocina_bano
+  sponsorsKennel Boolean  @default(false)      // ← patrocina_corral
+  notes          String?                       // ← notas
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("sponsors")
 }

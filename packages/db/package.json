@@ -13,6 +13,10 @@
     "db:seed": "tsx seed.ts",
     "db:seed:services": "tsx seed-services.ts",
     "db:seed:rooms": "tsx seed-rooms.ts",
+    "db:seed:vaccine-catalog": "tsx seed-vaccine-catalog.ts",
+    "db:sql:views": "prisma db execute --file ./sql/dashboard_views.sql --schema ./schema.prisma",
+    "db:import:legacy": "tsx scripts/import-legacy.ts",
+    "db:import:verify": "tsx scripts/import-legacy.ts --verify",
     "db:studio": "prisma studio",
     "lint": "tsc --noEmit"
   },

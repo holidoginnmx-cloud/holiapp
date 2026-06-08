@@ -372,7 +372,7 @@ export type CreateRoom = z.infer<typeof CreateRoomSchema>;
 
 export const ReservationSchema = z.object({
   id: z.string().cuid(),
-  reservationType: z.enum(["STAY", "BATH"]).default("STAY"),
+  reservationType: z.enum(["STAY", "BATH", "DAYCARE"]).default("STAY"),
   checkIn: z.coerce.date().nullable(),
   checkOut: z.coerce.date().nullable(),
   appointmentAt: z.coerce.date().nullable(),
@@ -687,7 +687,7 @@ export type ConfirmBathAddon = z.infer<typeof ConfirmBathAddonSchema>;
 // Bath Appointment (standalone — no hotel stay)
 // ========================
 
-export const ReservationTypeEnum = z.enum(["STAY", "BATH"]);
+export const ReservationTypeEnum = z.enum(["STAY", "BATH", "DAYCARE"]);
 export type ReservationTypeValue = z.infer<typeof ReservationTypeEnum>;
 
 export const BathConfigSchema = z.object({
