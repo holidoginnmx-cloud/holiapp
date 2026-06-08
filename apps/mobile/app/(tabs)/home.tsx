@@ -20,6 +20,7 @@ import { getReservations, getMe, getPetsByOwner } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
 import { HeroStayCard } from "@/components/HeroStayCard";
 import { PreStayChecklistCard } from "@/components/PreStayChecklistCard";
+import { HomeSkeleton } from "@/components/Skeleton";
 import { formatName } from "@/lib/format";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
@@ -146,8 +147,8 @@ export default function HomeScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.container}>
+        <HomeSkeleton />
       </View>
     );
   }

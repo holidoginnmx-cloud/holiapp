@@ -22,6 +22,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
+import { SkeletonList } from "@/components/Skeleton";
 import { buildWhatsappUrl } from "@/constants/business";
 import type { ReservationListItem } from "@/lib/api";
 
@@ -262,8 +263,8 @@ export default function ReservationsScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.container} testID="reservations-screen">
+        <SkeletonList count={5} />
       </View>
     );
   }

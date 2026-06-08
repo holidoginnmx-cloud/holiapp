@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getPetsByOwner } from "@/lib/api";
 import { PetCard } from "@/components/PetCard";
+import { SkeletonList } from "@/components/Skeleton";
 
 export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -26,8 +27,8 @@ export default function PetsScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.container} testID="pets-screen">
+        <SkeletonList count={4} />
       </View>
     );
   }
