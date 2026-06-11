@@ -39,16 +39,16 @@ function bathToCalendarReservation(b: StaffBath): CalendarReservation {
     hasDeslanado: bathAddon?.variant?.deslanado ?? false,
     hasCorte: bathAddon?.variant?.corte ?? false,
     pet: {
-      id: b.pet.id,
-      name: b.pet.name,
-      breed: b.pet.breed,
-      photoUrl: b.pet.photoUrl,
+      id: b.pet?.id ?? "",
+      name: b.pet?.name ?? "—",
+      breed: b.pet?.breed ?? null,
+      photoUrl: b.pet?.photoUrl ?? null,
     },
     room: null,
     owner: {
-      id: b.owner.id,
-      firstName: b.owner.firstName,
-      lastName: b.owner.lastName,
+      id: b.owner?.id ?? "",
+      firstName: b.owner?.firstName ?? "",
+      lastName: b.owner?.lastName ?? "",
     },
     staff: null,
     checklists: [],
@@ -74,7 +74,13 @@ export default function StaffStays() {
   });
 
   const combined: CalendarReservation[] = useMemo(() => {
-    const stayList = (stays ?? []) as unknown as CalendarReservation[];
+    const stayList: CalendarReservation[] = (stays ?? []).map((s) => ({
+      ...(s as unknown as CalendarReservation),
+      // El baño de un hospedaje es un addon de tipo BATH (servicio en checkout).
+      hasBath: (s.addons ?? []).some(
+        (a) => a.variant?.serviceType?.code === "BATH",
+      ),
+    }));
     const bathList = (bathsData?.baths ?? [])
       .filter((b) => b.reservationType === "BATH")
       .map(bathToCalendarReservation);
@@ -85,7 +91,7 @@ export default function StaffStays() {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      r.pet.name.toLowerCase().includes(q) ||
+      r.pet?.name?.toLowerCase().includes(q) ||
       r.owner?.firstName?.toLowerCase().includes(q) ||
       r.owner?.lastName?.toLowerCase().includes(q) ||
       r.room?.name?.toLowerCase().includes(q)

@@ -42,7 +42,7 @@ export default function StaffDashboard() {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const {
-    data: activeStays,
+    data: activeStaysRaw,
     isLoading: loadingActive,
     refetch: refetchActive,
   } = useQuery({
@@ -52,7 +52,7 @@ export default function StaffDashboard() {
   });
 
   const {
-    data: confirmedStays,
+    data: confirmedStaysRaw,
     isLoading: loadingConfirmed,
     refetch: refetchConfirmed,
   } = useQuery({
@@ -60,6 +60,17 @@ export default function StaffDashboard() {
     queryFn: () => getStaffStays("CONFIRMED"),
     refetchInterval: 60_000,
   });
+
+  // Los baños comparten status CHECKED_IN/CONFIRMED en el backend pero son
+  // citas, no estancias — viven en "Próximos baños"/tab Baños. Aquí (conteo
+  // de hospedados, estancias activas, próximas llegadas, reportes, alertas)
+  // solo trabajamos con hospedajes reales.
+  const activeStays = (activeStaysRaw ?? []).filter(
+    (s) => s.reservationType !== "BATH",
+  );
+  const confirmedStays = (confirmedStaysRaw ?? []).filter(
+    (s) => s.reservationType !== "BATH",
+  );
 
   const {
     data: unassignedStays,
@@ -115,7 +126,7 @@ export default function StaffDashboard() {
   );
 
   const staysWithBath = [...(activeStays ?? []), ...(confirmedStays ?? [])].filter(
-    (s) => s.addons?.some((a) => a.variant.serviceType.code === "BATH" && !a.completedAt)
+    (s) => s.addons?.some((a) => a.variant?.serviceType?.code === "BATH" && !a.completedAt)
   );
 
   const totalAlerts =
@@ -339,7 +350,7 @@ export default function StaffDashboard() {
               <AlertItem
                 key={stay.id}
                 icon="person-add-outline"
-                text={`${formatName(stay.pet.name)} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
+                text={`${formatName(stay.pet?.name ?? "—")} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
                 severity="info"
                 onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
               />
@@ -475,7 +486,7 @@ function StayCard({
         <View style={styles.stayTopRow}>
           <Image
             source={
-              stay.pet.photoUrl
+              stay.pet?.photoUrl
                 ? { uri: stay.pet.photoUrl }
                 : require("../../assets/pet-placeholder.png")
             }
@@ -484,7 +495,7 @@ function StayCard({
           <View style={styles.stayInfo}>
             <View style={styles.stayHeader}>
               <Text style={styles.stayPetName} numberOfLines={1}>
-                {formatName(stay.pet.name)}
+                {formatName(stay.pet?.name ?? "—")}
               </Text>
               <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
                 <Text style={[styles.statusPillText, { color: statusColor }]}>
@@ -493,7 +504,7 @@ function StayCard({
               </View>
             </View>
             <Text style={styles.stayOwnerName} numberOfLines={1}>
-              {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
+              {formatName(stay.owner?.firstName ?? "")} {formatName(stay.owner?.lastName ?? "")}
             </Text>
             <View style={styles.stayMeta}>
               {stay.room && (
@@ -675,7 +686,7 @@ function BathCard({
           <View style={styles.bathPhotoWrap}>
             <Image
               source={
-                bath.pet.photoUrl
+                bath.pet?.photoUrl
                   ? { uri: bath.pet.photoUrl }
                   : require("../../assets/pet-placeholder.png")
               }
@@ -688,19 +699,37 @@ function BathCard({
           <View style={styles.stayInfo}>
             <View style={styles.stayHeader}>
               <Text style={styles.stayPetName} numberOfLines={1}>
-                {formatName(bath.pet.name)}
+                {formatName(bath.pet?.name ?? "—")}
               </Text>
-              <View style={styles.bathTypePill}>
-                <Text style={styles.bathTypePillText}>
-                  {isStayBath ? "HOSPEDAJE" : "BAÑO"}
+              <View
+                style={[
+                  styles.statusPill,
+                  { backgroundColor: done ? COLORS.successBg : COLORS.infoBg },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    { color: done ? COLORS.successText : COLORS.infoText },
+                  ]}
+                >
+                  {done ? "Listo" : "Agendado"}
                 </Text>
               </View>
             </View>
             <Text style={styles.stayOwnerName} numberOfLines={1}>
-              {formatName(bath.owner.firstName)}{" "}
-              {formatName(bath.owner.lastName)}
+              {formatName(bath.owner?.firstName ?? "")}{" "}
+              {formatName(bath.owner?.lastName ?? "")}
             </Text>
             <View style={styles.stayMeta}>
+              <View
+                style={[styles.metaChip, { backgroundColor: COLORS.infoBg }]}
+              >
+                <Ionicons name="water" size={11} color={COLORS.infoText} />
+                <Text style={[styles.metaText, { color: COLORS.infoText }]}>
+                  {isStayBath ? "De hospedaje" : "Baño suelto"}
+                </Text>
+              </View>
               {extras.map((ex) => (
                 <View
                   key={ex}
@@ -721,25 +750,6 @@ function BathCard({
                   </Text>
                 </View>
               ))}
-              {done && (
-                <View
-                  style={[
-                    styles.metaChip,
-                    { backgroundColor: COLORS.successBg },
-                  ]}
-                >
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={11}
-                    color={COLORS.successText}
-                  />
-                  <Text
-                    style={[styles.metaText, { color: COLORS.successText }]}
-                  >
-                    Listo
-                  </Text>
-                </View>
-              )}
             </View>
           </View>
         </View>

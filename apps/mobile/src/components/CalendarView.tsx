@@ -33,7 +33,7 @@ export interface CalendarReservation {
   checkOut: string | Date | null;
   status: string;
   totalAmount: number | string;
-  reservationType?: "STAY" | "BATH";
+  reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
   paymentType?: string | null;
   hasBalance?: boolean;
@@ -43,6 +43,8 @@ export interface CalendarReservation {
   reviewRating?: number | null;
   hasDeslanado?: boolean;
   hasCorte?: boolean;
+  /** Hospedaje que incluye un baño (servicio en el checkout). */
+  hasBath?: boolean;
   pet: { id: string; name: string; breed?: string | null; photoUrl?: string | null };
   room: { id: string; name: string } | null;
   owner?: { id: string; firstName: string; lastName: string };
@@ -109,14 +111,12 @@ export function CalendarView({
   };
 
   // Build calendar grid
-  const { cells, dayMap, checklistDays } = useMemo(() => {
+  const { cells, dayMap } = useMemo(() => {
     const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     // Map: dateKey → reservations on that day
     const map: Record<string, CalendarReservation[]> = {};
-    // Track which days have checklists for active stays
-    const checklistDays = new Set<string>();
     for (const r of reservations) {
       // Baño: aparece sólo en el día de la cita.
       if (r.reservationType === "BATH") {
@@ -141,12 +141,6 @@ export function CalendarView({
           map[key].push(r);
         }
       }
-      // Mark days with completed checklists
-      if (r.checklists) {
-        for (const c of r.checklists) {
-          checklistDays.add(toDateKey(new Date(c.date)));
-        }
-      }
     }
 
     // Build grid cells (nulls for offset)
@@ -154,7 +148,7 @@ export function CalendarView({
     for (let i = 0; i < firstDay; i++) grid.push(null);
     for (let d = 1; d <= daysInMonth; d++) grid.push(d);
 
-    return { cells: grid, dayMap: map, checklistDays };
+    return { cells: grid, dayMap: map };
   }, [year, month, reservations]);
 
   // Reservations for selected day
@@ -170,13 +164,14 @@ export function CalendarView({
   const renderCard = (r: CalendarReservation) => (
     <ReservationCard
       key={r.id}
-      petName={r.pet.name}
+      petName={r.pet?.name ?? "—"}
       roomName={r.room?.name ?? null}
       status={r.status}
       checkIn={r.checkIn}
       checkOut={r.checkOut}
       reservationType={r.reservationType}
       appointmentAt={r.appointmentAt}
+      hasBath={r.hasBath}
       totalAmount={Number(r.totalAmount)}
       paymentType={r.paymentType}
       hasBalance={r.hasBalance}
@@ -274,13 +269,6 @@ export function CalendarView({
             ),
           ].slice(0, 2);
 
-          // Checklist indicator: has active stays on this day?
-          const hasActiveStays = dayReservations.some((r) => r.status === "CHECKED_IN");
-          const hasChecklist = checklistDays.has(key);
-          const dayIsInPast = new Date(year, month, day).getTime() < today.getTime();
-          // Show checkmark if checklist done, warning if active stay with no checklist (past/today only)
-          const showChecklistIcon = hasActiveStays && (dayIsInPast || key === todayKey);
-
           return (
             <TouchableOpacity
               key={key}
@@ -322,21 +310,6 @@ export function CalendarView({
                     ]}
                   />
                 ))}
-                {showChecklistIcon && (
-                  <View
-                    style={[
-                      styles.dot,
-                      {
-                        backgroundColor: hasChecklist
-                          ? COLORS.successText
-                          : COLORS.warningText,
-                        width: 7,
-                        height: 7,
-                        borderRadius: 3.5,
-                      },
-                    ]}
-                  />
-                )}
               </View>
             </TouchableOpacity>
           );

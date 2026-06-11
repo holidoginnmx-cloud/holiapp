@@ -20,12 +20,26 @@ import { Ionicons } from "@expo/vector-icons";
 import { getUsers, sendAdminNotification } from "@/lib/api";
 import { formatName } from "@/lib/format";
 
+type AudienceRole = "OWNER" | "STAFF" | "ADMIN";
+const ROLE_OPTIONS: { key: AudienceRole; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "OWNER", label: "Clientes", icon: "people" },
+  { key: "STAFF", label: "Staff", icon: "construct" },
+  { key: "ADMIN", label: "Admins", icon: "shield-checkmark" },
+];
+
 export default function SendNotificationScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<"all" | "select">("all");
+  const [mode, setMode] = useState<"audience" | "select">("audience");
+  const [roles, setRoles] = useState<AudienceRole[]>(["OWNER"]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+
+  const toggleRole = (role: AudienceRole) =>
+    setRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
 
   const { data: users } = useQuery({
     queryKey: ["admin", "users"],
@@ -33,6 +47,13 @@ export default function SendNotificationScreen() {
   });
 
   const owners = users?.filter((u) => u.role === "OWNER" && u.isActive) ?? [];
+  const visibleOwners = (() => {
+    const q = clientSearch.trim().toLowerCase();
+    if (!q) return owners;
+    return owners.filter((u) =>
+      `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase().includes(q),
+    );
+  })();
 
   const mutation = useMutation({
     mutationFn: sendAdminNotification,
@@ -40,7 +61,7 @@ export default function SendNotificationScreen() {
       Keyboard.dismiss();
       Alert.alert(
         "Enviada",
-        `Notificacion enviada a ${data.sent} usuario${data.sent !== 1 ? "s" : ""}`,
+        `${data.pushed} recibieron push (tienen la app) de ${data.sent} destinatario${data.sent !== 1 ? "s" : ""}.`,
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
@@ -64,11 +85,20 @@ export default function SendNotificationScreen() {
       Alert.alert("Error", "Selecciona un usuario");
       return;
     }
+    if (mode === "audience" && roles.length === 0) {
+      Alert.alert("Error", "Selecciona al menos un grupo");
+      return;
+    }
 
-    const userIds = mode === "all" ? ("all" as const) : [selectedUserId!];
+    const payload =
+      mode === "audience"
+        ? { roles }
+        : { userIds: [selectedUserId!] };
     const targetLabel =
-      mode === "all"
-        ? "todos los clientes"
+      mode === "audience"
+        ? roles
+            .map((r) => ROLE_OPTIONS.find((o) => o.key === r)?.label ?? r)
+            .join(", ")
         : owners.find((u) => u.id === selectedUserId)?.firstName ?? "el usuario";
 
     Alert.alert(
@@ -79,7 +109,7 @@ export default function SendNotificationScreen() {
         {
           text: "Enviar",
           onPress: () =>
-            mutation.mutate({ userIds, title: title.trim(), body: body.trim() }),
+            mutation.mutate({ ...payload, title: title.trim(), body: body.trim() }),
         },
       ]
     );
@@ -103,24 +133,24 @@ export default function SendNotificationScreen() {
       {/* Mode selector */}
       <View style={styles.modeRow}>
         <TouchableOpacity
-          style={[styles.modeButton, mode === "all" && styles.modeButtonActive]}
+          style={[styles.modeButton, mode === "audience" && styles.modeButtonActive]}
           onPress={() => {
-            setMode("all");
+            setMode("audience");
             setSelectedUserId(null);
           }}
         >
           <Ionicons
             name="people"
             size={18}
-            color={mode === "all" ? COLORS.white : COLORS.textTertiary}
+            color={mode === "audience" ? COLORS.white : COLORS.textTertiary}
           />
           <Text
             style={[
               styles.modeText,
-              mode === "all" && styles.modeTextActive,
+              mode === "audience" && styles.modeTextActive,
             ]}
           >
-            Todos los clientes
+            Por grupo
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -146,10 +176,61 @@ export default function SendNotificationScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Audience role chips */}
+      {mode === "audience" && (
+        <View style={styles.roleChipsRow}>
+          {ROLE_OPTIONS.map((opt) => {
+            const on = roles.includes(opt.key);
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.roleChip, on && styles.roleChipOn]}
+                onPress={() => toggleRole(opt.key)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={15}
+                  color={on ? COLORS.white : COLORS.textTertiary}
+                />
+                <Text style={[styles.roleChipText, on && styles.roleChipTextOn]}>
+                  {opt.label}
+                </Text>
+                {on && (
+                  <Ionicons name="checkmark" size={14} color={COLORS.white} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
       {/* User selector */}
       {mode === "select" && (
-        <View style={styles.userList}>
-          {owners.map((user) => {
+        <>
+          <View style={styles.clientSearchWrap}>
+            <Ionicons name="search" size={18} color={COLORS.textTertiary} />
+            <TextInput
+              style={styles.clientSearchInput}
+              placeholder="Buscar cliente por nombre"
+              placeholderTextColor={COLORS.textDisabled}
+              value={clientSearch}
+              onChangeText={setClientSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {clientSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setClientSearch("")} hitSlop={8}>
+                <Ionicons
+                  name="close-circle"
+                  size={18}
+                  color={COLORS.textDisabled}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.userList}>
+            {visibleOwners.map((user) => {
             const isSelected = selectedUserId === user.id;
             return (
               <TouchableOpacity
@@ -174,10 +255,15 @@ export default function SendNotificationScreen() {
               </TouchableOpacity>
             );
           })}
-          {owners.length === 0 && (
-            <Text style={styles.emptyText}>No hay clientes activos</Text>
-          )}
-        </View>
+            {visibleOwners.length === 0 && (
+              <Text style={styles.emptyText}>
+                {owners.length === 0
+                  ? "No hay clientes activos"
+                  : "Sin resultados para tu búsqueda"}
+              </Text>
+            )}
+          </View>
+        </>
       )}
 
       {/* Message fields */}
@@ -259,6 +345,35 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
   },
+  roleChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  roleChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: COLORS.bgSection,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  roleChipOn: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  roleChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+  },
+  roleChipTextOn: {
+    color: COLORS.white,
+  },
   modeButton: {
     flex: 1,
     flexDirection: "row",
@@ -280,11 +395,26 @@ const styles = StyleSheet.create({
   modeTextActive: {
     color: COLORS.white,
   },
+  clientSearchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  clientSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    padding: 0,
+  },
   userList: {
     backgroundColor: COLORS.white,
     borderRadius: 10,
     marginBottom: 16,
-    maxHeight: 200,
     overflow: "hidden",
   },
   userItem: {

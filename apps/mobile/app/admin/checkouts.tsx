@@ -16,7 +16,7 @@ export default function AdminCheckoutsToday() {
     queryFn: async () => {
       const checkedIn = await getReservations({ status: "CHECKED_IN" });
       return checkedIn.filter(
-        (r) => r.checkOut && utcDayKey(r.checkOut) === today
+        (r) => r.pet && r.checkOut && utcDayKey(r.checkOut) === today
       );
     },
     refetchInterval: 60_000,
@@ -50,13 +50,13 @@ export default function AdminCheckoutsToday() {
           }
           renderItem={({ item }) => (
             <ReservationCard
-              petName={item.pet.name}
+              petName={item.pet?.name ?? "—"}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}
               checkOut={item.checkOut}
               totalAmount={Number(item.totalAmount)}
-              ownerName={`${formatName(item.owner.firstName)} ${formatName(item.owner.lastName)}`}
+              ownerName={`${formatName(item.owner?.firstName ?? "")} ${formatName(item.owner?.lastName ?? "")}`.trim() || "Sin dueño"}
               onPress={() => router.push(`/admin/reservation/${item.id}` as any)}
             />
           )}

@@ -86,8 +86,8 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
             <View key={occupant.reservationId} style={styles.occupantRow}>
               <Ionicons name="paw" size={14} color={COLORS.errorText} />
               <Text style={styles.occupantText} numberOfLines={1}>
-                {formatName(occupant.pet.name)} —{" "}
-                {formatName(occupant.owner.name)}
+                {formatName(occupant.pet?.name ?? "—")} —{" "}
+                {formatName(occupant.owner?.name ?? "—")}
               </Text>
               <View style={styles.checkoutPill}>
                 <Ionicons

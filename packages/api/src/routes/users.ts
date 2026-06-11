@@ -13,8 +13,15 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   fastify.get("/users", { preHandler: adminAuth }, async (request) => {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
+      include: { _count: { select: { pushTokens: true } } },
     });
-    return users;
+    // `hasApp` se computa en el servidor (no se confía en el cliente):
+    // tiene cuenta vinculada (clerkId) o al menos un push token registrado
+    // = el cliente descargó e inició sesión en la app.
+    return users.map(({ _count, ...u }) => ({
+      ...u,
+      hasApp: !!u.clerkId || _count.pushTokens > 0,
+    }));
   });
 
   // GET /users/me — obtener usuario autenticado por token de Clerk

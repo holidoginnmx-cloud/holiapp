@@ -97,8 +97,12 @@ export default function StaffListScreen() {
     refetchConfirmed();
   };
 
-  const active = activeStays ?? [];
-  const confirmed = confirmedStays ?? [];
+  // Solo hospedajes: los baños comparten status CHECKED_IN/CONFIRMED pero son
+  // citas, no estancias — no deben aparecer en hospedados/reportes/alertas.
+  const active = (activeStays ?? []).filter((s) => s.reservationType !== "BATH");
+  const confirmed = (confirmedStays ?? []).filter(
+    (s) => s.reservationType !== "BATH"
+  );
 
   // Derivados
   const checkInsToday = confirmed.filter((s) => isSameLocalDay(s.checkIn));
@@ -109,7 +113,7 @@ export default function StaffListScreen() {
   );
   const staysWithBath = [...active, ...confirmed].filter((s) =>
     s.addons?.some(
-      (a) => a.variant.serviceType.code === "BATH" && !a.completedAt
+      (a) => a.variant?.serviceType?.code === "BATH" && !a.completedAt
     )
   );
 
@@ -168,7 +172,7 @@ export default function StaffListScreen() {
             <AlertItem
               key={`med-${stay.id}`}
               icon="medkit-outline"
-              text={`${formatName(stay.pet.name)} — Medicamento: ${stay.medicationNotes}`}
+              text={`${formatName(stay.pet?.name ?? "—")} — Medicamento: ${stay.medicationNotes}`}
               severity="error"
               onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
             />
@@ -177,7 +181,7 @@ export default function StaffListScreen() {
             <AlertItem
               key={`checklist-${stay.id}`}
               icon="document-text-outline"
-              text={`${formatName(stay.pet.name)} — Falta reporte diario`}
+              text={`${formatName(stay.pet?.name ?? "—")} — Falta reporte diario`}
               severity="warning"
               onPress={() =>
                 router.push(`/(staff)/checklist/${stay.id}` as any)
@@ -186,18 +190,18 @@ export default function StaffListScreen() {
           ))}
           {staysWithBath.map((stay) => {
             const bath = stay.addons?.find(
-              (a) => a.variant.serviceType.code === "BATH" && !a.completedAt
+              (a) => a.variant?.serviceType?.code === "BATH" && !a.completedAt
             );
             if (!bath) return null;
             const extras: string[] = [];
-            if (bath.variant.deslanado) extras.push("Deslanado");
-            if (bath.variant.corte) extras.push("Corte");
+            if (bath.variant?.deslanado) extras.push("Deslanado");
+            if (bath.variant?.corte) extras.push("Corte");
             const detail = extras.length > 0 ? ` (${extras.join(" + ")})` : "";
             return (
               <AlertItem
                 key={`bath-${stay.id}`}
                 icon="water-outline"
-                text={`${formatName(stay.pet.name)} — Baño pendiente${detail}`}
+                text={`${formatName(stay.pet?.name ?? "—")} — Baño pendiente${detail}`}
                 severity="info"
                 onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
               />
@@ -215,7 +219,7 @@ export default function StaffListScreen() {
             >
               <Image
                 source={
-                  stay.pet.photoUrl
+                  stay.pet?.photoUrl
                     ? { uri: stay.pet.photoUrl }
                     : require("../../assets/pet-placeholder.png")
                 }
@@ -223,12 +227,12 @@ export default function StaffListScreen() {
               />
               <View style={styles.stayInfo}>
                 <Text style={styles.stayPetName}>
-                  {formatName(stay.pet.name)}
+                  {formatName(stay.pet?.name ?? "—")}
                 </Text>
                 {stay.owner && (
                   <Text style={styles.stayOwnerName}>
-                    {formatName(stay.owner.firstName)}{" "}
-                    {formatName(stay.owner.lastName)}
+                    {formatName(stay.owner?.firstName ?? "")}{" "}
+                    {formatName(stay.owner?.lastName ?? "")}
                   </Text>
                 )}
                 <View style={styles.metaRow}>

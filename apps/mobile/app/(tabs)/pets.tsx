@@ -48,7 +48,7 @@ export default function PetsScreen() {
     <View style={styles.container} testID="pets-screen">
       <FlatList
         testID="pets-list"
-        data={pets}
+        data={pets ?? []}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <PetCard

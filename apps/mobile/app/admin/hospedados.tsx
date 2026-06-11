@@ -26,12 +26,19 @@ export default function AdminHospedados() {
     refetchInterval: 60_000,
   });
 
+  // Solo hospedajes: los baños son citas, no estancias, aunque compartan
+  // el status CHECKED_IN en el backend.
+  const stays = useMemo(
+    () => (data ?? []).filter((r) => r.reservationType !== "BATH"),
+    [data]
+  );
+
   const filtered = useMemo(() => {
-    if (!data) return [];
+    const safe = stays.filter((r) => r.pet);
     const q = search.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter((r) => {
-      const petName = r.pet.name.toLowerCase();
+    if (!q) return safe;
+    return safe.filter((r) => {
+      const petName = r.pet?.name?.toLowerCase() ?? "";
       const roomName = (r.room?.name ?? "").toLowerCase();
       const ownerFirst = (r.owner?.firstName ?? "").toLowerCase();
       const ownerLast = (r.owner?.lastName ?? "").toLowerCase();
@@ -42,7 +49,7 @@ export default function AdminHospedados() {
         ownerLast.includes(q)
       );
     });
-  }, [data, search]);
+  }, [stays, search]);
 
   if (isLoading) {
     return (
@@ -56,7 +63,7 @@ export default function AdminHospedados() {
     <View style={styles.screen}>
       <Text style={styles.heading}>Hospedados</Text>
       <Text style={styles.sub}>
-        {data?.length ?? 0} mascota{(data?.length ?? 0) === 1 ? "" : "s"} en estancia
+        {stays.length} mascota{stays.length === 1 ? "" : "s"} en estancia
       </Text>
 
       <View style={styles.searchWrap}>
@@ -95,7 +102,7 @@ export default function AdminHospedados() {
           }
           renderItem={({ item }) => (
             <ReservationCard
-              petName={item.pet.name}
+              petName={item.pet?.name ?? "—"}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}

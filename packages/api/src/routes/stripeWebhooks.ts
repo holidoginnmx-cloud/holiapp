@@ -141,7 +141,7 @@ async function handlePaymentIntentSucceeded(
   // Email de pago recibido (no es el de reservación confirmada — ese va en /multi).
   // Solo enviamos si este pago es de "balance" (no es el depósito inicial, que ya
   // tiene su email en la creación de la reserva).
-  if (pi.metadata?.type === "balance" && payment.user.email) {
+  if (pi.metadata?.type === "balance" && payment.user?.email) {
     const tpl = paymentReceivedTemplate({
       ownerFirstName: payment.user.firstName,
       amount: Number(payment.amount),
@@ -231,15 +231,18 @@ async function handleChargeRefunded(
     },
   });
 
-  await notifyUser(prisma, {
-    userId: originalPayment.userId,
-    type: "REFUND_ISSUED",
-    title: "Reembolso procesado 💳",
-    body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")}.`,
-    data: { reservationId: originalPayment.reservationId, amount: refundAmount },
-  });
+  // Pagos legacy walk-in pueden no tener usuario asociado → sin notificación.
+  if (originalPayment.userId) {
+    await notifyUser(prisma, {
+      userId: originalPayment.userId,
+      type: "REFUND_ISSUED",
+      title: "Reembolso procesado 💳",
+      body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")}.`,
+      data: { reservationId: originalPayment.reservationId, amount: refundAmount },
+    });
+  }
 
-  if (originalPayment.user.email) {
+  if (originalPayment.user?.email) {
     const tpl = refundIssuedTemplate({
       ownerFirstName: originalPayment.user.firstName,
       amount: refundAmount,

@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Linking,
   Animated,
   Dimensions,
   PanResponder,
@@ -18,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStaffBaths, type StaffBath } from "@/lib/api";
-import { formatName, phoneToTelUri } from "@/lib/format";
+import { formatName } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
@@ -190,7 +189,6 @@ export default function AdminBaths() {
 
 
   const renderBath = ({ item }: { item: StaffBath }) => {
-    const ownerPhone = item.owner.phone;
     const bathAddon = getBathAddon(item);
     const hasDeslanado = bathAddon?.variant?.deslanado ?? false;
     const hasCorte = bathAddon?.variant?.corte ?? false;
@@ -216,20 +214,6 @@ export default function AdminBaths() {
           hasCorte={hasCorte}
           onPress={() => router.push(`/admin/reservation/${item.id}` as any)}
         />
-
-        {ownerPhone && (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              onPress={() => Linking.openURL(`tel:${phoneToTelUri(ownerPhone)}`)}
-              style={styles.callBtn}
-              hitSlop={6}
-              testID={`admin-bath-call-${item.id}`}
-            >
-              <Ionicons name="call" size={16} color={COLORS.primary} />
-              <Text style={styles.callBtnText}>Llamar</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     );
   };

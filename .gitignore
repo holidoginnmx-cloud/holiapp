@@ -7,3 +7,11 @@ dist/
 .maestro/
 e2e/.maestro/
 scripts/.targets.env
+
+# Backups locales de entorno (pueden contener secretos) y basura del SO/herramientas
+*.env*.bak
+.env.localdev.bak
+.DS_Store
+**/.DS_Store
+.hermes-cache/
+**/.hermes-cache/

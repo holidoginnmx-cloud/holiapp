@@ -92,6 +92,15 @@ export function createAuthMiddleware(prisma: PrismaClient) {
       }
     }
 
+    // Cuenta desactivada por un admin → bloquear acceso a la app por completo
+    // (no solo cosmético en la lista de usuarios). Aplica a cualquier ruta
+    // autenticada, así que un cliente/staff desactivado queda fuera de sesión.
+    if (!user.isActive) {
+      return reply
+        .status(403)
+        .send({ error: "Tu cuenta está desactivada. Contacta al hotel." });
+    }
+
     request.userId = user.id;
     request.userRole = user.role;
     request.dbUser = user;

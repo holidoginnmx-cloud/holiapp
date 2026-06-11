@@ -41,12 +41,13 @@ function methodIcon(m: string): keyof typeof import("@expo/vector-icons").Ionico
   return "card-outline";
 }
 
-function formatDateTime(iso: string): string {
+// Solo fecha (sin hora): la hora de los pagos legacy es un artefacto del
+// import (mediodía UTC → 5:00 a.m. local), así que no es confiable mostrarla.
+function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-MX", {
     day: "numeric",
     month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+    year: "numeric",
   });
 }
 
@@ -283,10 +284,10 @@ export default function AdminRevenue() {
       ) : (
         data?.payments.map((item) => {
           const owner = item.reservation
-            ? `${formatName(item.reservation.owner.firstName)} ${formatName(item.reservation.owner.lastName)}`
+            ? `${formatName(item.reservation.owner?.firstName ?? "")} ${formatName(item.reservation.owner?.lastName ?? "")}`.trim() || "—"
             : "—";
           const pet = item.reservation
-            ? formatName(item.reservation.pet.name)
+            ? formatName(item.reservation.pet?.name ?? "—")
             : "—";
           const cat = CATEGORY_STYLE[item.category];
           const isRefund = item.kind === "REFUND";
@@ -336,8 +337,33 @@ export default function AdminRevenue() {
                 <Text style={styles.paymentMeta}>
                   {isRefund ? "Reembolso · " : ""}
                   {methodLabel(item.method)}
-                  {item.paidAt ? ` · ${formatDateTime(item.paidAt)}` : ""}
+                  {item.paidAt ? ` · ${formatDate(item.paidAt)}` : ""}
                 </Text>
+                <View style={styles.paymentOriginRow}>
+                  <View
+                    style={[
+                      styles.originChip,
+                      item.originLegacy ? styles.originChipWeb : styles.originChipApp,
+                    ]}
+                  >
+                    <Ionicons
+                      name={item.originLegacy ? "globe-outline" : "phone-portrait-outline"}
+                      size={10}
+                      color={item.originLegacy ? COLORS.textTertiary : COLORS.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.originChipText,
+                        { color: item.originLegacy ? COLORS.textTertiary : COLORS.primary },
+                      ]}
+                    >
+                      {item.originLegacy ? "Web" : "App"}
+                    </Text>
+                  </View>
+                  <Text style={styles.paymentRegistered}>
+                    Registrado {formatDate(item.createdAt)}
+                  </Text>
+                </View>
                 {!isRefund && item.category === "MIXED" && (
                   <View style={styles.splitRow}>
                     <Text style={styles.splitItem}>
@@ -619,6 +645,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textDisabled,
     marginTop: 2,
+  },
+  paymentOriginRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  originChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  originChipWeb: {
+    backgroundColor: COLORS.bgSection,
+  },
+  originChipApp: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  originChipText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  paymentRegistered: {
+    fontSize: 11,
+    color: COLORS.textDisabled,
   },
   splitRow: {
     flexDirection: "row",

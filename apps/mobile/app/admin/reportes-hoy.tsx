@@ -106,7 +106,7 @@ export default function AdminReportesHoy() {
                   <Ionicons name="paw" size={18} color={COLORS.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.petName}>{formatName(item.pet.name)}</Text>
+                  <Text style={styles.petName}>{formatName(item.pet?.name ?? "—")}</Text>
                   <Text style={styles.metaText}>
                     {item.room?.name ? `${item.room.name} · ` : ""}
                     {item.owner

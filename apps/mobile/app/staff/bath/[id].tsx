@@ -189,7 +189,7 @@ export default function StaffBathDetail() {
     if (!bath) return;
     Alert.alert(
       "Foto del baño",
-      `Sube una foto de ${formatName(bath.pet.name)} bañado para completar la cita.`,
+      `Sube una foto de ${formatName(bath.pet?.name ?? "—")} bañado para completar la cita.`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadAndComplete("camera") },
@@ -208,7 +208,7 @@ export default function StaffBathDetail() {
       const cloud = await uploadToCloudinary(uri, "baths");
       await createStaffUpdate({
         reservationId: bath.id,
-        petId: bath.pet.id,
+        petId: bath.pet?.id ?? "",
         mediaUrl: cloud.secure_url,
         mediaType: "image",
         caption: null,
@@ -227,7 +227,7 @@ export default function StaffBathDetail() {
     if (!bath) return;
     Alert.alert(
       "Agregar foto",
-      `Sube otra foto de ${formatName(bath.pet.name)}.`,
+      `Sube otra foto de ${formatName(bath.pet?.name ?? "—")}.`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadExtraPhoto("camera") },
@@ -260,8 +260,8 @@ export default function StaffBathDetail() {
   const hasOutstanding = !isStayBath && balance.total > 0.01;
   const variantLine = describeVariant(bath);
   const bathAddon = getBathAddon(bath);
-  const ownerPhone = bath.owner.phone;
-  const ownerEmail = bath.owner.email;
+  const ownerPhone = bath.owner?.phone;
+  const ownerEmail = bath.owner?.email;
 
   return (
     <ScrollView
@@ -273,7 +273,7 @@ export default function StaffBathDetail() {
     >
       {/* Hero: foto + nombre */}
       <View style={styles.hero}>
-        {bath.pet.photoUrl ? (
+        {bath.pet?.photoUrl ? (
           <Image source={{ uri: bath.pet.photoUrl }} style={styles.heroPhoto} />
         ) : (
           <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
@@ -282,7 +282,7 @@ export default function StaffBathDetail() {
         )}
         <View style={styles.heroInfo}>
           <Text style={styles.petName} numberOfLines={1}>
-            {formatName(bath.pet.name)}
+            {formatName(bath.pet?.name ?? "—")}
           </Text>
           <View style={styles.heroTags}>
             <View style={styles.variantPill}>
@@ -338,7 +338,7 @@ export default function StaffBathDetail() {
       {!concluded && hasOutstanding && (
         <ManualPaymentSection
           reservationId={bath.id}
-          petName={bath.pet.name}
+          petName={bath.pet?.name ?? "—"}
           balance={balance}
           onSuccess={() =>
             queryClient.invalidateQueries({ queryKey: ["staff-baths"] })
@@ -374,19 +374,19 @@ export default function StaffBathDetail() {
           <View style={styles.summaryCol}>
             <Text style={styles.summaryColLabel}>Mascota</Text>
             <Text style={styles.summaryColValue} numberOfLines={1}>
-              {bath.pet.breed ?? "—"}
+              {bath.pet?.breed ?? "—"}
             </Text>
             <Text style={styles.summaryColSub}>
-              {SIZE_LABEL[bath.pet.size] ?? bath.pet.size}
-              {bath.pet.weight ? ` · ${bath.pet.weight} kg` : ""}
+              {SIZE_LABEL[bath.pet?.size ?? ""] ?? bath.pet?.size ?? "—"}
+              {bath.pet?.weight ? ` · ${bath.pet.weight} kg` : ""}
             </Text>
           </View>
           <View style={styles.summaryColDivider} />
           <View style={styles.summaryCol}>
             <Text style={styles.summaryColLabel}>Dueño</Text>
             <Text style={styles.summaryColValue} numberOfLines={1}>
-              {formatName(bath.owner.firstName)}{" "}
-              {formatName(bath.owner.lastName)}
+              {formatName(bath.owner?.firstName ?? "")}{" "}
+              {formatName(bath.owner?.lastName ?? "")}
             </Text>
             {ownerPhone ? (
               <TouchableOpacity
@@ -406,14 +406,14 @@ export default function StaffBathDetail() {
         </View>
 
         {/* Notas si existen */}
-        {bath.pet.notes && (
+        {bath.pet?.notes && (
           <View style={styles.summaryNotes}>
             <Ionicons
               name="information-circle"
               size={16}
               color={COLORS.warningText}
             />
-            <Text style={styles.notesText}>{bath.pet.notes}</Text>
+            <Text style={styles.notesText}>{bath.pet?.notes}</Text>
           </View>
         )}
 
@@ -503,7 +503,7 @@ export default function StaffBathDetail() {
       {/* Extras (deslanado/corte) — cada uno se cotiza por separado.
           Una vez cotizados todos, fluye por extraPaymentStatus (igual que antes). */}
       {bathAddon &&
-        (bathAddon.variant.deslanado || bathAddon.variant.corte) && (
+        (bathAddon.variant?.deslanado || bathAddon.variant?.corte) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Extras</Text>
             <View style={styles.card}>
@@ -539,7 +539,7 @@ export default function StaffBathDetail() {
                       onPress={() => {
                         Alert.alert(
                           "Confirmar pago",
-                          `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(bath.pet.name)}?`,
+                          `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(bath.pet?.name ?? "—")}?`,
                           [
                             { text: "Cancelar", style: "cancel" },
                             {
@@ -591,7 +591,7 @@ export default function StaffBathDetail() {
               ) : (
                 // Modo cotización: un botón/chip por cada extra contratado.
                 <View style={{ gap: 8 }}>
-                  {bathAddon.variant.deslanado &&
+                  {bathAddon.variant?.deslanado &&
                     (bathAddon.extraDeslanadoPrice ? (
                       <ExtraSetChip
                         label="Deslanado"
@@ -613,7 +613,7 @@ export default function StaffBathDetail() {
                         </Text>
                       </TouchableOpacity>
                     ))}
-                  {bathAddon.variant.corte &&
+                  {bathAddon.variant?.corte &&
                     (bathAddon.extraCortePrice ? (
                       <ExtraSetChip
                         label="Corte"
@@ -704,7 +704,7 @@ export default function StaffBathDetail() {
       {extraKind && bathAddon && (
         <ExtrasPriceModal
           addonId={bathAddon.id}
-          petName={bath.pet.name}
+          petName={bath.pet?.name ?? "—"}
           kind={extraKind}
           currentPrice={
             extraKind === "deslanado"
@@ -822,11 +822,11 @@ function ManualPaymentSection({
         animationType="slide"
         onRequestClose={closeModal}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <Pressable style={styles.modalOverlay} onPress={closeModal}>
+        <Pressable style={styles.modalOverlay} onPress={closeModal}>
+          <KeyboardAvoidingView
+            style={styles.modalKav}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
             <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
               <Text style={styles.modalTitle}>Registrar pago manual</Text>
 
@@ -900,8 +900,8 @@ function ManualPaymentSection({
                 </TouchableOpacity>
               </View>
             </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -1499,11 +1499,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
+  modalKav: {
+    width: "100%",
+  },
   modalContent: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
+    paddingBottom: 32,
   },
   modalTitle: {
     fontSize: 18,

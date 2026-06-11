@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function PetHistoryScreen() {
   const { petId } = useLocalSearchParams<{ petId: string }>();
   const router = useRouter();
+  const [historyFilter, setHistoryFilter] = useState<"stays" | "baths">("stays");
 
   const {
     data,
@@ -58,6 +59,11 @@ export default function PetHistoryScreen() {
 
   const { pet, reservations, behaviorTags } = data;
 
+  // Los baños son citas, no estancias: se separan en su propio filtro.
+  const stays = reservations.filter((r) => r.reservationType !== "BATH");
+  const baths = reservations.filter((r) => r.reservationType === "BATH");
+  const list = historyFilter === "stays" ? stays : baths;
+
   return (
     <ScrollView
       style={styles.container}
@@ -83,7 +89,7 @@ export default function PetHistoryScreen() {
       {/* Stats summary */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{reservations.length}</Text>
+          <Text style={styles.statValue}>{stays.length}</Text>
           <Text style={styles.statLabel}>Estancias</Text>
         </View>
         <View style={styles.statBox}>
@@ -139,17 +145,47 @@ export default function PetHistoryScreen() {
       )}
 
       {/* Timeline */}
-      <Text style={styles.sectionTitle}>Historial de estancias</Text>
+      <Text style={styles.sectionTitle}>Historial</Text>
 
-      {reservations.length === 0 ? (
-        <Text style={styles.emptyText}>Aún no tiene estancias registradas</Text>
+      <View style={styles.historyFilterRow}>
+        {([
+          { key: "stays" as const, label: "Estancias", count: stays.length },
+          { key: "baths" as const, label: "Baños", count: baths.length },
+        ]).map((f) => {
+          const active = historyFilter === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.historyChip, active && styles.historyChipActive]}
+              onPress={() => setHistoryFilter(f.key)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.historyChipText,
+                  active && styles.historyChipTextActive,
+                ]}
+              >
+                {f.label} ({f.count})
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {list.length === 0 ? (
+        <Text style={styles.emptyText}>
+          {historyFilter === "stays"
+            ? "Aún no tiene estancias registradas"
+            : "Aún no tiene baños registrados"}
+        </Text>
       ) : (
-        reservations.map((res, index) => (
+        list.map((res, index) => (
           <View key={res.id} style={styles.timelineItem}>
             {/* Timeline connector */}
             <View style={styles.timelineLeft}>
               <View style={styles.timelineDot} />
-              {index < reservations.length - 1 && (
+              {index < list.length - 1 && (
                 <View style={styles.timelineLine} />
               )}
             </View>
@@ -268,6 +304,28 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 22, fontWeight: "800", color: COLORS.primary },
   statLabel: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
   section: { marginBottom: 20 },
+  historyFilterRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  historyChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: COLORS.bgSection,
+  },
+  historyChipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  historyChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+  },
+  historyChipTextActive: {
+    color: COLORS.white,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",

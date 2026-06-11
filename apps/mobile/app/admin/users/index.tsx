@@ -6,6 +6,7 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
   RefreshControl,
@@ -13,9 +14,9 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { getUsers, updateUser } from "@/lib/api";
+import { getUsers, updateUser, type AdminUserListItem } from "@/lib/api";
 import type { User } from "@holidoginn/shared";
-import { formatName } from "@/lib/format";
+import { formatName, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
 
 type RoleFilter = "OWNER" | "STAFF" | "ADMIN";
 
@@ -59,6 +60,7 @@ export default function AdminUsers() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<RoleFilter>("OWNER");
+  const [search, setSearch] = useState("");
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "users"],
@@ -75,10 +77,17 @@ export default function AdminUsers() {
     return c;
   }, [data]);
 
-  const filtered = useMemo(
-    () => (data ?? []).filter((u) => u.role === filter),
-    [data, filter]
-  );
+  const filtered = useMemo(() => {
+    const byRole = (data ?? []).filter((u) => u.role === filter);
+    const q = search.trim().toLowerCase();
+    if (!q) return byRole;
+    return byRole.filter((u) => {
+      const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
+      const email = (u.email ?? "").toLowerCase();
+      const phone = (u.phone ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q) || phone.includes(q);
+    });
+  }, [data, filter, search]);
 
   const mutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<User> }) =>
@@ -122,7 +131,7 @@ export default function AdminUsers() {
     );
   };
 
-  const renderUser = ({ item }: { item: User }) => {
+  const renderUser = ({ item }: { item: AdminUserListItem }) => {
     const roleConfig = ROLE_CONFIG[item.role] || ROLE_CONFIG.OWNER;
 
     return (
@@ -138,16 +147,44 @@ export default function AdminUsers() {
               </View>
             )}
           </View>
-          <Text style={styles.userEmail}>{item.email}</Text>
-          <TouchableOpacity
-            onPress={() => handleChangeRole(item)}
-            style={[styles.roleBadge, { backgroundColor: roleConfig.bg }]}
+          <Text
+            style={[styles.userEmail, !displayEmail(item.email) && styles.userEmailMuted]}
           >
-            <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>
-              {roleConfig.label}
-            </Text>
-            <Ionicons name="swap-horizontal" size={12} color={roleConfig.color} />
-          </TouchableOpacity>
+            {displayEmail(item.email) || NO_EMAIL_LABEL}
+          </Text>
+          <View style={styles.badgeRow}>
+            <TouchableOpacity
+              onPress={() => handleChangeRole(item)}
+              style={[styles.roleBadge, { backgroundColor: roleConfig.bg }]}
+            >
+              <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>
+                {roleConfig.label}
+              </Text>
+              <Ionicons name="swap-horizontal" size={12} color={roleConfig.color} />
+            </TouchableOpacity>
+            {item.role === "OWNER" && (
+              <View
+                style={[
+                  styles.appBadge,
+                  item.hasApp ? styles.appBadgeOn : styles.appBadgeOff,
+                ]}
+              >
+                <Ionicons
+                  name={item.hasApp ? "phone-portrait" : "phone-portrait-outline"}
+                  size={11}
+                  color={item.hasApp ? COLORS.successText : COLORS.textTertiary}
+                />
+                <Text
+                  style={[
+                    styles.appBadgeText,
+                    { color: item.hasApp ? COLORS.successText : COLORS.textTertiary },
+                  ]}
+                >
+                  {item.hasApp ? "Tiene app" : "Sin registrar"}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         <TouchableOpacity
           onPress={() => handleToggleActive(item)}
@@ -219,6 +256,24 @@ export default function AdminUsers() {
             </TouchableOpacity>
           );
         })}
+      </View>
+
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={18} color={COLORS.textTertiary} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar por nombre, correo o teléfono"
+          placeholderTextColor={COLORS.textDisabled}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textDisabled} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {isLoading ? (
@@ -317,8 +372,49 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    padding: 0,
+  },
   list: {
     paddingBottom: 32,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 2,
+  },
+  appBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  appBadgeOn: {
+    backgroundColor: COLORS.successBg,
+  },
+  appBadgeOff: {
+    backgroundColor: COLORS.bgSection,
+  },
+  appBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   userCard: {
     flexDirection: "row",
@@ -353,6 +449,10 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 13,
     color: COLORS.textTertiary,
+  },
+  userEmailMuted: {
+    fontStyle: "italic",
+    color: COLORS.textDisabled,
   },
   roleBadge: {
     flexDirection: "row",

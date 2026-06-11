@@ -202,7 +202,7 @@ export default function RoomDetailScreen() {
           >
             <Image
               source={
-                reservation.pet.photoUrl
+                reservation.pet?.photoUrl
                   ? { uri: reservation.pet.photoUrl }
                   : require("../../../assets/pet-placeholder.png")
               }
@@ -211,11 +211,11 @@ export default function RoomDetailScreen() {
             />
             <View style={{ flex: 1 }}>
               <Text style={styles.guestName}>
-                {formatName(reservation.pet.name)}
+                {formatName(reservation.pet?.name ?? "—")}
               </Text>
               <Text style={styles.guestMeta}>
-                {reservation.pet.breed || "Sin raza especificada"} ·{" "}
-                {SIZE_LABELS[reservation.pet.size] ?? reservation.pet.size}
+                {reservation.pet?.breed || "Sin raza especificada"} ·{" "}
+                {SIZE_LABELS[reservation.pet?.size ?? ""] ?? reservation.pet?.size ?? "—"}
               </Text>
               <View style={styles.ownerRow}>
                 <Ionicons
@@ -224,7 +224,7 @@ export default function RoomDetailScreen() {
                   color={COLORS.textTertiary}
                 />
                 <Text style={styles.ownerText} numberOfLines={1}>
-                  {formatName(reservation.owner.name)}
+                  {formatName(reservation.owner?.name ?? "—")}
                 </Text>
               </View>
               <View style={styles.datesRow}>

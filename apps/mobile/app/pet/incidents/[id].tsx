@@ -256,7 +256,7 @@ export default function PetIncidentsScreen() {
                     color={COLORS.textTertiary}
                   />
                   <Text style={styles.metaText}>
-                    Reportó {formatName(item.staff.firstName)}
+                    Reportó {formatName(item.staff?.firstName ?? "—")}
                   </Text>
                 </View>
               </View>

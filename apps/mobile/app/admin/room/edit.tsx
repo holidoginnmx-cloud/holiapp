@@ -80,7 +80,7 @@ export default function RoomEditScreen() {
         name: name.trim(),
         description: description.trim() || null,
         capacity: Number(capacity) || 1,
-        sizeAllowed,
+        sizeAllowed: sizeAllowed as ("XS" | "S" | "M" | "L" | "XL")[],
         isActive,
       };
 

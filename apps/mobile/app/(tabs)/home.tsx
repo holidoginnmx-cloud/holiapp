@@ -227,7 +227,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="alert-circle" size={20} color={COLORS.warningText} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>Saldo pendiente — {formatName(r.pet.name)}</Text>
+            <Text style={styles.alertTitle}>Saldo pendiente — {formatName(r.pet?.name ?? "—")}</Text>
             <Text style={styles.alertSub} numberOfLines={2}>
               Liquídalo en la app o al entregar a tu mascota en la sucursal.
             </Text>
@@ -347,7 +347,7 @@ export default function HomeScreen() {
           <Ionicons name="time-outline" size={20} color={COLORS.infoText} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.alertTitle, { color: COLORS.infoText }]}>
-              Cambio en revisión — {formatName(r.pet.name)}
+              Cambio en revisión — {formatName(r.pet?.name ?? "—")}
             </Text>
             <Text style={[styles.alertSub, { color: COLORS.infoText }]}>
               Te avisaremos cuando lo aprobemos
@@ -361,7 +361,7 @@ export default function HomeScreen() {
         <PreStayChecklistCard
           key={`prestay-${r.id}`}
           reservationId={r.id}
-          petName={formatName(r.pet.name)}
+          petName={formatName(r.pet?.name ?? "—")}
           checkIn={r.checkIn!}
           cartillaApproved={prestayPetCartilla(r)}
           saldoLiquidado={!r.hasBalance}
@@ -476,8 +476,8 @@ export default function HomeScreen() {
                 <HeroStayCard
                   key={res.id}
                   reservationId={res.id}
-                  petName={res.pet.name}
-                  petPhotoUrl={res.pet.photoUrl}
+                  petName={res.pet?.name ?? "—"}
+                  petPhotoUrl={res.pet?.photoUrl ?? null}
                   roomName={res.room?.name ?? null}
                   checkIn={res.checkIn}
                   checkOut={res.checkOut}
@@ -498,7 +498,7 @@ export default function HomeScreen() {
               {upcomingStays.slice(0, 2).map((res) => (
                 <ReservationCard
                   key={res.id}
-                  petName={res.pet.name}
+                  petName={res.pet?.name ?? "—"}
                   roomName={res.room?.name ?? null}
                   status={res.status}
                   checkIn={res.checkIn}
@@ -533,7 +533,7 @@ export default function HomeScreen() {
               {upcomingBaths.slice(0, 2).map((res) => (
                 <ReservationCard
                   key={res.id}
-                  petName={res.pet.name}
+                  petName={res.pet?.name ?? "—"}
                   roomName={res.room?.name ?? null}
                   status={res.status}
                   checkIn={res.checkIn}

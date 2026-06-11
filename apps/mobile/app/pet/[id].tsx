@@ -27,6 +27,28 @@ const SIZE_LABELS: Record<string, string> = {
   XL: "Extra grande",
 };
 
+const SEX_LABELS: Record<string, string> = { M: "Macho", F: "Hembra" };
+const BEHAVIOR_LABELS: Record<string, string> = {
+  amigable: "Amigable",
+  nervioso: "Nervioso",
+  agresivo: "Agresivo",
+  otro: "Otro",
+};
+const WALK_LABELS: Record<string, string> = {
+  aire_libre: "Aire libre",
+  instalaciones: "Instalaciones",
+};
+
+/** CSV ("amigable,nervioso") → lista de etiquetas legibles. */
+function csvToLabels(csv: string | null | undefined, map: Record<string, string>): string[] {
+  if (!csv) return [];
+  return csv
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => map[v] ?? v);
+}
+
 function getVaccineStatus(expiresAt: string | Date | null): {
   label: string;
   bg: string;
@@ -106,6 +128,13 @@ export default function PetDetailScreen() {
 
         {/* Badges */}
         <View style={styles.badgeRow}>
+          {petAny.sex && SEX_LABELS[petAny.sex] && (
+            <View style={[styles.badge, { backgroundColor: COLORS.infoBg }]}>
+              <Text style={[styles.badgeText, { color: COLORS.infoText }]}>
+                {SEX_LABELS[petAny.sex]}
+              </Text>
+            </View>
+          )}
           <View
             style={[
               styles.badge,
@@ -203,6 +232,87 @@ export default function PetDetailScreen() {
         </View>
       )}
 
+      {/* Alimentación */}
+      {(petAny.foodType ||
+        petAny.feedingAmount ||
+        petAny.feedingSchedule ||
+        petAny.feedingInstructions) && (
+        <View style={styles.infoCard}>
+          <View style={styles.infoCardHeader}>
+            <Ionicons name="nutrition-outline" size={16} color={COLORS.warningText} />
+            <Text style={styles.infoCardTitle}>Alimentación</Text>
+          </View>
+          {petAny.foodType && (
+            <Text style={styles.infoCardText}>
+              <Text style={styles.infoCardLabel}>Alimento: </Text>
+              {petAny.foodType}
+            </Text>
+          )}
+          {petAny.feedingAmount && (
+            <Text style={styles.infoCardText}>
+              <Text style={styles.infoCardLabel}>Cantidad: </Text>
+              {petAny.feedingAmount}
+            </Text>
+          )}
+          {petAny.feedingSchedule && (
+            <Text style={styles.infoCardText}>
+              <Text style={styles.infoCardLabel}>Horario: </Text>
+              {petAny.feedingSchedule}
+            </Text>
+          )}
+          {petAny.feedingInstructions && (
+            <Text style={styles.infoCardText}>
+              <Text style={styles.infoCardLabel}>Instrucciones: </Text>
+              {petAny.feedingInstructions}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Problemas de salud */}
+      {petAny.healthIssues && (
+        <View style={styles.infoCard}>
+          <View style={styles.infoCardHeader}>
+            <Ionicons name="fitness-outline" size={16} color={COLORS.errorText} />
+            <Text style={styles.infoCardTitle}>Problemas de salud</Text>
+          </View>
+          <Text style={styles.infoCardText}>{petAny.healthIssues}</Text>
+        </View>
+      )}
+
+      {/* Comportamiento y preferencia de paseo */}
+      {(() => {
+        const behaviors = csvToLabels(petAny.behavior, BEHAVIOR_LABELS);
+        const walks = csvToLabels(petAny.walkPreference, WALK_LABELS);
+        if (behaviors.length === 0 && walks.length === 0) return null;
+        return (
+          <View style={styles.infoCard}>
+            <View style={styles.infoCardHeader}>
+              <Ionicons name="paw-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.infoCardTitle}>Comportamiento y paseo</Text>
+            </View>
+            <View style={styles.chipWrap}>
+              {behaviors.map((b) => (
+                <View key={b} style={styles.detailChip}>
+                  <Text style={styles.detailChipText}>{b}</Text>
+                </View>
+              ))}
+              {walks.map((w) => (
+                <View
+                  key={w}
+                  style={[styles.detailChip, { backgroundColor: COLORS.infoBg }]}
+                >
+                  <Ionicons name="walk-outline" size={12} color={COLORS.infoText} />
+                  <Text style={[styles.detailChipText, { color: COLORS.infoText }]}>
+                    {w}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        );
+      })()}
+
       {/* Notas */}
       {pet.notes && (
         <View style={styles.notesCard}>
@@ -222,7 +332,14 @@ export default function PetDetailScreen() {
                 <Ionicons name="medkit" size={18} color={COLORS.primary} />
               </View>
               <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Veterinario</Text>
+                <View style={styles.contactLabelRow}>
+                  <Text style={styles.contactLabel}>Veterinario</Text>
+                  {petAny.vetEmergency24h && (
+                    <View style={styles.vet24hBadge}>
+                      <Text style={styles.vet24hText}>24h</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.contactName}>{formatName(petAny.vetName)}</Text>
                 {petAny.vetPhone && (
                   <TouchableOpacity
@@ -247,6 +364,11 @@ export default function PetDetailScreen() {
                 <Text style={styles.contactName}>
                   {formatName(petAny.emergencyContactName)}
                 </Text>
+                {petAny.emergencyContactRelation && (
+                  <Text style={styles.contactRelation}>
+                    {petAny.emergencyContactRelation}
+                  </Text>
+                )}
                 {petAny.emergencyContactPhone && (
                   <TouchableOpacity
                     onPress={() =>
@@ -609,6 +731,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textTertiary,
     lineHeight: 20,
+  },
+  infoCardLabel: {
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  detailChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.bgSection,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  detailChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  contactLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  vet24hBadge: {
+    backgroundColor: COLORS.successBg,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  vet24hText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: COLORS.successText,
+  },
+  contactRelation: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 1,
   },
   notesCard: {
     backgroundColor: COLORS.warningBg,

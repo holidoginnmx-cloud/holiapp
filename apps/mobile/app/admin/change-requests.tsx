@@ -94,9 +94,9 @@ export default function AdminChangeRequestsScreen() {
           return (
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.petName}>{formatName(item.reservation.pet.name)}</Text>
+                <Text style={styles.petName}>{formatName(item.reservation?.pet?.name ?? "—")}</Text>
                 <Text style={styles.ownerName}>
-                  {formatName(item.reservation.owner.firstName)} {formatName(item.reservation.owner.lastName)}
+                  {formatName(item.reservation?.owner?.firstName ?? "")} {formatName(item.reservation?.owner?.lastName ?? "")}
                 </Text>
               </View>
 
@@ -104,8 +104,8 @@ export default function AdminChangeRequestsScreen() {
                 <View>
                   <Text style={styles.label}>Actual</Text>
                   <Text style={styles.dateText}>
-                    {formatDate(String(item.reservation.checkIn))} →{" "}
-                    {formatDate(String(item.reservation.checkOut))}
+                    {item.reservation?.checkIn ? formatDate(String(item.reservation.checkIn)) : "—"} →{" "}
+                    {item.reservation?.checkOut ? formatDate(String(item.reservation.checkOut)) : "—"}
                   </Text>
                 </View>
                 <Ionicons name="arrow-forward" size={18} color={COLORS.textTertiary} />

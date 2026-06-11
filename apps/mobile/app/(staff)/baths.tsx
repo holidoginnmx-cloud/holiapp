@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Linking,
   Modal,
   TextInput,
   Pressable,
@@ -31,7 +30,7 @@ import {
   type StaffBath,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { formatName, phoneToTelUri } from "@/lib/format";
+import { formatName } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
@@ -285,7 +284,7 @@ export default function StaffBaths() {
   async function handleComplete(bath: StaffBath) {
     Alert.alert(
       "Foto del baño",
-      `Sube una foto de ${formatName(bath.pet.name)} bañado para completar la cita.`,
+      `Sube una foto de ${formatName(bath.pet?.name ?? "—")} bañado para completar la cita.`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadAndComplete(bath, "camera") },
@@ -297,7 +296,6 @@ export default function StaffBaths() {
   const renderBath = ({ item }: { item: StaffBath }) => {
     const physicallyDone = isBathPhysicallyDone(item);
     const concluded = isBathConcluded(item);
-    const ownerPhone = item.owner.phone;
     const bathAddon = getBathAddon(item);
     const hasDeslanado = bathAddon?.variant?.deslanado ?? false;
     const hasCorte = bathAddon?.variant?.corte ?? false;
@@ -305,7 +303,7 @@ export default function StaffBaths() {
     return (
       <View testID={`bath-card-${item.id}`} style={styles.bathBlock}>
         <ReservationCard
-          petName={item.pet.name}
+          petName={item.pet?.name ?? "—"}
           roomName={null}
           status={item.status}
           checkIn={item.checkIn}
@@ -313,7 +311,7 @@ export default function StaffBaths() {
           reservationType={item.reservationType}
           appointmentAt={item.appointmentAt}
           totalAmount={Number(item.totalAmount)}
-          ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
+          ownerName={`${item.owner?.firstName ?? ""} ${item.owner?.lastName ?? ""}`.trim() || "Sin dueño"}
           paymentType={item.paymentType}
           hasBalance={false}
           hasDeslanado={hasDeslanado}
@@ -327,19 +325,8 @@ export default function StaffBaths() {
           }
         />
 
-        <View style={styles.actionsRow}>
-          {ownerPhone && (
-            <TouchableOpacity
-              onPress={() => Linking.openURL(`tel:${phoneToTelUri(ownerPhone)}`)}
-              style={styles.callBtn}
-              hitSlop={6}
-              testID={`bath-call-${item.id}`}
-            >
-              <Ionicons name="call" size={16} color={COLORS.primary} />
-              <Text style={styles.callBtnText}>Llamar</Text>
-            </TouchableOpacity>
-          )}
-          {!physicallyDone && (
+        {!physicallyDone && (
+          <View style={styles.actionsRow}>
             <TouchableOpacity
               style={[
                 styles.completeBtn,
@@ -358,14 +345,14 @@ export default function StaffBaths() {
                 </>
               )}
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
 
         {/* Extras (deslanado/corte) — staff cotiza cada uno por separado.
             Una vez completos, fluye por extraPaymentStatus. */}
         {(() => {
           if (!bathAddon) return null;
-          const hasExtras = bathAddon.variant.deslanado || bathAddon.variant.corte;
+          const hasExtras = bathAddon.variant?.deslanado || bathAddon.variant?.corte;
           if (!hasExtras) return null;
 
           if (bathAddon.extraPrice && bathAddon.extraPaymentStatus === "PAID") {
@@ -385,7 +372,7 @@ export default function StaffBaths() {
                 onPress={() => {
                   Alert.alert(
                     "Confirmar pago",
-                    `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(item.pet.name)}?`,
+                    `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(item.pet?.name ?? "—")}?`,
                     [
                       { text: "Cancelar", style: "cancel" },
                       {
@@ -430,7 +417,7 @@ export default function StaffBaths() {
           const open = (kind: "deslanado" | "corte") =>
             setExtrasAddon({
               addonId: bathAddon.id,
-              petName: item.pet.name,
+              petName: item.pet?.name ?? "—",
               kind,
               currentPrice:
                 kind === "deslanado"
@@ -443,7 +430,7 @@ export default function StaffBaths() {
             });
           return (
             <View style={{ gap: 6 }}>
-              {bathAddon.variant.deslanado &&
+              {bathAddon.variant?.deslanado &&
                 (bathAddon.extraDeslanadoPrice ? (
                   <View style={styles.extraSetChip}>
                     <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
@@ -464,7 +451,7 @@ export default function StaffBaths() {
                     <Text style={styles.extrasSetBtnText}>Cobrar deslanado</Text>
                   </TouchableOpacity>
                 ))}
-              {bathAddon.variant.corte &&
+              {bathAddon.variant?.corte &&
                 (bathAddon.extraCortePrice ? (
                   <View style={styles.extraSetChip}>
                     <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />

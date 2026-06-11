@@ -21,9 +21,9 @@ export async function sendPushToUser(
   prisma: PrismaClient,
   userId: string,
   payload: PushPayload
-): Promise<void> {
+): Promise<boolean> {
   const tokens = await prisma.pushToken.findMany({ where: { userId } });
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) return false;
 
   const messages: ExpoPushMessage[] = [];
   const invalidTokens: string[] = [];
@@ -48,7 +48,7 @@ export async function sendPushToUser(
     });
   }
 
-  if (messages.length === 0) return;
+  if (messages.length === 0) return false;
 
   const chunks = expo.chunkPushNotifications(messages);
   const tickets: ExpoPushTicket[] = [];
@@ -81,6 +81,9 @@ export async function sendPushToUser(
       where: { token: { in: tokensToDelete } },
     });
   }
+
+  // Tuvo al menos un token válido al que se le envió push.
+  return true;
 }
 
 /**
@@ -91,12 +94,15 @@ export async function sendPushToUsers(
   prisma: PrismaClient,
   userIds: string[],
   payload: PushPayload
-): Promise<void> {
-  await Promise.all(
+): Promise<number> {
+  const results = await Promise.all(
     userIds.map((uid) =>
       sendPushToUser(prisma, uid, payload).catch((err) => {
         console.error(`[push] Error para user ${uid}:`, err);
+        return false;
       })
     )
   );
+  // Cuántos usuarios realmente recibieron push (tienen la app con token).
+  return results.filter(Boolean).length;
 }

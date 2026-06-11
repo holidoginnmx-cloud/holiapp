@@ -192,7 +192,7 @@ export default function AdminReservationDetail() {
     if (!reservation) return;
     Alert.alert(
       "Foto del baño",
-      `Sube una foto de ${formatName(reservation.pet.name)} bañado para completar la cita.`,
+      `Sube una foto de ${formatName(reservation.pet?.name ?? "—")} bañado para completar la cita.`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -376,15 +376,15 @@ export default function AdminReservationDetail() {
     XL: "Extra grande",
   };
   const petMetaParts: string[] = [];
-  if (reservation.pet.size) {
+  if (reservation.pet?.size) {
     petMetaParts.push(
       `Talla ${SIZE_LABELS[reservation.pet.size] ?? reservation.pet.size}`,
     );
   }
-  if (reservation.pet.weight) {
+  if (reservation.pet?.weight) {
     petMetaParts.push(`${reservation.pet.weight} kg`);
   }
-  if (reservation.pet.breed) {
+  if (reservation.pet?.breed) {
     petMetaParts.push(reservation.pet.breed);
   }
 
@@ -402,7 +402,7 @@ export default function AdminReservationDetail() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          {reservation.pet.photoUrl ? (
+          {reservation.pet?.photoUrl ? (
             <Image
               source={{ uri: reservation.pet.photoUrl }}
               style={styles.petAvatar}
@@ -414,10 +414,10 @@ export default function AdminReservationDetail() {
           )}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.petName} numberOfLines={1}>
-              {formatName(reservation.pet.name)}
+              {formatName(reservation.pet?.name ?? "—")}
             </Text>
             <Text style={styles.ownerName} numberOfLines={1}>
-              {formatName(reservation.owner.firstName)} {formatName(reservation.owner.lastName)}
+              {formatName(reservation.owner?.firstName ?? "")} {formatName(reservation.owner?.lastName ?? "")}
             </Text>
           </View>
         </View>
@@ -500,7 +500,7 @@ export default function AdminReservationDetail() {
               </View>
             )}
 
-            {reservation.pet.notes ? (
+            {reservation.pet?.notes ? (
               <View style={styles.petNotesBox}>
                 <Ionicons
                   name="information-circle-outline"
@@ -716,13 +716,13 @@ export default function AdminReservationDetail() {
           </View>
           {reservation.addons.map((addon, idx) => {
             const extras: string[] = [];
-            if (addon.variant.deslanado) extras.push("Deslanado");
-            if (addon.variant.corte) extras.push("Corte");
+            if (addon.variant?.deslanado) extras.push("Deslanado");
+            if (addon.variant?.corte) extras.push("Corte");
             const label =
               extras.length > 0
-                ? `${addon.variant.serviceType.name} · ${extras.join(" + ")}`
-                : addon.variant.serviceType.name;
-            const code = addon.variant.serviceType.code;
+                ? `${addon.variant?.serviceType?.name ?? "—"} · ${extras.join(" + ")}`
+                : addon.variant?.serviceType?.name ?? "—";
+            const code = addon.variant?.serviceType?.code;
             const icon: keyof typeof Ionicons.glyphMap =
               code === "BATH" ? "water" : "sparkles";
             const isInBooking = addon.paidWith === "BOOKING";
@@ -1097,7 +1097,7 @@ export default function AdminReservationDetail() {
           <TouchableOpacity
             style={styles.checklistsCard}
             onPress={() =>
-              router.push(`/pet/incidents/${reservation.pet.id}` as any)
+              router.push(`/pet/incidents/${reservation.pet?.id}` as any)
             }
             activeOpacity={0.85}
             testID="admin-reservation-incidents-link"
@@ -1108,7 +1108,7 @@ export default function AdminReservationDetail() {
             <View style={{ flex: 1 }}>
               <Text style={styles.checklistsTitle}>Incidentes</Text>
               <Text style={styles.checklistsSubtitle}>
-                Historial de alertas del staff de {formatName(reservation.pet.name)}
+                Historial de alertas del staff de {formatName(reservation.pet?.name ?? "—")}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />

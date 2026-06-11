@@ -41,11 +41,6 @@ const SEVERITY_CONFIG: Record<string, { icon: string; color: string; bg: string 
   INCIDENT: { icon: "alert-circle-outline", color: COLORS.errorText, bg: COLORS.errorBg },
 };
 
-const TABS = [
-  { key: "unresolved", label: "Sin resolver" },
-  { key: "resolved", label: "Resueltas" },
-];
-
 type CategoryKey = "all" | "staff" | "evidence" | "vaccines";
 
 type UnifiedAlert =
@@ -73,7 +68,6 @@ export default function AdminAlerts() {
   const router = useRouter();
   const qc = useQueryClient();
   const { width: pageWidth } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState<"unresolved" | "resolved">("unresolved");
   const [category, setCategory] = useState<CategoryKey>("all");
   const pagerRef = useRef<ScrollView>(null);
   // scrollX captura el offset horizontal del pager; un listener lo mapea
@@ -106,23 +100,35 @@ export default function AdminAlerts() {
     if (next && next !== category) setCategory(next);
   };
 
-  const showResolved = activeTab === "resolved";
-
-  const { data: staffAlerts, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["admin", "alerts", activeTab],
-    queryFn: () => getAdminAlerts(showResolved),
+  const {
+    data: unresolvedStaff,
+    isLoading,
+    refetch: refetchUnresolved,
+    isRefetching,
+  } = useQuery({
+    queryKey: ["admin", "alerts", "unresolved"],
+    queryFn: () => getAdminAlerts(false),
     refetchInterval: 30_000,
   });
 
-  // Las fuentes dinámicas (sin evidencia, vacunas) sólo aplican al tab
-  // "Sin resolver". Se auto-resuelven cuando el problema subyacente se arregla.
-  // Las cartillas pendientes viven en su propio panel, no aquí.
+  const { data: resolvedStaff, refetch: refetchResolved } = useQuery({
+    queryKey: ["admin", "alerts", "resolved"],
+    queryFn: () => getAdminAlerts(true),
+    refetchInterval: 60_000,
+  });
+
+  // Fuentes dinámicas (sin evidencia, vacunas): se auto-resuelven cuando el
+  // problema se arregla, así que siempre son "pendientes".
   const { data: stats } = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: getAdminStats,
     refetchInterval: 60_000,
-    enabled: !showResolved,
   });
+
+  const refetch = () => {
+    refetchUnresolved();
+    refetchResolved();
+  };
 
   const resolveMutation = useMutation({
     mutationFn: (id: string) => resolveAdminAlert(id),
@@ -134,20 +140,15 @@ export default function AdminAlerts() {
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
-  // Para el modo resuelto: lista única (no hay sub-categorías).
-  const resolvedAlerts = useMemo<UnifiedAlert[]>(
-    () =>
-      (staffAlerts ?? []).map((a) => ({
-        kind: "staff" as const,
-        id: a.id,
-        data: a,
-      })),
-    [staffAlerts],
-  );
-
-  // Para el modo sin resolver: una lista por cada categoría (para swipe).
+  // Una lista por categoría (para swipe). Cada lista muestra pendientes primero
+  // y resueltas al final; el color de la card indica el estado.
   const alertsByCategory = useMemo<Record<CategoryKey, UnifiedAlert[]>>(() => {
-    const staffItems: UnifiedAlert[] = (staffAlerts ?? []).map((a) => ({
+    const pendingStaff: UnifiedAlert[] = (unresolvedStaff ?? []).map((a) => ({
+      kind: "staff" as const,
+      id: a.id,
+      data: a,
+    }));
+    const resolvedStaffItems: UnifiedAlert[] = (resolvedStaff ?? []).map((a) => ({
       kind: "staff" as const,
       id: a.id,
       data: a,
@@ -173,21 +174,27 @@ export default function AdminAlerts() {
       }),
     );
     return {
-      all: [...staffItems, ...evidenceItems, ...vaccineItems],
-      staff: staffItems,
+      all: [
+        ...pendingStaff,
+        ...evidenceItems,
+        ...vaccineItems,
+        ...resolvedStaffItems,
+      ],
+      staff: [...pendingStaff, ...resolvedStaffItems],
       evidence: evidenceItems,
       vaccines: vaccineItems,
     };
-  }, [staffAlerts, stats]);
+  }, [unresolvedStaff, resolvedStaff, stats]);
 
   // Counts por categoría para los chips.
+  // Los contadores cuentan pendientes (lo accionable).
   const counts = useMemo(
     () => ({
-      staff: staffAlerts?.length ?? 0,
+      staff: unresolvedStaff?.length ?? 0,
       evidence: stats?.staysWithoutUpdates.length ?? 0,
       vaccines: stats?.expiringVaccines.length ?? 0,
     }),
-    [staffAlerts, stats]
+    [unresolvedStaff, stats]
   );
   const totalUnresolved = counts.staff + counts.evidence + counts.vaccines;
 
@@ -217,9 +224,14 @@ export default function AdminAlerts() {
 
     return (
       <TouchableOpacity
-        style={[styles.alertCard, { borderLeftColor: severity.color }]}
+        style={[
+          styles.alertCard,
+          item.isResolved
+            ? { borderLeftColor: COLORS.successText, backgroundColor: COLORS.successBg }
+            : { borderLeftColor: severity.color },
+        ]}
         activeOpacity={0.7}
-        onPress={() => router.push(`/pet/incidents/${item.pet.id}` as any)}
+        onPress={() => router.push(`/pet/incidents/${item.pet?.id}` as any)}
       >
         <View style={styles.alertHeader}>
           <View style={[styles.alertIconWrap, { backgroundColor: severity.bg }]}>
@@ -272,13 +284,13 @@ export default function AdminAlerts() {
         <View style={styles.alertMeta}>
           <View style={styles.metaChip}>
             <Ionicons name="paw" size={12} color={COLORS.primary} />
-            <Text style={styles.metaText}>{formatName(item.pet.name)}</Text>
+            <Text style={styles.metaText}>{formatName(item.pet?.name ?? "—")}</Text>
           </View>
           <View style={styles.metaChip}>
             <Ionicons name="person-outline" size={12} color={COLORS.textTertiary} />
             <Text style={styles.metaText}>
-              {formatName(item.reservation.owner.firstName)}{" "}
-              {formatName(item.reservation.owner.lastName)}
+              {formatName(item.reservation?.owner?.firstName ?? "")}{" "}
+              {formatName(item.reservation?.owner?.lastName ?? "")}
             </Text>
           </View>
           {item.reservation.room && (
@@ -290,7 +302,7 @@ export default function AdminAlerts() {
           <View style={styles.metaChip}>
             <Ionicons name="person-circle-outline" size={12} color={COLORS.textTertiary} />
             <Text style={styles.metaText}>
-              Staff: {formatName(item.staff.firstName)}
+              Staff: {formatName(item.staff?.firstName ?? "—")}
             </Text>
           </View>
         </View>
@@ -372,57 +384,15 @@ export default function AdminAlerts() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabsRow}>
-        {TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, activeTab === t.key && styles.tabActive]}
-            onPress={() => setActiveTab(t.key as "unresolved" | "resolved")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === t.key && styles.tabTextActive,
-              ]}
-            >
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FilterTabsUnderline
+        tabs={CATEGORIES.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+        activeTab={category}
+        onSelect={(key) => setCategory(key as CategoryKey)}
+        justified
+        progress={tabProgress}
+      />
 
-      {!showResolved && (
-        <FilterTabsUnderline
-          tabs={CATEGORIES.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
-          activeTab={category}
-          onSelect={(key) => setCategory(key as CategoryKey)}
-          justified
-          progress={tabProgress}
-        />
-      )}
-
-      {showResolved ? (
-        <FlatList
-          data={resolvedAlerts}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-          }
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Ionicons
-                name="archive-outline"
-                size={48}
-                color={COLORS.border}
-              />
-              <Text style={styles.emptyText}>No hay alertas resueltas</Text>
-            </View>
-          }
-        />
-      ) : (
-        <Animated.ScrollView
+      <Animated.ScrollView
           ref={pagerRef as any}
           horizontal
           pagingEnabled
@@ -459,16 +429,13 @@ export default function AdminAlerts() {
                       size={48}
                       color={COLORS.border}
                     />
-                    <Text style={styles.emptyText}>
-                      No hay alertas pendientes
-                    </Text>
+                    <Text style={styles.emptyText}>No hay alertas</Text>
                   </View>
                 }
               />
             </View>
           ))}
         </Animated.ScrollView>
-      )}
     </View>
   );
 }
@@ -485,22 +452,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     gap: 12,
   },
-  tabsRow: {
-    flexDirection: "row",
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bgSection,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: { borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 14, fontWeight: "600", color: COLORS.textTertiary },
-  tabTextActive: { color: COLORS.primary },
   list: {
     padding: 16,
     paddingBottom: 32,

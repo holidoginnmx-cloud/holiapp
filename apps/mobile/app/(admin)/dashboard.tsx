@@ -271,7 +271,7 @@ export default function AdminDashboard() {
               renderItem={({ item }) => (
                 <View style={styles.horizontalCard}>
                   <ReservationCard
-                    petName={item.pet.name}
+                    petName={item.pet?.name ?? "—"}
                     roomName={item.room?.name ?? null}
                     status={item.status}
                     checkIn={item.checkIn}
@@ -326,7 +326,7 @@ export default function AdminDashboard() {
             upcomingStays.slice(0, 5).map((item) => (
             <ReservationCard
               key={item.id}
-              petName={item.pet.name}
+              petName={item.pet?.name ?? "—"}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}
@@ -343,7 +343,7 @@ export default function AdminDashboard() {
               adminView
               hasDeslanado={item.hasDeslanado}
               hasCorte={item.hasCorte}
-              ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
+              ownerName={`${item.owner?.firstName ?? ""} ${item.owner?.lastName ?? ""}`.trim() || "Sin dueño"}
               onPress={() =>
                 router.push(`/admin/reservation/${item.id}` as any)
               }
@@ -378,7 +378,7 @@ export default function AdminDashboard() {
             upcomingBaths.slice(0, 5).map((item) => (
             <ReservationCard
               key={item.id}
-              petName={item.pet.name}
+              petName={item.pet?.name ?? "—"}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}
@@ -395,7 +395,7 @@ export default function AdminDashboard() {
               adminView
               hasDeslanado={item.hasDeslanado}
               hasCorte={item.hasCorte}
-              ownerName={`${item.owner.firstName} ${item.owner.lastName}`}
+              ownerName={`${item.owner?.firstName ?? ""} ${item.owner?.lastName ?? ""}`.trim() || "Sin dueño"}
               onPress={() =>
                 router.push(`/admin/reservation/${item.id}` as any)
               }

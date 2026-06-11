@@ -9,8 +9,10 @@ interface ReservationCardProps {
   status: string;
   checkIn?: string | Date | null;
   checkOut?: string | Date | null;
-  reservationType?: "STAY" | "BATH";
+  reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
+  /** Hospedaje que incluye un baño (servicio en el checkout). */
+  hasBath?: boolean;
   totalAmount: number;
   ownerName?: string;
   staffName?: string | null;
@@ -117,6 +119,7 @@ export function ReservationCard({
   checkOut,
   reservationType,
   appointmentAt,
+  hasBath,
   totalAmount,
   ownerName,
   staffName,
@@ -169,7 +172,14 @@ export function ReservationCard({
       <View
         style={[
           styles.accentBar,
-          { backgroundColor: isBath ? COLORS.primary : config.accent },
+          {
+            // Baño activo/agendado → naranja (identidad de baño). Concluido →
+            // gris apagado, igual que un hospedaje finalizado.
+            backgroundColor:
+              isBath && status !== "CHECKED_OUT"
+                ? COLORS.primary
+                : config.accent,
+          },
         ]}
       />
 
@@ -183,10 +193,18 @@ export function ReservationCard({
               {formatName(petName)}
             </Text>
           </View>
-          <View style={[styles.badge, { backgroundColor: config.bg }]}>
-            <Text style={[styles.badgeText, { color: config.text }]}>
-              {config.label}
-            </Text>
+          <View style={styles.headerRight}>
+            {!isBath && hasBath && (
+              <View style={styles.bathTag}>
+                <Ionicons name="water" size={11} color={COLORS.infoText} />
+                <Text style={styles.bathTagText}>Baño</Text>
+              </View>
+            )}
+            <View style={[styles.badge, { backgroundColor: config.bg }]}>
+              <Text style={[styles.badgeText, { color: config.text }]}>
+                {config.label}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -476,6 +494,26 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: COLORS.textPrimary,
     flex: 1,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  bathTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: COLORS.infoBg,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  bathTagText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.infoText,
+    letterSpacing: 0.3,
   },
   badge: {
     paddingHorizontal: 10,

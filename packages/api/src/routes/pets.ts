@@ -82,7 +82,8 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         },
         orderBy: { createdAt: "desc" },
       });
-      return pets.map((p) => ({
+      // Defensa: omite mascotas con owner roto (datos legacy con FK huérfana).
+      return pets.filter((p) => p.owner).map((p) => ({
         ...p,
         reservations: p.reservations.map((r) => {
           const totalPaid = r.payments.reduce(

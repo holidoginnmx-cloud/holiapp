@@ -32,7 +32,7 @@ type GroupedReservation = {
   petNames: string;
   roomNames: string | null;
   status: string;
-  reservationType?: "STAY" | "BATH";
+  reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
   checkIn: string | Date | null;
   checkOut: string | Date | null;
@@ -73,7 +73,7 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
     result.push({
       id: items[0].id,
       groupId,
-      petNames: items.map((i) => i.pet.name).join(", "),
+      petNames: items.map((i) => i.pet?.name ?? "—").join(", "),
       roomNames:
         [...new Set(items.map((i) => i.room?.name).filter(Boolean))].join(", ") || null,
       status: items[0].status,
@@ -106,7 +106,7 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
     result.push({
       id: r.id,
       groupId: null,
-      petNames: r.pet.name,
+      petNames: r.pet?.name ?? "—",
       roomNames: r.room?.name ?? null,
       status: r.status,
       reservationType: r.reservationType,

@@ -125,6 +125,33 @@ export function phoneToTelUri(input: string | null | undefined): string {
 }
 
 /**
+ * True when `email` is an internal placeholder rather than a real address.
+ *
+ * Owners imported from the legacy admin (`legacy+<id>@holidoginn.local`) or
+ * created as walk-ins from the web (`walkin+<uuid>@holidoginn.local`) get a
+ * synthetic address when no real email is known. These are never routable and
+ * must not be shown to users. Real addresses use `@holidoginn.com`; deleted
+ * users use `@holidoginn.deleted` — neither matches.
+ */
+export function isPlaceholderEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return email.trim().toLowerCase().endsWith("@holidoginn.local");
+}
+
+/**
+ * Email to display, or "" when it is an internal placeholder (legacy/walk-in
+ * synthetic address) or missing. An empty result means the owner has no real
+ * email — render `NO_EMAIL_LABEL` in its place.
+ */
+export function displayEmail(email: string | null | undefined): string {
+  if (!email) return "";
+  return isPlaceholderEmail(email) ? "" : email.trim();
+}
+
+/** User-facing fallback shown when an owner has no real email on file. */
+export const NO_EMAIL_LABEL = "Sin correo registrado";
+
+/**
  * Returns a human-friendly section label for a date relative to "now":
  * "Hoy", "Ayer", weekday name (within last 7 days), or full date.
  * Uses local timezone — pair with grouping logic that buckets by local day.

@@ -199,8 +199,8 @@ export default function ChecklistsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dayHeader}>{fullDate(c.date)}</Text>
                   <Text style={styles.staffLabel}>
-                    Reportado por {formatName(c.staff.firstName)}{" "}
-                    {formatName(c.staff.lastName)}
+                    Reportado por {formatName(c.staff?.firstName ?? "—")}{" "}
+                    {formatName(c.staff?.lastName ?? "")}
                     {dayItems.length > 0 && ` · ${dayItems.length} evid.`}
                   </Text>
                 </View>

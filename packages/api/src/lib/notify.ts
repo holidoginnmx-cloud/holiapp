@@ -45,12 +45,15 @@ export async function notifyUser(
 /**
  * Versión batch para broadcast (p.ej. todos los staff o todos los admins).
  */
+// Devuelve cuántos usuarios recibieron push real (tienen la app instalada con
+// token). La notificación in-app se crea para todos; el push solo llega a los
+// que tienen token.
 export async function notifyUsers(
   prisma: PrismaClient,
   userIds: string[],
   payload: Omit<NotifyData, "userId">
-): Promise<void> {
-  if (userIds.length === 0) return;
+): Promise<number> {
+  if (userIds.length === 0) return 0;
   await prisma.notification.createMany({
     data: userIds.map((uid) => ({
       userId: uid,
@@ -60,7 +63,7 @@ export async function notifyUsers(
       data: payload.data ?? undefined,
     })),
   });
-  await sendPushToUsers(prisma, userIds, {
+  return await sendPushToUsers(prisma, userIds, {
     title: payload.title,
     body: payload.body,
     data: {

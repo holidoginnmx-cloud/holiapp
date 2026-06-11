@@ -493,19 +493,35 @@ export default function AdminCartillas() {
                 <View style={styles.cardInfo}>
                   <Text style={styles.petName}>{formatName(pet.name)}</Text>
                   <Text style={styles.ownerName}>
-                    {formatName(pet.owner.firstName)} {formatName(pet.owner.lastName)}
+                    {formatName(pet.owner?.firstName ?? "")} {formatName(pet.owner?.lastName ?? "")}
                   </Text>
-                  {pet.cartillaReviewedAt ? (
-                    <Text style={styles.metaText}>
-                      Revisada{" "}
-                      {new Date(pet.cartillaReviewedAt).toLocaleDateString(
-                        "es-MX",
-                        { day: "numeric", month: "short" }
-                      )}
-                    </Text>
-                  ) : (
-                    <Text style={styles.metaText}>Esperando revisión</Text>
-                  )}
+                  {(() => {
+                    const reviewedDate = pet.cartillaReviewedAt
+                      ? new Date(pet.cartillaReviewedAt).toLocaleDateString(
+                          "es-MX",
+                          { day: "numeric", month: "short" }
+                        )
+                      : null;
+                    let label: string;
+                    switch (pet.cartillaStatus) {
+                      case "APPROVED":
+                        label = reviewedDate
+                          ? `Aprobada ${reviewedDate}`
+                          : "Aprobada";
+                        break;
+                      case "REJECTED":
+                        label = reviewedDate
+                          ? `Rechazada ${reviewedDate}`
+                          : "Rechazada";
+                        break;
+                      case "EXPIRED":
+                        label = "Vencida";
+                        break;
+                      default:
+                        label = "Esperando revisión";
+                    }
+                    return <Text style={styles.metaText}>{label}</Text>;
+                  })()}
                   {pet.cartillaRejectionReason && (
                     <Text style={styles.rejectionReason} numberOfLines={2}>
                       Motivo: {pet.cartillaRejectionReason}
@@ -542,7 +558,7 @@ export default function AdminCartillas() {
                   Cartilla de {formatName(selectedPet.name)}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  {formatName(selectedPet.owner.firstName)} {formatName(selectedPet.owner.lastName)}
+                  {formatName(selectedPet.owner?.firstName ?? "")} {formatName(selectedPet.owner?.lastName ?? "")}
                   {selectedPet.owner.phone ? ` · ${formatPhoneInput(selectedPet.owner.phone)}` : ""}
                 </Text>
 

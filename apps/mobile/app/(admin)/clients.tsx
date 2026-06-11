@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getAllPets, getUsers } from "@/lib/api";
 import type { PetWithOwner } from "@/lib/api";
-import { formatName, formatPhoneInput } from "@/lib/format";
+import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
 
 type OwnerGroup = {
   id: string;
@@ -25,6 +25,8 @@ type OwnerGroup = {
   email: string;
   pets: PetWithOwner[];
 };
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 export default function AdminClients() {
   const [search, setSearch] = useState("");
@@ -45,6 +47,9 @@ export default function AdminClients() {
     if (!pets) return [];
     const map = new Map<string, OwnerGroup>();
     for (const pet of pets) {
+      // Dato legacy con FK huérfana (owner inexistente): se omite para no
+      // tumbar la pantalla. La API también lo filtra (defensa en profundidad).
+      if (!pet.owner) continue;
       const existing = map.get(pet.owner.id);
       if (existing) {
         existing.pets.push(pet);
@@ -66,12 +71,12 @@ export default function AdminClients() {
     const q = search.toLowerCase();
     return owners.filter(
       (o) =>
-        o.firstName.toLowerCase().includes(q) ||
-        o.lastName.toLowerCase().includes(q) ||
-        o.email.toLowerCase().includes(q) ||
+        o.firstName?.toLowerCase().includes(q) ||
+        o.lastName?.toLowerCase().includes(q) ||
+        o.email?.toLowerCase().includes(q) ||
         o.pets.some(
           (p) =>
-            p.name.toLowerCase().includes(q) ||
+            p.name?.toLowerCase().includes(q) ||
             (p.breed && p.breed.toLowerCase().includes(q))
         )
     );
@@ -82,7 +87,7 @@ export default function AdminClients() {
     if (!users) return new Map<string, { creditBalance: number; phone?: string }>();
     const m = new Map<string, { creditBalance: number; phone?: string }>();
     for (const u of users) {
-      m.set(u.id, { creditBalance: Number(u.creditBalance ?? 0), phone: u.phone });
+      m.set(u.id, { creditBalance: Number(u.creditBalance ?? 0), phone: u.phone ?? undefined });
     }
     return m;
   }, [users]);
@@ -96,6 +101,7 @@ export default function AdminClients() {
     const credit = userInfo?.creditBalance ?? 0;
     const phone = userInfo?.phone;
     const isOpen = !!expanded[item.id];
+    const email = displayEmail(item.email);
 
     // Aggregate cartilla status: red if any rejected/expired, ambar if any pending, green if all approved
     const hasRejected = item.pets.some(
@@ -125,15 +131,18 @@ export default function AdminClients() {
           >
             <View style={styles.ownerAvatar}>
               <Text style={styles.ownerAvatarText}>
-                {item.firstName[0]?.toUpperCase() ?? "?"}
+                {item.firstName?.[0]?.toUpperCase() ?? "?"}
               </Text>
             </View>
             <View style={styles.ownerInfo}>
               <Text style={styles.ownerName} numberOfLines={1}>
                 {formatName(item.firstName)} {formatName(item.lastName)}
               </Text>
-              <Text style={styles.ownerEmail} numberOfLines={1}>
-                {item.email}
+              <Text
+                style={[styles.ownerEmail, !email && styles.ownerEmailMuted]}
+                numberOfLines={1}
+              >
+                {email || NO_EMAIL_LABEL}
               </Text>
               <View style={styles.ownerMeta}>
                 {phone && (
@@ -410,6 +419,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 1,
+  },
+  ownerEmailMuted: {
+    fontStyle: "italic",
+    color: COLORS.textDisabled,
   },
   ownerMeta: {
     flexDirection: "row",

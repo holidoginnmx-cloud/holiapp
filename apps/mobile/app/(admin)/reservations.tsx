@@ -15,7 +15,12 @@ import {
   getReservations,
   listAdminChangeRequests,
 } from "@/lib/api";
-import { CalendarView } from "@/components/CalendarView";
+import {
+  CalendarView,
+  type CalendarReservation,
+} from "@/components/CalendarView";
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 export default function AdminReservations() {
   const router = useRouter();
@@ -33,15 +38,26 @@ export default function AdminReservations() {
   });
   const pendingCount = pendingChanges?.length ?? 0;
 
-  const filtered = (data ?? []).filter((r) => {
+  // Filtra reservaciones con relaciones rotas (datos legacy con FK huérfana)
+  // para que un registro corrupto no tumbe el calendario al renderizar.
+  const safe = (data ?? []).filter((r) => r.pet);
+  const filtered = safe.filter((r) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      r.pet.name.toLowerCase().includes(q) ||
+      r.pet?.name?.toLowerCase().includes(q) ||
       r.room?.name?.toLowerCase().includes(q) ||
       r.staff?.firstName?.toLowerCase().includes(q)
     );
   });
+
+  // El list item admin no trae `addons`. Usamos el flag `hasBath` del backend
+  // cuando exista; si no, aproximamos con hasDeslanado/hasCorte (no detecta
+  // baños sin extras — para eso el backend debe enviar `hasBath`).
+  const calendarReservations: CalendarReservation[] = filtered.map((r) => ({
+    ...(r as unknown as CalendarReservation),
+    hasBath: r.hasBath ?? (r.hasDeslanado || r.hasCorte),
+  }));
 
   if (isLoading) {
     return (
@@ -90,7 +106,7 @@ export default function AdminReservations() {
       </View>
 
       <CalendarView
-        reservations={filtered}
+        reservations={calendarReservations}
         onPressReservation={(id) =>
           router.push(`/admin/reservation/${id}` as any)
         }

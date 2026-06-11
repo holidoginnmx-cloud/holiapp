@@ -37,7 +37,7 @@ import {
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
-import { formatName, utcDayKey, localDayKey, formatPhoneInput } from "@/lib/format";
+import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 
 const ALERT_TYPES: { key: AlertType; label: string; icon: string }[] = [
@@ -343,7 +343,7 @@ export default function StayDetail() {
   const todayPhotos = todayUpdates.filter((u) => u.mediaType === "image");
   const todayVideos = todayUpdates.filter((u) => u.mediaType === "video");
 
-  const petAge = stay.pet.birthDate
+  const petAge = stay.pet?.birthDate
     ? Math.floor(
         (Date.now() - new Date(stay.pet.birthDate).getTime()) /
           (365.25 * 86_400_000)
@@ -360,9 +360,9 @@ export default function StayDetail() {
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={styles.headerInfo}>
-          <Text style={styles.petName}>{formatName(stay.pet.name)}</Text>
+          <Text style={styles.petName}>{formatName(stay.pet?.name ?? "—")}</Text>
           <Text style={styles.ownerName}>
-            {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
+            {formatName(stay.owner?.firstName ?? "")} {formatName(stay.owner?.lastName ?? "")}
           </Text>
         </View>
         <View
@@ -411,13 +411,15 @@ export default function StayDetail() {
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.ownerStripName}>
-              {formatName(stay.owner.firstName)} {formatName(stay.owner.lastName)}
+              {formatName(stay.owner?.firstName ?? "")} {formatName(stay.owner?.lastName ?? "")}
             </Text>
             <Text style={styles.ownerStripContact} numberOfLines={1}>
-              {stay.owner.email}
-              {stay.owner.phone
-                ? ` · ${formatPhoneInput(stay.owner.phone)}`
-                : ""}
+              {[
+                displayEmail(stay.owner?.email) || NO_EMAIL_LABEL,
+                stay.owner?.phone ? formatPhoneInput(stay.owner.phone) : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
           </View>
         </View>
@@ -435,7 +437,7 @@ export default function StayDetail() {
         <View style={styles.cardDivider} />
 
         <View style={styles.petProfileRow}>
-          {stay.pet.photoUrl ? (
+          {stay.pet?.photoUrl ? (
             <Image
               source={{ uri: stay.pet.photoUrl }}
               style={styles.petPhoto}
@@ -447,9 +449,9 @@ export default function StayDetail() {
           )}
           <View style={styles.petDetails}>
             <Text style={styles.petBreed}>
-              {stay.pet.breed || "Sin raza"} — {stay.pet.size}
+              {stay.pet?.breed || "Sin raza"} — {stay.pet?.size ?? "—"}
             </Text>
-            {stay.pet.weight && (
+            {stay.pet?.weight && (
               <Text style={styles.petDetail}>{stay.pet.weight} kg</Text>
             )}
             {petAge !== null && (
@@ -463,7 +465,7 @@ export default function StayDetail() {
             onPress={() =>
               router.push({
                 pathname: "/pet/create",
-                params: { editId: stay.pet.id },
+                params: { editId: stay.pet?.id },
               } as any)
             }
             hitSlop={8}
@@ -472,18 +474,18 @@ export default function StayDetail() {
             <Text style={styles.editPetButtonText}>Editar</Text>
           </TouchableOpacity>
         </View>
-        {stay.pet.notes && (
+        {stay.pet?.notes && (
           <View style={styles.notesBox}>
             <Ionicons name="information-circle-outline" size={16} color={COLORS.textTertiary} />
-            <Text style={styles.notesText}>{stay.pet.notes}</Text>
+            <Text style={styles.notesText}>{stay.pet?.notes}</Text>
           </View>
         )}
 
         {/* Vaccines */}
-        {stay.pet.vaccines.length > 0 && (
+        {(stay.pet?.vaccines?.length ?? 0) > 0 && (
           <View style={styles.vaccinesSection}>
             <Text style={styles.subsectionTitle}>Vacunas</Text>
-            {stay.pet.vaccines.map((v) => {
+            {(stay.pet?.vaccines ?? []).map((v) => {
               const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
               const isExpiring =
                 v.expiresAt &&
@@ -552,12 +554,12 @@ export default function StayDetail() {
         {/* Baño contratado */}
         {(() => {
           const bath = stay.addons?.find(
-            (a) => a.variant.serviceType.code === "BATH"
+            (a) => a.variant?.serviceType?.code === "BATH"
           );
           if (!bath) return null;
           const extras: string[] = [];
-          if (bath.variant.deslanado) extras.push("Deslanado");
-          if (bath.variant.corte) extras.push("Corte");
+          if (bath.variant?.deslanado) extras.push("Deslanado");
+          if (bath.variant?.corte) extras.push("Corte");
           const label = extras.length > 0 ? extras.join(" + ") : "Estándar";
           const isCompleted = !!bath.completedAt;
           return (
@@ -582,7 +584,7 @@ export default function StayDetail() {
                   onPress={() =>
                     Alert.alert(
                       "Foto del baño",
-                      `Sube una foto de ${formatName(stay.pet.name)} bañado para completar.`,
+                      `Sube una foto de ${formatName(stay.pet?.name ?? "—")} bañado para completar.`,
                       [
                         { text: "Cancelar", style: "cancel" },
                         { text: "Tomar foto", onPress: () => handleCompleteBathAddon(bath.id, "camera") },
@@ -734,11 +736,11 @@ export default function StayDetail() {
               </TouchableOpacity>
             )}
           </View>
-          {stay.pet.behaviorTags.length === 0 ? (
+          {(stay.pet?.behaviorTags?.length ?? 0) === 0 ? (
             <Text style={styles.emptyText}>Sin etiquetas</Text>
           ) : (
             <View style={styles.tagsRow}>
-              {stay.pet.behaviorTags.map((bt) => (
+              {(stay.pet?.behaviorTags ?? []).map((bt) => (
                 <BehaviorTagPill
                   key={bt.id}
                   tag={bt.tag}
@@ -845,7 +847,7 @@ export default function StayDetail() {
       <TouchableOpacity
         style={styles.checklistsCard}
         onPress={() =>
-          router.push(`/pet/incidents/${stay.pet.id}` as any)
+          router.push(`/pet/incidents/${stay.pet?.id}` as any)
         }
         activeOpacity={0.85}
         testID="staff-stay-incidents-link"
@@ -856,7 +858,7 @@ export default function StayDetail() {
         <View style={{ flex: 1 }}>
           <Text style={styles.checklistsTitle}>Incidentes</Text>
           <Text style={styles.checklistsSubtitle}>
-            Historial de alertas de {formatName(stay.pet.name)}
+            Historial de alertas de {formatName(stay.pet?.name ?? "—")}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
@@ -879,7 +881,7 @@ export default function StayDetail() {
               onPress={() =>
                 Alert.alert(
                   "Confirmar pago",
-                  `¿Recibiste $${Number(cr.deltaAmount).toLocaleString("es-MX")} de ${formatName(stay.pet.name)} por la extensión?`,
+                  `¿Recibiste $${Number(cr.deltaAmount).toLocaleString("es-MX")} de ${formatName(stay.pet?.name ?? "—")} por la extensión?`,
                   [
                     { text: "Cancelar", style: "cancel" },
                     {
@@ -987,16 +989,16 @@ export default function StayDetail() {
           setAlertDescription("");
         }}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            setAlertModalVisible(false);
+            setAlertDescription("");
+          }}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              setAlertModalVisible(false);
-              setAlertDescription("");
-            }}
+          <KeyboardAvoidingView
+            style={styles.modalKav}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             <Pressable
               style={[styles.modalContent, { maxHeight: "85%" }]}
@@ -1084,8 +1086,8 @@ export default function StayDetail() {
                 </TouchableOpacity>
               </View>
             </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
       {/* Tag Modal */}
@@ -1099,17 +1101,17 @@ export default function StayDetail() {
           setTagNotes("");
         }}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            setTagModalVisible(false);
+            setSelectedTagKey(null);
+            setTagNotes("");
+          }}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              setTagModalVisible(false);
-              setSelectedTagKey(null);
-              setTagNotes("");
-            }}
+          <KeyboardAvoidingView
+            style={styles.modalKav}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             <Pressable
               style={[styles.modalContent, { maxHeight: "85%" }]}
@@ -1197,8 +1199,8 @@ export default function StayDetail() {
                 </TouchableOpacity>
               </View>
             </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
       {/* Modal de pago manual (estilo admin/baño) */}
@@ -1208,11 +1210,11 @@ export default function StayDetail() {
         animationType="slide"
         onRequestClose={closePaymentModal}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <Pressable style={styles.payModalOverlay} onPress={closePaymentModal}>
+        <Pressable style={styles.payModalOverlay} onPress={closePaymentModal}>
+          <KeyboardAvoidingView
+            style={styles.modalKav}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
             <Pressable
               style={styles.payModalContent}
               onPress={(e) => e.stopPropagation()}
@@ -1305,8 +1307,8 @@ export default function StayDetail() {
                 </TouchableOpacity>
               </View>
             </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
 
     </ScrollView>
@@ -1553,6 +1555,9 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   // Modal pago manual
+  modalKav: {
+    width: "100%",
+  },
   payModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -1563,6 +1568,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
+    paddingBottom: 32,
   },
   payModalTitle: {
     fontSize: 18,
