@@ -5,11 +5,22 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { StyleSheet } from "react-native";
+import Animated, { FadeOut } from "react-native-reanimated";
+import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
+import { Baloo2_800ExtraBold } from "@expo-google-fonts/baloo-2";
+import { Pacifico_400Regular } from "@expo-google-fonts/pacifico";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
+import { AnimatedSplash } from "@/components/splash";
 // import { registerForPushNotifications } from "@/lib/pushNotifications"; // DEBUG build 15: aislado para diagnosticar crash al abrir
 import { getMyLegalStatus } from "@/lib/api";
+
+// Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
+// cargadas; así el relevo al splash animado no muestra un parpadeo.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TOUR_SEEN_KEY = "welcome-tour-seen";
 
@@ -105,8 +116,44 @@ function ClerkTokenSync() {
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
+/**
+ * Overlay del splash animado. Permanece encima de la app hasta que:
+ *   1) la animación termina (onAnimationComplete), y
+ *   2) Clerk resolvió la sesión (isLoaded) — es decir, ya sabemos a qué
+ *      pantalla entrar.
+ * Al cumplirse ambas, se desmonta con un fade-out suave.
+ *
+ * Debe renderizarse dentro de <ClerkProvider> para poder leer useAuth().
+ */
+function SplashGate() {
+  const { isLoaded } = useAuth();
+  const [animationDone, setAnimationDone] = useState(false);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (animationDone && isLoaded) setVisible(false);
+  }, [animationDone, isLoaded]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={StyleSheet.absoluteFill} exiting={FadeOut.duration(350)}>
+      <AnimatedSplash onAnimationComplete={() => setAnimationDone(true)} />
+    </Animated.View>
+  );
+}
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+
+  // Fuentes del logotipo. Mientras cargan, seguimos mostrando el splash nativo.
+  const [fontsLoaded] = useFonts({ Baloo2_800ExtraBold, Pacifico_400Regular });
+
+  useEffect(() => {
+    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
@@ -138,6 +185,7 @@ export default function RootLayout() {
           />
         </Stack>
         <DevRoleSwitcher />
+        <SplashGate />
       </QueryClientProvider>
     </ClerkProvider>
   );

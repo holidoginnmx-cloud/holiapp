@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Holidog Inn — Splash preview (SVG)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Pacifico&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --base: 58;        /* SIZE.base — holi/inn (Baloo 2) */
+    --script: 66;      /* SIZE.script — d/g (Pacifico) */
+    --ls: -3.5;        /* letterSpacing */
+    --paw: 48;         /* SIZE.paw */
+    --pawgap: 39;      /* WORD.pawGap (dx d→g) */
+    --pawleft: 117;    /* WORD.pawLeft */
+    --pawbottom: 38;   /* WORD.pawBottom */
+    --bedw: 80;        /* SIZE.bedW */
+    --bedh: 89;        /* SIZE.bedH */
+    --bedleft: 77;     /* WORD.bedLeft (cama absoluta — NO mueve a "inn") */
+    --bedtop: -5;      /* WORD.bedTop */
+    --overlap: -53;    /* styles.row2.marginTop */
+    --nudgex: 30;      /* LOGO_NUDGE.x (centrado horizontal) */
+    --nudgey: 0;       /* LOGO_NUDGE.y (centrado vertical) */
+    --scale: 1.8;      /* zoom SOLO de preview (no se copia) */
+    --text: #1A4D5C;
+    --accent: #E89A2C;
+    --bg: #FFFFFF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif;
+         display: flex; min-height: 100vh; background: #1b1f24; color: #e8edf2; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center;
+           background: var(--bg); position: relative; overflow: hidden; }
+  .logo { transform: scale(var(--scale)) translate(calc(var(--nudgex) * 1px), calc(var(--nudgey) * 1px)); transform-origin: center; }
+  .w { display: block; }
+  /* block = se apilan verticalmente (holi arriba, inn debajo). fit-content =
+     cada fila se ajusta a su contenido. position relative = ancla de los overlays. */
+  .row1 { position: relative; display: block; width: fit-content; }
+  .row2 { position: relative; display: block; width: fit-content; margin-top: calc(var(--overlap) * 1px); }
+  text { fill: var(--text); }
+  .paw { position: absolute; left: calc(var(--pawleft) * 1px); bottom: calc(var(--pawbottom) * 1px); }
+  .paw svg { display: block; width: calc(var(--paw) * 1px); height: calc(var(--paw) * 1px); }
+  .paw path, .paw ellipse { fill: var(--accent); }
+  /* Cama ABSOLUTA dentro de .row2: bedleft/bedtop la mueven sin tocar "inn". */
+  .bed { position: absolute; left: calc(var(--bedleft) * 1px); top: calc(var(--bedtop) * 1px); }
+  .bed svg { display: block; width: calc(var(--bedw) * 1px); height: calc(var(--bedh) * 1px); }
+  .bed path, .bed ellipse { stroke: var(--accent); fill: none; stroke-width: 5; }
+  .bed .mp ellipse, .bed .mp circle { fill: var(--accent); stroke: none; }
+
+  .playing .w { animation: fade .8s ease-out both; }
+  .playing .paw { animation: bounce .94s ease .65s both; }
+  .playing .bed svg { animation: fill 1.5s ease-in-out 1.7s both; }
+  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes bounce {
+    0% { transform: translateY(calc(var(--paw) * -1.7px)); opacity: 0 }
+    12% { opacity: 1 } 30% { transform: translateY(0) }
+    45% { transform: translateY(calc(var(--paw) * -0.55px)) }
+    62% { transform: translateY(0) }
+    74% { transform: translateY(calc(var(--paw) * -0.24px)) }
+    86%,100% { transform: translateY(0) }
+  }
+  @keyframes fill { from { clip-path: inset(100% 0 0 0) } to { clip-path: inset(0 0 0 0) } }
+
+  #panel { width: 320px; padding: 18px 18px 48px; overflow-y: auto; background: #121519; border-left: 1px solid #2a2f37; }
+  #panel h1 { font-size: 15px; margin: 0 0 2px; }
+  #panel .sub { font-size: 12px; color: #8b95a1; margin: 0 0 14px; }
+  .ctrl { margin: 11px 0; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 12px; color: #b9c2cd; margin-bottom: 3px; }
+  .ctrl label b { color: #fff; font-variant-numeric: tabular-nums; }
+  .ctrl input[type=range] { width: 100%; }
+  .btns { display: flex; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; }
+  button { background: #E89A2C; color: #1b1f24; border: 0; border-radius: 8px; padding: 9px 14px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  button.ghost { background: #222933; color: #cdd6e0; }
+  .swatches { display: flex; gap: 8px; margin: 6px 0 14px; }
+  .swatches label { font-size: 12px; color: #b9c2cd; display: flex; align-items: center; gap: 6px; }
+  .swatches input { width: 34px; height: 26px; border: 0; background: none; padding: 0; }
+  #readout { margin-top: 14px; padding: 12px; background: #0c0e11; border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; line-height: 1.65; color: #9fe0b0; white-space: pre; user-select: all; }
+  .hint { font-size: 11px; color: #6f7681; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div class="logo" id="logo">
+      <div class="row1">
+        <svg class="w" id="svg1" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="paw">
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 47c14.2 0 25 11 25 25 0 11.6-11 18.5-25 18.5S25 83.6 25 72c0-14 10.8-25 25-25Z"/>
+            <g transform="rotate(-24 20 45)"><ellipse cx="20" cy="45" rx="8.4" ry="11.8"/></g>
+            <g transform="rotate(-9 40 28)"><ellipse cx="40" cy="28" rx="9" ry="13"/></g>
+            <g transform="rotate(9 60 28)"><ellipse cx="60" cy="28" rx="9" ry="13"/></g>
+            <g transform="rotate(24 80 45)"><ellipse cx="80" cy="45" rx="8.4" ry="11.8"/></g>
+          </svg>
+        </div>
+      </div>
+      <div class="row2">
+        <svg class="w" id="svg2" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="bed">
+          <svg viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 44 C6 82 30 112 100 112 C170 112 194 82 194 44" stroke-linecap="round"/>
+            <ellipse cx="100" cy="42" rx="94" ry="26"/>
+            <ellipse cx="100" cy="47" rx="66" ry="15"/>
+            <g class="mp" transform="translate(56 84) scale(2.1)"><ellipse cx="0" cy="2.4" rx="2.7" ry="2.2"/><circle cx="-2.5" cy="0.2" r="1.2"/><circle cx="-0.9" cy="-1.3" r="1.2"/><circle cx="0.9" cy="-1.3" r="1.2"/><circle cx="2.5" cy="0.2" r="1.2"/></g>
+            <g class="mp" transform="translate(100 92) scale(2.1)"><ellipse cx="0" cy="2.4" rx="2.7" ry="2.2"/><circle cx="-2.5" cy="0.2" r="1.2"/><circle cx="-0.9" cy="-1.3" r="1.2"/><circle cx="0.9" cy="-1.3" r="1.2"/><circle cx="2.5" cy="0.2" r="1.2"/></g>
+            <g class="mp" transform="translate(144 84) scale(2.1)"><ellipse cx="0" cy="2.4" rx="2.7" ry="2.2"/><circle cx="-2.5" cy="0.2" r="1.2"/><circle cx="-0.9" cy="-1.3" r="1.2"/><circle cx="0.9" cy="-1.3" r="1.2"/><circle cx="2.5" cy="0.2" r="1.2"/></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <h1>Splash — ajuste (SVG, fiel a RN)</h1>
+    <p class="sub">La cama ahora es ABSOLUTA: muévela con X/Y sin que se mueva "inn". Los valores de abajo van tal cual a <b>AnimatedSplash.tsx</b>.</p>
+    <div class="btns">
+      <button onclick="play()">▶ Reproducir</button>
+      <button class="ghost" onclick="toggleLoop(this)">🔁 Loop: off</button>
+      <button class="ghost" onclick="toggleBg()">◐ Fondo</button>
+      <button onclick="centerLogo()">🎯 Centrar</button>
+    </div>
+    <div class="swatches">
+      <label>Texto <input type="color" value="#1A4D5C" oninput="setVar('--text', this.value)"></label>
+      <label>Naranja <input type="color" value="#E89A2C" oninput="setVar('--accent', this.value)"></label>
+    </div>
+    <div id="controls"></div>
+    <div id="readout"></div>
+    <p class="hint">Mándame la caja verde (o captura). El <b>Zoom</b> no se copia.</p>
+  </div>
+
+<script>
+  const root = document.documentElement;
+  const svg1 = document.getElementById('svg1');
+  const svg2 = document.getElementById('svg2');
+  const L1 = { w: 260, h: 116, baseline: 74 };
+  const L2 = { w: 110, h: 74, baseline: 54 };
+
+  function buildSvgs() {
+    svg1.setAttribute('width', L1.w); svg1.setAttribute('height', L1.h);
+    svg1.setAttribute('viewBox', `0 0 ${L1.w} ${L1.h}`);
+    svg1.innerHTML =
+      `<text id="t1" x="0" y="${L1.baseline}" text-anchor="start">`
+      + `<tspan id="holi" font-family="'Baloo 2'" font-weight="800">holi</tspan>`
+      + `<tspan id="td" font-family="Pacifico">d</tspan>`
+      + `<tspan id="tg" font-family="Pacifico">g</tspan>`
+      + `</text>`;
+    svg2.setAttribute('width', L2.w); svg2.setAttribute('height', L2.h);
+    svg2.setAttribute('viewBox', `0 0 ${L2.w} ${L2.h}`);
+    svg2.innerHTML =
+      `<text id="t2" x="0" y="${L2.baseline}" text-anchor="start">`
+      + `<tspan id="inn" font-family="'Baloo 2'" font-weight="800">inn</tspan>`
+      + `</text>`;
+  }
+  buildSvgs();
+
+  function num(v) { return parseFloat(getComputedStyle(root).getPropertyValue(v)); }
+  function setVar(v, val) { root.style.setProperty(v, val); apply(); render(); }
+
+  function apply() {
+    const base = num('--base'), script = num('--script'), ls = num('--ls'), gap = num('--pawgap');
+    for (const id of ['holi', 'inn']) {
+      const e = document.getElementById(id);
+      if (e) { e.setAttribute('font-size', base); e.setAttribute('letter-spacing', ls); }
+    }
+    document.getElementById('td').setAttribute('font-size', script);
+    const tg = document.getElementById('tg');
+    tg.setAttribute('font-size', script); tg.setAttribute('dx', gap);
+  }
+
+  const CONTROLS = [
+    ['--base', 'Tamaño holi/inn', 30, 90, 1],
+    ['--script', 'Tamaño cursiva d/g', 30, 110, 1],
+    ['--ls', 'Letter-spacing', -6, 3, 0.5],
+    ['--paw', 'Tamaño huella', 20, 80, 1],
+    ['--pawgap', 'Hueco d→g (dx)', 0, 90, 1],
+    ['--pawleft', 'Huella X (left)', 0, 240, 1],
+    ['--pawbottom', 'Huella Y (bottom)', -20, 90, 1],
+    ['--bedw', 'Ancho cama', 50, 200, 1],
+    ['--bedh', 'Alto cama', 40, 160, 1],
+    ['--bedleft', 'Cama X (left)', -40, 240, 1],
+    ['--bedtop', 'Cama Y (top)', -80, 120, 1],
+    ['--overlap', 'Solape filas (row2 mt)', -140, 20, 1],
+    ['--nudgex', 'Logo X (centrado)', -120, 120, 1],
+    ['--nudgey', 'Logo Y (centrado)', -120, 120, 1],
+    ['--scale', 'Zoom preview', 0.6, 3, 0.05],
+  ];
+  const wrap = document.getElementById('controls');
+  CONTROLS.forEach(([v, label, min, max, step]) => {
+    const cur = num(v);
+    const d = document.createElement('div'); d.className = 'ctrl';
+    d.innerHTML = `<label>${label} <b id="val${v}">${cur}</b></label>`
+      + `<input id="sl${v}" type="range" min="${min}" max="${max}" step="${step}" value="${cur}" oninput="onSlide('${v}', this.value)">`;
+    wrap.appendChild(d);
+  });
+  function onSlide(v, val) {
+    root.style.setProperty(v, val);
+    document.getElementById('val' + v).textContent = val;
+    apply(); render();
+  }
+
+  function render() {
+    const g = (v) => num(v);
+    document.getElementById('readout').textContent =
+`SIZE = {
+  base: ${g('--base')}, script: ${g('--script')}, paw: ${g('--paw')},
+  bedW: ${g('--bedw')}, bedH: ${g('--bedh')},
+}
+WORD = {
+  line1: { w: ${L1.w}, h: ${L1.h}, baselineY: ${L1.baseline} },
+  line2: { w: ${L2.w}, h: ${L2.h}, baselineY: ${L2.baseline} },
+  pawGap: ${g('--pawgap')},
+  pawLeft: ${g('--pawleft')}, pawBottom: ${g('--pawbottom')},
+  bedLeft: ${g('--bedleft')}, bedTop: ${g('--bedtop')},
+}
+LETTER_SPACING: ${g('--ls')}
+LOGO_NUDGE = { x: ${g('--nudgex')}, y: ${g('--nudgey')} }
+styles.row2.marginTop: ${g('--overlap')}
+textColor: ${getComputedStyle(root).getPropertyValue('--text').trim()}
+accentColor: ${getComputedStyle(root).getPropertyValue('--accent').trim()}`;
+  }
+
+  let loopTimer = null;
+  function play() {
+    const lg = document.getElementById('logo');
+    lg.classList.remove('playing'); void lg.offsetWidth; lg.classList.add('playing');
+  }
+  function toggleLoop(btn) {
+    if (loopTimer) { clearInterval(loopTimer); loopTimer = null; btn.textContent = '🔁 Loop: off'; }
+    else { play(); loopTimer = setInterval(play, 5200); btn.textContent = '🔁 Loop: on'; }
+  }
+  let dark = false;
+  function toggleBg() { dark = !dark; setVar('--bg', dark ? '#0C1A20' : '#FFFFFF'); setVar('--text', dark ? '#9FD3E0' : '#1A4D5C'); }
+
+  function setSlider(v, val) {
+    root.style.setProperty(v, val);
+    const sl = document.getElementById('sl' + v); if (sl) sl.value = val;
+    const lab = document.getElementById('val' + v); if (lab) lab.textContent = val;
+    apply(); render();
+  }
+
+  // Calcula el desplazamiento exacto para centrar el DIBUJO (no la caja) midiendo
+  // los bounding boxes reales (getBBox del texto + coords de huella/cama).
+  function centerLogo() {
+    const logo = document.getElementById('logo');
+    const Yr2 = L1.h + num('--overlap'); // top de la fila 2
+    const t1bb = document.getElementById('t1').getBBox();
+    const t2bb = document.getElementById('t2').getBBox();
+    const paw = num('--paw'), pawLeft = num('--pawleft'), pawBottom = num('--pawbottom');
+    const bedw = num('--bedw'), bedh = num('--bedh'), bedLeft = num('--bedleft'), bedTop = num('--bedtop');
+    const boxes = [
+      { x: t1bb.x, y: t1bb.y, w: t1bb.width, h: t1bb.height },              // holidog
+      { x: pawLeft, y: L1.h - pawBottom - paw, w: paw, h: paw },            // huella
+      { x: t2bb.x, y: Yr2 + t2bb.y, w: t2bb.width, h: t2bb.height },        // inn
+      { x: bedLeft, y: Yr2 + bedTop, w: bedw, h: bedh },                    // cama
+    ];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+    }
+    const inkCx = (minX + maxX) / 2, inkCy = (minY + maxY) / 2;
+    setSlider('--nudgex', Math.round(logo.offsetWidth / 2 - inkCx));
+    setSlider('--nudgey', Math.round(logo.offsetHeight / 2 - inkCy));
+  }
+
+  apply(); render();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { apply(); render(); });
+</script>
+</body>
+</html>

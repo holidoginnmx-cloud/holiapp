@@ -3,7 +3,7 @@ import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { TouchableOpacity } from "react-native";
-import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications } from "@/lib/api";
@@ -12,7 +12,6 @@ export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBo
 
 export default function StaffLayout() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { signOut } = useClerk();
   const router = useRouter();
   const role = useAuthStore((s) => s.role);
   const userId = useAuthStore((s) => s.userId);
@@ -71,13 +70,15 @@ export default function StaffLayout() {
           ),
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => {
-                signOut();
-                router.replace("/(auth)/login");
-              }}
+              onPress={() => router.push("/(staff)/profile")}
               style={{ marginRight: 16 }}
+              testID="staff-account-button"
             >
-              <Ionicons name="log-out-outline" size={24} color={COLORS.textDisabled} />
+              <Ionicons
+                name="person-circle-outline"
+                size={28}
+                color={COLORS.primary}
+              />
             </TouchableOpacity>
           ),
         }}

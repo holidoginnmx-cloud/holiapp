@@ -3,7 +3,7 @@ import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { TouchableOpacity } from "react-native";
-import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/clerk-expo";
 
 import { useAuthStore } from "@/store/authStore";
 
@@ -11,7 +11,6 @@ export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBo
 
 export default function AdminLayout() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { signOut } = useClerk();
   const router = useRouter();
   const role = useAuthStore((s) => s.role);
   const userId = useAuthStore((s) => s.userId);
@@ -62,13 +61,15 @@ export default function AdminLayout() {
           ),
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => {
-                signOut();
-                router.replace("/(auth)/login");
-              }}
+              onPress={() => router.push("/admin/account" as any)}
               style={{ marginRight: 16 }}
+              testID="admin-account-button"
             >
-              <Ionicons name="log-out-outline" size={24} color={COLORS.textDisabled} />
+              <Ionicons
+                name="person-circle-outline"
+                size={28}
+                color={COLORS.primary}
+              />
             </TouchableOpacity>
           ),
         }}

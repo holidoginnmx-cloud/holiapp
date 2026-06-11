@@ -31,6 +31,7 @@ export default function AdminRootLayout() {
         headerLeft: backButton,
       }}
     >
+      <Stack.Screen name="account" options={{ title: "Mi cuenta" }} />
       <Stack.Screen name="cartillas" options={{ title: "Cartillas" }} />
       <Stack.Screen name="alerts" options={{ title: "Alertas" }} />
       <Stack.Screen
