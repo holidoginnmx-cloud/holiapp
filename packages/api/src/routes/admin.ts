@@ -215,7 +215,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   // POST /admin/notifications/send — send notification to users
   fastify.post<{
     Body: {
-      userIds: string[] | "all";
+      // Selección individual de usuarios, o broadcast por rol(es).
+      userIds?: string[] | "all";
+      roles?: ("OWNER" | "STAFF" | "ADMIN")[];
       title: string;
       body: string;
       type?: string;
@@ -224,7 +226,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     "/admin/notifications/send",
     { preHandler: [authMiddleware, adminMiddleware] },
     async (request, reply) => {
-      const { userIds, title, body, type } = request.body;
+      const { userIds, roles, title, body, type } = request.body;
 
       if (!title || !body) {
         return reply
@@ -234,14 +236,25 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       let targetUserIds: string[];
 
-      if (userIds === "all") {
+      if (roles && roles.length > 0) {
+        // Broadcast por rol: todos los usuarios activos de esos roles
+        // (clientes/staff/admins, según selección).
+        const users = await prisma.user.findMany({
+          where: { role: { in: roles }, isActive: true },
+          select: { id: true },
+        });
+        targetUserIds = users.map((u) => u.id);
+      } else if (userIds === "all") {
+        // Compat: "all" = todos los clientes (OWNER).
         const owners = await prisma.user.findMany({
           where: { role: "OWNER", isActive: true },
           select: { id: true },
         });
         targetUserIds = owners.map((u) => u.id);
-      } else {
+      } else if (Array.isArray(userIds)) {
         targetUserIds = userIds;
+      } else {
+        targetUserIds = [];
       }
 
       if (targetUserIds.length === 0) {
@@ -250,7 +263,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .send({ error: "No hay usuarios destinatarios" });
       }
 
-      await notifyUsers(prisma, targetUserIds, {
+      // `pushed` = cuántos recibieron push real (tienen la app); `sent` =
+      // destinatarios totales (a todos se les crea la notificación in-app).
+      const pushed = await notifyUsers(prisma, targetUserIds, {
         type: (type as any) ?? "GENERAL",
         title,
         body,
@@ -258,7 +273,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       return reply
         .status(201)
-        .send({ sent: targetUserIds.length });
+        .send({ sent: targetUserIds.length, pushed });
     }
   );
 
@@ -468,6 +483,73 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         pricePerDayLarge: Number(row.pricePerDayLarge),
         largeWeightKg: Number(row.largeWeightKg),
         medicationSurchargePct: Number(row.medicationSurchargePct),
+        updatedAt: row.updatedAt,
+      };
+    }
+  );
+
+  // ─── GET /admin/delivery-config — config servicio a domicilio ──
+  fastify.get(
+    "/admin/delivery-config",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async () => {
+      const row = await prisma.deliveryConfig.upsert({
+        where: { id: "singleton" },
+        update: {},
+        create: { id: "singleton" },
+      });
+      return {
+        baseFee: Number(row.baseFee),
+        pricePerKm: Number(row.pricePerKm),
+        isActive: row.isActive,
+        updatedAt: row.updatedAt,
+      };
+    }
+  );
+
+  // ─── PATCH /admin/delivery-config — actualizar precios domicilio ─
+  fastify.patch<{
+    Body: Partial<{
+      baseFee: number;
+      pricePerKm: number;
+      isActive: boolean;
+    }>;
+  }>(
+    "/admin/delivery-config",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const body = request.body ?? {};
+      const data: Record<string, number | boolean> = {};
+
+      if (body.baseFee != null) {
+        if (body.baseFee < 0) {
+          return reply.status(400).send({ error: "baseFee no puede ser negativo" });
+        }
+        data.baseFee = body.baseFee;
+      }
+      if (body.pricePerKm != null) {
+        if (body.pricePerKm < 0) {
+          return reply.status(400).send({ error: "pricePerKm no puede ser negativo" });
+        }
+        data.pricePerKm = body.pricePerKm;
+      }
+      if (body.isActive != null) {
+        data.isActive = body.isActive;
+      }
+
+      if (Object.keys(data).length === 0) {
+        return reply.status(400).send({ error: "No hay cambios" });
+      }
+
+      const row = await prisma.deliveryConfig.upsert({
+        where: { id: "singleton" },
+        update: data,
+        create: { id: "singleton", ...data },
+      });
+      return {
+        baseFee: Number(row.baseFee),
+        pricePerKm: Number(row.pricePerKm),
+        isActive: row.isActive,
         updatedAt: row.updatedAt,
       };
     }

@@ -120,6 +120,8 @@ export const UserSchema = z.object({
   avatarUrl: z.string().url().nullable(),
   role: RoleEnum,
   isActive: z.boolean(),
+  // Saldo a favor del cliente (Decimal en BD → llega como string/number en JSON).
+  creditBalance: z.coerce.number().optional(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -380,6 +382,8 @@ export const ReservationSchema = z.object({
   totalDays: z.number().int().positive().nullable(),
   totalAmount: z.number().nonnegative(),
   notes: z.string().nullable(),
+  // Instrucciones de medicamento (existe en la BD; staff la captura por estancia).
+  medicationNotes: z.string().nullable().optional(),
   legalAccepted: z.boolean(),
   groupId: z.string().nullable(),
   paymentType: z.string().nullable(),
@@ -413,6 +417,20 @@ export const MedicationSelectionSchema = z.object({
 });
 export type MedicationSelection = z.infer<typeof MedicationSelectionSchema>;
 
+// Servicio a domicilio: el cliente solo manda la dirección + coordenadas
+// (de Google Places vía nuestro proxy). distanceKm/fee son opcionales y SOLO
+// informativos — el backend SIEMPRE recalcula la tarifa server-side desde
+// lat/lng (nunca confía en el cliente para el cobro).
+export const HomeDeliveryInputSchema = z.object({
+  address: z.string().min(1),
+  lat: z.number(),
+  lng: z.number(),
+  placeId: z.string().optional(),
+  distanceKm: z.number().optional(),
+  fee: z.number().optional(),
+});
+export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
+
 export const CreateMultiReservationSchema = z.object({
   checkIn: z.coerce.date(),
   checkOut: z.coerce.date(),
@@ -427,6 +445,7 @@ export const CreateMultiReservationSchema = z.object({
   paymentType: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
   bathSelectionsByPet: z.record(z.string(), BathSelectionSchema).optional(),
   medicationByPet: z.record(z.string(), MedicationSelectionSchema).optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
 });
 
 export const UpdateReservationStatusSchema = z.object({
@@ -719,6 +738,7 @@ export const CreateBathIntentSchema = z.object({
   // DEPOSIT: solo cobra el anticipo ahora, el resto al recoger.
   // FULL: cobra el precio total ahora.
   paymentType: z.enum(["DEPOSIT", "FULL"]).default("DEPOSIT"),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
 });
 export type CreateBathIntent = z.infer<typeof CreateBathIntentSchema>;
 

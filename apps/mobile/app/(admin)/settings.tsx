@@ -157,6 +157,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/bath-config" as any)}
         />
         <MenuItem
+          icon="car-outline"
+          iconTint={COLORS.primary}
+          label="Servicio a domicilio"
+          subtitle="Tarifa base y precio por km del servicio a domicilio"
+          onPress={() => router.push("/admin/delivery-config" as any)}
+        />
+        <MenuItem
           icon="warning-outline"
           iconTint={COLORS.warningText}
           label="Alertas"

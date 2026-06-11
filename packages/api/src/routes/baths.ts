@@ -8,6 +8,7 @@ import { Prisma, PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -325,7 +326,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
-      const { petId, deslanado, corte, appointmentAt, notes, paymentType } = parsed.data;
+      const { petId, deslanado, corte, appointmentAt, notes, paymentType, homeDelivery } = parsed.data;
 
       const pet = await prisma.pet.findUnique({ where: { id: petId } });
       if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
@@ -427,14 +428,33 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       });
       const ownerCredit = Number(owner?.creditBalance ?? 0);
       const price = Number(variant.price);
+
+      // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng. Es
+      // un add-on al precio del baño: el anticipo de slot (BATH_DEPOSIT_AMOUNT)
+      // no cambia; la fee se suma al total y queda en el saldo a pagar al
+      // recoger/entregar (salvo pago FULL, que la cobra ahora).
+      let deliveryFee = 0;
+      let deliveryDistanceKm = 0;
+      let deliveryActive = false;
+      if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
+        const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+        if (quote.active) {
+          deliveryActive = true;
+          deliveryFee = quote.fee;
+          deliveryDistanceKm = quote.distanceKm;
+        }
+      }
+      const total = price + deliveryFee;
+
       // Owner elige cuánto pagar ahora:
       //  - DEPOSIT: anticipo fijo (BATH_DEPOSIT_AMOUNT) y resto al recoger.
-      //  - FULL: precio total. Si el total es ≤ anticipo, queda como FULL.
-      const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
-      const chargeBase = paymentType === "FULL" ? price : baseDeposit;
+      //  - FULL: precio total (baño + domicilio). Si el total es ≤ anticipo,
+      //    queda como FULL.
+      const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
+      const chargeBase = paymentType === "FULL" ? total : baseDeposit;
       const creditApplied = Math.min(ownerCredit, chargeBase);
       const chargeAmount = chargeBase - creditApplied;
-      const remainingAmount = price - chargeBase;
+      const remainingAmount = total - chargeBase;
 
       if (chargeAmount === 0) {
         return reply.send({
@@ -447,6 +467,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           remainingAmount,
           paymentType,
           variantId: variant.id,
+          deliveryFee,
+          deliveryDistanceKm,
+          deliveryActive,
         });
       }
 
@@ -463,6 +486,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           depositAmount: String(chargeBase),
           paymentType,
           ...(notes ? { notes } : {}),
+          // Domicilio: persistimos los valores server-computed en el PI para que
+          // /baths/confirm los use tal cual (no se recalcula en el flujo Stripe).
+          ...(deliveryActive
+            ? {
+                deliveryFee: String(deliveryFee),
+                deliveryDistanceKm: String(deliveryDistanceKm),
+                deliveryAddress: homeDelivery!.address,
+              }
+            : {}),
         },
       });
 
@@ -476,6 +508,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         remainingAmount,
         paymentType,
         variantId: variant.id,
+        deliveryFee,
+        deliveryDistanceKm,
+        deliveryActive,
       });
     }
   );
@@ -987,6 +1022,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         variantId?: string;
         appointmentAt?: string;
         notes?: string;
+        homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
       };
 
       let ownerId: string;
@@ -998,6 +1034,11 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let stripeAmount = 0;
       let paymentIntentId: string | null = null;
       let chosenPaymentType: "DEPOSIT" | "FULL" = "DEPOSIT";
+      // Servicio a domicilio: en el flujo Stripe se leen los valores
+      // server-computed del PI; en el flujo 100% crédito se recalculan aquí.
+      let deliveryFee = 0;
+      let deliveryDistanceKm = 0;
+      let deliveryAddress: string | null = null;
 
       if (body.paymentIntentId) {
         const parsed = ConfirmBathSchema.safeParse(body);
@@ -1022,6 +1063,13 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         if (pi.metadata?.paymentType === "FULL") {
           chosenPaymentType = "FULL";
         }
+        if (pi.metadata?.deliveryFee) {
+          deliveryFee = Number(pi.metadata.deliveryFee);
+          deliveryDistanceKm = Number(pi.metadata.deliveryDistanceKm || 0);
+          deliveryAddress = typeof pi.metadata.deliveryAddress === "string"
+            ? pi.metadata.deliveryAddress
+            : null;
+        }
       } else {
         // Flujo 100% con crédito — el servidor recibe los datos directamente.
         if (!body.petId || !body.variantId || !body.appointmentAt) {
@@ -1039,6 +1087,16 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         variantId = body.variantId;
         appointmentAtIso = body.appointmentAt;
         notes = body.notes;
+        // Recalcular fee server-side (no hay PI donde estuviera guardada).
+        const hd = body.homeDelivery;
+        if (hd && Number.isFinite(hd.lat) && Number.isFinite(hd.lng)) {
+          const quote = await quoteDelivery(prisma, hd.lat, hd.lng);
+          if (quote.active) {
+            deliveryFee = quote.fee;
+            deliveryDistanceKm = quote.distanceKm;
+            deliveryAddress = hd.address;
+          }
+        }
       }
 
       const appointmentAt = new Date(appointmentAtIso);
@@ -1065,17 +1123,19 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           }
 
           const price = Number(variant.price);
+          // Total = precio del baño + servicio a domicilio (si aplica).
+          const total = price + deliveryFee;
           // El paymentType viene del intent (owner eligió DEPOSIT o FULL).
           // Si el total es ≤ anticipo, no hay saldo aunque haya elegido DEPOSIT.
-          const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
-          const paidNow = chosenPaymentType === "FULL" ? price : baseDeposit;
-          const isPartial = paidNow < price;
+          const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
+          const paidNow = chosenPaymentType === "FULL" ? total : baseDeposit;
+          const isPartial = paidNow < total;
           const reservation = await tx.reservation.create({
             data: {
               reservationType: "BATH",
               appointmentAt,
               status: "CONFIRMED",
-              totalAmount: new Prisma.Decimal(price),
+              totalAmount: new Prisma.Decimal(total),
               notes,
               legalAccepted: true,
               // DEPOSIT cuando aún hay saldo por cobrar al recoger;
@@ -1084,6 +1144,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               depositDeadline: isPartial ? appointmentAt : null,
               ownerId,
               petId,
+              // Servicio a domicilio
+              ...(deliveryAddress
+                ? {
+                    homeDelivery: true,
+                    homeDeliveryAddress: deliveryAddress,
+                    homeDeliveryDistanceKm: deliveryDistanceKm,
+                    homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                  }
+                : {}),
             },
           });
 

@@ -7,6 +7,7 @@ import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser } from "../lib/notify";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
+import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -97,9 +98,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       paymentType?: "FULL" | "DEPOSIT";
       bathSelectionsByPet?: Record<string, { deslanado: boolean; corte: boolean }>;
       medicationByPet?: Record<string, { notes: string }>;
+      homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
     };
 
-    const { petIds, checkIn, checkOut, ownerId, roomPreference, paymentType = "FULL", bathSelectionsByPet, medicationByPet } = body;
+    const { petIds, checkIn, checkOut, ownerId, roomPreference, paymentType = "FULL", bathSelectionsByPet, medicationByPet, homeDelivery } = body;
 
     if (!petIds?.length || !checkIn || !checkOut || !ownerId) {
       return reply.status(400).send({ error: "Faltan campos requeridos" });
@@ -250,7 +252,22 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
     const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.20) : 0;
 
-    const grandTotal = baseTotal + surchargeAmount;
+    // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (no se
+    // confía en el cliente). Es un costo logístico fijo: NO aplica el recargo
+    // mismo-día (+20%), pero SÍ entra en la base del anticipo (20% del total).
+    let deliveryFee = 0;
+    let deliveryDistanceKm = 0;
+    let deliveryActive = false;
+    if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
+      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      if (quote.active) {
+        deliveryActive = true;
+        deliveryFee = quote.fee;
+        deliveryDistanceKm = quote.distanceKm;
+      }
+    }
+
+    const grandTotal = baseTotal + surchargeAmount + deliveryFee;
     const depositAmountBase = paymentType === "DEPOSIT" ? Math.ceil(grandTotal * 0.20) : grandTotal;
 
     // Apply credit balance before Stripe charge
@@ -285,6 +302,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         surchargeAmount,
         medicationBreakdown,
         medicationTotal,
+        deliveryFee,
+        deliveryDistanceKm,
+        deliveryActive,
       });
     }
 
@@ -303,6 +323,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         bathBreakdown: bathBreakdown.length > 0 ? JSON.stringify(bathBreakdown) : "",
         sameDaySurcharge: sameDaySurcharge ? "1" : "0",
         creditApplied: String(creditApplied),
+        deliveryFee: deliveryActive ? String(deliveryFee) : "",
       },
     });
 
@@ -324,6 +345,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       surchargeAmount,
       medicationBreakdown,
       medicationTotal,
+      deliveryFee,
+      deliveryDistanceKm,
+      deliveryActive,
     });
   } catch (err: any) {
     fastify.log.error(err);

@@ -23,6 +23,7 @@ import pushTokensRoutes from "./routes/pushTokens";
 import legalRoutes from "./routes/legal";
 import bathsRoutes from "./routes/baths";
 import vaccineCatalogRoutes from "./routes/vaccineCatalog";
+import deliveryRoutes from "./routes/delivery";
 
 const app = Fastify({ logger: true });
 
@@ -106,6 +107,7 @@ app.register(pushTokensRoutes);
 app.register(legalRoutes);
 app.register(bathsRoutes);
 app.register(vaccineCatalogRoutes);
+app.register(deliveryRoutes);
 
 const start = async () => {
   try {

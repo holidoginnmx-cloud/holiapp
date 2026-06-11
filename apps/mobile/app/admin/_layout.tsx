@@ -2,6 +2,8 @@ import { COLORS } from "@/constants/colors";
 import { Stack, useRouter } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function AdminRootLayout() {
   const router = useRouter();
 
@@ -48,6 +50,10 @@ export default function AdminRootLayout() {
       <Stack.Screen
         name="bath-config"
         options={{ title: "Agenda de baños" }}
+      />
+      <Stack.Screen
+        name="delivery-config"
+        options={{ title: "Servicio a domicilio" }}
       />
       <Stack.Screen name="rooms" options={{ title: "Cuartos" }} />
       {/* Subdirectorios con su propio _layout.tsx — el Stack root no muestra header */}

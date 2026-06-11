@@ -195,6 +195,12 @@ model User {
   // Clientes walk-in migrados del Excel/web: clerkId null, email placeholder.
   // El middleware de auth los vincula por email cuando el cliente se registra.
   originLegacy  Boolean  @default(false)
+  // Dirección guardada para el servicio a domicilio (se reutiliza en futuras
+  // reservas). Capturada con Google Places en la app móvil.
+  address       String?
+  addressLat    Float?
+  addressLng    Float?
+  addressPlaceId String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -411,6 +417,11 @@ model Reservation {
   depositDeadline DateTime?        // 48h antes del checkIn, solo para anticipos
   // Reservaciones migradas del Excel histórico (web `origen_legacy`).
   originLegacy  Boolean           @default(false)
+  // Servicio a domicilio: dirección + distancia + tarifa calculada al reservar.
+  homeDelivery          Boolean   @default(false)
+  homeDeliveryAddress   String?
+  homeDeliveryDistanceKm Float?
+  homeDeliveryFee       Decimal?  @db.Decimal(10, 2)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -889,6 +900,25 @@ model HotelConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("hotel_config")
+}
+
+// =============================================================
+//  DELIVERY CONFIG — Servicio a domicilio (singleton, editable admin)
+//  Precio = baseFee + (distanciaKm_redondo × pricePerKm). El origen (HDI)
+//  y la API key de Google Maps viven en env vars del backend.
+// =============================================================
+
+model DeliveryConfig {
+  id            String   @id @default("singleton")
+  // Tarifa base fija del servicio a domicilio.
+  baseFee       Decimal  @default(0) @db.Decimal(10, 2)
+  // Precio por kilómetro (se aplica a la distancia redonda ida+vuelta).
+  pricePerKm    Decimal  @default(0) @db.Decimal(10, 2)
+  // Permite apagar el servicio sin perder la configuración de precios.
+  isActive      Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+
+  @@map("delivery_config")
 }
 
 // =============================================================

@@ -47,6 +47,9 @@ export type ReservationListItem = Reservation & {
   reviewRating: number | null;
   hasDeslanado: boolean;
   hasCorte: boolean;
+  /** Hospedaje que incluye un baño (addon BATH). Lo envía el backend; si aún
+   * no llega, el frontend cae a hasDeslanado/hasCorte como aproximación. */
+  hasBath?: boolean;
 };
 
 export type BathVariant = {
@@ -137,7 +140,12 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 // ─── Users ───────────────────────────────────────────────
 
-export const getUsers = () => apiFetch<User[]>(ENDPOINTS.users);
+/** Usuario en la lista admin + `hasApp` computado por el backend
+ * (clerkId vinculado o push token registrado = descargó la app). */
+export type AdminUserListItem = User & { hasApp: boolean };
+
+export const getUsers = () =>
+  apiFetch<AdminUserListItem[]>(ENDPOINTS.users);
 
 export const getUserById = (id: string) =>
   apiFetch<User & { pets: Pet[] }>(`${ENDPOINTS.users}/${id}`);
@@ -296,6 +304,15 @@ export const createReservation = (data: Record<string, unknown>) =>
 export type BathSelectionsByPet = Record<string, { deslanado: boolean; corte: boolean }>;
 export type MedicationByPet = Record<string, { notes: string }>;
 
+// Servicio a domicilio — el cliente manda dirección + coordenadas (de Google
+// Places vía proxy); el backend SIEMPRE recalcula la tarifa server-side.
+export type HomeDeliveryInput = {
+  address: string;
+  lat: number;
+  lng: number;
+  placeId?: string;
+};
+
 export const createMultiReservation = (data: {
   petIds: string[];
   checkIn: string;
@@ -310,6 +327,7 @@ export const createMultiReservation = (data: {
   paymentType: "FULL" | "DEPOSIT";
   bathSelectionsByPet?: BathSelectionsByPet;
   medicationByPet?: MedicationByPet;
+  homeDelivery?: HomeDeliveryInput;
 }) =>
   apiFetch<{ reservations: ReservationDetail[]; grandTotal: number; groupId: string | null }>(
     `${ENDPOINTS.reservations}/multi`,
@@ -325,6 +343,7 @@ export const createPaymentIntent = (data: {
   paymentType?: "FULL" | "DEPOSIT";
   bathSelectionsByPet?: BathSelectionsByPet;
   medicationByPet?: MedicationByPet;
+  homeDelivery?: HomeDeliveryInput;
 }) =>
   apiFetch<{
     // Both null when saldo a favor covered the entire deposit/total — no
@@ -344,6 +363,9 @@ export const createPaymentIntent = (data: {
     totalDays: number;
     medicationBreakdown: { petId: string; surcharge: number }[];
     medicationTotal: number;
+    deliveryFee: number;
+    deliveryDistanceKm: number;
+    deliveryActive: boolean;
   }>(`${ENDPOINTS.payments}/create-intent`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -440,6 +462,7 @@ export const createBathIntent = (data: {
   appointmentAt: string;
   notes?: string;
   paymentType?: "DEPOSIT" | "FULL";
+  homeDelivery?: HomeDeliveryInput;
 }) =>
   apiFetch<{
     clientSecret: string | null;
@@ -451,6 +474,9 @@ export const createBathIntent = (data: {
     remainingAmount: number;
     paymentType: "DEPOSIT" | "FULL";
     variantId: string;
+    deliveryFee: number;
+    deliveryDistanceKm: number;
+    deliveryActive: boolean;
   }>(`${ENDPOINTS.baths}/create-intent`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -462,6 +488,7 @@ export const confirmBath = (data: {
   variantId?: string;
   appointmentAt?: string;
   notes?: string;
+  homeDelivery?: HomeDeliveryInput;
 }) =>
   apiFetch<{ success: boolean; reservation: Reservation }>(
     `${ENDPOINTS.baths}/confirm`,
@@ -722,6 +749,8 @@ export type AdminRevenueBreakdown = {
     kind: "PAYMENT" | "REFUND";
     paidAt: string | null;
     createdAt: string;
+    // true = importado del Excel/web histórico; false = registrado en la app.
+    originLegacy: boolean;
     category: "HOTEL" | "BATH" | "MIXED";
     hotelAmount: number;
     bathAmount: number;
@@ -841,13 +870,80 @@ export const updateAdminLodgingPricing = (
     body: JSON.stringify(data),
   });
 
+// ─── Delivery config (servicio a domicilio) ───────────────
+export interface AdminDeliveryConfig {
+  baseFee: number;
+  pricePerKm: number;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+export const getAdminDeliveryConfig = () =>
+  apiFetch<AdminDeliveryConfig>("/admin/delivery-config");
+
+export const updateAdminDeliveryConfig = (
+  data: Partial<Omit<AdminDeliveryConfig, "updatedAt">>
+) =>
+  apiFetch<AdminDeliveryConfig>("/admin/delivery-config", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+// ─── Servicio a domicilio (cliente; el backend hace proxy a Google) ──
+export type PlacePrediction = { placeId: string; description: string };
+
+// Gate ligero: ¿el servicio a domicilio está activo? Permite decidir si
+// mostrar la opción ANTES de tener una dirección (el quote requiere lat/lng).
+export const getDeliveryStatus = () =>
+  apiFetch<{ active: boolean }>("/delivery/status");
+
+export const deliveryAutocomplete = (input: string, sessionToken?: string) =>
+  apiFetch<{ predictions: PlacePrediction[] }>(
+    "/delivery/places/autocomplete",
+    { method: "POST", body: JSON.stringify({ input, sessionToken }) }
+  );
+
+export const deliveryPlaceDetails = (placeId: string, sessionToken?: string) =>
+  apiFetch<{ lat: number; lng: number; address: string }>(
+    "/delivery/places/details",
+    { method: "POST", body: JSON.stringify({ placeId, sessionToken }) }
+  );
+
+export const deliveryQuote = (lat: number, lng: number) =>
+  apiFetch<{ active: boolean; distanceKm: number; fee: number }>(
+    "/delivery/quote",
+    { method: "POST", body: JSON.stringify({ lat, lng }) }
+  );
+
+export type SavedDeliveryAddress = {
+  address: string | null;
+  addressLat: number | null;
+  addressLng: number | null;
+  addressPlaceId: string | null;
+};
+
+export const getDeliveryAddress = () =>
+  apiFetch<SavedDeliveryAddress>("/delivery/address");
+
+export const saveDeliveryAddress = (data: {
+  address: string;
+  lat: number;
+  lng: number;
+  placeId?: string;
+}) =>
+  apiFetch<SavedDeliveryAddress>("/delivery/address", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+
 export const sendAdminNotification = (data: {
-  userIds: string[] | "all";
+  userIds?: string[] | "all";
+  roles?: ("OWNER" | "STAFF" | "ADMIN")[];
   title: string;
   body: string;
   type?: string;
 }) =>
-  apiFetch<{ sent: number }>("/admin/notifications/send", {
+  apiFetch<{ sent: number; pushed: number }>("/admin/notifications/send", {
     method: "POST",
     body: JSON.stringify(data),
   });

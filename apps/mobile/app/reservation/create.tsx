@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,10 @@ import {
   getBathVariants,
   getAvailableRooms,
   getMe,
+  getDeliveryStatus,
+  getDeliveryAddress,
+  saveDeliveryAddress,
+  deliveryQuote,
   type BathVariant,
   type BathSelectionsByPet,
   type MedicationByPet,
@@ -31,6 +35,10 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
+import {
+  DeliveryAddressPicker,
+  type SelectedAddress,
+} from "@/components/DeliveryAddressPicker";
 import { formatName } from "@/lib/format";
 
 function priceForPet(weight: number | null): number {
@@ -93,6 +101,50 @@ function CreateReservationScreenContent() {
   const [legalIncidents, setLegalIncidents] = useState(false);
   const [bathByPet, setBathByPet] = useState<Record<string, BathState>>({});
   const [medicationByPet, setMedicationByPet] = useState<Record<string, MedicationState>>({});
+
+  // ── Servicio a domicilio ──
+  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+
+  // ¿El servicio está activo? Gate para mostrar la opción.
+  const { data: deliveryStatus } = useQuery({
+    queryKey: ["delivery-status"],
+    queryFn: getDeliveryStatus,
+    staleTime: 1000 * 60 * 10,
+  });
+  const deliveryServiceActive = deliveryStatus?.active === true;
+
+  // Precarga la dirección guardada del usuario (para futuras reservas).
+  const { data: savedAddress } = useQuery({
+    queryKey: ["delivery-address"],
+    queryFn: getDeliveryAddress,
+    enabled: deliveryServiceActive,
+  });
+  useEffect(() => {
+    if (
+      !deliveryAddress &&
+      savedAddress?.address &&
+      savedAddress.addressLat != null &&
+      savedAddress.addressLng != null
+    ) {
+      setDeliveryAddress({
+        address: savedAddress.address,
+        lat: savedAddress.addressLat,
+        lng: savedAddress.addressLng,
+        placeId: savedAddress.addressPlaceId ?? undefined,
+      });
+    }
+  }, [savedAddress, deliveryAddress]);
+
+  // Cotiza distancia + tarifa para la dirección seleccionada.
+  const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    enabled: homeDeliveryEnabled && !!deliveryAddress,
+  });
+  const deliveryActive =
+    homeDeliveryEnabled && !!deliveryAddress && deliveryQuoteData?.active === true;
+  const deliveryFee = deliveryActive ? deliveryQuoteData!.fee : 0;
 
   // Fetch owner's pets
   const { data: pets, isLoading: loadingPets } = useQuery({
@@ -358,7 +410,9 @@ function CreateReservationScreenContent() {
   const sameDaySurcharge = role === "OWNER" && hoursUntilCheckIn < 24;
   const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.20) : 0;
 
-  const grandTotal = baseTotal + surchargeAmount;
+  // La fee de domicilio es un costo logístico fijo: no lleva el recargo
+  // mismo-día, pero sí entra en la base del anticipo (igual que el backend).
+  const grandTotal = baseTotal + surchargeAmount + deliveryFee;
   const depositAmount = Math.ceil(grandTotal * 0.20);
 
   // Build payload for API (only enabled pets)
@@ -379,6 +433,20 @@ function CreateReservationScreenContent() {
     return entries.length > 0 ? Object.fromEntries(entries) : undefined;
   }, [selectedPets, medicationByPet]);
 
+  // Payload de domicilio — el backend recalcula la fee desde lat/lng.
+  const homeDeliveryPayload = useMemo(
+    () =>
+      deliveryActive && deliveryAddress
+        ? {
+            address: deliveryAddress.address,
+            lat: deliveryAddress.lat,
+            lng: deliveryAddress.lng,
+            placeId: deliveryAddress.placeId,
+          }
+        : undefined,
+    [deliveryActive, deliveryAddress],
+  );
+
   // Medication notes required if toggle is enabled
   const medicationNotesMissing = selectedPets.some(
     (p) => medicationByPet[p.id]?.enabled && medicationByPet[p.id]!.notes.trim().length === 0
@@ -397,6 +465,9 @@ function CreateReservationScreenContent() {
   }
 
   const allLegalAccepted = legalTerms && legalVaccines && legalIncidents;
+  // Si activó domicilio, exige una dirección con cotización válida antes de pagar
+  // (evita reservar sin el servicio que pidió).
+  const deliveryIncomplete = homeDeliveryEnabled && !deliveryActive;
   const canSubmit =
     !!checkIn &&
     !!checkOut &&
@@ -404,6 +475,7 @@ function CreateReservationScreenContent() {
     allLegalAccepted &&
     totalDays > 0 &&
     !medicationNotesMissing &&
+    !deliveryIncomplete &&
     unavailableSizes.length === 0;
 
   const [paying, setPaying] = useState(false);
@@ -423,6 +495,7 @@ function CreateReservationScreenContent() {
         paymentType,
         bathSelectionsByPet: bathSelectionsPayload,
         medicationByPet: medicationPayload,
+        homeDelivery: homeDeliveryPayload,
       });
 
       // 2. Saldo a favor cubre todo: confirmar con el usuario antes de aplicar
@@ -502,7 +575,18 @@ function CreateReservationScreenContent() {
         paymentType,
         bathSelectionsByPet: bathSelectionsPayload,
         medicationByPet: medicationPayload,
+        homeDelivery: homeDeliveryPayload,
       });
+
+      // Guarda la dirección para precargarla en futuras reservas (best-effort).
+      if (homeDeliveryPayload && deliveryAddress) {
+        saveDeliveryAddress({
+          address: deliveryAddress.address,
+          lat: deliveryAddress.lat,
+          lng: deliveryAddress.lng,
+          placeId: deliveryAddress.placeId,
+        }).catch(() => {});
+      }
 
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
 
@@ -587,14 +671,18 @@ function CreateReservationScreenContent() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+      // En iOS dejamos que el ScrollView mueva el input enfocado arriba del
+      // teclado vía automaticallyAdjustKeyboardInsets (el padding del KAV solo
+      // achica el viewport pero no hace scroll-to-input, por eso Notas — el
+      // input de hasta abajo — quedaba tapado). En Android usamos "height".
+      behavior={Platform.OS === "ios" ? undefined : "height"}
     >
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets
       testID="reservation-create-screen"
     >
       <View style={styles.headerRow}>
@@ -775,12 +863,12 @@ function CreateReservationScreenContent() {
                   checkOut
                 );
                 const cartillaStatus = (pet as any).cartillaStatus as
-                  | "PENDING" | "APPROVED" | "REJECTED" | null | undefined;
+                  | "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | null | undefined;
                 const blocked = !!blockReason;
 
                 // Chip label shown at the bottom of the pet card
                 let chipLabel: string | null = null;
-                let chipColor = COLORS.warningText;
+                let chipColor: string = COLORS.warningText;
                 if (cartillaStatus !== "APPROVED") {
                   chipLabel =
                     cartillaStatus === "PENDING"
@@ -1060,6 +1148,54 @@ function CreateReservationScreenContent() {
         </View>
       )}
 
+      {/* ── Servicio a domicilio ── */}
+      {deliveryServiceActive && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Servicio a domicilio</Text>
+          <Text style={styles.hint}>
+            Recogemos y entregamos a tu mascota en tu domicilio. Opcional.
+          </Text>
+          <TouchableOpacity
+            style={styles.bathToggleRow}
+            activeOpacity={0.7}
+            onPress={() => setHomeDeliveryEnabled((v) => !v)}
+            testID="reservation-delivery-toggle"
+          >
+            <Ionicons
+              name={homeDeliveryEnabled ? "checkbox" : "square-outline"}
+              size={22}
+              color={homeDeliveryEnabled ? COLORS.primary : COLORS.textDisabled}
+            />
+            <Text style={styles.bathPetName}>Quiero servicio a domicilio</Text>
+            {deliveryActive && (
+              <Text style={styles.bathPrice}>
+                ${deliveryFee.toLocaleString("es-MX")}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {homeDeliveryEnabled && (
+            <View style={{ gap: 8 }}>
+              <DeliveryAddressPicker
+                value={deliveryAddress}
+                onChange={setDeliveryAddress}
+              />
+              {deliveryAddress && deliveryQuoteLoading && (
+                <Text style={styles.hint}>Calculando distancia…</Text>
+              )}
+              {deliveryActive && (
+                <View style={styles.deliveryQuoteRow}>
+                  <Ionicons name="navigate" size={14} color={COLORS.primary} />
+                  <Text style={styles.deliveryQuoteText}>
+                    {deliveryQuoteData!.distanceKm} km · $
+                    {deliveryFee.toLocaleString("es-MX")} (ida y vuelta)
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── Preferencia de cuarto (solo si 2+ mascotas) ── */}
       {selectedPetIds.length >= 2 && (
         <View style={styles.section}>
@@ -1140,6 +1276,14 @@ function CreateReservationScreenContent() {
               <Text style={styles.priceLabel}>Cargo reserva mismo día (+20%)</Text>
               <Text style={styles.priceValue}>
                 ${surchargeAmount.toLocaleString("es-MX")}
+              </Text>
+            </View>
+          )}
+          {deliveryActive && (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Servicio a domicilio</Text>
+              <Text style={styles.priceValue}>
+                ${deliveryFee.toLocaleString("es-MX")}
               </Text>
             </View>
           )}
@@ -1733,5 +1877,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.textDisabled,
     textDecorationLine: "line-through",
+  },
+  deliveryQuoteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  deliveryQuoteText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary,
   },
 });

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -23,9 +23,17 @@ import {
   getBathSlots,
   createBathIntent,
   confirmBath,
+  getDeliveryStatus,
+  getDeliveryAddress,
+  saveDeliveryAddress,
+  deliveryQuote,
   BATH_DEPOSIT_AMOUNT,
   BATH_LATE_TOLERANCE_MIN,
 } from "@/lib/api";
+import {
+  DeliveryAddressPicker,
+  type SelectedAddress,
+} from "@/components/DeliveryAddressPicker";
 
 import { formatName } from "@/lib/format";
 
@@ -96,6 +104,56 @@ function CreateBathScreenContent() {
   const [selectedSlotIso, setSelectedSlotIso] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Servicio a domicilio ──
+  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+
+  const { data: deliveryStatus } = useQuery({
+    queryKey: ["delivery-status"],
+    queryFn: getDeliveryStatus,
+    staleTime: 1000 * 60 * 10,
+  });
+  const deliveryServiceActive = deliveryStatus?.active === true;
+
+  const { data: savedAddress } = useQuery({
+    queryKey: ["delivery-address"],
+    queryFn: getDeliveryAddress,
+    enabled: deliveryServiceActive,
+  });
+  useEffect(() => {
+    if (
+      !deliveryAddress &&
+      savedAddress?.address &&
+      savedAddress.addressLat != null &&
+      savedAddress.addressLng != null
+    ) {
+      setDeliveryAddress({
+        address: savedAddress.address,
+        lat: savedAddress.addressLat,
+        lng: savedAddress.addressLng,
+        placeId: savedAddress.addressPlaceId ?? undefined,
+      });
+    }
+  }, [savedAddress, deliveryAddress]);
+
+  const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    enabled: homeDeliveryEnabled && !!deliveryAddress,
+  });
+  const deliveryActive =
+    homeDeliveryEnabled && !!deliveryAddress && deliveryQuoteData?.active === true;
+  const deliveryFee = deliveryActive ? deliveryQuoteData!.fee : 0;
+  const homeDeliveryPayload =
+    deliveryActive && deliveryAddress
+      ? {
+          address: deliveryAddress.address,
+          lat: deliveryAddress.lat,
+          lng: deliveryAddress.lng,
+          placeId: deliveryAddress.placeId,
+        }
+      : undefined;
+
   const { data: pets, isLoading: petsLoading } = useQuery({
     queryKey: ["pets", userId],
     queryFn: () => getPetsByOwner(userId!),
@@ -133,10 +191,13 @@ function CreateBathScreenContent() {
     ) ?? null;
   }, [selectedPet, variants, deslanado, corte]);
 
+  // Si activó domicilio, exige una dirección con cotización válida antes de pagar.
+  const deliveryIncomplete = homeDeliveryEnabled && !deliveryActive;
   const canSubmit =
     !!selectedPet &&
     !!variant &&
     !!selectedSlotIso &&
+    !deliveryIncomplete &&
     !submitting;
 
   async function handleSubmit() {
@@ -149,6 +210,7 @@ function CreateBathScreenContent() {
         corte,
         appointmentAt: selectedSlotIso,
         paymentType,
+        homeDelivery: homeDeliveryPayload,
       });
 
       if (!intent.coveredByCredit && intent.clientSecret) {
@@ -176,9 +238,20 @@ function CreateBathScreenContent() {
               petId: selectedPet.id,
               variantId: intent.variantId,
               appointmentAt: selectedSlotIso,
+              homeDelivery: homeDeliveryPayload,
             }
           : { paymentIntentId: intent.paymentIntentId! },
       );
+
+      // Guarda la dirección para precargarla en futuras reservas (best-effort).
+      if (homeDeliveryPayload && deliveryAddress) {
+        saveDeliveryAddress({
+          address: deliveryAddress.address,
+          lat: deliveryAddress.lat,
+          lng: deliveryAddress.lng,
+          placeId: deliveryAddress.placeId,
+        }).catch(() => {});
+      }
 
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       queryClient.invalidateQueries({ queryKey: ["bath-slots", dateYMD] });
@@ -321,12 +394,66 @@ function CreateBathScreenContent() {
               </View>
             )}
 
+            {deliveryServiceActive && (
+              <>
+                <Text style={styles.sectionTitle}>Servicio a domicilio</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleRow,
+                    homeDeliveryEnabled && styles.toggleRowActive,
+                  ]}
+                  onPress={() => setHomeDeliveryEnabled((v) => !v)}
+                  testID="bath-delivery-toggle"
+                >
+                  <Ionicons
+                    name={homeDeliveryEnabled ? "checkbox" : "square-outline"}
+                    size={22}
+                    color={homeDeliveryEnabled ? COLORS.primary : COLORS.textTertiary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.toggleTitle}>
+                      Recoger y entregar a domicilio
+                    </Text>
+                    <Text style={styles.toggleSub}>
+                      Vamos por tu mascota y la regresamos a tu casa
+                    </Text>
+                  </View>
+                  {deliveryActive && (
+                    <Text style={styles.bathDeliveryFee}>
+                      ${deliveryFee.toLocaleString("es-MX")}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {homeDeliveryEnabled && (
+                  <View style={{ gap: 8, marginBottom: 8 }}>
+                    <DeliveryAddressPicker
+                      value={deliveryAddress}
+                      onChange={setDeliveryAddress}
+                    />
+                    {deliveryAddress && deliveryQuoteLoading && (
+                      <Text style={styles.toggleSub}>Calculando distancia…</Text>
+                    )}
+                    {deliveryActive && (
+                      <View style={styles.deliveryQuoteRow}>
+                        <Ionicons name="navigate" size={14} color={COLORS.primary} />
+                        <Text style={styles.deliveryQuoteText}>
+                          {deliveryQuoteData!.distanceKm} km · $
+                          {deliveryFee.toLocaleString("es-MX")} (ida y vuelta)
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </>
+            )}
+
             {variant && (() => {
               const price = Number(variant.price);
-              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
-              const hasBalance = price > baseDeposit;
-              const payNow = paymentType === "FULL" ? price : baseDeposit;
-              const payLater = price - payNow;
+              const total = price + deliveryFee;
+              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
+              const hasBalance = total > baseDeposit;
+              const payNow = paymentType === "FULL" ? total : baseDeposit;
+              const payLater = total - payNow;
               return (
                 <View style={styles.priceCard}>
                   <View style={styles.priceRow}>
@@ -335,6 +462,14 @@ function CreateBathScreenContent() {
                       ${price.toLocaleString("es-MX")}
                     </Text>
                   </View>
+                  {deliveryActive && (
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceLabel}>Servicio a domicilio</Text>
+                      <Text style={styles.priceLineValue}>
+                        ${deliveryFee.toLocaleString("es-MX")}
+                      </Text>
+                    </View>
+                  )}
 
                   {hasBalance && (
                     <View style={styles.payChoiceRow}>
@@ -363,7 +498,7 @@ function CreateBathScreenContent() {
                           <Text style={styles.payChoiceTitle}>Pagar anticipo</Text>
                           <Text style={styles.payChoiceSub}>
                             ${baseDeposit.toLocaleString("es-MX")} ahora · $
-                            {(price - baseDeposit).toLocaleString("es-MX")} al
+                            {(total - baseDeposit).toLocaleString("es-MX")} al
                             entregar
                           </Text>
                         </View>
@@ -392,7 +527,7 @@ function CreateBathScreenContent() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.payChoiceTitle}>Pagar total</Text>
                           <Text style={styles.payChoiceSub}>
-                            ${price.toLocaleString("es-MX")} ahora · sin saldo
+                            ${total.toLocaleString("es-MX")} ahora · sin saldo
                             pendiente
                           </Text>
                         </View>
@@ -522,9 +657,10 @@ function CreateBathScreenContent() {
               <ActivityIndicator color={COLORS.white} />
             ) : (() => {
               const price = Number(variant.price);
-              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, price);
-              const payNow = paymentType === "FULL" ? price : baseDeposit;
-              const isFull = paymentType === "FULL" || price <= baseDeposit;
+              const total = price + deliveryFee;
+              const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
+              const payNow = paymentType === "FULL" ? total : baseDeposit;
+              const isFull = paymentType === "FULL" || total <= baseDeposit;
               return (
                 <>
                   <Ionicons name="card" size={20} color={COLORS.white} />
@@ -635,6 +771,22 @@ const styles = StyleSheet.create({
   priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontWeight: "600" },
   priceValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
   priceLineValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  bathDeliveryFee: { fontSize: 15, fontWeight: "700", color: COLORS.primary },
+  deliveryQuoteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  deliveryQuoteText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
   payChoiceRow: {
     gap: 8,
     marginTop: 12,

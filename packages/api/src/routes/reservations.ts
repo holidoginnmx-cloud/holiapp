@@ -21,6 +21,7 @@ import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
+import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -79,7 +80,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       },
       orderBy: { createdAt: "desc" },
     });
-    return reservations.map(({ payments, changeRequests, updates, review, addons, ...r }) => {
+    // Defensa: omite reservaciones con relaciones rotas (datos legacy con FK
+    // huérfana) para no romper a los clientes que asumen pet/owner presentes.
+    return reservations
+      .filter((r) => r.pet && r.owner)
+      .map(({ payments, changeRequests, updates, review, addons, ...r }) => {
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       const remaining = Number(r.totalAmount) - totalPaid;
       const hasDeslanado = addons.some((a) => a.variant?.deslanado === true);
@@ -312,7 +317,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const { checkIn, checkOut, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet } = parsed.data;
+    const { checkIn, checkOut, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet, homeDelivery } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo.
     const isStaffOrAdmin =
@@ -557,7 +562,24 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const hoursUntilCheckIn = (checkIn.getTime() - Date.now()) / (60 * 60 * 1000);
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
     const surchargeMultiplier = sameDaySurcharge ? 1.20 : 1;
-    const grandTotal = baseTotal * surchargeMultiplier;
+
+    // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (igual
+    // que en /payments/create-intent). Costo logístico fijo: NO lleva el
+    // recargo mismo-día, pero SÍ entra en la base del anticipo. En grupos
+    // multi-mascota se cobra UNA sola vez (se adjunta a la primera reserva).
+    let deliveryFee = 0;
+    let deliveryDistanceKm = 0;
+    let deliveryActive = false;
+    if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
+      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      if (quote.active) {
+        deliveryActive = true;
+        deliveryFee = quote.fee;
+        deliveryDistanceKm = quote.distanceKm;
+      }
+    }
+
+    const grandTotal = baseTotal * surchargeMultiplier + deliveryFee;
 
     // Credit-only path: owner's saldo covers the deposit/total and no Stripe
     // charge was created. Recompute creditApplied here so we register the
@@ -571,11 +593,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
 
     const operations = [];
-    for (const a of assignments) {
+    for (let i = 0; i < assignments.length; i++) {
+      const a = assignments[i];
       const bath = bathByPet.get(a.petId);
       const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
       const medNotes = medicationNotesByPet.get(a.petId) ?? null;
-      const reservationAmount = (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier;
+      // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
+      // (un viaje cubre a todas las mascotas del mismo dueño).
+      const isFirst = i === 0;
+      const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
+      const reservationAmount =
+        (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier +
+        deliveryForThis;
       operations.push(
         prisma.reservation.create({
           data: {
@@ -595,6 +624,15 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             ownerId,
             petId: a.petId,
             roomId: a.roomId,
+            // Servicio a domicilio (persistido en la primera reserva del grupo).
+            ...(isFirst && deliveryActive
+              ? {
+                  homeDelivery: true,
+                  homeDeliveryAddress: homeDelivery!.address,
+                  homeDeliveryDistanceKm: deliveryDistanceKm,
+                  homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                }
+              : {}),
           },
           include: { pet: true, room: true },
         })
