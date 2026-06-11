@@ -10,6 +10,8 @@ const TYPE_TITLES: Record<string, string> = {
   reportes: "Reportes pendientes",
 };
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function StaffListLayout() {
   const router = useRouter();
 

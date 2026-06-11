@@ -7,6 +7,8 @@ import { useAuth, useClerk } from "@clerk/clerk-expo";
 
 import { useAuthStore } from "@/store/authStore";
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function AdminLayout() {
   const { isSignedIn, isLoaded } = useAuth();
   const { signOut } = useClerk();
@@ -39,7 +41,8 @@ export default function AdminLayout() {
   return (
     <Tabs
       screenOptions={{
-        animation: "shift",
+        // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
+        // de pestaña. Quitarla = cambio instantáneo, estable.
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

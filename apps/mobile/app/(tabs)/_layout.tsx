@@ -9,6 +9,8 @@ import { useAuthStore } from "@/store/authStore";
 import { getNotifications } from "@/lib/api";
 import { CreditBalancePill } from "@/components/CreditBalancePill";
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function TabsLayout() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
@@ -54,7 +56,9 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        animation: "shift",
+        // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
+        // de pestaña (la tab bar quedaba, el área de contenido vacía). Quitarla
+        // = cambio instantáneo, estable.
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

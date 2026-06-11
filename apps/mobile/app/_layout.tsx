@@ -103,6 +103,8 @@ function ClerkTokenSync() {
   return null;
 }
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 

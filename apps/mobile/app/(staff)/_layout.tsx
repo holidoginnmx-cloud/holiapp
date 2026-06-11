@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications } from "@/lib/api";
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function StaffLayout() {
   const { isSignedIn, isLoaded } = useAuth();
   const { signOut } = useClerk();
@@ -48,7 +50,8 @@ export default function StaffLayout() {
   return (
     <Tabs
       screenOptions={{
-        animation: "shift",
+        // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
+        // de pestaña. Quitarla = cambio instantáneo, estable.
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

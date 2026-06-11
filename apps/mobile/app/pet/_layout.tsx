@@ -2,6 +2,8 @@ import { COLORS } from "@/constants/colors";
 import { Stack, useRouter } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function PetLayout() {
   const router = useRouter();
 

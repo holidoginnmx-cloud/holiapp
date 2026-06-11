@@ -9,6 +9,8 @@ const FROM_TO_PATH: Record<string, string> = {
   notifications: "/(tabs)/notifications",
 };
 
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
+
 export default function ReservationLayout() {
   const router = useRouter();
 
