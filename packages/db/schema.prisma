@@ -10,8 +10,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")   // pooled, transaction mode (6543, pgbouncer=true) -> runtime app
-  directUrl = env("DIRECT_URL")     // session mode (5432) -> prisma migrate / deploy / introspect
+  url       = env("DATABASE_URL") // pooled, transaction mode (6543, pgbouncer=true) -> runtime app
+  directUrl = env("DIRECT_URL") // session mode (5432) -> prisma migrate / deploy / introspect
 }
 
 // =============================================================
@@ -19,31 +19,31 @@ datasource db {
 // =============================================================
 
 enum Role {
-  OWNER   // Dueño de mascota (cliente)
-  STAFF   // Empleado del negocio
-  ADMIN   // Administrador / dueño del negocio
+  OWNER // Dueño de mascota (cliente)
+  STAFF // Empleado del negocio
+  ADMIN // Administrador / dueño del negocio
 }
 
 enum PetSize {
-  XS   // Extra pequeño (< 5 kg)
-  S    // Pequeño (5–10 kg)
-  M    // Mediano (10–20 kg)
-  L    // Grande (20–35 kg)
-  XL   // Extra grande (> 35 kg)
+  XS // Extra pequeño (< 5 kg)
+  S // Pequeño (5–10 kg)
+  M // Mediano (10–20 kg)
+  L // Grande (20–35 kg)
+  XL // Extra grande (> 35 kg)
 }
 
 enum ReservationStatus {
-  CONFIRMED   // Confirmada y agendada (con anticipo o pago completo)
-  CHECKED_IN  // Mascota en el hotel
+  CONFIRMED // Confirmada y agendada (con anticipo o pago completo)
+  CHECKED_IN // Mascota en el hotel
   CHECKED_OUT // Estancia finalizada
-  CANCELLED   // Cancelada
+  CANCELLED // Cancelada
 }
 
 enum PaymentStatus {
-  UNPAID    // Sin pagar
-  PARTIAL   // Pago parcial (anticipo)
-  PAID      // Pagado completo
-  REFUNDED  // Reembolsado
+  UNPAID // Sin pagar
+  PARTIAL // Pago parcial (anticipo)
+  PAID // Pagado completo
+  REFUNDED // Reembolsado
 }
 
 enum PaymentMethod {
@@ -78,12 +78,12 @@ enum NotificationType {
   RESERVATION_REMINDER
   CHECK_IN
   CHECK_OUT
-  NEW_UPDATE       // Foto/actualización de la mascota
+  NEW_UPDATE // Foto/actualización de la mascota
   PAYMENT_RECEIVED
   GENERAL
-  DAILY_REPORT     // Reporte diario del staff
-  STAFF_ALERT      // Alerta del staff hacia admin
-  REVIEW_REQUEST   // Solicitud de reseña post check-out
+  DAILY_REPORT // Reporte diario del staff
+  STAFF_ALERT // Alerta del staff hacia admin
+  REVIEW_REQUEST // Solicitud de reseña post check-out
   RESERVATION_CHANGE_REQUESTED
   RESERVATION_CHANGE_APPROVED
   RESERVATION_CHANGE_REJECTED
@@ -139,30 +139,30 @@ enum AlertType {
 }
 
 enum AddonPaymentSource {
-  BOOKING      // Cobrado junto con el hospedaje
-  STANDALONE   // Cobrado con su propio PaymentIntent
+  BOOKING // Cobrado junto con el hospedaje
+  STANDALONE // Cobrado con su propio PaymentIntent
 }
 
 enum CartillaStatus {
-  PENDING    // Subida, esperando revisión
-  APPROVED   // Validada por admin
-  REJECTED   // Rechazada por admin (ver cartillaRejectionReason)
-  EXPIRED    // Antes APPROVED, demoteada porque alguna vacuna venció
+  PENDING // Subida, esperando revisión
+  APPROVED // Validada por admin
+  REJECTED // Rechazada por admin (ver cartillaRejectionReason)
+  EXPIRED // Antes APPROVED, demoteada porque alguna vacuna venció
 }
 
 enum ReservationType {
-  STAY     // Hospedaje con rango de fechas
-  BATH     // Cita de baño/estética puntual (appointmentAt)
-  DAYCARE  // Guardería: servicio de día sin pernocta (appointmentAt = llegada)
+  STAY // Hospedaje con rango de fechas
+  BATH // Cita de baño/estética puntual (appointmentAt)
+  DAYCARE // Guardería: servicio de día sin pernocta (appointmentAt = llegada)
 }
 
 // Tipo de pago dentro del ledger de una reservación. Reemplaza el `pago_tipo`
 // de la web (ANTICIPO/ABONO/RESTANTE). FULL = pago único completo (default móvil).
 enum PaymentKind {
-  ANTICIPO   // Anticipo / depósito inicial
-  ABONO      // Abono parcial al saldo
-  RESTANTE   // Pago final del saldo restante
-  FULL       // Pago único completo
+  ANTICIPO // Anticipo / depósito inicial
+  ABONO // Abono parcial al saldo
+  RESTANTE // Pago final del saldo restante
+  FULL // Pago único completo
 }
 
 // Clasificación contable de egresos. Portado de `tipo_costo` de la web.
@@ -179,58 +179,62 @@ enum CostType {
 // =============================================================
 
 model User {
-  id            String   @id @default(cuid())
-  clerkId       String?  @unique
-  email         String   @unique
-  phone         String?
-  firstName     String
-  lastName      String
-  avatarUrl     String?
-  role          Role     @default(OWNER)
-  isActive      Boolean  @default(true)
-  creditBalance Decimal  @default(0) @db.Decimal(10, 2)
+  id                String    @id @default(cuid())
+  clerkId           String?   @unique
+  email             String    @unique
+  phone             String?
+  firstName         String
+  lastName          String
+  avatarUrl         String?
+  role              Role      @default(OWNER)
+  isActive          Boolean   @default(true)
+  creditBalance     Decimal   @default(0) @db.Decimal(10, 2)
   // Última vez que el saldo a favor tuvo actividad (CREDIT_ADDED/APPLIED).
   // Si 90 días pasan sin actividad y el balance es > 0, el cron lo expira.
   lastCreditEntryAt DateTime?
   // Clientes walk-in migrados del Excel/web: clerkId null, email placeholder.
   // El middleware de auth los vincula por email cuando el cliente se registra.
-  originLegacy  Boolean  @default(false)
+  originLegacy      Boolean   @default(false)
   // Dirección guardada para el servicio a domicilio (se reutiliza en futuras
   // reservas). Capturada con Google Places en la app móvil.
-  address       String?
-  addressLat    Float?
-  addressLng    Float?
-  addressPlaceId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  address           String?
+  addressLat        Float?
+  addressLng        Float?
+  addressPlaceId    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relaciones
-  pets              Pet[]
-  reservations      Reservation[]
-  payments          Payment[]
-  notifications     Notification[]
-  pushTokens        PushToken[]
+  pets          Pet[]
+  reservations  Reservation[]
+  payments      Payment[]
+  notifications Notification[]
+  pushTokens    PushToken[]
 
-  reviews           Review[]
+  reviews Review[]
 
   // Relaciones de staff
-  staffAssignments  Reservation[]      @relation("StaffAssignments")
-  stayUpdates       StayUpdate[]       @relation("StaffUpdates")
-  checklists        DailyChecklist[]   @relation("StaffChecklists")
-  behaviorTags      BehaviorTag[]      @relation("StaffBehaviorTags")
-  staffAlerts       StaffAlert[]       @relation("StaffAlerts")
-  addonExtrasSet    ReservationAddon[] @relation("AddonExtraSetter")
+  staffAssignments Reservation[]      @relation("StaffAssignments")
+  stayUpdates      StayUpdate[]       @relation("StaffUpdates")
+  checklists       DailyChecklist[]   @relation("StaffChecklists")
+  behaviorTags     BehaviorTag[]      @relation("StaffBehaviorTags")
+  staffAlerts      StaffAlert[]       @relation("StaffAlerts")
+  addonExtrasSet   ReservationAddon[] @relation("AddonExtraSetter")
 
   // Cambios y saldo
-  changeRequests    ReservationChangeRequest[] @relation("ChangeRequestedBy")
-  approvedChanges   ReservationChangeRequest[] @relation("ChangeApprovedBy")
-  creditEntries     CreditLedger[]
+  changeRequests  ReservationChangeRequest[] @relation("ChangeRequestedBy")
+  approvedChanges ReservationChangeRequest[] @relation("ChangeApprovedBy")
+  creditEntries   CreditLedger[]
 
   // Cartillas revisadas como admin
-  cartillasReviewed Pet[]              @relation("CartillaReviewer")
+  cartillasReviewed Pet[] @relation("CartillaReviewer")
 
   // Consentimientos legales aceptados
-  legalAcceptances  LegalAcceptance[]
+  legalAcceptances LegalAcceptance[]
+
+  // Tienda en línea (e-commerce de productos)
+  carts  Cart[]
+  orders Order[]
 
   @@map("users")
 }
@@ -240,50 +244,50 @@ model User {
 // =============================================================
 
 model Pet {
-  id          String   @id @default(cuid())
-  name        String
-  breed       String?
-  size        PetSize
-  birthDate   DateTime?
-  weight      Float?         // En kilogramos
-  photoUrl    String?
-  notes       String?        // Notas especiales (alergias, comportamiento, etc.)
-  sex                 String?        // "M" o "F"
-  behavior            String?        // CSV: "amigable,nervioso,agresivo,otro"
-  walkPreference      String?        // CSV: "aire_libre,instalaciones"
-  healthIssues        String?        // Descripción si tiene problemas de salud
-  isNeutered          Boolean  @default(false)
-  emergencyContactName  String?
-  emergencyContactPhone String?
-  emergencyContactRelation String?   // Relación con el propietario
-  vetName             String?
-  vetPhone            String?
-  vetEmergency24h     Boolean  @default(false)
-  feedingSchedule     String?        // Horarios de comida
-  feedingAmount       String?        // Cantidad por comida
-  foodType            String?        // Tipo de alimento
-  feedingInstructions String?        // Instrucciones especiales
-  diet                String?        // Legacy: campo anterior de dieta
-  personality         String?
+  id                       String    @id @default(cuid())
+  name                     String
+  breed                    String?
+  size                     PetSize
+  birthDate                DateTime?
+  weight                   Float? // En kilogramos
+  photoUrl                 String?
+  notes                    String? // Notas especiales (alergias, comportamiento, etc.)
+  sex                      String? // "M" o "F"
+  behavior                 String? // CSV: "amigable,nervioso,agresivo,otro"
+  walkPreference           String? // CSV: "aire_libre,instalaciones"
+  healthIssues             String? // Descripción si tiene problemas de salud
+  isNeutered               Boolean   @default(false)
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  emergencyContactRelation String? // Relación con el propietario
+  vetName                  String?
+  vetPhone                 String?
+  vetEmergency24h          Boolean   @default(false)
+  feedingSchedule          String? // Horarios de comida
+  feedingAmount            String? // Cantidad por comida
+  foodType                 String? // Tipo de alimento
+  feedingInstructions      String? // Instrucciones especiales
+  diet                     String? // Legacy: campo anterior de dieta
+  personality              String?
 
   // Cartilla de vacunación (documento oficial del vet)
   // `cartillaUrl` (legacy) se mantiene por compatibilidad; el flujo nuevo
   // usa `cartillaPhotos` para soportar múltiples fotos de la misma cartilla.
   cartillaUrl             String?
-  cartillaPhotos          String[]          @default([])
-  cartillaStatus          CartillaStatus?   // null = aún no se ha subido
+  cartillaPhotos          String[]        @default([])
+  cartillaStatus          CartillaStatus? // null = aún no se ha subido
   cartillaReviewedAt      DateTime?
   cartillaReviewedById    String?
-  cartillaReviewedBy      User?     @relation("CartillaReviewer", fields: [cartillaReviewedById], references: [id])
+  cartillaReviewedBy      User?           @relation("CartillaReviewer", fields: [cartillaReviewedById], references: [id])
   cartillaRejectionReason String?
 
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
   ownerId      String
-  owner        User           @relation(fields: [ownerId], references: [id])
+  owner        User          @relation(fields: [ownerId], references: [id])
   vaccines     Vaccine[]
   dewormings   Deworming[]
   reservations Reservation[]
@@ -291,7 +295,7 @@ model Pet {
   behaviorTags BehaviorTag[]
   staffAlerts  StaffAlert[]
 
-  @@index([ownerId, isActive])  // GET /pets
+  @@index([ownerId, isActive]) // GET /pets
   @@map("pets")
 }
 
@@ -300,13 +304,13 @@ model Pet {
 // =============================================================
 
 model Vaccine {
-  id          String   @id @default(cuid())
-  name        String          // "Rabia", "Parvovirus", "DHPP", etc.
-  appliedAt   DateTime
-  expiresAt   DateTime?
-  vetName     String?
-  fileUrl     String?         // PDF o imagen del carnet
-  createdAt   DateTime @default(now())
+  id        String    @id @default(cuid())
+  name      String // "Rabia", "Parvovirus", "DHPP", etc.
+  appliedAt DateTime
+  expiresAt DateTime?
+  vetName   String?
+  fileUrl   String? // PDF o imagen del carnet
+  createdAt DateTime  @default(now())
 
   petId String
   pet   Pet    @relation(fields: [petId], references: [id])
@@ -319,8 +323,8 @@ model Vaccine {
   reminded7dAt  DateTime?
   reminded0dAt  DateTime?
 
-  @@index([petId])      // includes de vacunas por mascota (FK)
-  @@index([expiresAt])  // ventana de vencimiento (admin + recordatorios)
+  @@index([petId]) // includes de vacunas por mascota (FK)
+  @@index([expiresAt]) // ventana de vencimiento (admin + recordatorios)
   @@map("vaccines")
 }
 
@@ -330,9 +334,9 @@ model Vaccine {
 
 model VaccineCatalog {
   id                  String   @id @default(cuid())
-  code                String   @unique  // "RABIES_1Y", "DHPP_1Y", etc.
-  displayName         String            // "Rabia (1 año)", "DHPP (1 año)"
-  defaultDurationDays Int               // 365, 1095, 180, etc.
+  code                String   @unique // "RABIES_1Y", "DHPP_1Y", etc.
+  displayName         String // "Rabia (1 año)", "DHPP (1 año)"
+  defaultDurationDays Int // 365, 1095, 180, etc.
   description         String?
   isActive            Boolean  @default(true)
   createdAt           DateTime @default(now())
@@ -351,24 +355,24 @@ model VaccineCatalog {
 // =============================================================
 
 enum DewormingType {
-  INTERNAL    // Gusanos intestinales (oral)
-  EXTERNAL    // Pulgas/garrapatas (pipeta o collar)
-  BOTH        // Producto combinado
+  INTERNAL // Gusanos intestinales (oral)
+  EXTERNAL // Pulgas/garrapatas (pipeta o collar)
+  BOTH // Producto combinado
 }
 
 model Deworming {
   id          String        @id @default(cuid())
   type        DewormingType
-  productName String?       // "Bravecto", "Nexgard", "Drontal", etc.
+  productName String? // "Bravecto", "Nexgard", "Drontal", etc.
   appliedAt   DateTime
-  expiresAt   DateTime?     // Próxima dosis sugerida
+  expiresAt   DateTime? // Próxima dosis sugerida
   vetName     String?
-  fileUrl     String?       // Foto del comprobante (opcional)
+  fileUrl     String? // Foto del comprobante (opcional)
   notes       String?
   createdAt   DateTime      @default(now())
 
   petId String
-  pet   Pet   @relation(fields: [petId], references: [id])
+  pet   Pet    @relation(fields: [petId], references: [id])
 
   @@map("dewormings")
 }
@@ -378,15 +382,15 @@ model Deworming {
 // =============================================================
 
 model Room {
-  id          String   @id @default(cuid())
-  name        String          // "Suite 1", "Cuarto Mediano A", etc.
+  id          String    @id @default(cuid())
+  name        String // "Suite 1", "Cuarto Mediano A", etc.
   description String?
-  capacity    Int      @default(1)
-  sizeAllowed PetSize[]       // Tamaños de mascota permitidos
-  isActive    Boolean  @default(true)
+  capacity    Int       @default(1)
+  sizeAllowed PetSize[] // Tamaños de mascota permitidos
+  isActive    Boolean   @default(true)
   photoUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   reservations Reservation[]
 
@@ -398,61 +402,61 @@ model Room {
 // =============================================================
 
 model Reservation {
-  id            String            @id @default(cuid())
-  reservationType ReservationType @default(STAY)
-  checkIn       DateTime?                           // solo STAY
-  checkOut      DateTime?                           // solo STAY
-  appointmentAt DateTime?                           // solo BATH: inicio de la cita
-  status        ReservationStatus @default(CONFIRMED)
-  totalDays     Int?                                // solo STAY
-  totalAmount   Decimal           @db.Decimal(10, 2)
+  id                     String            @id @default(cuid())
+  reservationType        ReservationType   @default(STAY)
+  checkIn                DateTime? // solo STAY
+  checkOut               DateTime? // solo STAY
+  appointmentAt          DateTime? // solo BATH: inicio de la cita
+  status                 ReservationStatus @default(CONFIRMED)
+  totalDays              Int? // solo STAY
+  totalAmount            Decimal           @db.Decimal(10, 2)
   // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
   // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
-  depositAgreed Decimal?          @db.Decimal(10, 2)
-  notes         String?
-  medicationNotes String?          // Instrucciones de administración si la mascota toma medicamento
-  legalAccepted Boolean          @default(false)
-  groupId       String?            // Agrupa reservaciones multi-mascota
-  paymentType     String?          // "FULL" o "DEPOSIT"
-  depositDeadline DateTime?        // 48h antes del checkIn, solo para anticipos
+  depositAgreed          Decimal?          @db.Decimal(10, 2)
+  notes                  String?
+  medicationNotes        String? // Instrucciones de administración si la mascota toma medicamento
+  legalAccepted          Boolean           @default(false)
+  groupId                String? // Agrupa reservaciones multi-mascota
+  paymentType            String? // "FULL" o "DEPOSIT"
+  depositDeadline        DateTime? // 48h antes del checkIn, solo para anticipos
   // Reservaciones migradas del Excel histórico (web `origen_legacy`).
-  originLegacy  Boolean           @default(false)
+  originLegacy           Boolean           @default(false)
   // Servicio a domicilio: dirección + distancia + tarifa calculada al reservar.
-  homeDelivery          Boolean   @default(false)
-  homeDeliveryAddress   String?
+  homeDelivery           Boolean           @default(false)
+  homeDeliveryAddress    String?
   homeDeliveryDistanceKm Float?
-  homeDeliveryFee       Decimal?  @db.Decimal(10, 2)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  homeDeliveryFee        Decimal?          @db.Decimal(10, 2)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   // Relaciones
-  ownerId  String
-  owner    User    @relation(fields: [ownerId], references: [id])
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
 
-  petId    String
-  pet      Pet     @relation(fields: [petId], references: [id])
+  petId String
+  pet   Pet    @relation(fields: [petId], references: [id])
 
-  roomId   String?
-  room     Room?   @relation(fields: [roomId], references: [id])
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
 
   // Staff asignado
-  staffId  String?
-  staff    User?   @relation("StaffAssignments", fields: [staffId], references: [id])
+  staffId String?
+  staff   User?   @relation("StaffAssignments", fields: [staffId], references: [id])
 
-  payments   Payment[]
-  updates    StayUpdate[]
-  checklists DailyChecklist[]
-  alerts     StaffAlert[]
-  review     Review?
-  addons     ReservationAddon[]
+  payments       Payment[]
+  updates        StayUpdate[]
+  checklists     DailyChecklist[]
+  alerts         StaffAlert[]
+  review         Review?
+  addons         ReservationAddon[]
   changeRequests ReservationChangeRequest[]
 
   // Índices para evitar full table scans en las consultas más frecuentes.
-  @@index([ownerId, status])                       // GET /reservations (inicio, tab reservas)
-  @@index([status, checkOut])                      // autoCheckoutOverdueStays + checkouts del día
-  @@index([status, checkIn])                       // check-ins del día (admin)
-  @@index([paymentType, status, depositDeadline])  // cancelOverdueDeposits
-  @@index([roomId, status])                        // countOverlappingForRoom / ocupación
+  @@index([ownerId, status]) // GET /reservations (inicio, tab reservas)
+  @@index([status, checkOut]) // autoCheckoutOverdueStays + checkouts del día
+  @@index([status, checkIn]) // check-ins del día (admin)
+  @@index([paymentType, status, depositDeadline]) // cancelOverdueDeposits
+  @@index([roomId, status]) // countOverlappingForRoom / ocupación
   @@map("reservations")
 }
 
@@ -461,24 +465,24 @@ model Reservation {
 // =============================================================
 
 model StayUpdate {
-  id          String   @id @default(cuid())
-  caption     String?
-  mediaUrl    String          // URL de foto o video
-  mediaType   String   @default("image") // "image" | "video"
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  caption   String?
+  mediaUrl  String // URL de foto o video
+  mediaType String   @default("image") // "image" | "video"
+  createdAt DateTime @default(now())
 
   // Relaciones
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 
-  petId  String
-  pet    Pet    @relation(fields: [petId], references: [id])
+  petId String
+  pet   Pet    @relation(fields: [petId], references: [id])
 
   // Staff que subió la actualización
   staffId String?
   staff   User?   @relation("StaffUpdates", fields: [staffId], references: [id])
 
-  @@index([reservationId, createdAt])  // última actualización por reserva (orderBy desc take 1)
+  @@index([reservationId, createdAt]) // última actualización por reserva (orderBy desc take 1)
   @@map("stay_updates")
 }
 
@@ -487,22 +491,22 @@ model StayUpdate {
 // =============================================================
 
 model DailyChecklist {
-  id              String             @id @default(cuid())
-  date            DateTime           @db.Date
+  id   String   @id @default(cuid())
+  date DateTime @db.Date
 
   // Reporte diario
-  energy          EnergyLevel
-  socialization   SocializationLevel
-  rest            RestQuality
+  energy        EnergyLevel
+  socialization SocializationLevel
+  rest          RestQuality
 
   // Checklist
-  mealsCompleted     Boolean  @default(false)
-  mealsNotes         String?
-  walksCompleted     Boolean  @default(false)
-  bathroomBreaks     Boolean  @default(false)
-  playtime           Boolean  @default(false)
-  socializationDone  Boolean  @default(false)
-  mood               MoodLevel
+  mealsCompleted    Boolean   @default(false)
+  mealsNotes        String?
+  walksCompleted    Boolean   @default(false)
+  bathroomBreaks    Boolean   @default(false)
+  playtime          Boolean   @default(false)
+  socializationDone Boolean   @default(false)
+  mood              MoodLevel
 
   // Observaciones
   feedingNotes    String?
@@ -510,18 +514,18 @@ model DailyChecklist {
   additionalNotes String?
 
   // Conteo de evidencias del día
-  photosCount     Int      @default(0)
-  videosCount     Int      @default(0)
+  photosCount Int @default(0)
+  videosCount Int @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relaciones
-  reservationId   String
-  reservation     Reservation @relation(fields: [reservationId], references: [id])
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
 
-  staffId         String
-  staff           User    @relation("StaffChecklists", fields: [staffId], references: [id])
+  staffId String
+  staff   User   @relation("StaffChecklists", fields: [staffId], references: [id])
 
   @@unique([reservationId, date])
   @@map("daily_checklists")
@@ -535,14 +539,14 @@ model BehaviorTag {
   id        String           @id @default(cuid())
   tag       BehaviorTagValue
   notes     String?
-  stayId    String           // reservationId para contexto
+  stayId    String // reservationId para contexto
   createdAt DateTime         @default(now())
 
-  petId     String
-  pet       Pet              @relation(fields: [petId], references: [id])
+  petId String
+  pet   Pet    @relation(fields: [petId], references: [id])
 
-  staffId   String
-  staff     User             @relation("StaffBehaviorTags", fields: [staffId], references: [id])
+  staffId String
+  staff   User   @relation("StaffBehaviorTags", fields: [staffId], references: [id])
 
   @@map("behavior_tags")
 }
@@ -562,11 +566,11 @@ model StaffAlert {
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 
-  petId       String
-  pet         Pet        @relation(fields: [petId], references: [id])
+  petId String
+  pet   Pet    @relation(fields: [petId], references: [id])
 
-  staffId     String
-  staff       User       @relation("StaffAlerts", fields: [staffId], references: [id])
+  staffId String
+  staff   User   @relation("StaffAlerts", fields: [staffId], references: [id])
 
   @@map("staff_alerts")
 }
@@ -576,16 +580,16 @@ model StaffAlert {
 // =============================================================
 
 model Review {
-  id            String   @id @default(cuid())
-  rating        Int      // 1-5 patitas
-  comment       String?
-  createdAt     DateTime @default(now())
+  id        String   @id @default(cuid())
+  rating    Int // 1-5 patitas
+  comment   String?
+  createdAt DateTime @default(now())
 
-  reservationId String   @unique
+  reservationId String      @unique
   reservation   Reservation @relation(fields: [reservationId], references: [id])
 
-  ownerId       String
-  owner         User     @relation(fields: [ownerId], references: [id])
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
 
   @@map("reviews")
 }
@@ -595,21 +599,21 @@ model Review {
 // =============================================================
 
 model Payment {
-  id            String        @id @default(cuid())
-  amount        Decimal       @db.Decimal(10, 2)
-  method        PaymentMethod
-  status        PaymentStatus @default(UNPAID)
+  id                    String        @id @default(cuid())
+  amount                Decimal       @db.Decimal(10, 2)
+  method                PaymentMethod
+  status                PaymentStatus @default(UNPAID)
   // Tipo de pago dentro del ledger (anticipo/abono/restante/completo).
   // Soporta tanto pagos Stripe como renglones manuales (efectivo/transferencia)
   // capturados por el admin. Regla: total reserva = SUM(payments.amount).
-  kind          PaymentKind   @default(FULL)
-  reference     String?       // Referencia de transferencia o recibo
-  stripePaymentIntentId String?  @unique
-  paidAt        DateTime?
-  notes         String?
+  kind                  PaymentKind   @default(FULL)
+  reference             String? // Referencia de transferencia o recibo
+  stripePaymentIntentId String?       @unique
+  paidAt                DateTime?
+  notes                 String?
   // Pagos migrados del Excel histórico (web `pagos`).
-  originLegacy  Boolean       @default(false)
-  createdAt     DateTime      @default(now())
+  originLegacy          Boolean       @default(false)
+  createdAt             DateTime      @default(now())
 
   // Relaciones
   reservationId String
@@ -617,13 +621,13 @@ model Payment {
 
   // Nullable: los pagos legacy de clientes walk-in pueden no tener cuenta de
   // usuario asociada (se atan a la reservación). Pagos nuevos siempre traen user.
-  userId  String?
-  user    User?  @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
-  addons  ReservationAddon[]
+  addons ReservationAddon[]
 
-  @@index([reservationId])   // includes anidados en cada reserva (FK no indexada)
-  @@index([status, paidAt])  // agregados de ingresos/refunds (admin)
+  @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
+  @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
   @@map("payments")
 }
 
@@ -637,7 +641,7 @@ model Notification {
   title     String
   body      String
   isRead    Boolean          @default(false)
-  data      Json?            // Metadata extra (ej: reservationId)
+  data      Json? // Metadata extra (ej: reservationId)
   createdAt DateTime         @default(now())
 
   userId String
@@ -652,8 +656,8 @@ model Notification {
 
 model PushToken {
   id        String   @id @default(cuid())
-  token     String   @unique  // Expo Push Token
-  platform  String            // "ios" | "android"
+  token     String   @unique // Expo Push Token
+  platform  String // "ios" | "android"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -669,12 +673,12 @@ model PushToken {
 
 model ServiceType {
   id        String   @id @default(cuid())
-  code      String   @unique          // "BATH"
-  name      String                    // "Baño"
+  code      String   @unique // "BATH"
+  name      String // "Baño"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  variants  ServiceVariant[]
+  variants ServiceVariant[]
 
   @@map("service_types")
 }
@@ -684,18 +688,18 @@ model ServiceType {
 // =============================================================
 
 model ServiceVariant {
-  id            String   @id @default(cuid())
-  petSize       PetSize
-  deslanado     Boolean
-  corte         Boolean
-  price         Decimal  @db.Decimal(10, 2)
-  isActive      Boolean  @default(true)
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  petSize   PetSize
+  deslanado Boolean
+  corte     Boolean
+  price     Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
 
   serviceTypeId String
   serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id])
 
-  addons        ReservationAddon[]
+  addons ReservationAddon[]
 
   @@unique([serviceTypeId, petSize, deslanado, corte])
   @@map("service_variants")
@@ -706,44 +710,44 @@ model ServiceVariant {
 // =============================================================
 
 model ReservationAddon {
-  id            String    @id @default(cuid())
-  unitPrice     Decimal   @db.Decimal(10, 2)   // Snapshot del precio al momento de compra
-  paidWith      AddonPaymentSource
-  completedAt   DateTime?                       // Fecha en que el staff completó el servicio
-  createdAt     DateTime  @default(now())
+  id          String             @id @default(cuid())
+  unitPrice   Decimal            @db.Decimal(10, 2) // Snapshot del precio al momento de compra
+  paidWith    AddonPaymentSource
+  completedAt DateTime? // Fecha en que el staff completó el servicio
+  createdAt   DateTime           @default(now())
 
   // Precio adicional definido por staff DESPUÉS del servicio.
   // Aplica para deslanado/corte: el owner no paga al reservar, el staff
   // evalúa el estado del pelaje al terminar y define cuánto cuesta.
   // `extraDeslanadoPrice` y `extraCortePrice` permiten desglosar el costo;
   // `extraPrice` se mantiene como total (suma) para el flujo de pago.
-  extraPrice          Decimal?  @db.Decimal(10, 2)
-  extraDeslanadoPrice Decimal?  @db.Decimal(10, 2)
-  extraCortePrice     Decimal?  @db.Decimal(10, 2)
-  extraDescription    String?   // "Deslanado · $200 · Corte · $150"
-  extraPaymentStatus  AddonExtraPaymentStatus?
-  extraSetById        String?
-  extraSetBy          User?     @relation("AddonExtraSetter", fields: [extraSetById], references: [id])
-  extraSetAt          DateTime?
-  extraPaidAt         DateTime?
+  extraPrice                 Decimal?                 @db.Decimal(10, 2)
+  extraDeslanadoPrice        Decimal?                 @db.Decimal(10, 2)
+  extraCortePrice            Decimal?                 @db.Decimal(10, 2)
+  extraDescription           String? // "Deslanado · $200 · Corte · $150"
+  extraPaymentStatus         AddonExtraPaymentStatus?
+  extraSetById               String?
+  extraSetBy                 User?                    @relation("AddonExtraSetter", fields: [extraSetById], references: [id])
+  extraSetAt                 DateTime?
+  extraPaidAt                DateTime?
   extraStripePaymentIntentId String?
 
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
-  variantId     String
-  variant       ServiceVariant @relation(fields: [variantId], references: [id])
+  variantId String
+  variant   ServiceVariant @relation(fields: [variantId], references: [id])
 
-  paymentId     String?
-  payment       Payment? @relation(fields: [paymentId], references: [id])
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
 
   @@map("reservation_addons")
 }
 
 enum AddonExtraPaymentStatus {
-  PENDING_PAYMENT   // Staff ya definió el precio; owner debe elegir cómo pagar
-  PAY_ON_PICKUP     // Owner eligió pagar al recoger; staff debe cobrar
-  PAID              // Cobrado (vía Stripe o registrado en sucursal)
+  PENDING_PAYMENT // Staff ya definió el precio; owner debe elegir cómo pagar
+  PAY_ON_PICKUP // Owner eligió pagar al recoger; staff debe cobrar
+  PAID // Cobrado (vía Stripe o registrado en sucursal)
 }
 
 // =============================================================
@@ -756,8 +760,8 @@ model ReservationChangeRequest {
   newCheckOut     DateTime
   newTotalDays    Int
   newTotalAmount  Decimal             @db.Decimal(10, 2)
-  deltaAmount     Decimal             @db.Decimal(10, 2)   // + owes more, - refund
-  refundChoice    RefundChoice?                             // required when delta < 0
+  deltaAmount     Decimal             @db.Decimal(10, 2) // + owes more, - refund
+  refundChoice    RefundChoice? // required when delta < 0
   status          ChangeRequestStatus @default(PENDING)
   rejectionReason String?
   approvedAt      DateTime?
@@ -768,16 +772,16 @@ model ReservationChangeRequest {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  reservationId   String
-  reservation     Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
-  requestedById   String
-  requestedBy     User        @relation("ChangeRequestedBy", fields: [requestedById], references: [id])
+  requestedById String
+  requestedBy   User   @relation("ChangeRequestedBy", fields: [requestedById], references: [id])
 
-  approvedById    String?
-  approvedBy      User?       @relation("ChangeApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  approvedBy   User?   @relation("ChangeApprovedBy", fields: [approvedById], references: [id])
 
-  creditEntries   CreditLedger[]
+  creditEntries CreditLedger[]
 
   @@index([reservationId, status])
   @@map("reservation_change_requests")
@@ -788,19 +792,19 @@ model ReservationChangeRequest {
 // =============================================================
 
 model CreditLedger {
-  id               String          @id @default(cuid())
-  type             CreditEntryType
-  amount           Decimal         @db.Decimal(10, 2)   // signed
-  balanceAfter     Decimal         @db.Decimal(10, 2)
-  description      String
-  createdAt        DateTime        @default(now())
+  id           String          @id @default(cuid())
+  type         CreditEntryType
+  amount       Decimal         @db.Decimal(10, 2) // signed
+  balanceAfter Decimal         @db.Decimal(10, 2)
+  description  String
+  createdAt    DateTime        @default(now())
 
-  userId           String
-  user             User            @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  reservationId    String?
-  changeRequestId  String?
-  changeRequest    ReservationChangeRequest? @relation(fields: [changeRequestId], references: [id])
+  reservationId   String?
+  changeRequestId String?
+  changeRequest   ReservationChangeRequest? @relation(fields: [changeRequestId], references: [id])
 
   @@index([userId, createdAt])
   @@map("credit_ledger")
@@ -812,18 +816,18 @@ model CreditLedger {
 // =============================================================
 
 enum LegalDocumentType {
-  TOS              // Términos y condiciones del servicio
-  PRIVACY          // Aviso de privacidad LFPDPPP
-  IMAGE_USE        // Consentimiento de uso de imagen (opt-in)
-  VET_AUTH         // Carta responsiva veterinaria
-  INCIDENT_POLICY  // Política de incidentes durante la estancia
+  TOS // Términos y condiciones del servicio
+  PRIVACY // Aviso de privacidad LFPDPPP
+  IMAGE_USE // Consentimiento de uso de imagen (opt-in)
+  VET_AUTH // Carta responsiva veterinaria
+  INCIDENT_POLICY // Política de incidentes durante la estancia
 }
 
 model LegalAcceptance {
   id           String            @id @default(cuid())
   userId       String
   documentType LegalDocumentType
-  version      String            // ej. "1.0.0"
+  version      String // ej. "1.0.0"
   acceptedAt   DateTime          @default(now())
   ipAddress    String?
   userAgent    String?
@@ -840,10 +844,10 @@ model LegalAcceptance {
 // =============================================================
 
 model StripeEvent {
-  id          String   @id   // event.id de Stripe (evt_...)
-  type        String         // payment_intent.succeeded, charge.refunded, etc.
+  id          String   @id // event.id de Stripe (evt_...)
+  type        String // payment_intent.succeeded, charge.refunded, etc.
   processedAt DateTime @default(now())
-  payload     Json           // evento completo, para debugging/audit
+  payload     Json // evento completo, para debugging/audit
 
   @@index([type, processedAt])
   @@map("stripe_events")
@@ -855,13 +859,13 @@ model StripeEvent {
 // =============================================================
 
 model BathConfig {
-  id                  String   @id @default("singleton")
-  openHour            Int      @default(9)    // 0–23, hora de apertura inclusive
-  closeHour           Int      @default(18)   // 0–23, hora de cierre exclusive
-  slotMinutes         Int      @default(60)
-  maxConcurrentBaths  Int      @default(1)
-  isActive            Boolean  @default(true)
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default("singleton")
+  openHour           Int      @default(9) // 0–23, hora de apertura inclusive
+  closeHour          Int      @default(18) // 0–23, hora de cierre exclusive
+  slotMinutes        Int      @default(60)
+  maxConcurrentBaths Int      @default(1)
+  isActive           Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
 
   @@map("bath_config")
 }
@@ -882,7 +886,7 @@ model LodgingPricing {
   // Tarifa plana de guardería por día (← servicio GUARDERIA de la web).
   daycarePricePerDay     Decimal  @default(250) @db.Decimal(10, 2)
   largeWeightKg          Float    @default(20)
-  medicationSurchargePct Float    @default(0.10)  // 0.10 = 10%
+  medicationSurchargePct Float    @default(0.10) // 0.10 = 10%
   updatedAt              DateTime @updatedAt
 
   @@map("lodging_pricing")
@@ -895,8 +899,8 @@ model LodgingPricing {
 
 model HotelConfig {
   id          String   @id @default("singleton")
-  hotelName   String   @default("Holidog Inn")   // ← nombre_hotel
-  maxCapacity Int      @default(20)               // ← cupo_maximo
+  hotelName   String   @default("Holidog Inn") // ← nombre_hotel
+  maxCapacity Int      @default(20) // ← cupo_maximo
   updatedAt   DateTime @updatedAt
 
   @@map("hotel_config")
@@ -909,14 +913,14 @@ model HotelConfig {
 // =============================================================
 
 model DeliveryConfig {
-  id            String   @id @default("singleton")
+  id         String   @id @default("singleton")
   // Tarifa base fija del servicio a domicilio.
-  baseFee       Decimal  @default(0) @db.Decimal(10, 2)
+  baseFee    Decimal  @default(0) @db.Decimal(10, 2)
   // Precio por kilómetro (se aplica a la distancia redonda ida+vuelta).
-  pricePerKm    Decimal  @default(0) @db.Decimal(10, 2)
+  pricePerKm Decimal  @default(0) @db.Decimal(10, 2)
   // Permite apagar el servicio sin perder la configuración de precios.
-  isActive      Boolean  @default(false)
-  updatedAt     DateTime @updatedAt
+  isActive   Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
 
   @@map("delivery_config")
 }
@@ -930,12 +934,12 @@ model DeliveryConfig {
 
 model Expense {
   id           String   @id @default(cuid())
-  date         DateTime @db.Date              // ← fecha
-  description  String                          // ← descripcion
-  amount       Decimal  @db.Decimal(10, 2)     // ← monto
-  category     String                          // ← categoria (texto libre)
-  costType     CostType                        // ← tipo_costo
-  notes        String?                         // ← notas
+  date         DateTime @db.Date // ← fecha
+  description  String // ← descripcion
+  amount       Decimal  @db.Decimal(10, 2) // ← monto
+  category     String // ← categoria (texto libre)
+  costType     CostType // ← tipo_costo
+  notes        String? // ← notas
   // Egresos migrados del Excel histórico.
   originLegacy Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -953,13 +957,253 @@ model Expense {
 
 model Sponsor {
   id             String   @id @default(cuid())
-  name           String                       // ← nombre
-  sponsorsBath   Boolean  @default(false)      // ← patrocina_bano
-  sponsorsKennel Boolean  @default(false)      // ← patrocina_corral
-  notes          String?                       // ← notas
+  name           String // ← nombre
+  sponsorsBath   Boolean  @default(false) // ← patrocina_bano
+  sponsorsKennel Boolean  @default(false) // ← patrocina_corral
+  notes          String? // ← notas
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("sponsors")
+}
+
+// =============================================================
+//  TIENDA EN LÍNEA — E-commerce de productos
+//  Reemplaza la tienda Shopify (holidoginn.com.mx). Misma DB,
+//  mismos `users`. El catálogo es público; carrito/órdenes se
+//  consumen desde el sitio Next.js vía la API. Pagos con Stripe
+//  (PaymentIntent, metadata.source = "store").
+// =============================================================
+
+enum CartStatus {
+  ACTIVE // Carrito en uso
+  CONVERTED // Convertido en orden pagada
+  ABANDONED // Sin actividad / descartado
+}
+
+enum OrderStatus {
+  PENDING // Creada, esperando confirmación de pago
+  PAID // Pago confirmado por webhook de Stripe
+  FULFILLED // Entregada / recogida en el hotel
+  CANCELLED // Cancelada
+  REFUNDED // Reembolsada
+}
+
+enum FulfillmentType {
+  PICKUP // Recoger en el hotel (fase 1, default)
+  LOCAL_DELIVERY // Entrega local (reservado para fase futura)
+  NATIONAL_SHIPPING // Envío nacional (reservado para fase futura)
+}
+
+enum DiscountType {
+  PERCENT // Porcentaje sobre el subtotal
+  FIXED // Monto fijo en MXN
+}
+
+// CATEGORÍA / COLECCIÓN — equivale a las colecciones de Shopify.
+model ProductCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+// PRODUCTO — un artículo del catálogo. Tiene ≥1 variante (como en Shopify).
+model Product {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  description      String?
+  vendor           String   @default("HolidogInn")
+  brand            String? // ProBarf, Sharpaw, etc.
+  isActive         Boolean  @default(true)
+  isFeatured       Boolean  @default(false)
+  // Trazabilidad / idempotencia de la migración desde Shopify.
+  shopifyProductId String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id])
+
+  variants ProductVariant[]
+  images   ProductImage[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+// VARIANTE — talla/tamaño/longitud con su propio precio. Espejo de ServiceVariant.
+model ProductVariant {
+  id               String   @id @default(cuid())
+  sku              String?
+  title            String // "Talla M", "4 kg", "1.5 m"
+  option1Name      String? // "Talla", "Tamaño", "Longitud"
+  option1Value     String?
+  option2Name      String?
+  option2Value     String?
+  price            Decimal  @db.Decimal(10, 2)
+  compareAtPrice   Decimal? @db.Decimal(10, 2) // Precio "antes" para mostrar descuento
+  isActive         Boolean  @default(true)
+  shopifyVariantId String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  inventory  Inventory?
+  images     ProductImage[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// IMAGEN — del producto o específica de una variante. Almacenada en Supabase Storage.
+model ProductImage {
+  id        String   @id @default(cuid())
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// INVENTARIO — 1:1 con la variante. Se decrementa en transacción al confirmar pago.
+model Inventory {
+  variantId      String         @id
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity       Int            @default(0)
+  trackInventory Boolean        @default(true)
+  allowBackorder Boolean        @default(false)
+  updatedAt      DateTime       @updatedAt
+
+  @@map("inventory")
+}
+
+// CARRITO — invitado (sessionToken en cookie httpOnly) o de usuario (userId).
+model Cart {
+  id           String     @id @default(cuid())
+  status       CartStatus @default(ACTIVE)
+  // Invitado: token aleatorio en cookie httpOnly. Se hace merge al userId al iniciar sesión.
+  sessionToken String?    @unique
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  items CartItem[]
+
+  @@index([userId])
+  @@map("carts")
+}
+
+model CartItem {
+  id                String   @id @default(cuid())
+  quantity          Int      @default(1)
+  unitPriceSnapshot Decimal  @db.Decimal(10, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+  @@map("cart_items")
+}
+
+// ORDEN — checkout de productos. userId opcional (compra como invitado), email siempre.
+model Order {
+  id                    String          @id @default(cuid())
+  // Número legible y secuencial para el cliente/admin (ej. #1042).
+  orderNumber           Int             @unique @default(autoincrement())
+  email                 String
+  status                OrderStatus     @default(PENDING)
+  fulfillmentType       FulfillmentType @default(PICKUP)
+  subtotal              Decimal         @db.Decimal(10, 2)
+  discountTotal         Decimal         @default(0) @db.Decimal(10, 2)
+  shippingTotal         Decimal         @default(0) @db.Decimal(10, 2)
+  total                 Decimal         @db.Decimal(10, 2)
+  stripePaymentIntentId String?         @unique
+  notes                 String?
+  paidAt                DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+
+  items OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+// ITEM DE ORDEN — snapshot inmutable. Conserva nombre/precio aunque se borre el producto.
+model OrderItem {
+  id                   String  @id @default(cuid())
+  productNameSnapshot  String
+  variantTitleSnapshot String?
+  unitPrice            Decimal @db.Decimal(10, 2)
+  quantity             Int
+  lineTotal            Decimal @db.Decimal(10, 2)
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// CÓDIGO DE DESCUENTO — p. ej. WEB10 (10% primera compra).
+model DiscountCode {
+  id             String       @id @default(cuid())
+  code           String       @unique
+  type           DiscountType
+  value          Decimal      @db.Decimal(10, 2)
+  minSubtotal    Decimal?     @db.Decimal(10, 2)
+  firstOrderOnly Boolean      @default(false)
+  maxUses        Int?
+  usesCount      Int          @default(0)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  orders Order[]
+
+  @@map("discount_codes")
 }

@@ -24,6 +24,9 @@ import legalRoutes from "./routes/legal";
 import bathsRoutes from "./routes/baths";
 import vaccineCatalogRoutes from "./routes/vaccineCatalog";
 import deliveryRoutes from "./routes/delivery";
+import productsRoutes from "./routes/products";
+import cartRoutes from "./routes/cart";
+import ordersRoutes from "./routes/orders";
 
 const app = Fastify({ logger: true });
 
@@ -108,6 +111,9 @@ app.register(legalRoutes);
 app.register(bathsRoutes);
 app.register(vaccineCatalogRoutes);
 app.register(deliveryRoutes);
+app.register(productsRoutes);
+app.register(cartRoutes);
+app.register(ordersRoutes);
 
 const start = async () => {
   try {

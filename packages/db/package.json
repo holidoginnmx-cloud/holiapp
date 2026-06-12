@@ -17,6 +17,8 @@
     "db:sql:views": "prisma db execute --file ./sql/dashboard_views.sql --schema ./schema.prisma",
     "db:import:legacy": "tsx scripts/import-legacy.ts",
     "db:import:verify": "tsx scripts/import-legacy.ts --verify",
+    "db:import:shopify": "tsx scripts/import-shopify.ts",
+    "db:import:shopify:verify": "tsx scripts/import-shopify.ts --verify",
     "db:studio": "prisma studio",
     "lint": "tsc --noEmit"
   },
