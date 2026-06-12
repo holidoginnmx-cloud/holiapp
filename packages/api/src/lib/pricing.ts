@@ -63,6 +63,23 @@ export function computeDays(checkIn: Date, checkOut: Date): number {
   return Math.round((coUTC - ciUTC) / 86_400_000);
 }
 
+// Tamaño a partir del peso (kg). Misma tabla que usan reservations.ts,
+// payments.ts y baths.ts; centralizada aquí para que el flujo de invitado web
+// la reutilice sin redefinirla.
+export function sizeFromWeight(kg: number): "S" | "M" | "L" | "XL" {
+  if (kg <= 5) return "S";
+  if (kg <= 15) return "M";
+  if (kg <= 24) return "L";
+  return "XL";
+}
+
+// Las variantes de baño se catalogan por S/M/L/XL — XS colapsa a S.
+export function bathSizeKey(
+  size: "XS" | "S" | "M" | "L" | "XL"
+): "S" | "M" | "L" | "XL" {
+  return size === "XS" ? "S" : size;
+}
+
 export function pricePerDayForWeight(
   weightKg: number | null,
   config: LodgingPricingConfig = DEFAULT_CONFIG

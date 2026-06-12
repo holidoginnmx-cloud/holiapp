@@ -457,6 +457,73 @@ export type CreateReservation = z.infer<typeof CreateReservationSchema>;
 export type CreateMultiReservation = z.infer<typeof CreateMultiReservationSchema>;
 
 // ========================
+// Guest (invitado web) — reservas sin login desde la tienda Next.js.
+// Schemas SEPARADOS de los de móvil: los endpoints /guest/* aceptan los datos
+// completos de la mascota en línea + contacto del invitado, y el servidor
+// auto-crea/reusa el User por email. La cartilla entra como PENDING (revisada
+// por el admin antes del check-in). NO se tocan los schemas/endpoints de móvil.
+// ========================
+
+// Datos de mascota del invitado = CreatePet sin ownerId (lo deriva el servidor).
+export const GuestPetSchema = CreatePetSchema.omit({ ownerId: true });
+export type GuestPet = z.infer<typeof GuestPetSchema>;
+
+export const GuestContactSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1).max(80),
+  lastName: z.string().max(80).default(""),
+  phone: z.string().max(40).nullable().optional(),
+});
+export type GuestContact = z.infer<typeof GuestContactSchema>;
+
+// Consentimiento legal del invitado (checkboxes del wizard). El servidor
+// registra las aceptaciones requeridas a nombre del User auto-creado.
+export const GuestLegalSchema = z.object({
+  accepted: z.literal(true),
+});
+
+export const GuestReservationIntentSchema = z.object({
+  source: z.literal("web"),
+  guest: GuestContactSchema,
+  // Una o más mascotas inline (los add-ons se referencian por índice).
+  pets: z.array(GuestPetSchema).min(1).max(6),
+  checkIn: z.string().datetime(),
+  checkOut: z.string().datetime(),
+  roomPreference: z.enum(["shared", "separate"]),
+  paymentType: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
+  // Add-ons keyed por ÍNDICE de la mascota en `pets` (aún no hay petId).
+  bathSelectionsByIndex: z.record(z.string(), BathSelectionSchema).optional(),
+  medicationByIndex: z
+    .record(z.string(), z.object({ notes: z.string().min(1).max(450) }))
+    .optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+  legal: GuestLegalSchema,
+});
+export type GuestReservationIntent = z.infer<typeof GuestReservationIntentSchema>;
+
+export const GuestReservationConfirmSchema = z.object({
+  paymentIntentId: z.string(),
+});
+
+export const GuestBathIntentSchema = z.object({
+  source: z.literal("web"),
+  guest: GuestContactSchema,
+  pet: GuestPetSchema,
+  deslanado: z.boolean(),
+  corte: z.boolean(),
+  appointmentAt: z.string().datetime(),
+  paymentType: z.enum(["DEPOSIT", "FULL"]).default("DEPOSIT"),
+  notes: z.string().max(450).optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+  legal: GuestLegalSchema,
+});
+export type GuestBathIntent = z.infer<typeof GuestBathIntentSchema>;
+
+export const GuestBathConfirmSchema = z.object({
+  paymentIntentId: z.string(),
+});
+
+// ========================
 // Payment
 // ========================
 

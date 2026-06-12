@@ -36,3 +36,31 @@ export const ALL_DOC_TYPES: LegalDocType[] = [
   "VET_AUTH",
   "INCIDENT_POLICY",
 ];
+
+// Registra (idempotente) las aceptaciones legales requeridas para reservar a
+// nombre de un usuario, en su versión vigente. Se usa en el flujo de invitado
+// web: el visitante marca los checkboxes de consentimiento y el servidor crea
+// un registro real (con IP/user-agent para trazabilidad LFPDPPP) para el User
+// auto-creado, de modo que el gate 412 de /reservations|/payments lo deje pasar.
+//
+// Mismo patrón de upsert que POST /legal/acceptances (routes/legal.ts).
+export async function recordRequiredAcceptances(
+  prisma: import("@prisma/client").PrismaClient,
+  userId: string,
+  meta?: { ipAddress?: string | null; userAgent?: string | null }
+): Promise<void> {
+  for (const documentType of REQUIRED_FOR_BOOKING) {
+    const version = LEGAL_DOC_VERSIONS[documentType];
+    await prisma.legalAcceptance.upsert({
+      where: { userId_documentType_version: { userId, documentType, version } },
+      update: {}, // idempotente — no re-escribir acceptedAt
+      create: {
+        userId,
+        documentType,
+        version,
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+  }
+}

@@ -1,11 +1,15 @@
 import { FastifyInstance } from "fastify";
-import { createAuthMiddleware } from "../middleware/auth";
+import { createAuthMiddleware, createOptionalAuthMiddleware } from "../middleware/auth";
 import { placesAutocomplete, placeDetails } from "../lib/maps";
 import { quoteDelivery } from "../lib/delivery";
 
 export default async function deliveryRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
+  // Auth opcional para el proxy de Places + el quote: el invitado web (tienda)
+  // necesita cotizar la recolección sin sesión. Estos endpoints no leen el
+  // usuario; el móvil sigue mandando su token y se comporta igual.
+  const optionalAuth = createOptionalAuthMiddleware(prisma);
 
   // ── GET /delivery/status — ¿el servicio está activo? ─────────
   // Gate ligero para que la app decida si mostrar la opción de domicilio
@@ -26,7 +30,7 @@ export default async function deliveryRoutes(fastify: FastifyInstance) {
   // ── POST /delivery/places/autocomplete ──────────────────────
   fastify.post<{ Body: { input?: string; sessionToken?: string } }>(
     "/delivery/places/autocomplete",
-    { preHandler: authMiddleware },
+    { preHandler: optionalAuth },
     async (request, reply) => {
       const input = (request.body?.input ?? "").trim();
       if (input.length < 3) return { predictions: [] };
@@ -48,7 +52,7 @@ export default async function deliveryRoutes(fastify: FastifyInstance) {
   // ── POST /delivery/places/details ───────────────────────────
   fastify.post<{ Body: { placeId?: string; sessionToken?: string } }>(
     "/delivery/places/details",
-    { preHandler: authMiddleware },
+    { preHandler: optionalAuth },
     async (request, reply) => {
       const placeId = request.body?.placeId;
       if (!placeId) {
@@ -70,7 +74,7 @@ export default async function deliveryRoutes(fastify: FastifyInstance) {
   // fee = baseFee + (distanciaKm redonda ida+vuelta × pricePerKm)
   fastify.post<{ Body: { lat?: number; lng?: number } }>(
     "/delivery/quote",
-    { preHandler: authMiddleware },
+    { preHandler: optionalAuth },
     async (request, reply) => {
       const { lat, lng } = request.body ?? {};
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {

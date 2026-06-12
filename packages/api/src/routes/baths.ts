@@ -15,7 +15,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 });
 
 // Hermosillo (Sonora) no observa horario de verano → UTC-7 fijo.
-const TZ_OFFSET_HOURS = 7;
+export const TZ_OFFSET_HOURS = 7;
 const BATH_CONFIG_ID = "singleton";
 
 // Fixed deposit collected via Stripe at booking time. The remaining balance
@@ -36,14 +36,14 @@ function bathSizeKey(size: PetSize): PetSize {
   return size === "XS" ? "S" : size;
 }
 
-function describeBath(deslanado: boolean, corte: boolean): string {
+export function describeBath(deslanado: boolean, corte: boolean): string {
   const extras: string[] = [];
   if (deslanado) extras.push("Deslanado");
   if (corte) extras.push("Corte");
   return extras.length > 0 ? `Baño + ${extras.join(" + ")}` : "Baño";
 }
 
-type BathConfigRow = {
+export type BathConfigRow = {
   id: string;
   openHour: number;
   closeHour: number;
@@ -53,7 +53,7 @@ type BathConfigRow = {
   updatedAt: Date;
 };
 
-function buildSlotsForDay(
+export function buildSlotsForDay(
   dateYMD: string,
   cfg: Pick<BathConfigRow, "openHour" | "closeHour" | "slotMinutes">
 ): Date[] {
@@ -71,7 +71,7 @@ function buildSlotsForDay(
   return slots;
 }
 
-function isValidDateYMD(s: string): boolean {
+export function isValidDateYMD(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
@@ -87,7 +87,7 @@ function sameYMDLocal(a: Date, b: Date): boolean {
   );
 }
 
-async function ensureConfig(prisma: FastifyInstance["prisma"]): Promise<BathConfigRow> {
+export async function ensureConfig(prisma: FastifyInstance["prisma"]): Promise<BathConfigRow> {
   const existing = await prisma.bathConfig.findUnique({ where: { id: BATH_CONFIG_ID } });
   if (existing) return existing;
   return prisma.bathConfig.create({
@@ -102,7 +102,7 @@ async function ensureConfig(prisma: FastifyInstance["prisma"]): Promise<BathConf
   });
 }
 
-async function notifyBathBooked(
+export async function notifyBathBooked(
   prisma: FastifyInstance["prisma"],
   params: {
     reservationId: string;
