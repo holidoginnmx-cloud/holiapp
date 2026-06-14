@@ -95,7 +95,20 @@ async function resolveDbUserFromClerk(
     });
 
     if (existingByEmail) {
-      if (existingByEmail.clerkId && existingByEmail.clerkId !== clerkUserId) {
+      // El registro de la BD con este email ya está vinculado a OTRO clerkId.
+      // Como Clerk verifica el email en OAuth/registro, el dueño del correo es
+      // legítimo → re-vinculamos al clerkId actual en vez de bloquear. Esto
+      // cubre: mismo correo con varios proveedores (Google/Apple generan Clerk
+      // users distintos) y migración dev→prod sobre la misma BD compartida.
+      // Solo bloqueamos si el email del usuario actual NO está verificado.
+      const emailVerified =
+        (primaryEmail as { verification?: { status?: string } }).verification?.status ===
+        "verified";
+      if (
+        existingByEmail.clerkId &&
+        existingByEmail.clerkId !== clerkUserId &&
+        !emailVerified
+      ) {
         return {
           error: { status: 409, message: "Este correo ya está vinculado a otra cuenta" },
         };
