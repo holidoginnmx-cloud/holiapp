@@ -36,6 +36,31 @@ export function createStaffMiddleware() {
   };
 }
 
+// Un nombre es "placeholder" si está vacío o es el genérico que usábamos antes.
+const isPlaceholderName = (n?: string | null): boolean =>
+  !n || !n.trim() || n.trim().toLowerCase() === "usuario";
+
+// Mejor nombre disponible: Clerk → cuenta externa (Google/Apple) → parte local
+// del email → "Usuario". Usa || (no ??) para cubrir también cadenas vacías,
+// que es lo que devuelve Clerk cuando el proveedor no mapeó el nombre.
+function pickNameFromClerk(
+  clerkUser: {
+    firstName?: string | null;
+    lastName?: string | null;
+    externalAccounts?: Array<{ firstName?: string | null; lastName?: string | null }>;
+  },
+  email: string
+): { firstName: string; lastName: string } {
+  const ext = clerkUser.externalAccounts?.[0];
+  const firstName =
+    clerkUser.firstName?.trim() ||
+    ext?.firstName?.trim() ||
+    (email.includes("@") ? email.split("@")[0] : "") ||
+    "Usuario";
+  const lastName = clerkUser.lastName?.trim() || ext?.lastName?.trim() || "";
+  return { firstName, lastName };
+}
+
 // Resuelve (o crea/vincula) el usuario de la BD a partir del clerkUserId.
 // Devuelve { user } en éxito o { error } con status/mensaje. Compartido por el
 // middleware obligatorio y el opcional para no duplicar la lógica de vinculación.
@@ -47,9 +72,14 @@ async function resolveDbUserFromClerk(
     where: { clerkId: clerkUserId },
   });
 
+  // clerkUser se obtiene perezosamente (solo cuando hace falta) y se cachea.
+  let clerkUserCache: Awaited<ReturnType<typeof clerkClient.users.getUser>> | null = null;
+  const getClerkUser = async () =>
+    (clerkUserCache ??= await clerkClient.users.getUser(clerkUserId));
+
   if (!user) {
     // Auto-create user from Clerk data (e.g. Google OAuth first login)
-    const clerkUser = await clerkClient.users.getUser(clerkUserId);
+    const clerkUser = await getClerkUser();
     const primaryEmail = clerkUser.emailAddresses.find(
       (e) => e.id === clerkUser.primaryEmailAddressId
     );
@@ -57,6 +87,8 @@ async function resolveDbUserFromClerk(
     if (!primaryEmail) {
       return { error: { status: 401, message: "No se encontró email en la cuenta" } };
     }
+
+    const { firstName, lastName } = pickNameFromClerk(clerkUser, primaryEmail.emailAddress);
 
     const existingByEmail = await prisma.user.findUnique({
       where: { email: primaryEmail.emailAddress },
@@ -71,17 +103,39 @@ async function resolveDbUserFromClerk(
 
       user = await prisma.user.update({
         where: { id: existingByEmail.id },
-        data: { clerkId: clerkUserId },
+        data: {
+          clerkId: clerkUserId,
+          // Rellena el nombre si el registro existente (p.ej. creado antes en
+          // dev / otra instancia) lo tenía vacío o genérico.
+          ...(isPlaceholderName(existingByEmail.firstName) ? { firstName, lastName } : {}),
+        },
       });
     } else {
       user = await prisma.user.create({
         data: {
           clerkId: clerkUserId,
           email: primaryEmail.emailAddress,
-          firstName: clerkUser.firstName ?? "Usuario",
-          lastName: clerkUser.lastName ?? "",
+          firstName,
+          lastName,
           role: "OWNER",
         },
+      });
+    }
+  } else if (isPlaceholderName(user.firstName)) {
+    // Usuario ya vinculado pero con nombre vacío/placeholder (típico de cuentas
+    // creadas en dev sobre la misma BD) → backfill una sola vez desde Clerk.
+    const clerkUser = await getClerkUser();
+    const primaryEmail = clerkUser.emailAddresses.find(
+      (e) => e.id === clerkUser.primaryEmailAddressId
+    );
+    const { firstName, lastName } = pickNameFromClerk(
+      clerkUser,
+      primaryEmail?.emailAddress ?? user.email
+    );
+    if (!isPlaceholderName(firstName)) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { firstName, lastName },
       });
     }
   }
