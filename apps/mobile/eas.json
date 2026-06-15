@@ -34,10 +34,10 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://api-production-36cd.up.railway.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_Z2VudWluZS1jYWltYW4tMi5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuaG9saWRvZ2lubi5jb20ubXgk",
         "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dbquowtui",
         "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "holidoginn_unsigned",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51TJR9c1CU8Zl81EREPZZcCpqmqhrNUXp9QDItPSdM3eEsf5ROp8CPIXdJs6MyHCf32oh8HnxvrrKtyVhTwcFRTWp00sitEblZ9"
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51TJR9QP7i6KONRYsuFzt3Ro5uesPom5Dn1SU5WnPEsF5NYLtouC9RsC1e9NBEFrGwd2lNwKh3aC7IEAvMWlZPlGN00iWLnu014"
       }
     }
   },

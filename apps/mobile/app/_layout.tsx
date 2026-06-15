@@ -5,8 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useRef, useState } from "react";
-import { StyleSheet } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { InteractionManager, StyleSheet } from "react-native";
 import Animated, { FadeOut } from "react-native-reanimated";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
@@ -15,7 +15,7 @@ import { Pacifico_400Regular } from "@expo-google-fonts/pacifico";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { AnimatedSplash } from "@/components/splash";
-// import { registerForPushNotifications } from "@/lib/pushNotifications"; // DEBUG build 15: aislado para diagnosticar crash al abrir
+import { registerForPushNotifications } from "@/lib/pushNotifications";
 import { getMyLegalStatus } from "@/lib/api";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
@@ -24,15 +24,30 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TOUR_SEEN_KEY = "welcome-tour-seen";
 
+// tokenCache endurecido: si SecureStore falla (Keychain inaccesible, valor
+// corrupto, etc.) NO debe romper la inicialización de Clerk — devolvemos null
+// y dejamos que el SDK cree un cliente nuevo.
 const tokenCache = {
   async getToken(key: string) {
-    return SecureStore.getItemAsync(key);
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
   },
   async saveToken(key: string, token: string) {
-    return SecureStore.setItemAsync(key, token);
+    try {
+      return await SecureStore.setItemAsync(key, token);
+    } catch {
+      return undefined;
+    }
   },
   async clearToken(key: string) {
-    return SecureStore.deleteItemAsync(key);
+    try {
+      return await SecureStore.deleteItemAsync(key);
+    } catch {
+      return undefined;
+    }
   },
 };
 
@@ -46,6 +61,7 @@ function ClerkTokenSync() {
   const setClerkUserId = useAuthStore((s) => s.setClerkUserId);
   const syncUser = useAuthStore((s) => s.syncUser);
   const logout = useAuthStore((s) => s.logout);
+  const pushRegisteredRef = useRef(false);
 
   useEffect(() => {
     setTokenResolver(getToken);
@@ -59,12 +75,17 @@ function ClerkTokenSync() {
   useEffect(() => {
     if (isSignedIn && userId) {
       syncUser();
-      // DEBUG build 15: registerForPushNotifications() aislado para diagnosticar
-      // crash al abrir. El módulo pushNotifications.ts llama Notifications.setNotificationHandler
-      // al import-time, lo que toca un TurboModule de expo-notifications.
-      // registerForPushNotifications().catch((err) => {
-      //   console.error("[push] Error registrando token:", err);
-      // });
+      // Registro de push diferido tras las interacciones para no tocar el
+      // TurboModule de expo-notifications durante el primer commit de render
+      // (causa del crash del build 15). Solo una vez por sesión.
+      if (!pushRegisteredRef.current) {
+        pushRegisteredRef.current = true;
+        InteractionManager.runAfterInteractions(() => {
+          registerForPushNotifications().catch((err) => {
+            console.error("[push] Error registrando token:", err);
+          });
+        });
+      }
     }
   }, [isSignedIn, userId]);
 
@@ -108,6 +129,7 @@ function ClerkTokenSync() {
   useEffect(() => {
     if (isSignedIn === false) {
       logout();
+      pushRegisteredRef.current = false;
     }
   }, [isSignedIn]);
 
@@ -117,28 +139,51 @@ function ClerkTokenSync() {
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 /**
- * Overlay del splash animado. Permanece encima de la app hasta que:
- *   1) la animación termina (onAnimationComplete), y
- *   2) Clerk resolvió la sesión (isLoaded) — es decir, ya sabemos a qué
- *      pantalla entrar.
- * Al cumplirse ambas, se desmonta con un fade-out suave.
+ * Overlay del splash animado. Se desmonta (con fade-out) cuando la animación
+ * terminó Y Clerk resolvió la sesión (isLoaded) — así sabemos a qué pantalla
+ * entrar sin parpadeos.
+ *
+ * Redes de seguridad (evitan que un fallo deje la app colgada en el splash):
+ *   - `authTimedOut` (6s): si `isLoaded` tarda demasiado, igual ocultamos en
+ *     cuanto la animación termine; el router/(auth)/_layout decide la pantalla.
+ *   - `hardTimedOut` (8s): tope absoluto — oculta el splash aunque la animación
+ *     nativa (Reanimated/SVG, nueva) no haya disparado onAnimationComplete.
+ *
+ * IMPORTANTE: `onAnimationComplete` se memoiza con useCallback. Si se pasara una
+ * función nueva en cada render, AnimatedSplash reiniciaría su animación en cada
+ * re-render (p.ej. cuando Clerk resuelve), congelando el splash. No lo cambies.
  *
  * Debe renderizarse dentro de <ClerkProvider> para poder leer useAuth().
  */
 function SplashGate() {
   const { isLoaded } = useAuth();
   const [animationDone, setAnimationDone] = useState(false);
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+  const [hardTimedOut, setHardTimedOut] = useState(false);
   const [visible, setVisible] = useState(true);
 
+  const handleAnimationComplete = useCallback(() => setAnimationDone(true), []);
+
   useEffect(() => {
-    if (animationDone && isLoaded) setVisible(false);
-  }, [animationDone, isLoaded]);
+    const authTimer = setTimeout(() => setAuthTimedOut(true), 6000);
+    const hardTimer = setTimeout(() => setHardTimedOut(true), 8000);
+    return () => {
+      clearTimeout(authTimer);
+      clearTimeout(hardTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if ((animationDone && (isLoaded || authTimedOut)) || hardTimedOut) {
+      setVisible(false);
+    }
+  }, [animationDone, isLoaded, authTimedOut, hardTimedOut]);
 
   if (!visible) return null;
 
   return (
     <Animated.View style={StyleSheet.absoluteFill} exiting={FadeOut.duration(350)}>
-      <AnimatedSplash onAnimationComplete={() => setAnimationDone(true)} />
+      <AnimatedSplash onAnimationComplete={handleAnimationComplete} />
     </Animated.View>
   );
 }
