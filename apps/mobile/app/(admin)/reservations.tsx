@@ -116,6 +116,15 @@ export default function AdminReservations() {
         refreshing={isRefetching}
         onRefresh={refetch}
       />
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push("/admin/reservation/create" as any)}
+        activeOpacity={0.8}
+        testID="admin-reservations-create-fab"
+      >
+        <Ionicons name="add" size={28} color={COLORS.white} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -169,5 +178,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textPrimary,
     padding: 0,
+  },
+  fab: {
+    position: "absolute",
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });

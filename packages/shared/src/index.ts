@@ -396,16 +396,6 @@ export const ReservationSchema = z.object({
   updatedAt: z.coerce.date(),
 });
 
-export const CreateReservationSchema = z.object({
-  checkIn: z.coerce.date(),
-  checkOut: z.coerce.date(),
-  notes: z.string().nullable().default(null),
-  legalAccepted: z.boolean(),
-  ownerId: z.string(),
-  petId: z.string(),
-  roomId: z.string().optional(),
-});
-
 export const BathSelectionSchema = z.object({
   deslanado: z.boolean(),
   corte: z.boolean(),
@@ -430,6 +420,30 @@ export const HomeDeliveryInputSchema = z.object({
   fee: z.number().optional(),
 });
 export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
+
+export const CreateReservationSchema = z.object({
+  reservationType: z.enum(["STAY", "BATH"]).default("STAY"),
+  notes: z.string().nullable().default(null),
+  legalAccepted: z.boolean(),
+  ownerId: z.string(),
+  petId: z.string(),
+  // STAY
+  checkIn: z.coerce.date().optional(),
+  checkOut: z.coerce.date().optional(),
+  roomId: z.string().optional(),
+  // Baño como complemento de un hospedaje (STAY). En BATH se usan los campos
+  // deslanado/corte de nivel superior.
+  bath: BathSelectionSchema.optional(),
+  // BATH (cita puntual; el precio se resuelve server-side desde la variante)
+  appointmentAt: z.coerce.date().optional(),
+  deslanado: z.boolean().optional(),
+  corte: z.boolean().optional(),
+  // Campos adicionales (creación manual desde admin)
+  staffId: z.string().optional(),
+  medicationNotes: z.string().nullable().optional(),
+  depositAgreed: z.number().nonnegative().optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+});
 
 export const CreateMultiReservationSchema = z.object({
   checkIn: z.coerce.date(),

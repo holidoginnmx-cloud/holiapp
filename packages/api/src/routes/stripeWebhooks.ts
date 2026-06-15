@@ -4,6 +4,7 @@ import {
   paymentReceivedTemplate,
   paymentFailedTemplate,
   refundIssuedTemplate,
+  orderConfirmedTemplate,
   sendEmail,
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
@@ -100,6 +101,13 @@ async function handlePaymentIntentSucceeded(
   prisma: FastifyInstance["prisma"],
   pi: Stripe.PaymentIntent
 ) {
+  // Pedido de la tienda en línea (source = "store"): se confirma aquí, no hay
+  // Payment de reservación asociado. Ver handleStoreOrderPaid.
+  if (pi.metadata?.source === "store" && pi.metadata?.orderId) {
+    await handleStoreOrderPaid(prisma, pi);
+    return;
+  }
+
   // Buscar Payment existente por PI id (el mobile ya lo crea tras confirm).
   // Si existe y ya está PAID → noop. Si está en otro estado → forzar PAID y
   // confirmar la Reservation. Si no existe → safety net, loguear.
@@ -150,6 +158,108 @@ async function handlePaymentIntentSucceeded(
       reservationStatus: payment.reservation.status,
     });
     await sendEmail({ to: payment.user.email, ...tpl });
+  }
+}
+
+// Confirma un pedido de la tienda al recibir payment_intent.succeeded.
+// En transacción: marca la orden PAID, decrementa inventario de cada item con
+// control de stock e incrementa el uso del código de descuento. Idempotente:
+// si la orden ya está PAID, no vuelve a descontar inventario.
+async function handleStoreOrderPaid(
+  prisma: FastifyInstance["prisma"],
+  pi: Stripe.PaymentIntent
+) {
+  const orderId = String(pi.metadata.orderId);
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true, discountCode: true },
+  });
+
+  if (!order) {
+    console.warn(`[webhook] store order ${orderId} no encontrada (PI ${pi.id})`);
+    return;
+  }
+  if (order.status === "PAID" || order.status === "FULFILLED") {
+    return; // ya procesada
+  }
+
+  // Defensa: el monto cobrado debe coincidir con el total de la orden. Stripe
+  // firma el webhook, pero esto blinda contra cualquier desfase entre la orden
+  // y el PaymentIntent. Si no coincide, no confirmamos (requiere revisión).
+  const expectedCents = Math.round(Number(order.total) * 100);
+  if (Math.abs(pi.amount - expectedCents) > 1) {
+    console.error(
+      `[webhook] store order ${order.id}: monto PI ${pi.amount} ≠ total ${expectedCents}. No se confirma.`
+    );
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "PAID", paidAt: new Date(), stripePaymentIntentId: pi.id },
+    });
+
+    // Decremento ATÓMICO con piso en 0: `SET quantity = GREATEST(quantity - n, 0)`
+    // es una sola sentencia con lock de fila, así que no sufre lost-update ante
+    // webhooks concurrentes y nunca deja el inventario negativo (sobreventa rara
+    // por la ventana entre checkout y pago se topa en 0 y se alerta abajo).
+    for (const item of order.items) {
+      if (!item.variantId) continue;
+      await tx.$executeRaw`
+        UPDATE inventory
+        SET quantity = GREATEST(quantity - ${item.quantity}, 0), "updatedAt" = now()
+        WHERE "variantId" = ${item.variantId} AND "trackInventory" = true`;
+    }
+
+    if (order.discountCodeId) {
+      await tx.discountCode.update({
+        where: { id: order.discountCodeId },
+        data: { usesCount: { increment: 1 } },
+      });
+    }
+
+    // Cerrar el carrito y liberar su token (para que el invitado parta de cero).
+    const cartId = typeof pi.metadata.cartId === "string" ? pi.metadata.cartId : null;
+    if (cartId) {
+      await tx.cart.updateMany({
+        where: { id: cartId, status: "ACTIVE" },
+        data: { status: "CONVERTED", sessionToken: null },
+      });
+    }
+  });
+
+  // Email de confirmación (tolerante a fallos). Va al email del pedido.
+  if (order.email) {
+    const tpl = orderConfirmedTemplate({
+      orderNumber: order.orderNumber,
+      total: Number(order.total),
+      fulfillment: order.fulfillmentType,
+      items: order.items.map((it) => ({
+        name: it.productNameSnapshot,
+        quantity: it.quantity,
+        lineTotal: Number(it.lineTotal),
+      })),
+    });
+    await sendEmail({ to: order.email, ...tpl });
+  }
+
+  // Notificar a los admins que entró un pedido nuevo.
+  const admins = await prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true },
+  });
+  if (admins.length > 0) {
+    await notifyUsers(
+      prisma,
+      admins.map((a) => a.id),
+      {
+        type: "GENERAL",
+        title: "🛍️ Nuevo pedido en la tienda",
+        body: `Pedido #${order.orderNumber} por $${Number(order.total).toLocaleString("es-MX")}.`,
+        data: { orderId: order.id },
+      }
+    );
   }
 }
 

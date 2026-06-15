@@ -121,6 +121,48 @@ export function reservationConfirmedTemplate(d: ReservationConfirmedData) {
   return { subject, html, text };
 }
 
+// ─── Tienda en línea (pedidos de productos) ──────────────────────
+
+export type OrderConfirmedData = {
+  orderNumber: number;
+  total: number;
+  items: { name: string; quantity: number; lineTotal: number }[];
+  fulfillment: "PICKUP" | "LOCAL_DELIVERY" | "NATIONAL_SHIPPING";
+};
+
+export function orderConfirmedTemplate(d: OrderConfirmedData) {
+  const subject = `Pedido #${d.orderNumber} confirmado 🛍️`;
+  const fulfillmentMsg: Record<OrderConfirmedData["fulfillment"], string> = {
+    PICKUP: "Puedes recogerlo en Holidog Inn (Av. Reyes esq. Esqueda, Hermosillo). Te avisamos cuando esté listo.",
+    LOCAL_DELIVERY: "Te lo llevamos a la dirección indicada. Te contactamos para coordinar.",
+    NATIONAL_SHIPPING: "Lo enviaremos a la dirección indicada. Te compartiremos la guía en cuanto salga.",
+  };
+  const rows = d.items
+    .map(
+      (it) =>
+        `<tr><td style="padding:6px 0;font-size:14px;">${it.quantity}× ${it.name}</td><td style="padding:6px 0;text-align:right;font-size:14px;">${mx(it.lineTotal)}</td></tr>`
+    )
+    .join("");
+  const html = layout(
+    subject,
+    `
+    <h1 style="font-size:20px;margin:0 0 12px;">¡Gracias por tu compra! 🛍️</h1>
+    <p style="font-size:15px;line-height:1.5;">
+      Recibimos tu pedido <b>#${d.orderNumber}</b>. Aquí el detalle:
+    </p>
+    <table role="presentation" style="width:100%;margin:16px 0;border-collapse:collapse;">
+      ${rows}
+      <tr><td style="padding:10px 0 0;border-top:1px solid #eee;font-weight:700;">Total</td><td style="padding:10px 0 0;border-top:1px solid #eee;text-align:right;font-weight:700;">${mx(d.total)}</td></tr>
+    </table>
+    <p style="font-size:14px;color:#666;line-height:1.5;">${fulfillmentMsg[d.fulfillment]}</p>
+  `
+  );
+  const text = `¡Gracias por tu compra! Pedido #${d.orderNumber}.\n${d.items
+    .map((it) => `${it.quantity}× ${it.name} — ${mx(it.lineTotal)}`)
+    .join("\n")}\nTotal: ${mx(d.total)}\n\n${fulfillmentMsg[d.fulfillment]}\n\n— HolidogInn`;
+  return { subject, html, text };
+}
+
 export type PaymentReceivedData = {
   ownerFirstName: string;
   amount: number;

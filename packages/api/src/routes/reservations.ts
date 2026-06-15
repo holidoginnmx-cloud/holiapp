@@ -149,7 +149,24 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const { checkIn, checkOut, ownerId, petId, roomId, notes, legalAccepted } = parsed.data;
+    const {
+      reservationType,
+      checkIn,
+      checkOut,
+      ownerId,
+      petId,
+      roomId,
+      notes,
+      legalAccepted,
+      appointmentAt,
+      deslanado,
+      corte,
+      bath,
+      staffId,
+      medicationNotes,
+      depositAgreed,
+      homeDelivery,
+    } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo; STAFF/ADMIN pueden reservar en nombre de cualquiera.
     const isStaffOrAdmin =
@@ -158,12 +175,6 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply
         .status(403)
         .send({ error: "Solo puedes reservar para tu propia cuenta" });
-    }
-
-    if (checkOut <= checkIn) {
-      return reply
-        .status(400)
-        .send({ error: "checkOut debe ser posterior a checkIn" });
     }
 
     if (!legalAccepted) {
@@ -187,6 +198,126 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: "La mascota no pertenece al dueño indicado" });
     }
 
+    // Validar staff asignado (opcional). Solo usuarios con rol STAFF.
+    if (staffId) {
+      const staffUser = await prisma.user.findUnique({ where: { id: staffId } });
+      if (!staffUser || staffUser.role !== "STAFF") {
+        return reply.status(400).send({ error: "El staff asignado no es válido" });
+      }
+    }
+
+    const trimmedMedication = medicationNotes?.trim() || null;
+
+    // Servicio a domicilio: la tarifa SIEMPRE se recalcula server-side desde lat/lng.
+    let deliveryFee = 0;
+    let deliveryDistanceKm = 0;
+    let deliveryAddress: string | null = null;
+    if (
+      homeDelivery &&
+      Number.isFinite(homeDelivery.lat) &&
+      Number.isFinite(homeDelivery.lng)
+    ) {
+      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      if (quote.active) {
+        deliveryFee = quote.fee;
+        deliveryDistanceKm = quote.distanceKm;
+        deliveryAddress = homeDelivery.address;
+      }
+    }
+    const deliveryData = deliveryAddress
+      ? {
+          homeDelivery: true,
+          homeDeliveryAddress: deliveryAddress,
+          homeDeliveryDistanceKm: deliveryDistanceKm,
+          homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+        }
+      : {};
+
+    // Campos comunes adicionales.
+    const extraData = {
+      ...(staffId ? { staffId } : {}),
+      ...(trimmedMedication ? { medicationNotes: trimmedMedication } : {}),
+      ...(depositAgreed != null
+        ? { depositAgreed: new Prisma.Decimal(depositAgreed) }
+        : {}),
+      ...deliveryData,
+    };
+
+    // ── Rama BATH: cita puntual; el precio se resuelve server-side desde la variante.
+    if (reservationType === "BATH") {
+      if (!appointmentAt || Number.isNaN(appointmentAt.getTime())) {
+        return reply
+          .status(400)
+          .send({ error: "appointmentAt es requerido para una cita de baño" });
+      }
+
+      const bathType = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
+      if (!bathType) {
+        return reply.status(500).send({ error: "Servicio de baño no configurado" });
+      }
+
+      const size = sizeFromWeight(pet.weight ?? 0);
+      const variant = await prisma.serviceVariant.findUnique({
+        where: {
+          serviceTypeId_petSize_deslanado_corte: {
+            serviceTypeId: bathType.id,
+            petSize: size,
+            deslanado: deslanado ?? false,
+            corte: corte ?? false,
+          },
+        },
+      });
+      if (!variant || !variant.isActive) {
+        return reply
+          .status(400)
+          .send({ error: `Variante de baño no disponible para ${pet.name}` });
+      }
+
+      const bathTotal = new Prisma.Decimal(Number(variant.price)).add(deliveryFee);
+
+      // Sin pago en creación manual: el total queda como saldo pendiente,
+      // el admin registra el cobro después desde el detalle de la reserva.
+      const reservation = await prisma.$transaction(async (tx) => {
+        const res = await tx.reservation.create({
+          data: {
+            reservationType: "BATH",
+            appointmentAt,
+            totalAmount: bathTotal,
+            notes,
+            legalAccepted,
+            status: "CONFIRMED",
+            ownerId,
+            petId,
+            ...extraData,
+          },
+          include: { pet: true, room: true },
+        });
+        // Addon para rastrear la variante contratada.
+        await tx.reservationAddon.create({
+          data: {
+            reservationId: res.id,
+            variantId: variant.id,
+            unitPrice: variant.price,
+            paidWith: "BOOKING",
+          },
+        });
+        return res;
+      });
+      return reply.status(201).send(reservation);
+    }
+
+    // ── Rama STAY (default): estancia con rango de fechas y cuarto.
+    if (!checkIn || !checkOut) {
+      return reply
+        .status(400)
+        .send({ error: "checkIn y checkOut son requeridos para una estancia" });
+    }
+    if (checkOut <= checkIn) {
+      return reply
+        .status(400)
+        .send({ error: "checkOut debe ser posterior a checkIn" });
+    }
+
     // Verify room exists
     const room = await prisma.room.findUnique({ where: { id: roomId } });
     if (!room) {
@@ -205,27 +336,74 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Calculate totalDays and totalAmount (weight-based pricing)
+    // Hospedaje: precio por día según peso × noches.
     const diffMs = checkOut.getTime() - checkIn.getTime();
     const totalDays = Math.ceil(diffMs / 86_400_000);
     const pricingConfig = await getLodgingPricing(prisma);
     const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
-    const totalAmount = new Prisma.Decimal(pricePerDay).mul(totalDays);
+    const lodgingAmount = pricePerDay * totalDays;
 
-    const reservation = await prisma.reservation.create({
-      data: {
-        checkIn,
-        checkOut,
-        totalDays,
-        totalAmount,
-        notes,
-        legalAccepted,
-        status: "CONFIRMED",
-        ownerId,
-        petId,
-        roomId,
-      },
-      include: { pet: true, room: true },
+    // Baño como complemento del hospedaje (opcional).
+    let stayBathVariant: { id: string; price: number } | null = null;
+    if (bath) {
+      const bathType = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
+      if (!bathType) {
+        return reply.status(500).send({ error: "Servicio de baño no configurado" });
+      }
+      const size = sizeFromWeight(pet.weight ?? 0);
+      const variant = await prisma.serviceVariant.findUnique({
+        where: {
+          serviceTypeId_petSize_deslanado_corte: {
+            serviceTypeId: bathType.id,
+            petSize: size,
+            deslanado: bath.deslanado,
+            corte: bath.corte,
+          },
+        },
+      });
+      if (!variant || !variant.isActive) {
+        return reply
+          .status(400)
+          .send({ error: `Variante de baño no disponible para ${pet.name}` });
+      }
+      stayBathVariant = { id: variant.id, price: Number(variant.price) };
+    }
+
+    // Recargo de medicamento: +10% sobre el hospedaje (igual que el flujo owner).
+    const medicationSurcharge = trimmedMedication ? lodgingAmount * 0.1 : 0;
+    const bathPrice = stayBathVariant?.price ?? 0;
+    const totalAmount = new Prisma.Decimal(
+      lodgingAmount + medicationSurcharge + bathPrice + deliveryFee,
+    );
+
+    const reservation = await prisma.$transaction(async (tx) => {
+      const res = await tx.reservation.create({
+        data: {
+          checkIn,
+          checkOut,
+          totalDays,
+          totalAmount,
+          notes,
+          legalAccepted,
+          status: "CONFIRMED",
+          ownerId,
+          petId,
+          roomId,
+          ...extraData,
+        },
+        include: { pet: true, room: true },
+      });
+      if (stayBathVariant) {
+        await tx.reservationAddon.create({
+          data: {
+            reservationId: res.id,
+            variantId: stayBathVariant.id,
+            unitPrice: new Prisma.Decimal(stayBathVariant.price),
+            paidWith: "BOOKING",
+          },
+        });
+      }
+      return res;
     });
     return reply.status(201).send(reservation);
   });
@@ -360,9 +538,32 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     let paymentIntent: Stripe.PaymentIntent | null = null;
     let creditApplied = 0;
     if (stripePaymentIntentId) {
+      // IDEMPOTENCIA: si este PaymentIntent ya generó reservación(es) (p. ej. el
+      // cliente reintentó tras 3DS o recargó la página de confirmación), devolver
+      // las existentes en lugar de crear duplicados.
+      const existingPayment = await prisma.payment.findFirst({
+        where: { stripePaymentIntentId },
+        include: { reservation: true },
+      });
+      if (existingPayment?.reservation) {
+        const groupId = existingPayment.reservation.groupId;
+        const reservations = groupId
+          ? await prisma.reservation.findMany({ where: { groupId } })
+          : [existingPayment.reservation];
+        const grandTotal = reservations.reduce((s, r) => s + Number(r.totalAmount), 0);
+        return reply
+          .status(200)
+          .send({ reservations, grandTotal, groupId: groupId ?? null, creditApplied: 0, idempotent: true });
+      }
+
       paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
       if (paymentIntent.status !== "succeeded") {
         return reply.status(400).send({ error: "El pago no fue completado" });
+      }
+      // ANTI-REPLAY: el PI debe pertenecer al mismo dueño que reserva (create-intent
+      // guarda ownerId en metadata). Evita reusar el PI de otra cuenta/booking.
+      if (paymentIntent.metadata?.ownerId && paymentIntent.metadata.ownerId !== ownerId) {
+        return reply.status(403).send({ error: "El pago no corresponde a esta cuenta" });
       }
       creditApplied = Number(paymentIntent.metadata?.creditApplied ?? 0);
     }

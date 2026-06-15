@@ -15,7 +15,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Dimensions,
 } from "react-native";
+
+const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +37,8 @@ import {
   completeAddon,
   staffConfirmChangeRequestPickupPaid,
   registerStayManualPayment,
+  getRooms,
+  adminAssignRoom,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
@@ -74,6 +79,7 @@ export default function StayDetail() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [roomModalVisible, setRoomModalVisible] = useState(false);
 
   const { data: stay, isLoading, refetch } = useQuery({
     queryKey: ["staff", "stay", id],
@@ -102,6 +108,24 @@ export default function StayDetail() {
     onSuccess: () => {
       invalidateAll();
       Alert.alert("Listo", "Te has asignado como responsable");
+    },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  // Cuartos del tamaño de la mascota — solo se cargan al abrir el modal.
+  const { data: roomList } = useQuery({
+    queryKey: ["rooms", stay?.pet?.size],
+    queryFn: () => getRooms(stay!.pet!.size),
+    enabled: roomModalVisible && !!stay?.pet?.size,
+  });
+
+  const assignRoomMutation = useMutation({
+    mutationFn: (roomId: string) => adminAssignRoom(id!, roomId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+      invalidateAll();
+      setRoomModalVisible(false);
+      Alert.alert("Cuarto asignado", "El cuarto se asignó correctamente.");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -543,12 +567,23 @@ export default function StayDetail() {
                 : "—"}
             </Text>
           </View>
-          <View style={styles.stayInfoItem}>
+          <TouchableOpacity
+            style={styles.stayInfoItem}
+            onPress={() => setRoomModalVisible(true)}
+            activeOpacity={0.7}
+          >
             <Text style={styles.stayInfoLabel}>Cuarto</Text>
-            <Text style={styles.stayInfoValue}>
-              {stay.room?.name ?? "—"}
-            </Text>
-          </View>
+            <View style={styles.roomValueRow}>
+              <Text style={styles.stayInfoValue}>
+                {stay.room?.name ?? "Asignar"}
+              </Text>
+              <Ionicons
+                name={stay.room ? "pencil" : "add-circle"}
+                size={12}
+                color={COLORS.primary}
+              />
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Baño contratado */}
@@ -1311,6 +1346,92 @@ export default function StayDetail() {
         </Pressable>
       </Modal>
 
+      {/* Room Picker Modal */}
+      <Modal
+        visible={roomModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRoomModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRoomModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Asignar cuarto</Text>
+              <TouchableOpacity
+                onPress={() => setRoomModalVisible(false)}
+                hitSlop={8}
+              >
+                <Ionicons name="close" size={22} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalDescription}>
+              Solo se muestran cuartos para el tamaño de{" "}
+              {formatName(stay.pet?.name ?? "la mascota")}.
+            </Text>
+
+            {!roomList ? (
+              <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                <ActivityIndicator color={COLORS.primary} />
+              </View>
+            ) : roomList.length === 0 ? (
+              <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                <Text style={styles.modalDescription}>
+                  No hay cuartos para el tamaño de esta mascota.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={{ maxHeight: ROOM_LIST_MAX_HEIGHT }}
+                showsVerticalScrollIndicator={false}
+              >
+                {roomList.map((r) => {
+                  const isCurrent = stay.room?.id === r.id;
+                  const isPending =
+                    assignRoomMutation.isPending &&
+                    assignRoomMutation.variables === r.id;
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      style={styles.roomRow}
+                      onPress={() => assignRoomMutation.mutate(r.id)}
+                      disabled={isCurrent || assignRoomMutation.isPending}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.roomRowName} numberOfLines={1}>
+                          {r.name}
+                        </Text>
+                        <Text style={styles.roomRowSub} numberOfLines={1}>
+                          Capacidad {r.capacity}
+                        </Text>
+                      </View>
+                      {isPending ? (
+                        <ActivityIndicator color={COLORS.primary} size="small" />
+                      ) : isCurrent ? (
+                        <Text style={styles.roomRowCurrent}>Asignado</Text>
+                      ) : (
+                        <Ionicons
+                          name="chevron-forward"
+                          size={18}
+                          color={COLORS.textTertiary}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </ScrollView>
   );
 }
@@ -1815,6 +1936,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
+  roomValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  roomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.borderLight,
+  },
+  roomRowName: { fontSize: 15, fontWeight: "600", color: COLORS.textPrimary },
+  roomRowSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
+  roomRowCurrent: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",

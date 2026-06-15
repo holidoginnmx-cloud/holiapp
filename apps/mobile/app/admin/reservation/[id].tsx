@@ -11,8 +11,11 @@ import {
   TextInput,
   Image,
   Pressable,
+  Dimensions,
 } from "react-native";
-import { useState } from "react";
+
+const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
+import { useState, useEffect } from "react";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,7 +26,9 @@ import {
   registerManualPayment,
   adminCancelReservation,
   adminAssignStaff,
+  adminAssignRoom,
   getUsers,
+  getRooms,
   deleteStayUpdate,
   completeStaffBath,
 } from "@/lib/api";
@@ -119,6 +124,14 @@ export default function AdminReservationDetail() {
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [staffModalVisible, setStaffModalVisible] = useState(false);
+  const [roomModalVisible, setRoomModalVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!successMessage) return;
+    const t = setTimeout(() => setSuccessMessage(null), 2000);
+    return () => clearTimeout(t);
+  }, [successMessage]);
 
   const closePaymentModal = () => {
     setPaymentModalVisible(false);
@@ -238,10 +251,16 @@ export default function AdminReservationDetail() {
   const statusMutation = useMutation({
     mutationFn: ({ newStatus }: { newStatus: string }) =>
       updateReservationStatus(id!, newStatus),
-    onSuccess: () => {
+    onSuccess: (_data, { newStatus }) => {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       queryClient.invalidateQueries({ queryKey: ["admin"] });
+      if (newStatus === "CHECKED_OUT") {
+        setSuccessMessage("Check-out realizado correctamente");
+      } else if (newStatus === "CHECKED_IN") {
+        setSuccessMessage("Check-in realizado correctamente");
+      }
     },
+    onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
   const cancelMutation = useMutation({
@@ -292,6 +311,24 @@ export default function AdminReservationDetail() {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       setStaffModalVisible(false);
       Alert.alert("Staff asignado", "Se notificó al staff por la app.");
+    },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  // Cuartos del tamaño de la mascota — solo se cargan al abrir el modal.
+  const { data: roomList } = useQuery({
+    queryKey: ["admin", "rooms", reservation?.pet?.size],
+    queryFn: () => getRooms(reservation!.pet.size),
+    enabled: roomModalVisible && !!reservation?.pet?.size,
+  });
+
+  const assignRoomMutation = useMutation({
+    mutationFn: (roomId: string) => adminAssignRoom(id!, roomId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+      queryClient.invalidateQueries({ queryKey: ["admin"] });
+      setRoomModalVisible(false);
+      Alert.alert("Cuarto asignado", "El cuarto se asignó correctamente.");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -558,7 +595,11 @@ export default function AdminReservationDetail() {
         {/* Cuarto + Staff lado a lado (sólo hospedajes) */}
         {!isBath && (
         <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
+          <TouchableOpacity
+            style={styles.metaItem}
+            onPress={() => setRoomModalVisible(true)}
+            activeOpacity={0.7}
+          >
             <View style={styles.metaIconWrap}>
               <Ionicons
                 name="bed-outline"
@@ -567,10 +608,22 @@ export default function AdminReservationDetail() {
               />
             </View>
             <Text style={styles.metaLabel}>Cuarto</Text>
-            <Text style={styles.metaValue} numberOfLines={1}>
-              {reservation.room?.name ?? "Por asignar"}
-            </Text>
-          </View>
+            {reservation.room ? (
+              <View style={styles.metaValueRow}>
+                <Text style={styles.metaValue} numberOfLines={1}>
+                  {reservation.room.name}
+                </Text>
+                <Ionicons name="pencil" size={11} color={COLORS.primary} />
+              </View>
+            ) : (
+              <View style={styles.metaValueRow}>
+                <Text style={[styles.metaValue, styles.unassigned]}>
+                  Por asignar
+                </Text>
+                <Ionicons name="add-circle" size={13} color={COLORS.primary} />
+              </View>
+            )}
+          </TouchableOpacity>
 
           <View style={styles.metaDivider} />
 
@@ -1354,11 +1407,155 @@ export default function AdminReservationDetail() {
         </View>
       </View>
     </Modal>
+
+    {/* Room Picker Modal */}
+    <Modal
+      visible={roomModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setRoomModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.staffModalHeader}>
+            <Text style={styles.modalTitle}>Asignar cuarto</Text>
+            <TouchableOpacity
+              onPress={() => setRoomModalVisible(false)}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={22} color={COLORS.textTertiary} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.staffModalSubtitle}>
+            Solo se muestran cuartos para el tamaño de {formatName(reservation.pet.name)}.
+          </Text>
+
+          {!roomList ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <ActivityIndicator color={COLORS.primary} />
+            </View>
+          ) : roomList.length === 0 ? (
+            <View style={{ paddingVertical: 24, alignItems: "center" }}>
+              <Text style={styles.staffEmptyText}>
+                No hay cuartos para el tamaño de esta mascota.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView
+              style={{ maxHeight: ROOM_LIST_MAX_HEIGHT }}
+              contentContainerStyle={styles.staffList}
+              showsVerticalScrollIndicator={false}
+            >
+              {roomList.map((r) => {
+                const isCurrent = reservation.room?.id === r.id;
+                const isPending =
+                  assignRoomMutation.isPending &&
+                  assignRoomMutation.variables === r.id;
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[
+                      styles.staffRow,
+                      isCurrent && styles.staffRowCurrent,
+                    ]}
+                    onPress={() => assignRoomMutation.mutate(r.id)}
+                    disabled={isCurrent || assignRoomMutation.isPending}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.staffAvatar}>
+                      <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.staffName} numberOfLines={1}>
+                        {r.name}
+                      </Text>
+                      <Text style={styles.staffEmail} numberOfLines={1}>
+                        Capacidad {r.capacity}
+                      </Text>
+                    </View>
+                    {isPending ? (
+                      <ActivityIndicator color={COLORS.primary} size="small" />
+                    ) : isCurrent ? (
+                      <View style={styles.currentPill}>
+                        <Text style={styles.currentPillText}>Asignado</Text>
+                      </View>
+                    ) : (
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={COLORS.textTertiary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+
+    {/* Toast de éxito al hacer check-in / check-out. */}
+    <Modal
+      visible={!!successMessage}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setSuccessMessage(null)}
+    >
+      <View style={styles.toastOverlay} pointerEvents="none">
+        <View style={styles.toastCard}>
+          <View style={styles.toastIconWrap}>
+            <Ionicons
+              name="checkmark-circle"
+              size={48}
+              color={COLORS.successText}
+            />
+          </View>
+          <Text style={styles.toastText}>{successMessage}</Text>
+        </View>
+      </View>
+    </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  toastOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  toastCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    gap: 10,
+    minWidth: 220,
+    maxWidth: 320,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  toastIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.successBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toastText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    textAlign: "center",
+  },
   screen: {
     flex: 1,
     backgroundColor: COLORS.bgPage,

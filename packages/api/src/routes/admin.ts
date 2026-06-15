@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
 import { ReviewCartillaSchema, CartillaStatusEnum, UpdateVaccineSchema } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -8,6 +8,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
   const adminMiddleware = createAdminMiddleware();
+  const staffMiddleware = createStaffMiddleware();
 
   // GET /admin/stats — dashboard statistics
   fastify.get(
@@ -644,9 +645,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   );
 
   // ─── PATCH /admin/reservations/:id/assign-room — reasignar cuarto ─
+  // STAFF y ADMIN pueden asignar/cambiar el cuarto de un hospedaje.
   fastify.patch<{ Params: { id: string }; Body: { roomId: string } }>(
     "/admin/reservations/:id/assign-room",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
       const { roomId } = request.body as { roomId: string };
       if (!roomId) return reply.status(400).send({ error: "roomId requerido" });

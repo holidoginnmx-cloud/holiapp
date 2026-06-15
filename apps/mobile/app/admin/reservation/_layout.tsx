@@ -24,6 +24,7 @@ export default function AdminReservationLayout() {
         animationTypeForReplace: "pop",
       }}
     >
+      <Stack.Screen name="create" options={{ title: "Crear reservación", headerLeft: backButton }} />
       <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backButton }} />
     </Stack>
   );

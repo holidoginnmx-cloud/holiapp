@@ -35,6 +35,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
+import { CheckInReminderModal } from "@/components/CheckInReminderModal";
 import {
   DeliveryAddressPicker,
   type SelectedAddress,
@@ -479,8 +480,22 @@ function CreateReservationScreenContent() {
     unavailableSizes.length === 0;
 
   const [paying, setPaying] = useState(false);
+  const [showCheckInReminder, setShowCheckInReminder] = useState(false);
 
-  const handleSubmit = async () => {
+  // Al presionar "Pagar y confirmar" mostramos primero el recordatorio de
+  // horarios de check-in/check-out. El cobro real ocurre en runPayment cuando
+  // el usuario presiona "Entendido".
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    setShowCheckInReminder(true);
+  };
+
+  const handleReminderAcknowledge = () => {
+    setShowCheckInReminder(false);
+    runPayment();
+  };
+
+  const runPayment = async () => {
     if (!canSubmit) return;
 
     setPaying(true);
@@ -1472,6 +1487,11 @@ function CreateReservationScreenContent() {
         loading={paying}
         label="Pagar y confirmar"
         testID="reservation-create-submit-button"
+      />
+
+      <CheckInReminderModal
+        visible={showCheckInReminder}
+        onAcknowledge={handleReminderAcknowledge}
       />
     </ScrollView>
     </KeyboardAvoidingView>
