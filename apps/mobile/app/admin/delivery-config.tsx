@@ -14,10 +14,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAdminDeliveryConfig, updateAdminDeliveryConfig } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function AdminDeliveryConfig() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin", "delivery-config"],
     queryFn: getAdminDeliveryConfig,
   });
@@ -63,6 +64,10 @@ export default function AdminDeliveryConfig() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
   }
 
   if (isLoading) {

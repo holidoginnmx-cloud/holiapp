@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
 import { formatName, utcDayKey, localDayKey } from "@/lib/format";
@@ -59,7 +60,7 @@ export default function ChecklistForm() {
     enabled: !!reservationId,
   });
 
-  const { data: checklists, isLoading } = useQuery({
+  const { data: checklists, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["staff", "checklists", reservationId],
     queryFn: () => getChecklists(reservationId!),
     enabled: !!reservationId,
@@ -202,6 +203,10 @@ export default function ChecklistForm() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

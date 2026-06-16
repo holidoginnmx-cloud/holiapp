@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBathConfig, updateBathConfig, type BathConfig } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 function hoursLabel(h: number): string {
   if (h === 0) return "12:00 AM";
@@ -24,7 +25,7 @@ function hoursLabel(h: number): string {
 
 export default function AdminBathConfig() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["bath-config"],
     queryFn: getBathConfig,
   });
@@ -86,6 +87,10 @@ export default function AdminBathConfig() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
   }
 
   if (isLoading) {

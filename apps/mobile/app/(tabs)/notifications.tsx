@@ -6,13 +6,13 @@ import {
   SectionList,
   StyleSheet,
   ActivityIndicator,
-  TouchableOpacity,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications, markNotificationAsRead } from "@/lib/api";
 import { NotificationItem } from "@/components/NotificationItem";
+import { ErrorState } from "@/components/ErrorState";
 import { dayGroupLabel } from "@/lib/format";
 
 export default function NotificationsScreen() {
@@ -70,14 +70,7 @@ export default function NotificationsScreen() {
   }
 
   if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error al cargar notificaciones</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ErrorState error={error} onRetry={() => refetch()} />;
   }
 
   return (
@@ -172,21 +165,5 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     color: COLORS.textDisabled,
-  },
-  errorText: {
-    fontSize: 16,
-    color: COLORS.dangerText,
-    marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: COLORS.white,
-    fontWeight: "600",
-    fontSize: 14,
   },
 });

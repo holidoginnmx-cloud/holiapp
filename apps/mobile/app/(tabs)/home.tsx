@@ -21,7 +21,9 @@ import { ReservationCard } from "@/components/ReservationCard";
 import { HeroStayCard } from "@/components/HeroStayCard";
 import { PreStayChecklistCard } from "@/components/PreStayChecklistCard";
 import { HomeSkeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -42,6 +44,7 @@ export default function HomeScreen() {
   const {
     data: activeReservations,
     isLoading,
+    isError,
     error,
     refetch,
   } = useQuery({
@@ -153,18 +156,12 @@ export default function HomeScreen() {
     );
   }
 
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error al cargar datos</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
   }
 
   return (
+    <View style={styles.root}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -182,38 +179,49 @@ export default function HomeScreen() {
         {getTimeGreeting()}, {formatName(firstName)} 👋
       </Text>
 
-      {/* Acciones primarias */}
-      <View style={styles.primaryActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionPrimary]}
-          onPress={() => router.push("/reservation/create")}
-          activeOpacity={0.85}
-          testID="home-reserve-button"
-        >
-          <Ionicons name="bed-outline" size={18} color={COLORS.white} />
-          <Text style={styles.actionText}>Hotel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionPrimary]}
-          onPress={() => router.push("/bath/create" as any)}
-          activeOpacity={0.85}
-          testID="home-bath-button"
-        >
-          <Ionicons name="water-outline" size={18} color={COLORS.white} />
-          <Text style={styles.actionText}>Baño</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionWhatsapp]}
-          onPress={() =>
-            Linking.openURL(buildWhatsappUrl(BUSINESS.whatsappOwnerInfoMessage))
-          }
-          activeOpacity={0.85}
-          testID="home-whatsapp-button"
-        >
-          <Ionicons name="logo-whatsapp" size={18} color={COLORS.white} />
-          <Text style={styles.actionText}>WhatsApp</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Mis mascotas */}
+      {activePets.length > 0 && (
+        <View style={styles.petsSection}>
+          <Text style={styles.sectionTitle}>Mis mascotas</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.petsList}
+          >
+            {activePets.map((pet) => (
+              <TouchableOpacity
+                key={pet.id}
+                style={styles.petItem}
+                onPress={() => router.push(`/pet/${pet.id}` as any)}
+                activeOpacity={0.7}
+              >
+                {pet.photoUrl ? (
+                  <Image source={{ uri: cloudinaryResized(pet.photoUrl, 128, "fill") }} style={styles.petAvatar} />
+                ) : (
+                  <View style={[styles.petAvatar, styles.petAvatarFallback]}>
+                    <Ionicons name="paw" size={28} color={COLORS.primary} />
+                  </View>
+                )}
+                <Text style={styles.petName} numberOfLines={1}>
+                  {formatName(pet.name)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.petItem}
+              onPress={() => router.push("/pet/create" as any)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.petAvatar, styles.petAvatarAdd]}>
+                <Ionicons name="add" size={26} color={COLORS.primary} />
+              </View>
+              <Text style={[styles.petName, { color: COLORS.primary }]}>
+                Agregar
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
 
       {/* Alertas inteligentes */}
       {balanceUrgent.map((r) => (
@@ -389,49 +397,33 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Mis mascotas */}
-      {activePets.length > 0 && (
-        <View style={styles.petsSection}>
-          <Text style={styles.sectionTitle}>Mis mascotas</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.petsList}
-          >
-            {activePets.map((pet) => (
-              <TouchableOpacity
-                key={pet.id}
-                style={styles.petItem}
-                onPress={() => router.push(`/pet/${pet.id}` as any)}
-                activeOpacity={0.7}
-              >
-                {pet.photoUrl ? (
-                  <Image source={{ uri: pet.photoUrl }} style={styles.petAvatar} />
-                ) : (
-                  <View style={[styles.petAvatar, styles.petAvatarFallback]}>
-                    <Ionicons name="paw" size={28} color={COLORS.primary} />
-                  </View>
-                )}
-                <Text style={styles.petName} numberOfLines={1}>
-                  {formatName(pet.name)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.petItem}
-              onPress={() => router.push("/pet/create" as any)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.petAvatar, styles.petAvatarAdd]}>
-                <Ionicons name="add" size={26} color={COLORS.primary} />
-              </View>
-              <Text style={[styles.petName, { color: COLORS.primary }]}>
-                Agregar
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      )}
+      {/* Acciones primarias */}
+      <View style={styles.primaryActions}>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => router.push("/reservation/create")}
+          activeOpacity={0.85}
+          testID="home-reserve-button"
+        >
+          <View style={styles.actionIconWrap}>
+            <Ionicons name="bed-outline" size={26} color={COLORS.primary} />
+          </View>
+          <Text style={styles.actionTitle}>Hotel</Text>
+          <Text style={styles.actionSub}>Hospedaje</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => router.push("/bath/create" as any)}
+          activeOpacity={0.85}
+          testID="home-bath-button"
+        >
+          <View style={styles.actionIconWrap}>
+            <Ionicons name="water-outline" size={26} color={COLORS.primary} />
+          </View>
+          <Text style={styles.actionTitle}>Baño</Text>
+          <Text style={styles.actionSub}>Agenda ya</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Estancias / Empty state */}
       {!hasAnyReservation ? (
@@ -559,10 +551,28 @@ export default function HomeScreen() {
         </>
       )}
     </ScrollView>
+
+      {/* FAB WhatsApp */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() =>
+          Linking.openURL(buildWhatsappUrl(BUSINESS.whatsappOwnerInfoMessage))
+        }
+        activeOpacity={0.85}
+        testID="home-whatsapp-button"
+        accessibilityLabel="Escríbenos por WhatsApp"
+      >
+        <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.bgPage,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPage,
@@ -581,7 +591,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     color: COLORS.textPrimary,
-    marginBottom: 24,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
@@ -674,29 +684,60 @@ const styles = StyleSheet.create({
   },
   primaryActions: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: -16,
+    gap: 12,
+    marginTop: 8,
     marginBottom: 20,
   },
-  actionButton: {
+  actionCard: {
     flex: 1,
-    flexDirection: "row",
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.primaryLight,
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    paddingVertical: 11,
-    borderRadius: 10,
+    marginBottom: 10,
   },
-  actionPrimary: {
-    backgroundColor: COLORS.primary,
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
   },
-  actionWhatsapp: {
-    backgroundColor: "#25D366",
+  actionSub: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
-  actionText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.white,
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.whatsapp,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   alert: {
     flexDirection: "row",

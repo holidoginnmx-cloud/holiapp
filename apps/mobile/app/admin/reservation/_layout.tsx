@@ -29,3 +29,5 @@ export default function AdminReservationLayout() {
     </Stack>
   );
 }
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

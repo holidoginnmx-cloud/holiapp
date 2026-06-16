@@ -21,6 +21,7 @@ import {
   type ChangePreview,
 } from "@/lib/api";
 import { formatName, localDateFromUTCDay, toUTCDayISO } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
@@ -47,7 +48,7 @@ export default function ModifyReservationScreen() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const { data: reservation, isLoading } = useQuery({
+  const { data: reservation, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["reservation", id],
     queryFn: () => getReservationById(id!),
     enabled: !!id,
@@ -145,6 +146,10 @@ export default function ModifyReservationScreen() {
       submitMutation.mutate();
     }
   };
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading || !reservation) {
     return (

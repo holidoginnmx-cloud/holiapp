@@ -18,12 +18,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMe, updateMe } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { formatName, formatPhoneInput } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function EditProfileScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const syncUser = useAuthStore((s) => s.syncUser);
-  const { data: me, isLoading } = useQuery({ queryKey: ["me"], queryFn: getMe });
+  const { data: me, isLoading, isError, error, refetch } = useQuery({ queryKey: ["me"], queryFn: getMe });
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -72,6 +73,10 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
   }
 
   if (isLoading) {

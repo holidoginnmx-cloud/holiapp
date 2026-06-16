@@ -1,9 +1,9 @@
 import { COLORS } from "@/constants/colors";
+import { ErrorState } from "@/components/ErrorState";
 import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   Image,
@@ -14,7 +14,6 @@ import {
   RefreshControl,
   FlatList,
   Platform,
-  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -34,6 +33,7 @@ import {
   type DewormingType,
 } from "@/lib/api";
 import { formatName, formatPhoneInput } from "@/lib/format";
+import { styles } from "@/styles/cartillasStyles";
 
 function endOfToday(): Date {
   const d = new Date();
@@ -132,7 +132,7 @@ export default function AdminCartillas() {
   const [editAppliedOpen, setEditAppliedOpen] = useState(false);
   const [editExpiresOpen, setEditExpiresOpen] = useState(false);
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "cartillas", activeTab],
     queryFn: () => getCartillas(activeTab),
   });
@@ -420,7 +420,9 @@ export default function AdminCartillas() {
         ))}
       </View>
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -1533,402 +1535,3 @@ export default function AdminCartillas() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.bgPage },
-  tabsRow: {
-    flexDirection: "row",
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bgSection,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: { borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 14, fontWeight: "600", color: COLORS.textTertiary },
-  tabTextActive: { color: COLORS.primary },
-  list: { padding: 16, gap: 10 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyBox: { alignItems: "center", padding: 40, gap: 10 },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled, textAlign: "center" },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  thumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    backgroundColor: COLORS.bgSection,
-  },
-  thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
-  thumbPhotoCount: {
-    position: "absolute",
-    bottom: 4,
-    right: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  thumbPhotoCountText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: COLORS.white,
-  },
-  galleryPage: {
-    width: Dimensions.get("window").width - 40,
-    paddingHorizontal: 4,
-  },
-  galleryImage: {
-    width: "100%",
-    height: 360,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-  },
-  galleryIndex: {
-    position: "absolute",
-    bottom: 12,
-    right: 12,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  galleryIndexText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.white,
-  },
-  cardInfo: { flex: 1, gap: 2 },
-  petName: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
-  ownerName: { fontSize: 13, color: COLORS.textSecondary },
-  metaText: { fontSize: 12, color: COLORS.textTertiary },
-  rejectionReason: { fontSize: 12, color: COLORS.errorText, marginTop: 2 },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 20,
-    maxHeight: "92%",
-  },
-  modalClose: { position: "absolute", top: 12, right: 12, zIndex: 2, padding: 6 },
-  toastOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 40,
-  },
-  toastCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    paddingVertical: 24,
-    paddingHorizontal: 28,
-    alignItems: "center",
-    gap: 10,
-    minWidth: 220,
-    maxWidth: 320,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  toastIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.successBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  toastText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    textAlign: "center",
-  },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textPrimary },
-  modalSubtitle: { fontSize: 14, color: COLORS.textTertiary, marginTop: 4 },
-  fullImage: {
-    width: "100%",
-    height: 360,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-    marginTop: 14,
-  },
-  prevReasonBox: {
-    backgroundColor: COLORS.errorBg,
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 12,
-  },
-  prevReasonLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.errorText,
-    marginBottom: 2,
-  },
-  prevReasonText: { fontSize: 13, color: COLORS.errorText },
-  label: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary, marginTop: 8 },
-  labelHint: { fontWeight: "400", color: COLORS.textTertiary, fontSize: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  btn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 13,
-    borderRadius: 10,
-  },
-  btnPrimary: { backgroundColor: COLORS.primary },
-  btnDanger: { backgroundColor: COLORS.errorText },
-  btnGhost: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  btnText: { fontSize: 14, fontWeight: "700" },
-  // Captura de vacunas
-  captureTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  captureHint: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    lineHeight: 17,
-    marginBottom: 8,
-  },
-  vaccineRow: {
-    backgroundColor: COLORS.bgSection,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 10,
-    gap: 4,
-  },
-  vaccineRowHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  vaccineRowTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-  },
-  selectRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginTop: 4,
-  },
-  selectText: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.textPrimary,
-  },
-  pickerDone: {
-    alignSelf: "flex-end",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  pickerDoneText: { color: COLORS.primary, fontWeight: "700" },
-  addRowBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    borderStyle: "dashed",
-    marginTop: 12,
-  },
-  addRowText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
-  // Catalog picker overlay (absoluto, dentro del Modal principal)
-  pickerOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-    zIndex: 10,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-  },
-  pickerCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 16,
-    width: "100%",
-    maxHeight: 420,
-  },
-  pickerTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  pickerOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  pickerOptionText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-  },
-  pickerOptionMeta: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-  },
-  pickerSep: {
-    height: 1,
-    backgroundColor: COLORS.bgSection,
-  },
-  // Vacunas registradas
-  vaccinesSection: {
-    marginTop: 16,
-  },
-  vaccinesSectionTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  vaccineCard: {
-    backgroundColor: COLORS.bgSection,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    gap: 4,
-  },
-  vaccineCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  vaccineCardName: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-  },
-  vaccineBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  vaccineBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  vaccineCardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  vaccineCardMeta: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-  },
-  vaccineCardEditHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  vaccineCardEditHintText: {
-    fontSize: 11,
-    color: COLORS.textTertiary,
-    fontStyle: "italic",
-  },
-  btnGhostDanger: {
-    backgroundColor: COLORS.errorBg,
-    borderWidth: 1,
-    borderColor: COLORS.errorText,
-  },
-  // Desparasitaciones
-  dewormingChip: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    alignItems: "center",
-  },
-  dewormingChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  dewormingChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
-  },
-  dewormingInput: {
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    backgroundColor: COLORS.white,
-    marginTop: 4,
-  },
-});

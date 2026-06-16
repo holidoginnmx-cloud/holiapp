@@ -19,6 +19,7 @@ import {
   CalendarView,
   type CalendarReservation,
 } from "@/components/CalendarView";
+import { ErrorState } from "@/components/ErrorState";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -26,7 +27,7 @@ export default function AdminReservations() {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations"],
     queryFn: () => getReservations({}),
   });
@@ -58,6 +59,10 @@ export default function AdminReservations() {
     ...(r as unknown as CalendarReservation),
     hasBath: r.hasBath ?? (r.hasDeslanado || r.hasCorte),
   }));
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

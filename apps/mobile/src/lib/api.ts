@@ -127,9 +127,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    console.log("❌ API error:", res.status, JSON.stringify(body));
+    if (__DEV__) console.log("❌ API error:", res.status, JSON.stringify(body));
     const msg = typeof body.error === "string" ? body.error : `Error ${res.status}`;
-    throw new Error(msg);
+    const err = new Error(msg) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
 
   if (res.status === 204) {
@@ -181,6 +183,11 @@ export const updatePet = (id: string, data: Record<string, unknown>) =>
   apiFetch<Pet>(`${ENDPOINTS.pets}/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+
+export const deletePet = (id: string) =>
+  apiFetch<void>(`${ENDPOINTS.pets}/${id}`, {
+    method: "DELETE",
   });
 
 // ─── Dewormings ─────────────────────────────────────────

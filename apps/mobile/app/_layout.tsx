@@ -82,7 +82,7 @@ function ClerkTokenSync() {
         pushRegisteredRef.current = true;
         InteractionManager.runAfterInteractions(() => {
           registerForPushNotifications().catch((err) => {
-            console.error("[push] Error registrando token:", err);
+            if (__DEV__) console.error("[push] Error registrando token:", err);
           });
         });
       }
@@ -120,7 +120,7 @@ function ClerkTokenSync() {
         }
       })
       .catch((err) => {
-        console.error("[legal] status check failed:", err);
+        if (__DEV__) console.error("[legal] status check failed:", err);
         legalCheckedRef.current = false; // permite reintentar en siguiente nav
       });
   }, [isSignedIn, dbUserId, role, segments]);

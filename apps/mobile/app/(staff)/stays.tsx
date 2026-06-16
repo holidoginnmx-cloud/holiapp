@@ -18,6 +18,7 @@ import {
   CalendarView,
   type CalendarReservation,
 } from "@/components/CalendarView";
+import { ErrorState } from "@/components/ErrorState";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
 // Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
@@ -59,13 +60,22 @@ export default function StaffStays() {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  const { data: stays, isLoading, refetch, isRefetching } = useQuery({
+  const {
+    data: stays,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useQuery({
     queryKey: ["staff", "stays", "all"],
     queryFn: () => getStaffStaysAll(),
   });
 
   const {
     data: bathsData,
+    isError: isErrorBaths,
+    error: errorBaths,
     refetch: refetchBaths,
     isRefetching: isRefetchingBaths,
   } = useQuery({
@@ -97,6 +107,18 @@ export default function StaffStays() {
       r.room?.name?.toLowerCase().includes(q)
     );
   });
+
+  if (isError || isErrorBaths) {
+    return (
+      <ErrorState
+        error={error ?? errorBaths}
+        onRetry={() => {
+          refetch();
+          refetchBaths();
+        }}
+      />
+    );
+  }
 
   if (isLoading) {
     return (

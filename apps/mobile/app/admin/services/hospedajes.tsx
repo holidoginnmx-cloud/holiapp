@@ -17,6 +17,7 @@ import {
   getAdminLodgingPricing,
   updateAdminLodgingPricing,
 } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 type Field =
   | "pricePerDaySmall"
@@ -29,7 +30,7 @@ const KEY = ["admin", "lodging-pricing"] as const;
 export default function AdminHospedajes() {
   const qc = useQueryClient();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: KEY,
     queryFn: getAdminLodgingPricing,
   });
@@ -91,6 +92,10 @@ export default function AdminHospedajes() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading || !data) {
     return (

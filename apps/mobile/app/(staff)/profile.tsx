@@ -15,6 +15,7 @@ import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
 import { formatName } from "@/lib/format";
 import { getStaffStats } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function StaffProfile() {
   const { signOut } = useClerk();
@@ -23,7 +24,13 @@ export default function StaffProfile() {
   const lastName = useAuthStore((s) => s.lastName);
   const email = useAuthStore((s) => s.email);
 
-  const { data: stats, isLoading: loadingStats } = useQuery({
+  const {
+    data: stats,
+    isLoading: loadingStats,
+    isError: statsError,
+    error: statsErrorObj,
+    refetch: refetchStats,
+  } = useQuery({
     queryKey: ["staff", "me", "stats"],
     queryFn: getStaffStats,
   });
@@ -86,6 +93,12 @@ export default function StaffProfile() {
           <View style={styles.statsLoading}>
             <ActivityIndicator color={COLORS.primary} />
           </View>
+        ) : statsError ? (
+          <ErrorState
+            error={statsErrorObj}
+            onRetry={refetchStats}
+            compact
+          />
         ) : (
           <View style={styles.statsGrid}>
             <StatTile

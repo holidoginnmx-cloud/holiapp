@@ -10,6 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getAdminRevenueBreakdown } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 function formatCurrency(amount: number): string {
   return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
@@ -46,11 +47,15 @@ export default function RevenueBreakdown() {
     year: "numeric",
   });
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "revenue", "current-month"],
     queryFn: () => getAdminRevenueBreakdown(),
     refetchInterval: 60_000,
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

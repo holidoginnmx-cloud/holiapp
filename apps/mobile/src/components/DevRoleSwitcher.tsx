@@ -4,11 +4,6 @@ import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from "react-nat
 import { useAuthStore } from "@/store/authStore";
 import { updateMyRole } from "@/lib/api";
 
-if (!__DEV__) {
-  // eslint-disable-next-line no-console
-  console.log("[DevRoleSwitcher] Not in dev mode, component disabled");
-}
-
 const ROLE_CYCLE = ["OWNER", "STAFF", "ADMIN"] as const;
 type Role = (typeof ROLE_CYCLE)[number];
 
@@ -39,7 +34,7 @@ export function DevRoleSwitcher() {
       await updateMyRole(nextRole);
       await syncUser();
     } catch (e) {
-      console.warn("[DevRoleSwitcher] Failed to switch role:", e);
+      if (__DEV__) console.warn("[DevRoleSwitcher] Failed to switch role:", e);
     } finally {
       setLoading(false);
     }

@@ -285,28 +285,6 @@ export default function ReservationsScreen() {
 
   return (
     <View style={styles.container} testID="reservations-screen">
-      {/* Action buttons */}
-      <View style={styles.buttonsRow}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.push("/reservation/create")}
-          activeOpacity={0.8}
-          testID="reservations-new-button"
-        >
-          <Ionicons name="add-circle" size={18} color={COLORS.white} />
-          <Text style={styles.primaryButtonText}>Nueva reservación</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.whatsappButton}
-          onPress={() => Linking.openURL(buildWhatsappUrl())}
-          activeOpacity={0.8}
-          testID="reservations-whatsapp-button"
-        >
-          <Ionicons name="logo-whatsapp" size={18} color={COLORS.white} />
-          <Text style={styles.whatsappButtonText}>WhatsApp</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Type filter (segmented control) */}
       <View style={styles.segmentedControl}>
         {TYPE_FILTERS.map((opt) => {
@@ -437,6 +415,17 @@ export default function ReservationsScreen() {
           );
         })}
       </Animated.ScrollView>
+
+      {/* FAB WhatsApp */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => Linking.openURL(buildWhatsappUrl())}
+        activeOpacity={0.85}
+        testID="reservations-whatsapp-button"
+        accessibilityLabel="Escríbenos por WhatsApp"
+      >
+        <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -446,42 +435,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bgPage,
   },
-  buttonsRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  primaryButton: {
-    flex: 1,
-    flexDirection: "row",
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.whatsapp,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-  },
-  primaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.white,
-  },
-  whatsappButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#25D366",
-    borderRadius: 10,
-    paddingVertical: 12,
-  },
-  whatsappButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   filterContainer: {
     paddingHorizontal: 16,
@@ -496,7 +464,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 3,
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 16,
   },
   segment: {
     flex: 1,
@@ -526,7 +494,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 96,
   },
   center: {
     flex: 1,

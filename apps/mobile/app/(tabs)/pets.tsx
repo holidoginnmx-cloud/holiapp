@@ -14,6 +14,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getPetsByOwner } from "@/lib/api";
 import { PetCard } from "@/components/PetCard";
 import { SkeletonList } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -34,14 +35,7 @@ export default function PetsScreen() {
   }
 
   if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error al cargar mascotas</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ErrorState error={error} onRetry={() => refetch()} />;
   }
 
   return (

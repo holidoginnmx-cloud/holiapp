@@ -5,13 +5,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName, utcDayKey, localDayKey } from "@/lib/format";
 
 export default function AdminCheckoutsToday() {
   const router = useRouter();
   const today = localDayKey();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations", "checkouts-today"],
     queryFn: async () => {
       const checkedIn = await getReservations({ status: "CHECKED_IN" });
@@ -21,6 +22,10 @@ export default function AdminCheckoutsToday() {
     },
     refetchInterval: 60_000,
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

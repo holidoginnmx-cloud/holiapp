@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getPetHistory } from "@/lib/api";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -33,6 +34,8 @@ export default function PetHistoryScreen() {
   const {
     data,
     isLoading,
+    isError,
+    error,
     refetch,
     isRefetching,
   } = useQuery({
@@ -40,6 +43,10 @@ export default function PetHistoryScreen() {
     queryFn: () => getPetHistory(petId!),
     enabled: !!petId,
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

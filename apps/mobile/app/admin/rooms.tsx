@@ -13,11 +13,12 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getAdminRoomStatus } from "@/lib/api";
 import { RoomStatusCard } from "@/components/RoomStatusCard";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function AdminRooms() {
   const router = useRouter();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "rooms"],
     queryFn: getAdminRoomStatus,
   });
@@ -40,6 +41,8 @@ export default function AdminRooms() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      ) : isError ? (
+        <ErrorState error={error} onRetry={refetch} />
       ) : (
         <FlatList
           data={rooms}

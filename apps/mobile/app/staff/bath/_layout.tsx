@@ -28,3 +28,5 @@ export default function BathLayout() {
     </Stack>
   );
 }
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

@@ -35,13 +35,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   syncUser: async () => {
     const { tokenResolver } = get();
     if (!tokenResolver) {
-      console.log("[syncUser] No tokenResolver available");
+      if (__DEV__) console.log("[syncUser] No tokenResolver available");
       return;
     }
 
     const token = await tokenResolver();
     if (!token) {
-      console.log("[syncUser] No token returned");
+      if (__DEV__) console.log("[syncUser] No token returned");
       return;
     }
 
@@ -51,7 +51,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       if (res.ok) {
         const user = await res.json();
-        console.log("[syncUser] OK — role:", user.role);
+        if (__DEV__) console.log("[syncUser] OK — role:", user.role);
         set({
           dbUserId: user.id,
           userId: user.id,
@@ -62,10 +62,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
       } else {
         const body = await res.text();
-        console.log("[syncUser] Error", res.status, body);
+        if (__DEV__) console.log("[syncUser] Error", res.status, body);
       }
     } catch (err) {
-      console.log("[syncUser] Network error:", err);
+      if (__DEV__) console.log("[syncUser] Network error:", err);
     }
   },
 

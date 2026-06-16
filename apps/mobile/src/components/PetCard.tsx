@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { COLORS } from "@/constants/colors";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -127,7 +128,7 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
   return chips;
 }
 
-export function PetCard({
+function PetCardBase({
   pet,
   ownerName,
   onPress,
@@ -423,3 +424,7 @@ const styles = StyleSheet.create({
     marginLeft: "auto",
   },
 });
+
+// Memoizado: ítem de lista renderizado muchas veces; evita re-renders con props
+// estables (combinar con onPress estable en el consumidor para máximo efecto).
+export const PetCard = memo(PetCardBase);

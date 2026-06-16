@@ -15,15 +15,16 @@ export function handlePaymentSheetError(payError: any, context: string): boolean
   if (!payError) return false;
   if (payError.code === "Canceled") return false;
 
-  // eslint-disable-next-line no-console
-  console.error(`[pago:${context}] PaymentSheet error`, {
-    code: payError.code,
-    declineCode: payError.declineCode,
-    stripeErrorCode: payError.stripeErrorCode,
-    type: payError.type,
-    message: payError.message,
-    localizedMessage: payError.localizedMessage,
-  });
+  if (__DEV__) {
+    console.error(`[pago:${context}] PaymentSheet error`, {
+      code: payError.code,
+      declineCode: payError.declineCode,
+      stripeErrorCode: payError.stripeErrorCode,
+      type: payError.type,
+      message: payError.message,
+      localizedMessage: payError.localizedMessage,
+    });
+  }
 
   const { title, body } = friendlyMessage(payError);
   Alert.alert(title, body);

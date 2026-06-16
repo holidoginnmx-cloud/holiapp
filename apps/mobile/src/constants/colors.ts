@@ -56,5 +56,6 @@ export const COLORS = {
 
   // Otros
   greenBright:    "#22C55E",
+  whatsapp:       "#25D366",
   star:           "#FBBF24",
 } as const;

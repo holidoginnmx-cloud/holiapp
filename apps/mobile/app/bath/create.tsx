@@ -34,21 +34,11 @@ import {
   DeliveryAddressPicker,
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
+import { ErrorState } from "@/components/ErrorState";
 
 import { formatName } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
-
-function sizeFromWeight(kg: number): "S" | "M" | "L" | "XL" {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
-
-function bathSizeKey(size: string): "S" | "M" | "L" | "XL" {
-  if (size === "XS") return "S";
-  return (size as "S" | "M" | "L" | "XL");
-}
+import { sizeFromWeight, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 function toYMD(d: Date): string {
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
@@ -155,13 +145,24 @@ function CreateBathScreenContent() {
         }
       : undefined;
 
-  const { data: pets, isLoading: petsLoading } = useQuery({
+  const {
+    data: pets,
+    isLoading: petsLoading,
+    isError: petsError,
+    error: petsErrorObj,
+    refetch: refetchPets,
+  } = useQuery({
     queryKey: ["pets", userId],
     queryFn: () => getPetsByOwner(userId!),
     enabled: !!userId,
   });
 
-  const { data: variants } = useQuery({
+  const {
+    data: variants,
+    isError: variantsError,
+    error: variantsErrorObj,
+    refetch: refetchVariants,
+  } = useQuery({
     queryKey: ["bath-variants"],
     queryFn: getBathVariants,
   });
@@ -288,7 +289,16 @@ function CreateBathScreenContent() {
       >
         {/* Paso 1: mascota */}
         <Text style={styles.sectionTitle}>1. ¿Para quién?</Text>
-        {petsLoading ? (
+        {petsError || variantsError ? (
+          <ErrorState
+            error={petsErrorObj ?? variantsErrorObj}
+            onRetry={() => {
+              refetchPets();
+              refetchVariants();
+            }}
+            compact
+          />
+        ) : petsLoading ? (
           <ActivityIndicator color={COLORS.primary} />
         ) : eligiblePets.length === 0 ? (
           <View style={styles.emptyCard}>

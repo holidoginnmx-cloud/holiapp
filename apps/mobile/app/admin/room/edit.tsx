@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getRooms, createRoom, updateRoom } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 const SIZE_OPTIONS = [
   { key: "XS", label: "XS" },
@@ -38,7 +39,12 @@ export default function RoomEditScreen() {
   const [loading, setLoading] = useState(false);
 
   // Load existing room data
-  const { data: rooms } = useQuery({
+  const {
+    data: rooms,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["rooms"],
     queryFn: () => getRooms(),
     enabled: isEditing,
@@ -104,6 +110,10 @@ export default function RoomEditScreen() {
       setLoading(false);
     }
   };
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>

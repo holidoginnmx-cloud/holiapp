@@ -34,3 +34,5 @@ export default function ServicesLayout() {
     </Stack>
   );
 }
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

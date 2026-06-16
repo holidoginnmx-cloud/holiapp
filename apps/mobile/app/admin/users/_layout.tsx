@@ -28,3 +28,5 @@ export default function UsersLayout() {
     </Stack>
   );
 }
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

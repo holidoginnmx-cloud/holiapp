@@ -1,3 +1,4 @@
+import { ErrorState } from "@/components/ErrorState";
 import { COLORS } from "@/constants/colors";
 import { getMyLegalStatus, type LegalDocType } from "@/lib/api";
 import { Ionicons } from "@expo/vector-icons";
@@ -67,7 +68,7 @@ const REQUIRED_ORDER: LegalDocType[] = [
 
 export default function LegalOnboardingScreen() {
   const router = useRouter();
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["legal-status"],
     queryFn: getMyLegalStatus,
   });
@@ -84,6 +85,14 @@ export default function LegalOnboardingScreen() {
       }
     }
   }, [data?.canBook]);
+
+  if (isError) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ErrorState error={error} onRetry={refetch} />
+      </View>
+    );
+  }
 
   if (isLoading || !data) {
     return (

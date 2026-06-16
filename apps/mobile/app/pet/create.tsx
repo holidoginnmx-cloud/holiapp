@@ -20,15 +20,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getPetById, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatPhoneInput } from "@/lib/format";
+import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import DateTimePicker from "@react-native-community/datetimepicker";
-
-function sizeFromWeight(kg: number): string {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
 
 function sizeLabel(size: string): string {
   switch (size) {
@@ -103,7 +98,13 @@ export default function CreatePetScreen() {
   >(null);
 
   // Load existing pet for editing
-  const { data: existingPet, isLoading: loadingPet } = useQuery({
+  const {
+    data: existingPet,
+    isLoading: loadingPet,
+    isError: petError,
+    error: petErrorObj,
+    refetch: refetchPet,
+  } = useQuery({
     queryKey: ["pet", editId],
     queryFn: () => getPetById(editId!),
     enabled: isEditing,
@@ -273,6 +274,10 @@ export default function CreatePetScreen() {
 
     mutation.mutate(data);
   };
+
+  if (isEditing && petError) {
+    return <ErrorState error={petErrorObj} onRetry={refetchPet} />;
+  }
 
   if (isEditing && loadingPet) {
     return (

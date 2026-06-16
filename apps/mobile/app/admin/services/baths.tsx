@@ -20,6 +20,7 @@ import {
   updateServiceVariant,
   updateAdminService,
 } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 const SIZE_LABELS: Record<string, string> = {
   S: "Chico",
@@ -38,7 +39,7 @@ function describeVariant(v: { deslanado: boolean; corte: boolean }): string {
 export default function AdminBaths() {
   const qc = useQueryClient();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "services"],
     queryFn: getAdminServices,
   });
@@ -75,6 +76,10 @@ export default function AdminBaths() {
       updateAdminService(id, { isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "services"] }),
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

@@ -20,6 +20,7 @@ import { getStaffBaths, type StaffBath } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
+import { ErrorState } from "@/components/ErrorState";
 
 type BathTypeFilter = "loose" | "stay";
 
@@ -151,7 +152,7 @@ export default function AdminBaths() {
     }),
   ).current;
 
-  const { data, isLoading, isRefetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isRefetching, refetch } = useQuery({
     queryKey: ["admin-baths", "upcoming"],
     queryFn: () => getStaffBaths(),
     refetchInterval: 60_000,
@@ -243,7 +244,9 @@ export default function AdminBaths() {
         progress={tabProgress}
       />
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} />
         </View>

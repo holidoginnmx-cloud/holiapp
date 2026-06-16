@@ -24,3 +24,5 @@ export default function AuthLayout() {
     />
   );
 }
+
+export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

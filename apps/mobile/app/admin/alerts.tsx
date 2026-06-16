@@ -24,6 +24,7 @@ import {
 import type { AdminAlert } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
+import { ErrorState } from "@/components/ErrorState";
 
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
@@ -103,6 +104,8 @@ export default function AdminAlerts() {
   const {
     data: unresolvedStaff,
     isLoading,
+    isError,
+    error,
     refetch: refetchUnresolved,
     isRefetching,
   } = useQuery({
@@ -204,6 +207,10 @@ export default function AdminAlerts() {
     { key: "evidence", label: "Sin evidencia", count: counts.evidence },
     { key: "vaccines", label: "Vacunas", count: counts.vaccines },
   ];
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

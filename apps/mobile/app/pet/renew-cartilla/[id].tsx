@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPetById, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
 
 const formatShort = (d: Date) =>
@@ -25,7 +26,7 @@ export default function RenewCartillaScreen() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const { data: pet, isLoading } = useQuery({
+  const { data: pet, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["pet", id],
     queryFn: () => getPetById(id!),
     enabled: !!id,
@@ -104,6 +105,10 @@ export default function RenewCartillaScreen() {
     });
     return { expiredVaccines: expired, expiringVaccines: expiring };
   }, [pet?.vaccines]);
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading || !pet) {
     return (

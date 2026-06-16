@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getStaffStays } from "@/lib/api";
 import { AlertItem } from "@/components/AlertItem";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
 
 type ListType = "hospedados" | "alertas" | "checkins" | "checkouts" | "reportes";
@@ -73,6 +74,8 @@ export default function StaffListScreen() {
   const {
     data: activeStays,
     isLoading: loadingActive,
+    isError: errorActive,
+    error: errorActiveObj,
     isRefetching: refetchingActive,
     refetch: refetchActive,
   } = useQuery({
@@ -83,6 +86,8 @@ export default function StaffListScreen() {
   const {
     data: confirmedStays,
     isLoading: loadingConfirmed,
+    isError: errorConfirmed,
+    error: errorConfirmedObj,
     isRefetching: refetchingConfirmed,
     refetch: refetchConfirmed,
   } = useQuery({
@@ -116,6 +121,15 @@ export default function StaffListScreen() {
       (a) => a.variant?.serviceType?.code === "BATH" && !a.completedAt
     )
   );
+
+  if (errorActive || errorConfirmed) {
+    return (
+      <ErrorState
+        error={errorActiveObj ?? errorConfirmedObj}
+        onRetry={refetch}
+      />
+    );
+  }
 
   if (isLoading) {
     return (

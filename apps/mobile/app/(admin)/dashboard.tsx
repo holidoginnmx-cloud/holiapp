@@ -17,6 +17,7 @@ import { getAdminStats, getReservations, listAdminChangeRequests, getAdminAlerts
 import { Ionicons } from "@expo/vector-icons";
 import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
+import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
 import { formatName } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
@@ -38,6 +39,8 @@ export default function AdminDashboard() {
   const {
     data: stats,
     isLoading,
+    isError,
+    error,
     refetch,
     isRefetching,
   } = useQuery({
@@ -115,6 +118,10 @@ export default function AdminDashboard() {
     ]
   );
   const { badges, markSeen } = useDashboardSeen(userId, counts);
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

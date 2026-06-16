@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteRoom, getAdminRoomStatus } from "@/lib/api";
 import { formatName } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -36,7 +37,7 @@ export default function RoomDetailScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const { data: rooms, isLoading, refetch, isRefetching } = useQuery({
+  const { data: rooms, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "rooms"],
     queryFn: getAdminRoomStatus,
   });
@@ -78,6 +79,10 @@ export default function RoomDetailScreen() {
       ],
     );
   };
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

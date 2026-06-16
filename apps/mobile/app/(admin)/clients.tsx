@@ -14,6 +14,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { ErrorState } from "@/components/ErrorState";
 import { getAllPets, getUsers } from "@/lib/api";
 import type { PetWithOwner } from "@/lib/api";
 import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
@@ -32,7 +33,7 @@ export default function AdminClients() {
   const [search, setSearch] = useState("");
   const router = useRouter();
 
-  const { data: pets, isLoading: loadingPets, refetch: refetchPets, isRefetching } = useQuery({
+  const { data: pets, isLoading: loadingPets, isError: petsError, error: petsErrorObj, refetch: refetchPets, isRefetching } = useQuery({
     queryKey: ["admin", "pets"],
     queryFn: getAllPets,
   });
@@ -293,7 +294,9 @@ export default function AdminClients() {
         {filtered.reduce((sum, o) => sum + o.pets.length, 0)} mascotas
       </Text>
 
-      {loadingPets ? (
+      {petsError ? (
+        <ErrorState error={petsErrorObj} onRetry={refetchPets} />
+      ) : loadingPets ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>

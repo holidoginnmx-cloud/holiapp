@@ -59,6 +59,9 @@ export function CancelReservationModal({
       qc.invalidateQueries({ queryKey: ["credit-ledger"] });
       qc.invalidateQueries({ queryKey: ["reservations"] });
       qc.invalidateQueries({ queryKey: ["me"] });
+      // Las mascotas incluyen sus reservaciones activas (saldo pendiente); sin
+      // esto, el aviso de "pago pendiente" en nueva reservación queda obsoleto.
+      qc.invalidateQueries({ queryKey: ["pets"] });
       const successTitle = isIssueRefund
         ? "Reembolso procesado"
         : "Reservación cancelada";

@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { ErrorState } from "@/components/ErrorState";
 import { useState } from "react";
 import {
   View,
@@ -12,11 +13,13 @@ import {
   Modal,
   Pressable,
   Dimensions,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getPetById } from "@/lib/api";
+import { getPetById, deletePet } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
 import { formatName, formatPhoneInput, phoneToTelUri } from "@/lib/format";
 
 const SIZE_LABELS: Record<string, string> = {
@@ -81,13 +84,53 @@ function formatDate(date: string | Date): string {
 export default function PetDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
+  const userId = useAuthStore((s) => s.userId);
   const [cartillaFullSizeIdx, setCartillaFullSizeIdx] = useState<number | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   const { data: pet, isLoading, error, refetch } = useQuery({
     queryKey: ["pet", id],
     queryFn: () => getPetById(id),
     enabled: !!id,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deletePet(id!),
+    onSuccess: () => {
+      // Optimista: quitamos la mascota de la caché para que las listas se
+      // actualicen al instante, sin esperar el refetch de red.
+      qc.setQueryData<any[]>(["pets", userId], (old) =>
+        old ? old.filter((p) => p.id !== id) : old
+      );
+      // Revalidamos en segundo plano (sin await) para no bloquear la navegación.
+      qc.invalidateQueries({ queryKey: ["pets"] });
+      // Mostramos el toast de éxito y luego volvemos.
+      setDeleteSuccess(true);
+      setTimeout(() => router.back(), 1100);
+    },
+    onError: (err: Error) => {
+      Alert.alert(
+        "No se pudo eliminar",
+        err.message || "Ocurrió un error al eliminar a tu mascota."
+      );
+    },
+  });
+
+  const confirmDelete = () => {
+    Alert.alert(
+      "Eliminar mascota",
+      `¿Seguro que quieres eliminar a ${formatName(pet?.name ?? "tu mascota")}? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(),
+        },
+      ]
+    );
+  };
 
   if (isLoading) {
     return (
@@ -98,14 +141,7 @@ export default function PetDetailScreen() {
   }
 
   if (error || !pet) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Error al cargar mascota</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-          <Text style={styles.retryText}>Reintentar</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <ErrorState error={error} onRetry={() => refetch()} />;
   }
 
   const petAny = pet as any;
@@ -552,6 +588,39 @@ export default function PetDetailScreen() {
       ) : (
         <Text style={styles.emptyText}>No hay vacunas registradas</Text>
       )}
+
+      {/* Eliminar mascota */}
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={confirmDelete}
+        disabled={deleteMutation.isPending}
+        activeOpacity={0.85}
+      >
+        {deleteMutation.isPending ? (
+          <ActivityIndicator size="small" color={COLORS.errorText} />
+        ) : (
+          <>
+            <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
+            <Text style={styles.deleteButtonText}>Eliminar mascota</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      {/* Toast de éxito al eliminar */}
+      <Modal visible={deleteSuccess} transparent animationType="fade">
+        <View style={styles.toastOverlay} pointerEvents="none">
+          <View style={styles.toastCard}>
+            <View style={styles.toastIconWrap}>
+              <Ionicons
+                name="checkmark-circle"
+                size={48}
+                color={COLORS.successText}
+              />
+            </View>
+            <Text style={styles.toastText}>Mascota eliminada</Text>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={cartillaFullSizeIdx !== null}
@@ -1036,6 +1105,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.errorText,
     fontStyle: "italic",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 28,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.errorText,
+    backgroundColor: COLORS.errorBg,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.errorText,
+  },
+  toastOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+  },
+  toastCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    gap: 10,
+    minWidth: 220,
+    maxWidth: 320,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  toastIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.successBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toastText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    textAlign: "center",
   },
   errorText: {
     fontSize: 16,

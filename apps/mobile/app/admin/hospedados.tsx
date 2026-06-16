@@ -14,13 +14,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
 
 export default function AdminHospedados() {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations", "CHECKED_IN"],
     queryFn: () => getReservations({ status: "CHECKED_IN" }),
     refetchInterval: 60_000,
@@ -50,6 +51,10 @@ export default function AdminHospedados() {
       );
     });
   }, [stays, search]);
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

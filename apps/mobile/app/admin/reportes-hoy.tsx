@@ -14,11 +14,12 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getReservations, getAdminStats } from "@/lib/api";
 import { formatName } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function AdminReportesHoy() {
   const router = useRouter();
 
-  const { data: hospedados, isLoading: loadingRes, refetch: refetchRes, isRefetching } = useQuery({
+  const { data: hospedados, isLoading: loadingRes, isError: errorRes, error: resError, refetch: refetchRes, isRefetching } = useQuery({
     queryKey: ["admin", "reservations", "CHECKED_IN"],
     queryFn: () => getReservations({ status: "CHECKED_IN" }),
     refetchInterval: 60_000,
@@ -44,6 +45,10 @@ export default function AdminReportesHoy() {
     refetchRes();
     refetchStats();
   };
+
+  if (errorRes) {
+    return <ErrorState error={resError} onRetry={refetch} />;
+  }
 
   if (loadingRes) {
     return (

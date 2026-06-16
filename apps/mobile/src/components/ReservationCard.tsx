@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -111,7 +112,7 @@ function futureLabel(date: string | Date): string | null {
   return null;
 }
 
-export function ReservationCard({
+function ReservationCardBase({
   petName,
   roomName,
   status,
@@ -736,3 +737,8 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 });
+
+// Memoizado: es un ítem de lista que se renderiza muchas veces; evita
+// re-renders cuando sus props no cambian (combinar con onPress estable en el
+// consumidor para máximo efecto).
+export const ReservationCard = memo(ReservationCardBase);

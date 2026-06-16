@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Alert,
 } from "react-native";
@@ -18,6 +17,7 @@ import {
   type ChangeRequest,
 } from "@/lib/api";
 import { handlePaymentSheetError } from "@/lib/paymentError";
+import { styles } from "@/styles/paymentCardStyles";
 
 interface Props {
   reservationId: string;
@@ -161,105 +161,3 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.warningText,
-    shadowColor: COLORS.warningText,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 2,
-    gap: 12,
-  },
-  cardPaid: {
-    borderColor: COLORS.successBg,
-    shadowOpacity: 0,
-  },
-  cardPickup: {
-    borderColor: COLORS.warningBg,
-    shadowOpacity: 0,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-  },
-  titlePaid: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.successText,
-  },
-  titlePickup: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.warningText,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  subtle: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    fontWeight: "600",
-  },
-  price: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: COLORS.warningText,
-  },
-  hint: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 17,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  btnPrimary: {
-    backgroundColor: COLORS.primary,
-  },
-  btnPrimaryText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  btnSecondary: {
-    backgroundColor: COLORS.primaryLight,
-  },
-  btnSecondaryText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-});

@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
+import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
@@ -44,6 +45,8 @@ export default function StaffDashboard() {
   const {
     data: activeStaysRaw,
     isLoading: loadingActive,
+    isError: errorActive,
+    error: activeError,
     refetch: refetchActive,
   } = useQuery({
     queryKey: ["staff", "stays", "CHECKED_IN"],
@@ -54,6 +57,8 @@ export default function StaffDashboard() {
   const {
     data: confirmedStaysRaw,
     isLoading: loadingConfirmed,
+    isError: errorConfirmed,
+    error: confirmedError,
     refetch: refetchConfirmed,
   } = useQuery({
     queryKey: ["staff", "stays", "CONFIRMED"],
@@ -162,6 +167,18 @@ export default function StaffDashboard() {
     [totalAlerts, checkInsToday.length, checkOutsToday.length]
   );
   const { badges, markSeen } = useDashboardSeen(userId, counts);
+
+  if (errorActive || errorConfirmed) {
+    return (
+      <ErrorState
+        error={activeError ?? confirmedError}
+        onRetry={() => {
+          refetchActive();
+          refetchConfirmed();
+        }}
+      />
+    );
+  }
 
   if (isLoading) {
     return (

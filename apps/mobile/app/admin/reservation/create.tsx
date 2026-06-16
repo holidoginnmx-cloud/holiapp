@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { LevelSelector } from "@/components/LevelSelector";
+import { ErrorState } from "@/components/ErrorState";
 import {
   DeliveryAddressPicker,
   type SelectedAddress,
@@ -33,19 +34,11 @@ import {
   type PetWithOwner,
 } from "@/lib/api";
 import { formatName, formatFullName } from "@/lib/format";
+import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 type ReservationType = "STAY" | "BATH";
-type PetSize = "S" | "M" | "L" | "XL";
-
-function sizeFromWeight(kg: number | null | undefined): PetSize {
-  const w = kg ?? 0;
-  if (w <= 5) return "S";
-  if (w <= 15) return "M";
-  if (w <= 24) return "L";
-  return "XL";
-}
 
 function formatDate(d: Date | null): string {
   if (!d) return "Seleccionar";
@@ -114,7 +107,13 @@ export default function AdminCreateReservation() {
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
 
-  const { data: pets, isLoading: petsLoading } = useQuery({
+  const {
+    data: pets,
+    isLoading: petsLoading,
+    isError: petsError,
+    error: petsErrorObj,
+    refetch: refetchPets,
+  } = useQuery({
     queryKey: ["admin", "all-pets"],
     queryFn: getAllPets,
   });
@@ -398,6 +397,10 @@ export default function AdminCreateReservation() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (petsError) {
+    return <ErrorState error={petsErrorObj} onRetry={refetchPets} />;
   }
 
   if (petsLoading) {

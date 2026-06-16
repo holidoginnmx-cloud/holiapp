@@ -43,7 +43,7 @@ function configureNotificationHandler() {
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) {
-    console.log("[push] Saltando — no es dispositivo físico");
+    if (__DEV__) console.log("[push] Saltando — no es dispositivo físico");
     return null;
   }
 
@@ -58,7 +58,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     finalStatus = status;
   }
   if (finalStatus !== "granted") {
-    console.log("[push] Permisos denegados");
+    if (__DEV__) console.log("[push] Permisos denegados");
     return null;
   }
 
@@ -82,7 +82,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
       projectId ? { projectId } : undefined
     );
   } catch (err) {
-    console.error("[push] Error obteniendo token Expo:", err);
+    if (__DEV__) console.error("[push] Error obteniendo token Expo:", err);
     return null;
   }
 
@@ -92,9 +92,9 @@ export async function registerForPushNotifications(): Promise<string | null> {
       token,
       Platform.OS === "ios" ? "ios" : "android"
     );
-    console.log("[push] Token sincronizado con el backend");
+    if (__DEV__) console.log("[push] Token sincronizado con el backend");
   } catch (err) {
-    console.error("[push] Error sincronizando con backend:", err);
+    if (__DEV__) console.error("[push] Error sincronizando con backend:", err);
     // Aun así devolvemos el token — se reintenta en el próximo arranque
   }
 

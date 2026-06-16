@@ -21,6 +21,7 @@ import {
   type ChangeRequestWithReservation,
 } from "@/lib/api";
 import { formatName } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString("es-MX", {
@@ -40,7 +41,7 @@ export default function AdminChangeRequestsScreen() {
   );
   const [rejectReason, setRejectReason] = useState("");
 
-  const { data, isLoading, isRefetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isRefetching, refetch } = useQuery({
     queryKey: ["admin", "change-requests", "PENDING"],
     queryFn: () => listAdminChangeRequests("PENDING"),
   });
@@ -65,6 +66,10 @@ export default function AdminChangeRequestsScreen() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

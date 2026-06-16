@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { getUsers, updateUser, type AdminUserListItem } from "@/lib/api";
 import type { User } from "@holidoginn/shared";
 import { formatName, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
 
 type RoleFilter = "OWNER" | "STAFF" | "ADMIN";
 
@@ -62,7 +63,7 @@ export default function AdminUsers() {
   const [filter, setFilter] = useState<RoleFilter>("OWNER");
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "users"],
     queryFn: getUsers,
   });
@@ -276,7 +277,9 @@ export default function AdminUsers() {
         )}
       </View>
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>

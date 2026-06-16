@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getCreditLedger, getMe } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 const TYPE_LABEL: Record<string, string> = {
   CREDIT_ADDED: "Saldo agregado",
@@ -34,10 +35,14 @@ function formatMoney(n: number | string): string {
 
 export default function CreditHistoryScreen() {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
-  const { data, isLoading, isRefetching, refetch } = useQuery({
+  const { data, isLoading, isRefetching, isError, error, refetch } = useQuery({
     queryKey: ["credit-ledger"],
     queryFn: getCreditLedger,
   });
+
+  if (isError) {
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
 
   if (isLoading) {
     return (

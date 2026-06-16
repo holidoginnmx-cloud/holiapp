@@ -33,6 +33,7 @@ import { uploadToCloudinary } from "@/lib/cloudinary";
 import { formatName } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
+import { ErrorState } from "@/components/ErrorState";
 
 type BathTypeFilter = "loose" | "stay";
 
@@ -202,7 +203,7 @@ export default function StaffBaths() {
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
-  const { data, isLoading, isRefetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isRefetching, refetch } = useQuery({
     queryKey: ["staff-baths", "upcoming"],
     queryFn: () => getStaffBaths(),
     refetchInterval: 60_000,
@@ -504,7 +505,9 @@ export default function StaffBaths() {
         progress={tabProgress}
       />
 
-      {isLoading ? (
+      {isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} />
         </View>
