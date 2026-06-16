@@ -29,13 +29,6 @@
   },
   "packageManager": "npm@10.0.0",
   "version": "1.0.0",
-  "dependencies": {
-    "@react-native-community/datetimepicker": "^9.1.0",
-    "@stripe/stripe-react-native": "^0.62.0",
-    "expo": "~54.0.33",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
-  },
   "overrides": {
     "expo-crypto": "~15.0.8"
   }

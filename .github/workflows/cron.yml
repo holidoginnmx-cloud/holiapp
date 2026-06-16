@@ -1,0 +1,52 @@
+name: HDI cron jobs
+
+# Dispara los endpoints internos del API (Railway) en horario fijo.
+# El secreto compartido va en el header x-cron-secret y se lee del secret
+# de GitHub Actions `CRON_SECRET` (debe coincidir con el de Railway).
+#
+# Nota: GitHub Actions cron NO es exacto (puede retrasarse minutos bajo carga).
+# Para los recordatorios hay holgura suficiente. Si necesitas precisión fina,
+# considera Railway Cron como alternativa.
+
+on:
+  schedule:
+    - cron: "0 15 * * *"   # expire-credits — diario (15:00 UTC ≈ 08:00 Hermosillo)
+    - cron: "0 * * * *"    # bath-reminders — cada hora (idempotente)
+    - cron: "*/15 * * * *" # reservation-reminders-90min — cada 15 min
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | all"
+        required: false
+        default: "all"
+
+env:
+  API_URL: https://api-production-36cd.up.railway.app
+
+jobs:
+  expire-credits:
+    if: github.event.schedule == '0 15 * * *' || github.event.inputs.job == 'expire-credits' || github.event.inputs.job == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/expire-credits
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/expire-credits" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+  bath-reminders:
+    if: github.event.schedule == '0 * * * *' || github.event.inputs.job == 'bath-reminders' || github.event.inputs.job == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/bath-reminders
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/bath-reminders" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+  reminders-90min:
+    if: github.event.schedule == '*/15 * * * *' || github.event.inputs.job == 'reminders-90min' || github.event.inputs.job == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/reservation-reminders-90min
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/reservation-reminders-90min" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
