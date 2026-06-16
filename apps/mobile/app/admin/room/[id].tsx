@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteRoom, getAdminRoomStatus } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 const SIZE_LABELS: Record<string, string> = {
@@ -26,10 +26,7 @@ const SIZE_LABELS: Record<string, string> = {
 };
 
 function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  return formatDayShort(date);
 }
 
 export default function RoomDetailScreen() {

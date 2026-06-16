@@ -2,6 +2,8 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { DailyChecklist } from "@holidoginn/shared";
+import { formatDayShort } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 const MOOD_LABELS: Record<string, { label: string; emoji: string }> = {
   SAD: { label: "Triste", emoji: "😢" },
@@ -72,16 +74,16 @@ export function ChecklistSummaryCard({
     );
   }
 
-  const date = new Date(checklist.date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  const date = formatDayShort(checklist.date);
 
   if (compact) {
     return (
       <View style={styles.compactCard}>
         {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.compactThumb} />
+          <Image
+            source={{ uri: cloudinaryResized(photoUrl, 168, "fill") }}
+            style={styles.compactThumb}
+          />
         ) : (
           <View style={[styles.compactThumb, styles.compactThumbFallback]}>
             <Ionicons name="image-outline" size={16} color={COLORS.textDisabled} />

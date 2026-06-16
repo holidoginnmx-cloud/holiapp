@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getStaffStays } from "@/lib/api";
 import { AlertItem } from "@/components/AlertItem";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName } from "@/lib/format";
+import { formatName, formatTime } from "@/lib/format";
 
 type ListType = "hospedados" | "alertas" | "checkins" | "checkouts" | "reportes";
 
@@ -273,10 +273,7 @@ export default function StaffListScreen() {
                         color={COLORS.infoText}
                       />
                       <Text style={[styles.metaText, { color: COLORS.infoText }]}>
-                        {new Date(stay.checkIn).toLocaleTimeString("es-MX", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatTime(stay.checkIn)}
                       </Text>
                     </View>
                   )}
@@ -295,10 +292,7 @@ export default function StaffListScreen() {
                       <Text
                         style={[styles.metaText, { color: COLORS.warningText }]}
                       >
-                        {new Date(stay.checkOut).toLocaleTimeString("es-MX", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatTime(stay.checkOut)}
                       </Text>
                     </View>
                   )}

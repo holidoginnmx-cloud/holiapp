@@ -25,13 +25,21 @@ import {
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { BathExtrasPaymentCard } from "@/components/BathExtrasPaymentCard";
 import { ExtensionPaymentCard } from "@/components/ExtensionPaymentCard";
-import { formatName } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatDayShort,
+  formatWeekdayShort,
+  formatWeekdayDayShort,
+  formatTime,
+} from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 import { styles } from "@/styles/ownerReservationDetailStyles";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 export function ErrorBoundary({ error }: { error: Error }) {
   return (
@@ -78,17 +86,6 @@ const PAYMENT_STATUS: Record<
     color: COLORS.textTertiary,
   },
 };
-
-function formatDayShort(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatWeekday(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", { weekday: "short" });
-}
 
 export default function ReservationDetailScreen() {
   return (
@@ -347,7 +344,7 @@ function ReservationDetailScreenContent() {
                       color={COLORS.successText}
                     />
                     <Text style={styles.refundPillText}>
-                      +${reservationRefund.toLocaleString("es-MX")}
+                      +{formatCurrency(reservationRefund)}
                     </Text>
                   </TouchableOpacity>
                 ),
@@ -367,7 +364,7 @@ function ReservationDetailScreenContent() {
         <View style={styles.headerLeft}>
           {!groupedReservations && reservation.pet?.photoUrl ? (
             <Image
-              source={{ uri: reservation.pet.photoUrl }}
+              source={{ uri: cloudinaryResized(reservation.pet.photoUrl, 156, "fill") }}
               style={styles.petAvatar}
             />
           ) : (
@@ -399,7 +396,7 @@ function ReservationDetailScreenContent() {
           <View style={{ flex: 1 }}>
             <Text style={styles.refundBannerTitle}>Elige tu reembolso</Text>
             <Text style={styles.refundBannerSub}>
-              Cancelamos esta reserva. Toca para elegir cómo recibir ${totalPaidForCancel.toLocaleString("es-MX")}.
+              Cancelamos esta reserva. Toca para elegir cómo recibir {formatCurrency(totalPaidForCancel)}.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={COLORS.white} />
@@ -415,13 +412,13 @@ function ReservationDetailScreenContent() {
               <Ionicons name="paw" size={16} color={COLORS.primary} />
               <Text style={styles.groupPetName}>{formatName(r.pet.name)}</Text>
               {r.pet.breed && <Text style={styles.groupPetBreed}>{r.pet.breed}</Text>}
-              <Text style={styles.groupPetAmount}>${Number(r.totalAmount).toLocaleString()}</Text>
+              <Text style={styles.groupPetAmount}>{formatCurrency(r.totalAmount)}</Text>
             </View>
           ))}
           <View style={styles.groupTotalRow}>
             <Text style={styles.groupTotalLabel}>Total</Text>
             <Text style={styles.groupTotalValue}>
-              ${groupedReservations.reduce((sum: number, r: any) => sum + Number(r.totalAmount), 0).toLocaleString()}
+              {formatCurrency(groupedReservations.reduce((sum: number, r: any) => sum + Number(r.totalAmount), 0))}
             </Text>
           </View>
         </View>
@@ -438,24 +435,10 @@ function ReservationDetailScreenContent() {
             {reservation.appointmentAt && (
               <View style={styles.bathInfoRow}>
                 <Text style={styles.bathDay}>
-                  {new Date(reservation.appointmentAt).toLocaleDateString(
-                    "es-MX",
-                    {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                    }
-                  )}
+                  {formatWeekdayDayShort(reservation.appointmentAt)}
                 </Text>
                 <Text style={styles.bathTime}>
-                  {new Date(reservation.appointmentAt).toLocaleTimeString(
-                    "es-MX",
-                    {
-                      timeZone: "America/Hermosillo",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }
-                  )}
+                  {formatTime(reservation.appointmentAt)}
                 </Text>
               </View>
             )}
@@ -470,7 +453,7 @@ function ReservationDetailScreenContent() {
                   {formatDayShort(reservation.checkIn)}
                 </Text>
                 <Text style={styles.datePillSub}>
-                  {formatWeekday(reservation.checkIn)}
+                  {formatWeekdayShort(reservation.checkIn)}
                 </Text>
               </View>
 
@@ -494,7 +477,7 @@ function ReservationDetailScreenContent() {
                   {formatDayShort(reservation.checkOut)}
                 </Text>
                 <Text style={styles.datePillSub}>
-                  {formatWeekday(reservation.checkOut)}
+                  {formatWeekdayShort(reservation.checkOut)}
                 </Text>
               </View>
             </View>
@@ -536,7 +519,7 @@ function ReservationDetailScreenContent() {
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>
-            ${Number(reservation.totalAmount).toLocaleString("es-MX")}
+            {formatCurrency(reservation.totalAmount)}
           </Text>
         </View>
       </View>
@@ -587,16 +570,10 @@ function ReservationDetailScreenContent() {
           </View>
           <Text style={styles.pendingChangeBody}>
             Nuevas fechas:{" "}
-            {new Date(pendingChange.newCheckIn).toLocaleDateString("es-MX", {
-              day: "numeric",
-              month: "short",
-            })}{" "}
+            {formatDayShort(pendingChange.newCheckIn)}{" "}
             →{" "}
-            {new Date(pendingChange.newCheckOut).toLocaleDateString("es-MX", {
-              day: "numeric",
-              month: "short",
-            })}{" "}
-            (+${Number(pendingChange.deltaAmount).toLocaleString("es-MX")})
+            {formatDayShort(pendingChange.newCheckOut)}{" "}
+            (+{formatCurrency(pendingChange.deltaAmount)})
           </Text>
           <Text style={styles.pendingChangeSubtitle}>
             El admin la revisará pronto.
@@ -613,7 +590,7 @@ function ReservationDetailScreenContent() {
             </Text>
           </View>
           <Text style={styles.balanceBannerAmount}>
-            ${remainingBalance.toLocaleString("es-MX")} MXN
+            {formatCurrency(remainingBalance)} MXN
           </Text>
           {isDeposit && (
             <Text style={styles.balanceBannerWarning}>
@@ -711,7 +688,7 @@ function ReservationDetailScreenContent() {
                   </View>
                   <Text style={styles.bathServicesRowValue}>
                     {bathExtraDeslanadoPrice !== null
-                      ? `$${bathExtraDeslanadoPrice.toLocaleString("es-MX")}`
+                      ? formatCurrency(bathExtraDeslanadoPrice)
                       : "—"}
                   </Text>
                 </View>
@@ -724,7 +701,7 @@ function ReservationDetailScreenContent() {
                   </View>
                   <Text style={styles.bathServicesRowValue}>
                     {bathExtraCortePrice !== null
-                      ? `$${bathExtraCortePrice.toLocaleString("es-MX")}`
+                      ? formatCurrency(bathExtraCortePrice)
                       : "—"}
                   </Text>
                 </View>
@@ -732,7 +709,7 @@ function ReservationDetailScreenContent() {
               <View style={styles.bathServicesTotalRow}>
                 <Text style={styles.bathServicesTotalLabel}>Total</Text>
                 <Text style={styles.bathServicesTotalValue}>
-                  ${bathExtraTotal!.toLocaleString("es-MX")}
+                  {formatCurrency(bathExtraTotal!)}
                 </Text>
               </View>
             </View>
@@ -882,16 +859,11 @@ function ReservationDetailScreenContent() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.paymentAmount}>
-                    ${Number(p.amount).toLocaleString("es-MX")}
+                    {formatCurrency(p.amount)}
                   </Text>
                   <Text style={styles.paymentMeta}>
                     {p.method}
-                    {p.paidAt
-                      ? ` · ${new Date(p.paidAt).toLocaleDateString("es-MX", {
-                          day: "numeric",
-                          month: "short",
-                        })}`
-                      : ""}
+                    {p.paidAt ? ` · ${formatDayShort(p.paidAt)}` : ""}
                   </Text>
                 </View>
                 <View

@@ -21,7 +21,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getPetById, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName, formatPhoneInput } from "@/lib/format";
+import { formatName, formatPhoneInput, formatDayLongYear } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -368,11 +368,7 @@ export default function CreatePetScreen() {
             <Ionicons name="calendar-outline" size={20} color={COLORS.textTertiary} />
             <Text style={[styles.dateText, !birthDate && { color: COLORS.textDisabled }]}>
               {birthDate
-                ? birthDate.toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })
+                ? formatDayLongYear(birthDate)
                 : "Seleccionar fecha"}
             </Text>
           </TouchableOpacity>

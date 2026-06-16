@@ -22,7 +22,7 @@ import { HeroStayCard } from "@/components/HeroStayCard";
 import { PreStayChecklistCard } from "@/components/PreStayChecklistCard";
 import { HomeSkeleton } from "@/components/Skeleton";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName } from "@/lib/format";
+import { formatName, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
@@ -389,7 +389,7 @@ export default function HomeScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.creditTitle}>
-              Tienes ${creditBalance.toLocaleString("es-MX")} de saldo a favor
+              Tienes {formatCurrency(creditBalance)} de saldo a favor
             </Text>
             <Text style={styles.creditSub}>Úsalo en tu próxima reservación</Text>
           </View>

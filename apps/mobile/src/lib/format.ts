@@ -182,3 +182,199 @@ export function dayGroupLabel(date: string | Date): string {
     ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
   });
 }
+
+// =============================================================
+//  Formato de moneda, fecha y hora — fuente única (es-MX)
+//
+//  Antes había ~170 llamadas dispersas a `toLocaleString`/`toLocaleDateString`
+//  con opciones ligeramente distintas. Estas funciones centralizan los patrones
+//  reales para mantener consistencia y facilitar i18n futura.
+//
+//  Timezone:
+//  - Las fechas se formatean en la zona horaria del dispositivo por defecto,
+//    igual que hacía el código original. Pasa `{ timeZone: "UTC" }` para valores
+//    `@db.Date` (DailyChecklist.date, Expense.date) que llegan como medianoche
+//    UTC y deben leerse en UTC para no mostrar el día anterior (UTC-7 en Hmo).
+//  - Las horas se formatean SIEMPRE en `America/Hermosillo` (zona del negocio),
+//    que es lo correcto sin importar el dispositivo. Pasa `{ hour12: false }`
+//    para el formato de 24 h.
+// =============================================================
+
+const MX_LOCALE = "es-MX";
+const HMO_TZ = "America/Hermosillo";
+
+type DateFmtOpts = { timeZone?: string };
+
+/**
+ * Formato de moneda MXN para mostrar: `$1,234`. Sin decimales (los importes son
+ * enteros en la app). Coacciona strings/Decimal a número y devuelve `$0` ante
+ * valores no numéricos en vez de `$NaN`. El símbolo `$` va incluido.
+ */
+export function formatCurrency(
+  amount: number | string | null | undefined,
+): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "$0";
+  return `$${n.toLocaleString(MX_LOCALE)}`;
+}
+
+/**
+ * Igual que `formatCurrency` pero SIN el símbolo `$` — para sitios donde el `$`
+ * lo aporta el layout/etiqueta circundante. Devuelve `0` ante valores inválidos.
+ */
+export function formatNumber(
+  amount: number | string | null | undefined,
+): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString(MX_LOCALE);
+}
+
+/** `16 jun` */
+export function formatDayShort(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "short",
+    ...opts,
+  });
+}
+
+/** `16 jun 2026` */
+export function formatDayShortYear(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    ...opts,
+  });
+}
+
+/** `16 de junio` */
+export function formatDayLong(date: string | Date, opts?: DateFmtOpts): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "long",
+    ...opts,
+  });
+}
+
+/** `16 de junio de 2026` */
+export function formatDayLongYear(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...opts,
+  });
+}
+
+/** `martes, 16 de junio` */
+export function formatDateLong(date: string | Date, opts?: DateFmtOpts): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...opts,
+  });
+}
+
+/** `junio de 2026` */
+export function formatMonthYear(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    month: "long",
+    year: "numeric",
+    ...opts,
+  });
+}
+
+/** `mar` */
+export function formatWeekdayShort(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    weekday: "short",
+    ...opts,
+  });
+}
+
+/** `martes` */
+export function formatWeekdayLong(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    weekday: "long",
+    ...opts,
+  });
+}
+
+/** `mar 16 de jun` (día corto con día de semana) */
+export function formatWeekdayDayShort(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...opts,
+  });
+}
+
+/** `16 jun, 01:30 p.m.` (fecha corta + hora) */
+export function formatDateTimeShort(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...opts,
+  });
+}
+
+/** `16 jun 2026, 01:30 p.m.` (fecha corta con año + hora) */
+export function formatDateTimeShortYear(
+  date: string | Date,
+  opts?: DateFmtOpts,
+): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...opts,
+  });
+}
+
+/**
+ * Hora `01:30 p.m.` (o `13:30` con `hour12: false`), en zona del negocio
+ * (`America/Hermosillo`). Pasa `timeZone` para anular la zona.
+ */
+export function formatTime(
+  date: string | Date,
+  opts?: { hour12?: boolean; timeZone?: string },
+): string {
+  return new Date(date).toLocaleTimeString(MX_LOCALE, {
+    timeZone: HMO_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    ...opts,
+  });
+}

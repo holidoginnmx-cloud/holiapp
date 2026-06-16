@@ -16,10 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPetById, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName } from "@/lib/format";
-
-const formatShort = (d: Date) =>
-  d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+import { formatName, formatDayShortYear } from "@/lib/format";
 
 export default function RenewCartillaScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -169,7 +166,7 @@ export default function RenewCartillaScreen() {
               >
                 {(v as any).catalog?.displayName ?? v.name}
                 {v.expiresAt
-                  ? ` · vence ${formatShort(new Date(v.expiresAt))}`
+                  ? ` · vence ${formatDayShortYear(new Date(v.expiresAt))}`
                   : ""}
               </Text>
             ))}

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ReservationCard } from "./ReservationCard";
+import { formatDayLong } from "@/lib/format";
 
 // ─── Status → dot color ──────────────────────────────────
 const STATUS_DOT: Record<string, string> = {
@@ -73,11 +74,6 @@ function dateInRange(day: Date, checkIn: Date, checkOut: Date): boolean {
   const ci = new Date(checkIn.getFullYear(), checkIn.getMonth(), checkIn.getDate()).getTime();
   const co = new Date(checkOut.getFullYear(), checkOut.getMonth(), checkOut.getDate()).getTime();
   return d >= ci && d <= co;
-}
-
-function formatTime(date: string | Date): string {
-  const d = new Date(date);
-  return d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -352,10 +348,7 @@ export function CalendarView({
         <Text style={styles.dayListTitle}>
           {selectedDate === todayKey
             ? "Hoy"
-            : new Date(selectedDate + "T12:00:00").toLocaleDateString("es-MX", {
-                day: "numeric",
-                month: "long",
-              })}
+            : formatDayLong(selectedDate + "T12:00:00")}
           {" "}
           <Text style={styles.dayListCount}>
             ({selectedReservations.length})

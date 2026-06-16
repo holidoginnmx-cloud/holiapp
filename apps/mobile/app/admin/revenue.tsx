@@ -12,12 +12,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getAdminRevenueBreakdown } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatDayShortYear,
+  formatMonthYear,
+} from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
-
-function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
-}
 
 function methodLabel(m: string): string {
   switch (m) {
@@ -45,11 +46,7 @@ function methodIcon(m: string): keyof typeof import("@expo/vector-icons").Ionico
 // Solo fecha (sin hora): la hora de los pagos legacy es un artefacto del
 // import (mediodía UTC → 5:00 a.m. local), así que no es confiable mostrarla.
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDayShortYear(iso);
 }
 
 const CATEGORY_STYLE: Record<
@@ -78,10 +75,7 @@ const CATEGORY_STYLE: Record<
 
 export default function AdminRevenue() {
   const router = useRouter();
-  const monthLabel = new Date().toLocaleDateString("es-MX", {
-    month: "long",
-    year: "numeric",
-  });
+  const monthLabel = formatMonthYear(new Date());
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "revenue", "current-month"],

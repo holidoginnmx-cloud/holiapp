@@ -1,6 +1,7 @@
 import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { formatDayShort } from "@/lib/format";
 
 interface NotificationItemProps {
   type: string;
@@ -54,10 +55,7 @@ function relativeTime(date: string | Date): string {
   if (hr < 24) return `Hace ${hr}h`;
   const d = Math.floor(hr / 24);
   if (d < 7) return `Hace ${d}d`;
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  return formatDayShort(date);
 }
 
 export function NotificationItem({

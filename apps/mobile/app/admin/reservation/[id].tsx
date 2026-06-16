@@ -36,7 +36,15 @@ import {
 import ImageView from "react-native-image-viewing";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
 import * as ImagePicker from "expo-image-picker";
-import { formatName } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatDayLongYear,
+  formatDayShort as fmtDayShort,
+  formatWeekdayShort,
+  formatDateTimeShort,
+  formatTime,
+} from "@/lib/format";
 
 const STATUS_CONFIG: Record<
   string,
@@ -49,33 +57,19 @@ const STATUS_CONFIG: Record<
 };
 
 function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDayLongYear(date);
 }
 
 function formatDayShort(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  return fmtDayShort(date);
 }
 
 function formatWeekday(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    weekday: "short",
-  });
+  return formatWeekdayShort(date);
 }
 
 function formatDateTime(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeShort(date);
 }
 
 type StatusAction = {
@@ -278,7 +272,7 @@ export default function AdminReservationDetail() {
       Alert.alert(
         "Reserva cancelada",
         res.awaitingClientChoice
-          ? `Notificamos al dueño para que elija cómo recibir su reembolso de $${res.refundAmount.toLocaleString("es-MX")}.`
+          ? `Notificamos al dueño para que elija cómo recibir su reembolso de ${formatCurrency(res.refundAmount)}.`
           : "La reserva fue cancelada. No había monto pagado por reembolsar."
       );
     },
@@ -492,14 +486,7 @@ export default function AdminReservationDetail() {
                     {formatDayShort(reservation.appointmentAt)}
                   </Text>
                   <Text style={styles.bathTime}>
-                    {new Date(reservation.appointmentAt).toLocaleTimeString(
-                      "es-MX",
-                      {
-                        timeZone: "America/Hermosillo",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      },
-                    )}
+                    {formatTime(reservation.appointmentAt)}
                   </Text>
                 </View>
               )}
@@ -674,7 +661,7 @@ export default function AdminReservationDetail() {
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>
-            ${displayedTotal.toLocaleString("es-MX")}
+            {formatCurrency(displayedTotal)}
           </Text>
         </View>
 
@@ -825,7 +812,7 @@ export default function AdminReservationDetail() {
                   </View>
                 </View>
                 <Text style={styles.addonPrice}>
-                  ${Number(addon.unitPrice).toLocaleString("es-MX")}
+                  {formatCurrency(addon.unitPrice)}
                 </Text>
               </View>
             );
@@ -1012,7 +999,7 @@ export default function AdminReservationDetail() {
                         <Text style={styles.paymentAmount}>
                           {row.label} ·{" "}
                           <Text style={styles.extraPriceInline}>
-                            ${row.price.toLocaleString("es-MX")}
+                            {formatCurrency(row.price)}
                           </Text>
                         </Text>
                         <Text style={styles.paymentMeta}>
@@ -1102,7 +1089,7 @@ export default function AdminReservationDetail() {
                   <Text style={styles.paymentAmount}>
                     {isBath ? "Anticipo · " : ""}
                     <Text style={isBath ? styles.extraPriceInline : undefined}>
-                      ${Number(p.amount).toLocaleString("es-MX")}
+                      {formatCurrency(p.amount)}
                     </Text>
                   </Text>
                   <Text style={styles.paymentMeta}>

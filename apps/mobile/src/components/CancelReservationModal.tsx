@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cancelReservation, issueRefund } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
@@ -28,10 +29,6 @@ interface CancelReservationModalProps {
    */
   mode?: "cancel" | "issue-refund";
   onClose: () => void;
-}
-
-function formatMoney(n: number): string {
-  return `$${Number(n).toLocaleString("es-MX")}`;
 }
 
 export function CancelReservationModal({
@@ -68,7 +65,7 @@ export function CancelReservationModal({
       Alert.alert(
         successTitle,
         res.refundAmount > 0
-          ? `Se procesaron ${formatMoney(res.refundAmount)} como ${
+          ? `Se procesaron ${formatCurrency(res.refundAmount)} como ${
               res.refundChoice === "STRIPE_REFUND"
                 ? "reembolso a tarjeta"
                 : "saldo a favor"
@@ -122,7 +119,7 @@ export function CancelReservationModal({
             <>
               <View style={styles.amountBox}>
                 <Text style={styles.amountLabel}>Monto a reembolsar</Text>
-                <Text style={styles.amountValue}>{formatMoney(refundAmount)}</Text>
+                <Text style={styles.amountValue}>{formatCurrency(refundAmount)}</Text>
               </View>
 
               <Text style={styles.sectionTitle}>¿Cómo recibirlo?</Text>

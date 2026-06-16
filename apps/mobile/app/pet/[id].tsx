@@ -20,7 +20,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getPetById, deletePet } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
-import { formatName, formatPhoneInput, phoneToTelUri } from "@/lib/format";
+import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -73,13 +74,6 @@ function getVaccineStatus(expiresAt: string | Date | null): {
   return null;
 }
 
-function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
 
 export default function PetDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -241,7 +235,7 @@ export default function PetDetailScreen() {
           <View style={styles.infoItem}>
             <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
             <Text style={styles.infoLabel}>Nacimiento</Text>
-            <Text style={styles.infoValue}>{formatDate(pet.birthDate)}</Text>
+            <Text style={styles.infoValue}>{formatDayLongYear(pet.birthDate)}</Text>
           </View>
         )}
       </View>
@@ -495,7 +489,7 @@ export default function PetDetailScreen() {
                 activeOpacity={0.85}
               >
                 <Image
-                  source={{ uri: allPhotos[0] }}
+                  source={{ uri: cloudinaryResized(allPhotos[0], 600, "fill") }}
                   style={styles.cartillaImage}
                   resizeMode="cover"
                 />
@@ -520,7 +514,7 @@ export default function PetDetailScreen() {
                   activeOpacity={0.85}
                 >
                   <Image
-                    source={{ uri: url }}
+                    source={{ uri: cloudinaryResized(url, 540, "fill") }}
                     style={styles.cartillaGalleryThumb}
                     resizeMode="cover"
                   />
@@ -571,11 +565,11 @@ export default function PetDetailScreen() {
               </View>
               <View style={styles.vaccineDetails}>
                 <Text style={styles.vaccineDate}>
-                  Aplicada: {formatDate(vaccine.appliedAt)}
+                  Aplicada: {formatDayLongYear(vaccine.appliedAt)}
                 </Text>
                 {vaccine.expiresAt && (
                   <Text style={styles.vaccineDate}>
-                    Vence: {formatDate(vaccine.expiresAt)}
+                    Vence: {formatDayLongYear(vaccine.expiresAt)}
                   </Text>
                 )}
                 {vaccine.vetName && (
@@ -650,7 +644,7 @@ export default function PetDetailScreen() {
             return (
               <>
                 <Image
-                  source={{ uri: url }}
+                  source={{ uri: cloudinaryResized(url, 1080, "limit") }}
                   style={styles.fullSizeImage}
                   resizeMode="contain"
                 />

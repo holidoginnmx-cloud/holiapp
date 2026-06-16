@@ -22,7 +22,12 @@ import {
   getAdminStats,
 } from "@/lib/api";
 import type { AdminAlert } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import {
+  formatName,
+  formatDayShort,
+  formatDayShortYear,
+  formatDateTimeShort,
+} from "@/lib/format";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -222,12 +227,7 @@ export default function AdminAlerts() {
 
   const renderStaffAlert = (item: AdminAlert) => {
     const severity = SEVERITY_CONFIG[item.type] ?? SEVERITY_CONFIG.INCIDENT;
-    const dateStr = new Date(item.createdAt).toLocaleDateString("es-MX", {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const dateStr = formatDateTimeShort(item.createdAt);
 
     return (
       <TouchableOpacity
@@ -253,10 +253,7 @@ export default function AdminAlerts() {
           {item.isResolved && item.resolvedAt && (
             <Text style={styles.resolvedLabel}>
               Resuelta{" "}
-              {new Date(item.resolvedAt).toLocaleDateString("es-MX", {
-                day: "numeric",
-                month: "short",
-              })}
+              {formatDayShort(item.resolvedAt)}
             </Text>
           )}
         </View>
@@ -369,11 +366,7 @@ export default function AdminAlerts() {
       });
     }
     // vaccine
-    const expires = new Date(item.expiresAt).toLocaleDateString("es-MX", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    const expires = formatDayShortYear(item.expiresAt);
     return renderSimpleAlert({
       icon: "medical-outline",
       color: COLORS.warningText,

@@ -16,7 +16,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getPetHistory } from "@/lib/api";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort, formatDayShortYear } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendiente",
@@ -202,12 +203,8 @@ export default function PetHistoryScreen() {
               <View style={styles.timelineHeader}>
                 <Text style={styles.timelineDates}>
                   {res.reservationType === "BATH" && res.appointmentAt
-                    ? new Date(res.appointmentAt).toLocaleDateString("es-MX", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      }) + " · Baño"
-                    : `${res.checkIn ? new Date(res.checkIn).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—"} - ${res.checkOut ? new Date(res.checkOut).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "—"}`}
+                    ? formatDayShortYear(res.appointmentAt) + " · Baño"
+                    : `${res.checkIn ? formatDayShort(res.checkIn) : "—"} - ${res.checkOut ? formatDayShortYear(res.checkOut) : "—"}`}
                 </Text>
                 <Text style={styles.timelineStatus}>
                   {STATUS_LABEL[res.status] || res.status}
@@ -240,7 +237,7 @@ export default function PetHistoryScreen() {
                   {res.updates.map((u) => (
                     <Image
                       key={u.id}
-                      source={{ uri: u.mediaUrl }}
+                      source={{ uri: cloudinaryResized(u.mediaUrl, 180, "fill") }}
                       style={styles.thumbnail}
                     />
                   ))}

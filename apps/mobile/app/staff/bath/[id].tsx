@@ -31,8 +31,8 @@ import {
   registerBathManualPayment,
   type StaffBath,
 } from "@/lib/api";
-import { uploadToCloudinary } from "@/lib/cloudinary";
-import { formatName, phoneToTelUri } from "@/lib/format";
+import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
+import { formatName, phoneToTelUri, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { useAuthStore } from "@/store/authStore";
 
 const SIZE_LABEL: Record<string, string> = {
@@ -42,24 +42,6 @@ const SIZE_LABEL: Record<string, string> = {
   L: "Grande",
   XL: "Extra grande",
 };
-
-function formatTime(value: string | Date): string {
-  return new Date(value).toLocaleTimeString("es-MX", {
-    timeZone: "America/Hermosillo",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function formatDateLong(value: string | Date): string {
-  return new Date(value).toLocaleDateString("es-MX", {
-    timeZone: "America/Hermosillo",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-}
 
 function describeVariant(bath: StaffBath): string {
   const variant =
@@ -279,7 +261,10 @@ export default function StaffBathDetail() {
       {/* Hero: foto + nombre */}
       <View style={styles.hero}>
         {bath.pet?.photoUrl ? (
-          <Image source={{ uri: bath.pet.photoUrl }} style={styles.heroPhoto} />
+          <Image
+            source={{ uri: cloudinaryResized(bath.pet.photoUrl, 216, "fill") }}
+            style={styles.heroPhoto}
+          />
         ) : (
           <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
             <Ionicons name="paw" size={36} color={COLORS.primary} />
@@ -362,10 +347,10 @@ export default function StaffBathDetail() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.summaryAppointmentDate}>
-                  {formatDateLong(bath.appointmentAt)}
+                  {formatDateLong(bath.appointmentAt, { timeZone: "America/Hermosillo" })}
                 </Text>
                 <Text style={styles.summaryAppointmentTime}>
-                  {formatTime(bath.appointmentAt)}
+                  {formatTime(bath.appointmentAt, { hour12: false })}
                   {isStayBath ? " · antes del checkout" : ""}
                 </Text>
               </View>
@@ -441,7 +426,7 @@ export default function StaffBathDetail() {
                 <Text style={styles.summaryColSub}>
                   {isFullyPaid
                     ? "Reservación liquidada"
-                    : `Saldo: $${remaining.toLocaleString("es-MX")} · Total $${reservationTotal.toLocaleString("es-MX")}`}
+                    : `Saldo: ${formatCurrency(remaining)} · Total ${formatCurrency(reservationTotal)}`}
                 </Text>
               </View>
               <Text
@@ -450,7 +435,7 @@ export default function StaffBathDetail() {
                   isFullyPaid && { color: COLORS.successText },
                 ]}
               >
-                ${totalPaid.toLocaleString("es-MX")}
+                {formatCurrency(totalPaid)}
               </Text>
             </View>
           );
@@ -472,7 +457,7 @@ export default function StaffBathDetail() {
                   style={styles.photoThumbWrap}
                 >
                   <Image
-                    source={{ uri: u.mediaUrl }}
+                    source={{ uri: cloudinaryResized(u.mediaUrl, 288, "fill") }}
                     style={styles.photoThumb}
                     resizeMode="cover"
                   />
@@ -544,7 +529,7 @@ export default function StaffBathDetail() {
                       onPress={() => {
                         Alert.alert(
                           "Confirmar pago",
-                          `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(bath.pet?.name ?? "—")}?`,
+                          `¿Cómo recibiste ${formatCurrency(bathAddon.extraPrice)} de ${formatName(bath.pet?.name ?? "—")}?`,
                           [
                             { text: "Cancelar", style: "cancel" },
                             {
@@ -691,7 +676,7 @@ export default function StaffBathDetail() {
             onPress={() => setPhotoFullscreen(null)}
           >
             <Image
-              source={{ uri: photoFullscreen }}
+              source={{ uri: cloudinaryResized(photoFullscreen, 1080, "limit") }}
               style={styles.fullscreenImage}
               resizeMode="contain"
             />
@@ -777,8 +762,8 @@ function ManualPaymentSection({
       Alert.alert(
         "Pago registrado",
         res.concluded
-          ? `Recibido $${res.amount.toLocaleString("es-MX")}. El baño quedó concluido.`
-          : `Recibido $${res.amount.toLocaleString("es-MX")}.`,
+          ? `Recibido ${formatCurrency(res.amount)}. El baño quedó concluido.`
+          : `Recibido ${formatCurrency(res.amount)}.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo registrar";
@@ -794,19 +779,19 @@ function ManualPaymentSection({
         <Ionicons name="cash" size={18} color={COLORS.warningText} />
         <Text style={styles.manualPayTitle}>Saldo pendiente</Text>
         <Text style={styles.manualPayTotal}>
-          ${balance.total.toLocaleString("es-MX")}
+          {formatCurrency(balance.total)}
         </Text>
       </View>
       {(balance.deposit > 0.01 || balance.extras > 0.01) && (
         <View style={styles.manualPayBreakdown}>
           {balance.deposit > 0.01 && (
             <Text style={styles.manualPayBreakdownText}>
-              Saldo de reserva: ${balance.deposit.toLocaleString("es-MX")}
+              Saldo de reserva: {formatCurrency(balance.deposit)}
             </Text>
           )}
           {balance.extras > 0.01 && (
             <Text style={styles.manualPayBreakdownText}>
-              Extras: ${balance.extras.toLocaleString("es-MX")}
+              Extras: {formatCurrency(balance.extras)}
             </Text>
           )}
         </View>
@@ -928,7 +913,7 @@ function ExtrasBreakdown({
           <Ionicons name="cut-outline" size={14} color={COLORS.textSecondary} />
           <Text style={styles.breakdownLabel}>Deslanado</Text>
           <Text style={styles.breakdownAmount}>
-            ${deslanadoPrice.toLocaleString("es-MX")}
+            {formatCurrency(deslanadoPrice)}
           </Text>
         </View>
       )}
@@ -937,7 +922,7 @@ function ExtrasBreakdown({
           <Ionicons name="cut" size={14} color={COLORS.textSecondary} />
           <Text style={styles.breakdownLabel}>Corte</Text>
           <Text style={styles.breakdownAmount}>
-            ${cortePrice.toLocaleString("es-MX")}
+            {formatCurrency(cortePrice)}
           </Text>
         </View>
       )}
@@ -947,7 +932,7 @@ function ExtrasBreakdown({
           Total
         </Text>
         <Text style={[styles.breakdownAmount, styles.breakdownTotalAmount]}>
-          ${total.toLocaleString("es-MX")}
+          {formatCurrency(total)}
         </Text>
       </View>
     </View>
@@ -968,7 +953,7 @@ function ExtraSetChip({
       <Ionicons name="checkmark-circle" size={16} color={COLORS.successText} />
       <Text style={styles.extraSetChipLabel}>{label}</Text>
       <Text style={styles.extraSetChipPrice}>
-        ${price.toLocaleString("es-MX")}
+        {formatCurrency(price)}
       </Text>
       <TouchableOpacity onPress={onEdit} hitSlop={8}>
         <Ionicons name="pencil" size={14} color={COLORS.textTertiary} />

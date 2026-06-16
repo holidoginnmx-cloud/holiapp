@@ -17,6 +17,7 @@ import {
   type ChangeRequest,
 } from "@/lib/api";
 import { handlePaymentSheetError } from "@/lib/paymentError";
+import { formatCurrency } from "@/lib/format";
 import { styles } from "@/styles/paymentCardStyles";
 
 interface Props {
@@ -78,7 +79,7 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
   function handlePayOnPickup() {
     Alert.alert(
       "Pagar al recoger",
-      `Pagarás $${amount.toLocaleString("es-MX")} cuando recojas a tu mascota. ¿Confirmas?`,
+      `Pagarás ${formatCurrency(amount)} cuando recojas a tu mascota. ¿Confirmas?`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Confirmar", onPress: () => pickupMutation.mutate() },
@@ -95,7 +96,7 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
           <Ionicons name="checkmark-circle" size={22} color={COLORS.successText} />
           <Text style={styles.titlePaid}>Extensión pagada</Text>
         </View>
-        <Text style={styles.subtle}>${amount.toLocaleString("es-MX")} · recibido</Text>
+        <Text style={styles.subtle}>{formatCurrency(amount)} · recibido</Text>
       </View>
     );
   }
@@ -108,7 +109,7 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={styles.titlePickup}>Pagarás al recoger</Text>
             <Text style={styles.subtle}>
-              Saldo de extensión · ${amount.toLocaleString("es-MX")}
+              Saldo de extensión · {formatCurrency(amount)}
             </Text>
           </View>
         </View>
@@ -128,7 +129,7 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
             Días extra aprobados por el equipo
           </Text>
         </View>
-        <Text style={styles.price}>${amount.toLocaleString("es-MX")}</Text>
+        <Text style={styles.price}>{formatCurrency(amount)}</Text>
       </View>
       <Text style={styles.hint}>
         Tu solicitud de extensión fue aprobada. Elige cómo pagar el saldo:

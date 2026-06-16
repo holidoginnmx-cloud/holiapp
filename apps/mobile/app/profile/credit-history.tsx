@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getCreditLedger, getMe } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
+import { formatCurrency, formatDateTimeShortYear } from "@/lib/format";
 
 const TYPE_LABEL: Record<string, string> = {
   CREDIT_ADDED: "Saldo agregado",
@@ -18,19 +19,9 @@ const TYPE_LABEL: Record<string, string> = {
   CREDIT_ADJUSTED: "Ajuste",
 };
 
-function formatDate(d: string): string {
-  return new Date(d).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatMoney(n: number | string): string {
   const num = Number(n);
-  return `${num < 0 ? "-" : ""}$${Math.abs(num).toLocaleString("es-MX")}`;
+  return `${num < 0 ? "-" : ""}${formatCurrency(Math.abs(num))}`;
 }
 
 export default function CreditHistoryScreen() {
@@ -58,7 +49,7 @@ export default function CreditHistoryScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerLabel}>Saldo actual</Text>
-        <Text style={styles.headerAmount}>${balance.toLocaleString("es-MX")} MXN</Text>
+        <Text style={styles.headerAmount}>{formatCurrency(balance)} MXN</Text>
       </View>
 
       <FlatList
@@ -95,7 +86,7 @@ export default function CreditHistoryScreen() {
                 <Text style={styles.desc} numberOfLines={2}>
                   {item.description}
                 </Text>
-                <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+                <Text style={styles.date}>{formatDateTimeShortYear(item.createdAt)}</Text>
               </View>
               <Text
                 style={[

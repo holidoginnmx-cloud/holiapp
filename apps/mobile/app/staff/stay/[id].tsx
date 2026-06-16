@@ -40,10 +40,10 @@ import {
   getRooms,
   adminAssignRoom,
 } from "@/lib/api";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
+import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency, formatDayShortYear, formatDayShort, formatDateTimeShort } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 import { styles } from "@/styles/stayDetailStyles";
 
@@ -165,7 +165,7 @@ export default function StayDetail() {
       setPaymentNotes("");
       Alert.alert(
         "Pago registrado",
-        `Se registró $${res.amount.toLocaleString("es-MX")} y se notificó al dueño.`,
+        `Se registró ${formatCurrency(res.amount)} y se notificó al dueño.`,
       );
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -469,7 +469,7 @@ export default function StayDetail() {
         <View style={styles.petProfileRow}>
           {stay.pet?.photoUrl ? (
             <Image
-              source={{ uri: stay.pet.photoUrl }}
+              source={{ uri: cloudinaryResized(stay.pet.photoUrl, 210, "fill") }}
               style={styles.petPhoto}
             />
           ) : (
@@ -536,11 +536,7 @@ export default function StayDetail() {
                         { color: isExpired ? COLORS.errorText : isExpiring ? COLORS.warningText : COLORS.textTertiary },
                       ]}
                     >
-                      {new Date(v.expiresAt).toLocaleDateString("es-MX", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {formatDayShortYear(v.expiresAt)}
                     </Text>
                   )}
                 </View>
@@ -555,10 +551,7 @@ export default function StayDetail() {
             <Text style={styles.stayInfoLabel}>Entrada</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkIn
-                ? new Date(stay.checkIn).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                  })
+                ? formatDayShort(stay.checkIn)
                 : "—"}
             </Text>
           </View>
@@ -566,10 +559,7 @@ export default function StayDetail() {
             <Text style={styles.stayInfoLabel}>Salida</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkOut
-                ? new Date(stay.checkOut).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                  })
+                ? formatDayShort(stay.checkOut)
                 : "—"}
             </Text>
           </View>
@@ -616,7 +606,7 @@ export default function StayDetail() {
                 </Text>
                 <Text style={styles.bathDetail}>{label}</Text>
                 <Text style={styles.bathPrice}>
-                  ${Number(bath.unitPrice).toLocaleString("es-MX")}
+                  {formatCurrency(bath.unitPrice)}
                 </Text>
               </View>
               {!isCompleted && stay.status === "CHECKED_IN" && (
@@ -647,12 +637,7 @@ export default function StayDetail() {
               )}
               {isCompleted && (
                 <Text style={styles.bathCompletedDate}>
-                  Completado el {new Date(bath.completedAt!).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  Completado el {formatDateTimeShort(bath.completedAt!)}
                 </Text>
               )}
             </View>
@@ -680,7 +665,7 @@ export default function StayDetail() {
               <Ionicons name="cash" size={18} color={COLORS.warningText} />
               <Text style={styles.payTitle}>Saldo pendiente</Text>
               <Text style={styles.payTotal}>
-                ${balance.toLocaleString("es-MX")}
+                {formatCurrency(balance)}
               </Text>
             </View>
 
@@ -688,14 +673,14 @@ export default function StayDetail() {
               <View style={styles.payRow}>
                 <Text style={styles.payRowLabel}>Total estancia</Text>
                 <Text style={styles.payRowValue}>
-                  ${total.toLocaleString("es-MX")}
+                  {formatCurrency(total)}
                 </Text>
               </View>
               {depositPaid > 0 && (
                 <View style={styles.payRow}>
                   <Text style={styles.payRowLabel}>Anticipo pagado</Text>
                   <Text style={styles.payRowValueDiscount}>
-                    −${depositPaid.toLocaleString("es-MX")}
+                    −{formatCurrency(depositPaid)}
                   </Text>
                 </View>
               )}
@@ -703,7 +688,7 @@ export default function StayDetail() {
                 <View style={styles.payRow}>
                   <Text style={styles.payRowLabel}>Pagos posteriores</Text>
                   <Text style={styles.payRowValueDiscount}>
-                    −${otherPaid.toLocaleString("es-MX")}
+                    −{formatCurrency(otherPaid)}
                   </Text>
                 </View>
               )}
@@ -922,7 +907,7 @@ export default function StayDetail() {
               onPress={() =>
                 Alert.alert(
                   "Confirmar pago",
-                  `¿Recibiste $${Number(cr.deltaAmount).toLocaleString("es-MX")} de ${formatName(stay.pet?.name ?? "—")} por la extensión?`,
+                  `¿Recibiste ${formatCurrency(cr.deltaAmount)} de ${formatName(stay.pet?.name ?? "—")} por la extensión?`,
                   [
                     { text: "Cancelar", style: "cancel" },
                     {
@@ -936,7 +921,7 @@ export default function StayDetail() {
             >
               <Ionicons name="cash-outline" size={18} color={COLORS.warningText} />
               <Text style={styles.pickupChargeBtnText}>
-                Cobrar ${Number(cr.deltaAmount).toLocaleString("es-MX")} al recoger (extensión)
+                Cobrar {formatCurrency(cr.deltaAmount)} al recoger (extensión)
               </Text>
             </TouchableOpacity>
           ))}

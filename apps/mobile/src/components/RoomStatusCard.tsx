@@ -2,16 +2,11 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { RoomWithStatus } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort } from "@/lib/format";
 
 interface RoomStatusCardProps {
   room: RoomWithStatus;
   onPress?: () => void;
-}
-
-function formatDate(date: string | Date): string {
-  const d = new Date(date);
-  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
 }
 
 const SIZE_LABELS: Record<string, string> = {
@@ -96,7 +91,7 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
                   color={COLORS.errorText}
                 />
                 <Text style={styles.checkoutText}>
-                  Sale {formatDate(occupant.checkOut)}
+                  Sale {formatDayShort(occupant.checkOut)}
                 </Text>
               </View>
             </View>

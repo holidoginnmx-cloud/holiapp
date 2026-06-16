@@ -20,7 +20,13 @@ import {
   createChangeRequest,
   type ChangePreview,
 } from "@/lib/api";
-import { formatName, localDateFromUTCDay, toUTCDayISO } from "@/lib/format";
+import {
+  formatName,
+  localDateFromUTCDay,
+  toUTCDayISO,
+  formatCurrency,
+  formatWeekdayDayShort,
+} from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
@@ -29,18 +35,6 @@ function startOfDay(d: Date): Date {
   const c = new Date(d);
   c.setHours(0, 0, 0, 0);
   return c;
-}
-
-function formatShort(d: Date): string {
-  return d.toLocaleDateString("es-MX", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatMoney(n: number): string {
-  return `$${Number(n).toLocaleString("es-MX")}`;
 }
 
 export default function ModifyReservationScreen() {
@@ -117,7 +111,7 @@ export default function ModifyReservationScreen() {
         title = "Solicitud enviada";
         body = "El admin revisará tu solicitud y te avisará.";
       } else if (preview && preview.delta < 0) {
-        const refundAmount = formatMoney(-preview.delta);
+        const refundAmount = formatCurrency(-preview.delta);
         if (refundChoice === "CREDIT") {
           body = `Tu reembolso de ${refundAmount} ahora está disponible como saldo a favor en Mi cuenta.`;
         } else {
@@ -134,7 +128,7 @@ export default function ModifyReservationScreen() {
     if (preview.delta < 0) {
       Alert.alert(
         "Confirmar recorte",
-        `Se recortará la estadía y recibirás ${formatMoney(-preview.delta)} como ${
+        `Se recortará la estadía y recibirás ${formatCurrency(-preview.delta)} como ${
           refundChoice === "STRIPE_REFUND" ? "reembolso a tarjeta" : "saldo a favor"
         }. ¿Continuar?`,
         [
@@ -185,7 +179,7 @@ export default function ModifyReservationScreen() {
         >
           <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
           <Text style={styles.dateText}>
-            {newCheckIn ? formatShort(newCheckIn) : "—"}
+            {newCheckIn ? formatWeekdayDayShort(newCheckIn) : "—"}
           </Text>
         </TouchableOpacity>
 
@@ -196,7 +190,7 @@ export default function ModifyReservationScreen() {
         >
           <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
           <Text style={styles.dateText}>
-            {newCheckOut ? formatShort(newCheckOut) : "—"}
+            {newCheckOut ? formatWeekdayDayShort(newCheckOut) : "—"}
           </Text>
         </TouchableOpacity>
 
@@ -246,7 +240,7 @@ export default function ModifyReservationScreen() {
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Nuevo total</Text>
-            <Text style={styles.rowValue}>{formatMoney(preview.newTotal)}</Text>
+            <Text style={styles.rowValue}>{formatCurrency(preview.newTotal)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Diferencia</Text>
@@ -257,7 +251,7 @@ export default function ModifyReservationScreen() {
               ]}
             >
               {preview.delta > 0 ? "+" : ""}
-              {formatMoney(preview.delta)}
+              {formatCurrency(preview.delta)}
             </Text>
           </View>
 

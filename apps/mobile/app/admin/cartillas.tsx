@@ -32,8 +32,14 @@ import {
   type CartillaVaccine,
   type DewormingType,
 } from "@/lib/api";
-import { formatName, formatPhoneInput } from "@/lib/format";
+import {
+  formatName,
+  formatPhoneInput,
+  formatDayShort,
+  formatDayShortYear,
+} from "@/lib/format";
 import { styles } from "@/styles/cartillasStyles";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 function endOfToday(): Date {
   const d = new Date();
@@ -80,12 +86,7 @@ const DEWORMING_DEFAULT_DAYS = 90;
 const addDays = (d: Date, days: number) =>
   new Date(d.getTime() + days * 86_400_000);
 
-const formatShort = (d: Date) =>
-  d.toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+const formatShort = (d: Date) => formatDayShortYear(d);
 
 export default function AdminCartillas() {
   const queryClient = useQueryClient();
@@ -480,7 +481,10 @@ export default function AdminCartillas() {
                   }
                   return (
                     <View>
-                      <Image source={{ uri: firstPhoto }} style={styles.thumb} />
+                      <Image
+                        source={{ uri: cloudinaryResized(firstPhoto, 192, "fill") }}
+                        style={styles.thumb}
+                      />
                       {totalPhotos > 1 && (
                         <View style={styles.thumbPhotoCount}>
                           <Ionicons name="copy-outline" size={10} color={COLORS.white} />
@@ -499,10 +503,7 @@ export default function AdminCartillas() {
                   </Text>
                   {(() => {
                     const reviewedDate = pet.cartillaReviewedAt
-                      ? new Date(pet.cartillaReviewedAt).toLocaleDateString(
-                          "es-MX",
-                          { day: "numeric", month: "short" }
-                        )
+                      ? formatDayShort(pet.cartillaReviewedAt)
                       : null;
                     let label: string;
                     switch (pet.cartillaStatus) {
@@ -580,7 +581,7 @@ export default function AdminCartillas() {
                         onPress={() => openZoom(photos, 0)}
                       >
                         <Image
-                          source={{ uri: photos[0] }}
+                          source={{ uri: cloudinaryResized(photos[0], 1080, "fill") }}
                           style={styles.fullImage}
                           resizeMode="contain"
                         />
@@ -601,7 +602,7 @@ export default function AdminCartillas() {
                             onPress={() => openZoom(photos, idx)}
                           >
                             <Image
-                              source={{ uri: url }}
+                              source={{ uri: cloudinaryResized(url, 1080, "fill") }}
                               style={styles.galleryImage}
                               resizeMode="contain"
                             />

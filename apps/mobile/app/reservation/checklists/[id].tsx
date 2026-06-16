@@ -23,7 +23,7 @@ import {
 import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { EvidenceGrid } from "@/components/EvidenceByReports";
 import { MediaViewer, type MediaViewerItem } from "@/components/MediaViewer";
-import { formatName, utcDayKey, localDayKey } from "@/lib/format";
+import { formatName, utcDayKey, localDayKey, formatDateLong } from "@/lib/format";
 import type { StayUpdate } from "@holidoginn/shared";
 
 if (
@@ -31,14 +31,6 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-function fullDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
 }
 
 export default function ChecklistsScreen() {
@@ -197,7 +189,7 @@ export default function ChecklistsScreen() {
                 activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.dayHeader}>{fullDate(c.date)}</Text>
+                  <Text style={styles.dayHeader}>{formatDateLong(c.date)}</Text>
                   <Text style={styles.staffLabel}>
                     Reportado por {formatName(c.staff?.firstName ?? "—")}{" "}
                     {formatName(c.staff?.lastName ?? "")}

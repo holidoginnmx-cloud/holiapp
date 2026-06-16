@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-nati
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import ConfettiCannon from "react-native-confetti-cannon";
+import { formatCurrency } from "@/lib/format";
 
 const { width } = Dimensions.get("window");
 
@@ -95,7 +96,7 @@ export default function ReservationSuccess() {
             <Text style={styles.depositText}>
               {paidWith === "CREDIT" ? "Aplicaste tu saldo a favor por " : "Se cobró el anticipo de "}
               <Text style={styles.depositAmount}>
-                ${depositAmount.toLocaleString("es-MX")}
+                {formatCurrency(depositAmount)}
               </Text>
               . Puedes liquidar el saldo{" "}
               <Text style={styles.depositBold}>en la app</Text> o{" "}

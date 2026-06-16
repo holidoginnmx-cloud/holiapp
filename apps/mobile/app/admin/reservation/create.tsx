@@ -33,7 +33,12 @@ import {
   deliveryQuote,
   type PetWithOwner,
 } from "@/lib/api";
-import { formatName, formatFullName } from "@/lib/format";
+import {
+  formatName,
+  formatFullName,
+  formatWeekdayDayShort,
+  formatTime,
+} from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
@@ -42,11 +47,7 @@ type ReservationType = "STAY" | "BATH";
 
 function formatDate(d: Date | null): string {
   if (!d) return "Seleccionar";
-  return d.toLocaleDateString("es-MX", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  return formatWeekdayDayShort(d);
 }
 
 function formatDateTime(d: Date): string {
@@ -742,10 +743,7 @@ export default function AdminCreateReservation() {
                 <Text style={styles.dateBtnLabel}>Hora</Text>
                 <Text style={styles.dateBtnValue}>
                   {appointmentAt
-                    ? appointmentAt.toLocaleTimeString("es-MX", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
+                    ? formatTime(appointmentAt)
                     : "Seleccionar"}
                 </Text>
               </TouchableOpacity>

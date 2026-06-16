@@ -40,7 +40,7 @@ import {
   DeliveryAddressPicker,
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
-import { formatName } from "@/lib/format";
+import { formatName, formatCurrency, formatDayShort, formatDayShortYear } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
@@ -230,14 +230,8 @@ function CreateReservationScreenContent() {
         return ci < rangeEnd && co > rangeStart;
       });
       if (conflict) {
-        const ci = new Date(conflict.checkIn).toLocaleDateString("es-MX", {
-          day: "numeric",
-          month: "short",
-        });
-        const co = new Date(conflict.checkOut).toLocaleDateString("es-MX", {
-          day: "numeric",
-          month: "short",
-        });
+        const ci = formatDayShort(conflict.checkIn);
+        const co = formatDayShort(conflict.checkOut);
         conflictDates = `${ci} — ${co}`;
         return {
           blockReason: `${formatName(pet.name)} ya tiene una reservación del ${ci} al ${co}. Elige fechas que no se traslapen.`,
@@ -255,11 +249,7 @@ function CreateReservationScreenContent() {
         if (!v.expiresAt) continue;
         const exp = new Date(v.expiresAt);
         if (exp < rangeEnd) {
-          const label = exp.toLocaleDateString("es-MX", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          });
+          const label = formatDayShortYear(exp);
           warnings.push(
             exp < new Date()
               ? `${v.name} está vencida desde ${label}`
@@ -520,7 +510,7 @@ function CreateReservationScreenContent() {
         const userConfirmed = await new Promise<boolean>((resolve) => {
           Alert.alert(
             "Pagar con saldo a favor",
-            `Se aplicarán $${intent.creditApplied.toLocaleString("es-MX")} de tu saldo a favor para cubrir el anticipo.\n\nSaldo restante después: $${remaining.toLocaleString("es-MX")}.`,
+            `Se aplicarán ${formatCurrency(intent.creditApplied)} de tu saldo a favor para cubrir el anticipo.\n\nSaldo restante después: ${formatCurrency(remaining)}.`,
             [
               { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
               { text: "Confirmar", onPress: () => resolve(true) },
@@ -664,14 +654,8 @@ function CreateReservationScreenContent() {
       return {
         petName: p.name,
         reservationId: pending.id,
-        checkIn: new Date(pending.checkIn).toLocaleDateString("es-MX", {
-          day: "numeric",
-          month: "short",
-        }),
-        checkOut: new Date(pending.checkOut).toLocaleDateString("es-MX", {
-          day: "numeric",
-          month: "short",
-        }),
+        checkIn: formatDayShort(pending.checkIn),
+        checkOut: formatDayShort(pending.checkOut),
         totalAmount: Number(pending.totalAmount ?? 0),
       };
     })
@@ -737,7 +721,7 @@ function CreateReservationScreenContent() {
               <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
               <Text style={[styles.dateText, !checkIn && { color: COLORS.textDisabled }]}>
                 {checkIn
-                  ? checkIn.toLocaleDateString("es-MX", { day: "numeric", month: "short" })
+                  ? formatDayShort(checkIn)
                   : "Seleccionar"}
               </Text>
             </TouchableOpacity>
@@ -760,7 +744,7 @@ function CreateReservationScreenContent() {
               <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
               <Text style={[styles.dateText, !checkOut && { color: COLORS.textDisabled }]}>
                 {checkOut
-                  ? checkOut.toLocaleDateString("es-MX", { day: "numeric", month: "short" })
+                  ? formatDayShort(checkOut)
                   : "Seleccionar"}
               </Text>
             </TouchableOpacity>
@@ -1006,7 +990,7 @@ function CreateReservationScreenContent() {
                   <Text style={styles.bathPetName}>Baño para {formatName(pet.name)}</Text>
                   {state.enabled && variant && (
                     <Text style={styles.bathPrice}>
-                      ${variant.price.toLocaleString("es-MX")}
+                      {formatCurrency(variant.price)}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1119,7 +1103,7 @@ function CreateReservationScreenContent() {
                   <Text style={styles.bathPetName}>Medicamento para {formatName(pet.name)}</Text>
                   {state.enabled && surcharge > 0 && (
                     <Text style={styles.bathPrice}>
-                      +${surcharge.toLocaleString("es-MX")}
+                      +{formatCurrency(surcharge)}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1180,7 +1164,7 @@ function CreateReservationScreenContent() {
             <Text style={styles.bathPetName}>Quiero servicio a domicilio</Text>
             {deliveryActive && (
               <Text style={styles.bathPrice}>
-                ${deliveryFee.toLocaleString("es-MX")}
+                {formatCurrency(deliveryFee)}
               </Text>
             )}
           </TouchableOpacity>
@@ -1197,8 +1181,8 @@ function CreateReservationScreenContent() {
                 <View style={styles.deliveryQuoteRow}>
                   <Ionicons name="navigate" size={14} color={COLORS.primary} />
                   <Text style={styles.deliveryQuoteText}>
-                    {deliveryQuoteData!.distanceKm} km · $
-                    {deliveryFee.toLocaleString("es-MX")} (ida y vuelta)
+                    {deliveryQuoteData!.distanceKm} km ·{" "}
+                    {formatCurrency(deliveryFee)} (ida y vuelta)
                   </Text>
                 </View>
               )}
@@ -1254,7 +1238,7 @@ function CreateReservationScreenContent() {
                 {formatName(row.pet.name)} ({row.pet.weight ?? 0}kg)
               </Text>
               <Text style={styles.priceValue}>
-                ${row.perNight} × {totalDays} = ${row.subtotal.toLocaleString("es-MX")}
+                ${row.perNight} × {totalDays} = {formatCurrency(row.subtotal)}
               </Text>
             </View>
           ))}
@@ -1264,7 +1248,7 @@ function CreateReservationScreenContent() {
               <View key={`bath-${petId}`} style={styles.priceRow}>
                 <Text style={styles.priceLabel}>Baño {pet?.name ?? ""}</Text>
                 <Text style={styles.priceValue}>
-                  ${price.toLocaleString("es-MX")}
+                  {formatCurrency(price)}
                 </Text>
               </View>
             );
@@ -1277,7 +1261,7 @@ function CreateReservationScreenContent() {
                   Medicamento {pet?.name ?? ""} (+10%)
                 </Text>
                 <Text style={styles.priceValue}>
-                  ${surcharge.toLocaleString("es-MX")}
+                  {formatCurrency(surcharge)}
                 </Text>
               </View>
             );
@@ -1286,7 +1270,7 @@ function CreateReservationScreenContent() {
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Cargo reserva mismo día (+20%)</Text>
               <Text style={styles.priceValue}>
-                ${surchargeAmount.toLocaleString("es-MX")}
+                {formatCurrency(surchargeAmount)}
               </Text>
             </View>
           )}
@@ -1294,7 +1278,7 @@ function CreateReservationScreenContent() {
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Servicio a domicilio</Text>
               <Text style={styles.priceValue}>
-                ${deliveryFee.toLocaleString("es-MX")}
+                {formatCurrency(deliveryFee)}
               </Text>
             </View>
           )}
@@ -1309,15 +1293,15 @@ function CreateReservationScreenContent() {
                   {hasCredit ? (
                     <View style={styles.totalWithCredit}>
                       <Text style={styles.priceTotalStrike}>
-                        ${grandTotal.toLocaleString("es-MX")}
+                        {formatCurrency(grandTotal)}
                       </Text>
                       <Text style={styles.priceTotalValue}>
-                        ${totalAfterCredit.toLocaleString("es-MX")}
+                        {formatCurrency(totalAfterCredit)}
                       </Text>
                     </View>
                   ) : (
                     <Text style={styles.priceTotalValue}>
-                      ${grandTotal.toLocaleString("es-MX")}
+                      {formatCurrency(grandTotal)}
                     </Text>
                   )}
                 </View>
@@ -1325,7 +1309,7 @@ function CreateReservationScreenContent() {
                   <View style={styles.creditHint}>
                     <Ionicons name="wallet" size={14} color={COLORS.successText} />
                     <Text style={styles.creditHintText}>
-                      Se aplicarán ${creditApplied.toLocaleString("es-MX")} de tu saldo a favor
+                      Se aplicarán {formatCurrency(creditApplied)} de tu saldo a favor
                     </Text>
                   </View>
                 )}
@@ -1383,10 +1367,10 @@ function CreateReservationScreenContent() {
           {paymentType === "DEPOSIT" && (
             <View style={styles.depositInfo}>
               <Text style={styles.depositCharge}>
-                Pagarás ahora: ${depositAmount.toLocaleString("es-MX")} MXN
+                Pagarás ahora: {formatCurrency(depositAmount)} MXN
               </Text>
               <Text style={styles.depositRemaining}>
-                Saldo pendiente: ${(grandTotal - depositAmount).toLocaleString("es-MX")} MXN
+                Saldo pendiente: {formatCurrency(grandTotal - depositAmount)} MXN
               </Text>
               <View style={styles.depositWarning}>
                 <Ionicons name="information-circle-outline" size={16} color={COLORS.infoText} />

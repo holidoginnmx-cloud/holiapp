@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAdminDeliveryConfig, updateAdminDeliveryConfig } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 export default function AdminDeliveryConfig() {
@@ -133,7 +134,7 @@ export default function AdminDeliveryConfig() {
         <Ionicons name="information-circle-outline" size={18} color={COLORS.infoText} />
         <Text style={styles.summaryText}>
           Ejemplo: un cliente a <Text style={styles.summaryBold}>{exampleKm} km</Text>{" "}
-          pagaría <Text style={styles.summaryBold}>${examplePrice.toLocaleString("es-MX")}</Text>{" "}
+          pagaría <Text style={styles.summaryBold}>{formatCurrency(examplePrice)}</Text>{" "}
           de domicilio (base + {exampleKm}×2 km × precio/km).
         </Text>
       </View>

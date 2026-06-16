@@ -2,7 +2,13 @@ import { memo } from "react";
 import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatName } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatDayShort,
+  formatWeekdayShort,
+  formatTime,
+} from "@/lib/format";
 
 interface ReservationCardProps {
   petName: string;
@@ -61,19 +67,6 @@ const STATUS_CONFIG: Record<
     accent: COLORS.errorText,
   },
 };
-
-function formatDayShort(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatWeekday(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    weekday: "short",
-  });
-}
 
 function nightsBetween(
   checkIn: string | Date,
@@ -367,11 +360,7 @@ function ReservationCardBase({
                   {formatDayShort(appointmentAt)}
                 </Text>
                 <Text style={styles.bathTime}>
-                  {new Date(appointmentAt).toLocaleTimeString("es-MX", {
-                    timeZone: "America/Hermosillo",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatTime(appointmentAt)}
                 </Text>
               </View>
             </View>
@@ -413,7 +402,7 @@ function ReservationCardBase({
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>ENTRADA</Text>
               <Text style={styles.datePillDay}>{formatDayShort(checkIn)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekday(checkIn)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn)}</Text>
             </View>
 
             <View style={styles.dateConnector}>
@@ -432,7 +421,7 @@ function ReservationCardBase({
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>SALIDA</Text>
               <Text style={styles.datePillDay}>{formatDayShort(checkOut)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekday(checkOut)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut)}</Text>
             </View>
           </View>
         ) : null}
@@ -441,7 +430,7 @@ function ReservationCardBase({
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>
-            ${Number(totalAmount).toLocaleString("es-MX")}
+            {formatCurrency(totalAmount)}
           </Text>
         </View>
       </View>

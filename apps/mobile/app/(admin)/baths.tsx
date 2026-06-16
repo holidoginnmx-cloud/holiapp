@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStaffBaths, type StaffBath } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatCurrency, formatWeekdayDayShort } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
@@ -44,12 +44,7 @@ function formatDayHeader(ymd: string): string {
     (date.getTime() - new Date(`${today}T00:00:00.000Z`).getTime()) /
       (24 * 3600 * 1000),
   );
-  const label = date.toLocaleDateString("es-MX", {
-    timeZone: "UTC",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  const label = formatWeekdayDayShort(date, { timeZone: "UTC" });
   if (diffDays === 0) return `Hoy · ${label}`;
   if (diffDays === 1) return `Mañana · ${label}`;
   return label;
@@ -228,7 +223,7 @@ export default function AdminBaths() {
         <Text style={styles.topSub}>
           {pending.length} pendiente{pending.length === 1 ? "" : "s"}
           {" · "}
-          ${revenue.toLocaleString("es-MX")} en total
+          {formatCurrency(revenue)} en total
         </Text>
       </View>
 

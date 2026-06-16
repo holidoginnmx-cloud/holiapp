@@ -17,6 +17,7 @@ import {
   getAdminLodgingPricing,
   updateAdminLodgingPricing,
 } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 type Field =
@@ -229,10 +230,10 @@ export default function AdminHospedajes() {
           <Text style={styles.unit}>%</Text>
         </View>
         <Text style={styles.exampleText}>
-          Ej. 3 noches × ${previewLarge.toLocaleString("es-MX")} con medicación
+          Ej. 3 noches × {formatCurrency(previewLarge)} con medicación
           ={" "}
           <Text style={styles.exampleStrong}>
-            +${surcharge3Days.toLocaleString("es-MX")}
+            +{formatCurrency(surcharge3Days)}
           </Text>{" "}
           de recargo
         </Text>

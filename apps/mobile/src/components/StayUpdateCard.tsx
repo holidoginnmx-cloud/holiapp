@@ -1,5 +1,6 @@
 import { COLORS } from "@/constants/colors";
 import { View, Text, Image, StyleSheet } from "react-native";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 interface StayUpdateCardProps {
   mediaUrl: string;
@@ -27,7 +28,7 @@ export function StayUpdateCard({
   return (
     <View style={[styles.card, horizontal && styles.cardHorizontal]}>
       <Image
-        source={{ uri: mediaUrl }}
+        source={{ uri: cloudinaryResized(mediaUrl, 540, "fill") }}
         style={[styles.image, horizontal && styles.imageHorizontal]}
         resizeMode="cover"
       />

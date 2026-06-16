@@ -17,6 +17,7 @@ import {
   type ReservationAddonWithVariant,
 } from "@/lib/api";
 import { handlePaymentSheetError } from "@/lib/paymentError";
+import { formatCurrency } from "@/lib/format";
 import { styles } from "@/styles/paymentCardStyles";
 
 interface Props {
@@ -75,7 +76,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
   function handlePayOnPickup() {
     Alert.alert(
       "Pagar al recoger",
-      `Pagarás $${price.toLocaleString("es-MX")} cuando recojas a tu mascota. ¿Confirmas?`,
+      `Pagarás ${formatCurrency(price)} cuando recojas a tu mascota. ¿Confirmas?`,
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Confirmar", onPress: () => pickupMutation.mutate() },
@@ -94,7 +95,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
           </Text>
         </View>
         <Text style={styles.subtle}>
-          ${price.toLocaleString("es-MX")} · recibido
+          {formatCurrency(price)} · recibido
         </Text>
       </View>
     );
@@ -108,7 +109,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={styles.titlePickup}>Pagarás al recoger</Text>
             <Text style={styles.subtle}>
-              {addon.extraDescription ?? "Extras"} · ${price.toLocaleString("es-MX")}
+              {addon.extraDescription ?? "Extras"} · {formatCurrency(price)}
             </Text>
           </View>
         </View>
@@ -137,7 +138,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
               <Ionicons name="cut-outline" size={14} color={COLORS.textSecondary} />
               <Text style={styles.breakdownLabel}>Deslanado</Text>
               <Text style={styles.breakdownAmount}>
-                ${deslanadoPrice.toLocaleString("es-MX")}
+                {formatCurrency(deslanadoPrice)}
               </Text>
             </View>
           )}
@@ -146,7 +147,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
               <Ionicons name="cut" size={14} color={COLORS.textSecondary} />
               <Text style={styles.breakdownLabel}>Corte</Text>
               <Text style={styles.breakdownAmount}>
-                ${cortePrice.toLocaleString("es-MX")}
+                {formatCurrency(cortePrice)}
               </Text>
             </View>
           )}
@@ -154,7 +155,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
           <View style={styles.breakdownRow}>
             <Text style={[styles.breakdownLabel, styles.totalLabel]}>Total</Text>
             <Text style={[styles.breakdownAmount, styles.totalAmount]}>
-              ${price.toLocaleString("es-MX")}
+              {formatCurrency(price)}
             </Text>
           </View>
         </View>

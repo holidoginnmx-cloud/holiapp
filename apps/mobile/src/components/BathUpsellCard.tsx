@@ -20,6 +20,7 @@ import {
   type ReservationDetail,
 } from "@/lib/api";
 import { handlePaymentSheetError } from "@/lib/paymentError";
+import { formatCurrency, formatNumber } from "@/lib/format";
 
 function bathSizeFromWeight(kg: number | null | undefined): "S" | "M" | "L" | "XL" {
   const w = kg ?? 0;
@@ -103,7 +104,7 @@ export function BathUpsellCard({ reservation }: Props) {
         <View style={styles.contractedPriceRow}>
           <Text style={styles.contractedPriceLabel}>Total pagado</Text>
           <Text style={styles.contractedPrice}>
-            ${Number(existingBath.unitPrice).toLocaleString("es-MX")}
+            {formatCurrency(existingBath.unitPrice)}
           </Text>
         </View>
 
@@ -203,7 +204,7 @@ export function BathUpsellCard({ reservation }: Props) {
           <>
             <Ionicons name="card-outline" size={20} color={COLORS.white} />
             <Text style={styles.contractButtonText}>
-              Contratar baño — ${variant ? variant.price.toLocaleString("es-MX") : "--"}
+              Contratar baño — ${variant ? formatNumber(variant.price) : "--"}
             </Text>
           </>
         )}

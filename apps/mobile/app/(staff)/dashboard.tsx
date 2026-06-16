@@ -24,7 +24,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName } from "@/lib/format";
+import { formatName, formatDateLong, formatDayShort, formatTime, formatWeekdayDayShort } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 type SectionKey = "baths" | "active" | "unassigned" | "upcoming";
@@ -150,12 +150,7 @@ export default function StaffDashboard() {
   const reportsDone = (activeStays ?? []).filter((s) => s.checklists.length > 0).length;
   const reportsTotal = activeStays?.length ?? 0;
 
-  const formatDate = () =>
-    new Date().toLocaleDateString("es-MX", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
+  const formatDate = () => formatDateLong(new Date());
 
   // Counts que llevan badge "nuevos desde la última visita".
   const counts = useMemo(
@@ -435,10 +430,7 @@ type StayCardStay = {
 };
 
 function shortDate(d: Date | string): string {
-  return new Date(d).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  return formatDayShort(d);
 }
 
 function dayDelta(a: Date, b: Date): number {
@@ -662,12 +654,7 @@ function BathCard({
 
   const isStayBath = bath.reservationType === "STAY";
   const appointmentTime = bath.appointmentAt
-    ? new Date(bath.appointmentAt).toLocaleTimeString("es-MX", {
-        timeZone: "America/Hermosillo",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
+    ? formatTime(bath.appointmentAt, { hour12: false })
     : "—";
   const appointmentDayLabel = (() => {
     if (!bath.appointmentAt) return "";
@@ -683,12 +670,7 @@ function BathCard({
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     if (apptYmd === ymd(tomorrow)) return "Mañana";
-    return appt.toLocaleDateString("es-MX", {
-      timeZone: "America/Hermosillo",
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    });
+    return formatWeekdayDayShort(appt, { timeZone: "America/Hermosillo" });
   })();
 
   return (

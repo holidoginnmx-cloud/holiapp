@@ -20,6 +20,7 @@ import {
   updateServiceVariant,
   updateAdminService,
 } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 const SIZE_LABELS: Record<string, string> = {
@@ -151,7 +152,7 @@ export default function AdminBaths() {
                       }}
                     >
                       <Text style={styles.priceText}>
-                        ${v.price.toLocaleString("es-MX")}
+                        {formatCurrency(v.price)}
                       </Text>
                       <Ionicons name="pencil" size={12} color={COLORS.primary} />
                     </TouchableOpacity>

@@ -30,7 +30,7 @@ import {
   type StaffBath,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { formatName } from "@/lib/format";
+import { formatName, formatCurrency, formatWeekdayDayShort } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
@@ -57,12 +57,7 @@ function formatDayHeader(ymd: string): string {
     (date.getTime() - new Date(`${today}T00:00:00.000Z`).getTime()) /
       (24 * 3600 * 1000),
   );
-  const label = date.toLocaleDateString("es-MX", {
-    timeZone: "UTC",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+  const label = formatWeekdayDayShort(date, { timeZone: "UTC" });
   if (diffDays === 0) return `Hoy · ${label}`;
   if (diffDays === 1) return `Mañana · ${label}`;
   return label;
@@ -361,7 +356,7 @@ export default function StaffBaths() {
               <View style={styles.extrasStatusPaid}>
                 <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
                 <Text style={styles.extrasStatusPaidText}>
-                  Extras cobrados · ${Number(bathAddon.extraPrice).toLocaleString("es-MX")}
+                  Extras cobrados · {formatCurrency(bathAddon.extraPrice)}
                 </Text>
               </View>
             );
@@ -373,7 +368,7 @@ export default function StaffBaths() {
                 onPress={() => {
                   Alert.alert(
                     "Confirmar pago",
-                    `¿Cómo recibiste $${Number(bathAddon.extraPrice).toLocaleString("es-MX")} de ${formatName(item.pet?.name ?? "—")}?`,
+                    `¿Cómo recibiste ${formatCurrency(bathAddon.extraPrice)} de ${formatName(item.pet?.name ?? "—")}?`,
                     [
                       { text: "Cancelar", style: "cancel" },
                       {
@@ -398,7 +393,7 @@ export default function StaffBaths() {
               >
                 <Ionicons name="cash-outline" size={14} color={COLORS.warningText} />
                 <Text style={styles.extrasPickupBtnText}>
-                  Cobrar ${Number(bathAddon.extraPrice).toLocaleString("es-MX")} al recoger
+                  Cobrar {formatCurrency(bathAddon.extraPrice)} al recoger
                 </Text>
               </TouchableOpacity>
             );
@@ -408,7 +403,7 @@ export default function StaffBaths() {
               <View style={styles.extrasPending}>
                 <Ionicons name="time-outline" size={14} color={COLORS.infoText} />
                 <Text style={styles.extrasPendingText}>
-                  Owner debe elegir cómo pagar ${Number(bathAddon.extraPrice).toLocaleString("es-MX")}
+                  Owner debe elegir cómo pagar {formatCurrency(bathAddon.extraPrice)}
                 </Text>
               </View>
             );
@@ -437,7 +432,7 @@ export default function StaffBaths() {
                     <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
                     <Text style={styles.extraSetChipLabel}>Deslanado</Text>
                     <Text style={styles.extraSetChipPrice}>
-                      ${Number(bathAddon.extraDeslanadoPrice).toLocaleString("es-MX")}
+                      {formatCurrency(bathAddon.extraDeslanadoPrice)}
                     </Text>
                     <TouchableOpacity onPress={() => open("deslanado")} hitSlop={8}>
                       <Ionicons name="pencil" size={13} color={COLORS.textTertiary} />
@@ -458,7 +453,7 @@ export default function StaffBaths() {
                     <Ionicons name="checkmark-circle" size={14} color={COLORS.successText} />
                     <Text style={styles.extraSetChipLabel}>Corte</Text>
                     <Text style={styles.extraSetChipPrice}>
-                      ${Number(bathAddon.extraCortePrice).toLocaleString("es-MX")}
+                      {formatCurrency(bathAddon.extraCortePrice)}
                     </Text>
                     <TouchableOpacity onPress={() => open("corte")} hitSlop={8}>
                       <Ionicons name="pencil" size={13} color={COLORS.textTertiary} />
@@ -490,7 +485,7 @@ export default function StaffBaths() {
         <Text style={styles.topSub}>
           {pending.length} pendiente{pending.length === 1 ? "" : "s"}
           {" · "}
-          ${revenue.toLocaleString("es-MX")} en total
+          {formatCurrency(revenue)} en total
         </Text>
       </View>
 

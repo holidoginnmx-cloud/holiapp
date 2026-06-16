@@ -19,7 +19,7 @@ import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
-import { formatName } from "@/lib/format";
+import { formatName, formatDateLong } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 type SectionKey = "active" | "stays" | "baths";
@@ -89,11 +89,7 @@ export default function AdminDashboard() {
   });
 
   const today = new Date();
-  const todayStr = today.toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const todayStr = formatDateLong(today);
 
   // Total de alertas: staff (manuales) + sin evidencia + vacunas por vencer.
   // Las cartillas pendientes viven en su propio tile y no cuentan como alerta.

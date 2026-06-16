@@ -17,7 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { ErrorState } from "@/components/ErrorState";
 import { getAllPets, getUsers } from "@/lib/api";
 import type { PetWithOwner } from "@/lib/api";
-import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
+import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 type OwnerGroup = {
   id: string;
@@ -170,7 +171,7 @@ export default function AdminClients() {
                     <Text
                       style={[styles.metaText, { color: COLORS.successText }]}
                     >
-                      ${credit.toLocaleString("es-MX")}
+                      {formatCurrency(credit)}
                     </Text>
                   </View>
                 )}
@@ -220,7 +221,7 @@ export default function AdminClients() {
                   >
                     {pet.photoUrl ? (
                       <Image
-                        source={{ uri: pet.photoUrl }}
+                        source={{ uri: cloudinaryResized(pet.photoUrl, 108, "fill") }}
                         style={styles.petPhoto}
                       />
                     ) : (

@@ -13,7 +13,7 @@ import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
-import { formatName } from "@/lib/format";
+import { formatName, formatMonthYear } from "@/lib/format";
 import { getStaffStats } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -42,10 +42,7 @@ export default function StaffProfile() {
   };
 
   const memberSinceLabel = stats?.memberSince
-    ? new Date(stats.memberSince).toLocaleDateString("es-MX", {
-        month: "long",
-        year: "numeric",
-      })
+    ? formatMonthYear(stats.memberSince)
     : null;
 
   const appVersion =

@@ -36,29 +36,13 @@ import {
 } from "@/components/DeliveryAddressPicker";
 import { ErrorState } from "@/components/ErrorState";
 
-import { formatName } from "@/lib/format";
+import { formatName, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { sizeFromWeight, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 function toYMD(d: Date): string {
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
-}
-
-function formatSlotLocal(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-MX", {
-    timeZone: "America/Hermosillo",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDateLong(d: Date): string {
-  return d.toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
 }
 
 export default function CreateBathScreen() {
@@ -426,7 +410,7 @@ function CreateBathScreenContent() {
                   </View>
                   {deliveryActive && (
                     <Text style={styles.bathDeliveryFee}>
-                      ${deliveryFee.toLocaleString("es-MX")}
+                      {formatCurrency(deliveryFee)}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -443,8 +427,8 @@ function CreateBathScreenContent() {
                       <View style={styles.deliveryQuoteRow}>
                         <Ionicons name="navigate" size={14} color={COLORS.primary} />
                         <Text style={styles.deliveryQuoteText}>
-                          {deliveryQuoteData!.distanceKm} km · $
-                          {deliveryFee.toLocaleString("es-MX")} (ida y vuelta)
+                          {deliveryQuoteData!.distanceKm} km ·{" "}
+                          {formatCurrency(deliveryFee)} (ida y vuelta)
                         </Text>
                       </View>
                     )}
@@ -465,14 +449,14 @@ function CreateBathScreenContent() {
                   <View style={styles.priceRow}>
                     <Text style={styles.priceLabel}>Precio del baño</Text>
                     <Text style={styles.priceLineValue}>
-                      ${price.toLocaleString("es-MX")}
+                      {formatCurrency(price)}
                     </Text>
                   </View>
                   {deliveryActive && (
                     <View style={styles.priceRow}>
                       <Text style={styles.priceLabel}>Servicio a domicilio</Text>
                       <Text style={styles.priceLineValue}>
-                        ${deliveryFee.toLocaleString("es-MX")}
+                        {formatCurrency(deliveryFee)}
                       </Text>
                     </View>
                   )}
@@ -503,8 +487,8 @@ function CreateBathScreenContent() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.payChoiceTitle}>Pagar anticipo</Text>
                           <Text style={styles.payChoiceSub}>
-                            ${baseDeposit.toLocaleString("es-MX")} ahora · $
-                            {(total - baseDeposit).toLocaleString("es-MX")} al
+                            {formatCurrency(baseDeposit)} ahora ·{" "}
+                            {formatCurrency(total - baseDeposit)} al
                             entregar
                           </Text>
                         </View>
@@ -533,7 +517,7 @@ function CreateBathScreenContent() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.payChoiceTitle}>Pagar total</Text>
                           <Text style={styles.payChoiceSub}>
-                            ${total.toLocaleString("es-MX")} ahora · sin saldo
+                            {formatCurrency(total)} ahora · sin saldo
                             pendiente
                           </Text>
                         </View>
@@ -545,14 +529,14 @@ function CreateBathScreenContent() {
                   <View style={styles.priceRow}>
                     <Text style={styles.priceLabel}>Pagas ahora</Text>
                     <Text style={styles.priceValue}>
-                      ${payNow.toLocaleString("es-MX")}
+                      {formatCurrency(payNow)}
                     </Text>
                   </View>
                   {payLater > 0 && (
                     <View style={styles.priceRow}>
                       <Text style={styles.priceLabel}>Saldo al entregar</Text>
                       <Text style={styles.priceLineValue}>
-                        ${payLater.toLocaleString("es-MX")}
+                        {formatCurrency(payLater)}
                       </Text>
                     </View>
                   )}
@@ -641,7 +625,7 @@ function CreateBathScreenContent() {
                           selected && styles.slotTextSelected,
                         ]}
                       >
-                        {formatSlotLocal(s.startUtc)}
+                        {formatTime(s.startUtc)}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -672,8 +656,8 @@ function CreateBathScreenContent() {
                   <Ionicons name="card" size={20} color={COLORS.white} />
                   <Text style={styles.payButtonText}>
                     {isFull
-                      ? `Pagar $${payNow.toLocaleString("es-MX")} y confirmar`
-                      : `Pagar anticipo $${payNow.toLocaleString("es-MX")} y confirmar`}
+                      ? `Pagar ${formatCurrency(payNow)} y confirmar`
+                      : `Pagar anticipo ${formatCurrency(payNow)} y confirmar`}
                   </Text>
                 </>
               );

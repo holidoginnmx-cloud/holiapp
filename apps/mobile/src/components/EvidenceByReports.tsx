@@ -2,8 +2,13 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { StayUpdate, DailyChecklist } from "@holidoginn/shared";
-import { utcDayKey, localDayKey, formatName } from "@/lib/format";
-import { videoThumbnailUrl } from "@/lib/cloudinary";
+import {
+  utcDayKey,
+  localDayKey,
+  formatName,
+  formatDateLong,
+} from "@/lib/format";
+import { videoThumbnailUrl, cloudinaryResized } from "@/lib/cloudinary";
 
 type ChecklistMaybeWithStaff = DailyChecklist & {
   staff?: { id: string; firstName: string; lastName: string };
@@ -15,14 +20,6 @@ type Props = {
   onPressItem: (update: StayUpdate, allInGroup: StayUpdate[]) => void;
   onPressReport?: () => void;
 };
-
-function formatDay(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-}
 
 export function EvidenceByReports({
   updates,
@@ -90,7 +87,7 @@ export function EvidenceByReports({
                 color={COLORS.primary}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.reportDate}>{formatDay(checklist.date)}</Text>
+                <Text style={styles.reportDate}>{formatDateLong(checklist.date)}</Text>
                 {checklist.staff && (
                   <Text style={styles.reportStaff}>
                     Reportado por {formatName(checklist.staff.firstName)}{" "}
@@ -152,7 +149,10 @@ export function EvidenceGrid({
             activeOpacity={0.85}
             onPress={() => onPressItem(u, items)}
           >
-            <Image source={{ uri: thumbUri }} style={styles.thumb} />
+            <Image
+              source={{ uri: cloudinaryResized(thumbUri, 360, "fill") }}
+              style={styles.thumb}
+            />
             {isVideo && (
               <View style={styles.playOverlay}>
                 <Ionicons name="play-circle" size={32} color={COLORS.white} />

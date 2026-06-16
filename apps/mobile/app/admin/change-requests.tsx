@@ -20,18 +20,15 @@ import {
   rejectChangeRequest,
   type ChangeRequestWithReservation,
 } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort, formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
 function formatDate(d: string): string {
-  return new Date(d).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
+  return formatDayShort(d);
 }
 
 function formatMoney(n: number | string): string {
-  return `$${Number(n).toLocaleString("es-MX")}`;
+  return formatCurrency(n);
 }
 
 export default function AdminChangeRequestsScreen() {

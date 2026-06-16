@@ -10,11 +10,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getAdminRevenueBreakdown } from "@/lib/api";
+import { formatCurrency, formatMonthYear } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
-
-function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`;
-}
 
 function methodLabel(m: string): string {
   switch (m) {
@@ -42,10 +39,7 @@ function methodIcon(
 }
 
 export default function RevenueBreakdown() {
-  const monthLabel = new Date().toLocaleDateString("es-MX", {
-    month: "long",
-    year: "numeric",
-  });
+  const monthLabel = formatMonthYear(new Date());
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "revenue", "current-month"],

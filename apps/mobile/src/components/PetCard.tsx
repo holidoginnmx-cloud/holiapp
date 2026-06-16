@@ -3,7 +3,8 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { Pet, Vaccine } from "@holidoginn/shared";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -44,13 +45,6 @@ type Chip = {
   fg: string;
 };
 
-function formatShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
 function buildStatusChips(pet: PetWithContext): Chip[] {
   const chips: Chip[] = [];
 
@@ -73,7 +67,7 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
   } else if (upcoming) {
     chips.push({
       icon: "calendar-outline",
-      label: `Hotel el ${formatShortDate(upcoming.checkIn)}`,
+      label: `Hotel el ${formatDayShort(upcoming.checkIn)}`,
       bg: COLORS.infoBg,
       fg: COLORS.infoText,
     });
@@ -146,7 +140,7 @@ function PetCardBase({
         <Image
           source={
             pet.photoUrl
-              ? { uri: pet.photoUrl }
+              ? { uri: cloudinaryResized(pet.photoUrl, 600, "fill") }
               : require("../../assets/pet-placeholder.png")
           }
           style={styles.photo}

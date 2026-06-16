@@ -23,7 +23,7 @@ import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api
 import { ErrorState } from "@/components/ErrorState";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
-import { formatName, utcDayKey, localDayKey } from "@/lib/format";
+import { formatName, utcDayKey, localDayKey, formatDateLong } from "@/lib/format";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -230,11 +230,7 @@ export default function ChecklistForm() {
             Reporte diario — {formatName(stay?.pet.name ?? "")}
           </Text>
           <Text style={styles.subtitle}>
-            {new Date().toLocaleDateString("es-MX", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-            })}
+            {formatDateLong(new Date())}
           </Text>
         </View>
       </View>

@@ -3,7 +3,8 @@ import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { getStayUpdates } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShort, formatWeekdayShort } from "@/lib/format";
+import { cloudinaryResized } from "@/lib/cloudinary";
 
 interface HeroStayCardProps {
   reservationId: string;
@@ -24,17 +25,6 @@ function timeAgo(date: string | Date): string {
   if (hours < 24) return `Hace ${hours}h`;
   const days = Math.floor(hours / 24);
   return `Hace ${days}d`;
-}
-
-function formatDayShort(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatWeekday(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", { weekday: "short" });
 }
 
 function startOfDay(d: Date): Date {
@@ -91,7 +81,10 @@ export function HeroStayCard({
         <View style={styles.headerRow}>
           <View style={styles.photoRing}>
             {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.photo} />
+              <Image
+                source={{ uri: cloudinaryResized(photoUrl, 168, "fill") }}
+                style={styles.photo}
+              />
             ) : (
               <View style={[styles.photo, styles.photoFallback]}>
                 <Ionicons name="paw" size={26} color={COLORS.primary} />
@@ -152,7 +145,7 @@ export function HeroStayCard({
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>CHECK-IN</Text>
               <Text style={styles.datePillDay}>{formatDayShort(checkIn)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekday(checkIn)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn)}</Text>
             </View>
 
             <View style={styles.dateConnector}>
@@ -171,7 +164,7 @@ export function HeroStayCard({
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>CHECK-OUT</Text>
               <Text style={styles.datePillDay}>{formatDayShort(checkOut)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekday(checkOut)}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut)}</Text>
             </View>
           </View>
         )}

@@ -18,7 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getPetAlerts, resolveAdminAlert, type PetAlert } from "@/lib/api";
-import { formatName } from "@/lib/format";
+import { formatName, formatDayShortYear } from "@/lib/format";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
 const ALERT_LABELS: Record<string, string> = {
@@ -48,20 +48,12 @@ const TAB_LABELS: Record<TabKey, string> = {
   resolved: "Resueltos",
 };
 
-function formatDateTime(date: string | Date): string {
-  return new Date(date).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function reservationDates(r: PetAlert["reservation"]): string {
   if (r.reservationType === "BATH" && r.appointmentAt) {
-    return formatDateTime(r.appointmentAt) + " · Baño";
+    return formatDayShortYear(r.appointmentAt) + " · Baño";
   }
   if (r.checkIn && r.checkOut) {
-    return `${formatDateTime(r.checkIn)} → ${formatDateTime(r.checkOut)}`;
+    return `${formatDayShortYear(r.checkIn)} → ${formatDayShortYear(r.checkOut)}`;
   }
   return "—";
 }
@@ -212,13 +204,13 @@ export default function PetIncidentsScreen() {
                     {ALERT_LABELS[item.type] ?? item.type}
                   </Text>
                   <Text style={styles.cardDate}>
-                    {formatDateTime(item.createdAt)}
+                    {formatDayShortYear(item.createdAt)}
                   </Text>
                 </View>
                 {item.isResolved && item.resolvedAt && (
                   <View style={styles.resolvedPill}>
                     <Text style={styles.resolvedPillText}>
-                      Resuelto {formatDateTime(item.resolvedAt)}
+                      Resuelto {formatDayShortYear(item.resolvedAt)}
                     </Text>
                   </View>
                 )}
