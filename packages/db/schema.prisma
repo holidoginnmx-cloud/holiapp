@@ -1207,3 +1207,15 @@ model DiscountCode {
 
   @@map("discount_codes")
 }
+
+/// Dirección de entrega a domicilio asociada a un PaymentIntent de Stripe
+/// mientras se confirma el pago del flujo de invitado (web). Evita guardar la
+/// dirección del cliente (PII) en el metadata de Stripe; se inserta al crear el
+/// intent y se lee en el /confirm. Keyed por el id del PaymentIntent.
+model PendingDeliveryAddress {
+  paymentIntentId String   @id
+  address         String
+  lat             Float?
+  lng             Float?
+  createdAt       DateTime @default(now())
+}

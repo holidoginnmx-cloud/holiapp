@@ -1,28 +1,21 @@
 import { FastifyInstance } from "fastify";
 import { CreatePaymentSchema } from "@holidoginn/shared";
-import { PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser } from "../lib/notify";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
-import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
+import {
+  getLodgingPricing,
+  pricePerDayForWeight,
+  sizeFromWeight,
+  bathSizeKey,
+} from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
 });
-
-function sizeFromWeight(kg: number): PetSize {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
-
-function bathSizeKey(size: PetSize): PetSize {
-  return size === "XS" ? "S" : size;
-}
 
 export default async function paymentsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;

@@ -216,11 +216,23 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             ? {
                 deliveryFee: String(deliveryFee),
                 deliveryDistanceKm: String(deliveryDistanceKm),
-                deliveryAddress: body.homeDelivery!.address,
               }
             : {}),
         },
       });
+
+      // La dirección del cliente (PII) NO va en el metadata de Stripe: se
+      // persiste en DB asociada al PaymentIntent y se lee en el /confirm.
+      if (deliveryActive && body.homeDelivery) {
+        await prisma.pendingDeliveryAddress.create({
+          data: {
+            paymentIntentId: paymentIntent.id,
+            address: body.homeDelivery.address,
+            lat: body.homeDelivery.lat,
+            lng: body.homeDelivery.lng,
+          },
+        });
+      }
 
       return reply.send({
         clientSecret: paymentIntent.client_secret,
@@ -283,8 +295,11 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       if (pi.metadata?.deliveryFee) {
         deliveryFee = Number(pi.metadata.deliveryFee);
         deliveryDistanceKm = Number(pi.metadata.deliveryDistanceKm || 0);
-        deliveryAddress =
-          typeof pi.metadata.deliveryAddress === "string" ? pi.metadata.deliveryAddress : null;
+        // La dirección se lee de la DB (ya no del metadata de Stripe).
+        const pendingDelivery = await prisma.pendingDeliveryAddress.findUnique({
+          where: { paymentIntentId: pi.id },
+        });
+        deliveryAddress = pendingDelivery?.address ?? null;
       }
 
       const appointmentAt = new Date(appointmentAtIso);
@@ -298,6 +313,10 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
 
       try {
         const result = await prisma.$transaction(async (tx) => {
+          // Lock transaccional por slot (mismo namespace 42 que /baths/confirm):
+          // serializa confirmaciones concurrentes del mismo horario para que el
+          // count-then-create sea atómico y no se sobre-reserve el slot.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
           const taken = await tx.reservation.count({
             where: { reservationType: "BATH", status: { not: "CANCELLED" }, appointmentAt },
           });

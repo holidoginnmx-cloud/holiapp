@@ -1054,11 +1054,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   //  POST /internal/expire-credits — cron diario
   //  Expira saldo a favor con >90 días sin actividad y manda
   //  notificación de "expira pronto" 14 días antes.
-  //  Protegido por header x-cron-secret (si CRON_SECRET está configurado).
+  //  Protegido por header x-cron-secret. CRON_SECRET DEBE estar configurado en
+  //  producción: si falta, el endpoint queda cerrado (401) en vez de abierto.
   // ────────────────────────────────────────────────────────────
   fastify.post("/internal/expire-credits", async (request, reply) => {
     const secret = process.env.CRON_SECRET;
-    if (secret && request.headers["x-cron-secret"] !== secret) {
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
       return reply.status(401).send({ error: "No autorizado" });
     }
 

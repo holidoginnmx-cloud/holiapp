@@ -9,6 +9,7 @@ import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { quoteDelivery } from "../lib/delivery";
+import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -24,17 +25,6 @@ export const BATH_DEPOSIT_AMOUNT = 150;
 // Grace period (minutes) past the appointment time before the slot is
 // considered missed. Surfaced in the UI so owners know their margin.
 export const BATH_LATE_TOLERANCE_MIN = 15;
-
-function sizeFromWeight(kg: number): PetSize {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
-
-function bathSizeKey(size: PetSize): PetSize {
-  return size === "XS" ? "S" : size;
-}
 
 export function describeBath(deslanado: boolean, corte: boolean): string {
   const extras: string[] = [];
@@ -871,13 +861,14 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   // ────────────────────────────────────────────────────────────
   //  POST /internal/bath-reminders — cron endpoint
   //  Envía recordatorio 24h antes de cada cita de baño pendiente.
-  //  Protegido por header x-cron-secret (si CRON_SECRET está configurado).
+  //  Protegido por header x-cron-secret. CRON_SECRET DEBE estar configurado en
+  //  producción: si falta, el endpoint queda cerrado (401) en vez de abierto.
   //  Idempotente: no reenvía si ya hay una notificación RESERVATION_REMINDER
   //  para la misma reservación.
   // ────────────────────────────────────────────────────────────
   fastify.post("/internal/bath-reminders", async (request, reply) => {
     const secret = process.env.CRON_SECRET;
-    if (secret && request.headers["x-cron-secret"] !== secret) {
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
       return reply.status(401).send({ error: "No autorizado" });
     }
 
@@ -940,7 +931,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   // ────────────────────────────────────────────────────────────
   fastify.post("/internal/reservation-reminders-90min", async (request, reply) => {
     const secret = process.env.CRON_SECRET;
-    if (secret && request.headers["x-cron-secret"] !== secret) {
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
       return reply.status(401).send({ error: "No autorizado" });
     }
 
@@ -1112,6 +1103,12 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
       try {
         const result = await prisma.$transaction(async (tx) => {
+          // Lock transaccional por slot: serializa confirmaciones concurrentes
+          // del MISMO horario para que el count-then-create sea atómico (con
+          // READ COMMITTED dos confirmaciones verían ambas taken=0 y crearían
+          // dos baños en un slot de capacidad 1). El lock se libera al cerrar la
+          // transacción. Namespace 42 = slots de baño.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
           const taken = await tx.reservation.count({
             where: {
               reservationType: "BATH",

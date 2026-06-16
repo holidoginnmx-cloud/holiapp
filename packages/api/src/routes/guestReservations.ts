@@ -237,14 +237,6 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         for (const [petId, sel] of Object.entries(medicationByPet)) {
           metadata[`med_${petId}`] = sel.notes;
         }
-        if (deliveryActive && body.homeDelivery) {
-          metadata.delivery = JSON.stringify({
-            address: body.homeDelivery.address,
-            lat: body.homeDelivery.lat,
-            lng: body.homeDelivery.lng,
-          });
-        }
-
         const paymentIntent = await stripe.paymentIntents.create({
           amount: Math.round(depositAmountBase * 100),
           currency: "mxn",
@@ -252,6 +244,19 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           receipt_email: owner.email,
           metadata,
         });
+
+        // La dirección del cliente (PII) NO va en el metadata de Stripe: se
+        // persiste en DB asociada al PaymentIntent y se lee en el /confirm.
+        if (deliveryActive && body.homeDelivery) {
+          await prisma.pendingDeliveryAddress.create({
+            data: {
+              paymentIntentId: paymentIntent.id,
+              address: body.homeDelivery.address,
+              lat: body.homeDelivery.lat,
+              lng: body.homeDelivery.lng,
+            },
+          });
+        }
 
         return reply.send({
           clientSecret: paymentIntent.client_secret,
@@ -367,7 +372,18 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           medicationByPet[key.slice(4)] = { notes: value };
         }
       }
-      const homeDelivery = pi.metadata.delivery ? JSON.parse(pi.metadata.delivery) : undefined;
+      // Dirección de entrega: leída de la DB (ya no del metadata de Stripe).
+      const pendingDelivery = await prisma.pendingDeliveryAddress.findUnique({
+        where: { paymentIntentId: pi.id },
+      });
+      const homeDelivery =
+        pendingDelivery && pendingDelivery.lat != null && pendingDelivery.lng != null
+          ? {
+              address: pendingDelivery.address,
+              lat: pendingDelivery.lat,
+              lng: pendingDelivery.lng,
+            }
+          : undefined;
 
       const result = await createReservationGroup(prisma, {
         owner,

@@ -49,6 +49,9 @@ export const NotificationTypeEnum = z.enum([
   "REFUND_ISSUED",
   "CREDIT_ADDED",
   "CREDIT_APPLIED",
+  "NEW_RESERVATION",
+  "STAFF_ASSIGNED",
+  "CHECKLIST_REMINDER",
   "VACCINE_EXPIRING",
 ]);
 
@@ -827,3 +830,11 @@ export const ConfirmBathSchema = z.object({
   paymentIntentId: z.string(),
 });
 export type ConfirmBath = z.infer<typeof ConfirmBathSchema>;
+
+// ========================
+// Pricing & sizing — re-exportado desde ./pricing (módulo puro, SIN zod).
+// Vive en un archivo aparte para que la app móvil pueda importar estas
+// funciones sin arrastrar zod al bundle. FUENTE ÚNICA: no redefinir en
+// rutas ni pantallas.
+// ========================
+export * from "./pricing";

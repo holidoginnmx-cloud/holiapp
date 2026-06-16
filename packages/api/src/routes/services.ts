@@ -5,22 +5,11 @@ import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
 import { maybeConcludeStandaloneBath } from "./baths";
+import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
 });
-
-function sizeFromWeight(kg: number): PetSize {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
-
-// XS pets bill at S price — the business does not price them differently
-function bathSizeKey(size: PetSize): PetSize {
-  return size === "XS" ? "S" : size;
-}
 
 function describeBath(deslanado: boolean, corte: boolean): string {
   const extras: string[] = [];

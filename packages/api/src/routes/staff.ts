@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
-import { Prisma } from "@holidoginn/db";
+import { Prisma, ReservationStatus } from "@holidoginn/db";
 import {
   createAuthMiddleware,
   createStaffMiddleware,
@@ -43,7 +43,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     const existingReminder = await prisma.notification.findFirst({
       where: {
         userId: staffId,
-        type: "CHECKLIST_REMINDER" as any,
+        type: "CHECKLIST_REMINDER",
         createdAt: { gte: todayStart },
       },
     });
@@ -52,7 +52,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     const petNames = staysWithoutChecklist.map((s) => s.pet.name).join(", ");
     await notifyUser(prisma, {
       userId: staffId,
-      type: "CHECKLIST_REMINDER" as any,
+      type: "CHECKLIST_REMINDER",
       title: "Reportes diarios pendientes 📋",
       body: `Faltan reportes de hoy para: ${petNames}. No olvides llenarlos.`,
       data: {
@@ -84,7 +84,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       where: {
         reservationType: "STAY",
         ...(status
-          ? { status: status as any }
+          ? { status: status as ReservationStatus }
           : { status: { not: "CANCELLED" } }),
         ...(request.userRole === "STAFF" && !isAll
           ? { staffId: request.userId }

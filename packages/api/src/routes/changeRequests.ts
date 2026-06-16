@@ -3,7 +3,9 @@ import Stripe from "stripe";
 import {
   CreateChangeRequestSchema,
   RejectChangeRequestSchema,
+  ChangeRequestStatusEnum,
 } from "@holidoginn/shared";
+import { ReservationStatus } from "@holidoginn/db";
 import {
   createAuthMiddleware,
   createAdminMiddleware,
@@ -118,7 +120,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
-      if (!MODIFIABLE_STATUSES.includes(reservation.status as any)) {
+      if (!(MODIFIABLE_STATUSES as readonly string[]).includes(reservation.status)) {
         return reply.status(400).send({
           error: "Solo se pueden modificar reservaciones confirmadas o activas",
         });
@@ -229,7 +231,9 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
     "/admin/change-requests",
     { preHandler: adminAuth },
     async (request, reply) => {
-      const status = (request.query.status ?? "PENDING") as any;
+      // Valida el query param contra el enum (default PENDING si es inválido).
+      const parsedStatus = ChangeRequestStatusEnum.safeParse(request.query.status);
+      const status = parsedStatus.success ? parsedStatus.data : "PENDING";
       const list = await prisma.reservationChangeRequest.findMany({
         where: { status },
         orderBy: { createdAt: "desc" },
@@ -278,7 +282,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
           where: {
             roomId: cr.reservation.roomId,
             id: { not: cr.reservationId },
-            status: { notIn: ["CANCELLED", "CHECKED_OUT"] as any },
+            status: { notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatus[] },
             AND: [
               { checkIn: { lt: cr.newCheckOut } },
               { checkOut: { gt: cr.newCheckIn } },
@@ -419,7 +423,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
           await tx.notification.create({
             data: {
               userId: cr.reservation.staffId,
-              type: "RESERVATION_CHANGE_APPROVED" as any,
+              type: "RESERVATION_CHANGE_APPROVED",
               title: `Cambio aprobado: ${cr.reservation.pet.name} ✅`,
               body: summary,
               data: { reservationId: cr.reservationId },
@@ -471,7 +475,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       if (cr.reservation.staffId) {
         await notifyUser(prisma, {
           userId: cr.reservation.staffId,
-          type: "RESERVATION_CHANGE_REJECTED" as any,
+          type: "RESERVATION_CHANGE_REJECTED",
           title: `Cambio rechazado: ${cr.reservation.pet.name}`,
           body: `La solicitud de cambio de fechas fue rechazada. Motivo: ${parsed.data.reason}`,
           data: { reservationId: cr.reservationId },

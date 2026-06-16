@@ -20,7 +20,7 @@ import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
-import { getLodgingPricing, pricePerDayForWeight } from "../lib/pricing";
+import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -481,13 +481,6 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     return null;
   }
 
-  function sizeFromWeight(kg: number): PetSize {
-    if (kg <= 5) return "S";
-    if (kg <= 15) return "M";
-    if (kg <= 24) return "L";
-    return "XL";
-  }
-
   // POST /reservations/multi — crear reservaciones para múltiples mascotas
   fastify.post("/reservations/multi", { preHandler: [authMiddleware] }, async (request, reply) => {
     const parsed = CreateMultiReservationSchema.safeParse(request.body);
@@ -715,7 +708,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       for (const [petId, sel] of Object.entries(bathSelectionsByPet)) {
         const ps = petSizes.find((x) => x.pet.id === petId);
         if (!ps) continue;
-        const size: PetSize = ps.size === "XS" ? "S" : ps.size;
+        // ps.size proviene de sizeFromWeight → nunca "XS" (no requiere colapso).
+        const size: PetSize = ps.size;
         const variant = await prisma.serviceVariant.findUnique({
           where: {
             serviceTypeId_petSize_deslanado_corte: {
@@ -793,21 +787,30 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       creditApplied = Math.min(ownerCredit, amountDue);
     }
 
-    const operations = [];
-    for (let i = 0; i < assignments.length; i++) {
-      const a = assignments[i];
-      const bath = bathByPet.get(a.petId);
-      const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
-      const medNotes = medicationNotesByPet.get(a.petId) ?? null;
-      // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
-      // (un viaje cubre a todas las mascotas del mismo dueño).
-      const isFirst = i === 0;
-      const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
-      const reservationAmount =
-        (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier +
-        deliveryForThis;
-      operations.push(
-        prisma.reservation.create({
+    // Reserva + pago + addon de baño + descuento de saldo en UNA transacción
+    // interactiva: si algo falla a mitad, NADA se persiste (no quedan reservas
+    // sin su registro de pago, ni saldo descontado sin reserva). Las
+    // notificaciones (push) y lecturas auxiliares van DESPUÉS del commit.
+    const isDeposit = paymentType === "DEPOSIT";
+    const reservations = await prisma.$transaction(async (tx) => {
+      const created: Prisma.ReservationGetPayload<{
+        include: { pet: true; room: true };
+      }>[] = [];
+
+      for (let i = 0; i < assignments.length; i++) {
+        const a = assignments[i];
+        const bath = bathByPet.get(a.petId);
+        const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
+        const medNotes = medicationNotesByPet.get(a.petId) ?? null;
+        // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
+        // (un viaje cubre a todas las mascotas del mismo dueño).
+        const isFirst = i === 0;
+        const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
+        const reservationAmount =
+          (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier +
+          deliveryForThis;
+
+        const res = await tx.reservation.create({
           data: {
             checkIn,
             checkOut,
@@ -836,85 +839,88 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               : {}),
           },
           include: { pet: true, room: true },
-        })
-      );
-    }
+        });
+        created.push(res);
 
-    const reservations = await prisma.$transaction(operations);
-
-    // Register payment for each reservation
-    const isDeposit = paymentType === "DEPOSIT";
-    for (let i = 0; i < reservations.length; i++) {
-      const res = reservations[i];
-      const paidAmount = isDeposit
-        ? new Prisma.Decimal(Number(res.totalAmount) * 0.20)
-        : res.totalAmount;
-      const payment = await prisma.payment.create({
-        data: {
-          amount: paidAmount,
-          // CREDIT when no Stripe charge was created (saldo a favor cubrió todo).
-          method: creditOnly ? "CREDIT" : "STRIPE",
-          status: isDeposit ? "PARTIAL" : "PAID",
-          stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
-          paidAt: new Date(),
-          notes: isDeposit
-            ? (creditOnly ? "Anticipo 20% (saldo a favor)" : "Anticipo 20%")
-            : (creditOnly ? "Pago con saldo a favor" : null),
-          reservationId: res.id,
-          userId: ownerId,
-        },
-      });
-
-      // Persist bath addon attached to this reservation's payment
-      const bath = bathByPet.get(res.petId);
-      if (bath) {
-        await prisma.reservationAddon.create({
+        const paidAmount = isDeposit
+          ? new Prisma.Decimal(Number(res.totalAmount) * 0.20)
+          : res.totalAmount;
+        const payment = await tx.payment.create({
           data: {
+            amount: paidAmount,
+            // CREDIT when no Stripe charge was created (saldo a favor cubrió todo).
+            method: creditOnly ? "CREDIT" : "STRIPE",
+            status: isDeposit ? "PARTIAL" : "PAID",
+            stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
+            paidAt: new Date(),
+            notes: isDeposit
+              ? (creditOnly ? "Anticipo 20% (saldo a favor)" : "Anticipo 20%")
+              : (creditOnly ? "Pago con saldo a favor" : null),
             reservationId: res.id,
-            variantId: bath.variantId,
-            unitPrice: new Prisma.Decimal(bath.price),
-            paidWith: "BOOKING",
-            paymentId: payment.id,
+            userId: ownerId,
           },
         });
-        // Notify staff (unassigned at this point, so only admins) + assigned staff if any
-        const variantRow = await prisma.serviceVariant.findUnique({
-          where: { id: bath.variantId },
-        });
-        if (variantRow) {
-          // Fire-and-forget: el push no debe bloquear la respuesta.
-          notifyBathContracted(prisma, {
-            reservationId: res.id,
-            petName: res.pet.name,
-            assignedStaffId: res.staffId,
-            deslanado: variantRow.deslanado,
-            corte: variantRow.corte,
-            price: bath.price,
-          }).catch((err) => fastify.log.error({ err }, "notifyBathContracted falló"));
+
+        // Persist bath addon attached to this reservation's payment
+        if (bath) {
+          await tx.reservationAddon.create({
+            data: {
+              reservationId: res.id,
+              variantId: bath.variantId,
+              unitPrice: new Prisma.Decimal(bath.price),
+              paidWith: "BOOKING",
+              paymentId: payment.id,
+            },
+          });
         }
+      }
+
+      // Deduct credit applied (if any) and write ledger entry — atómico con lo anterior.
+      if (creditApplied > 0) {
+        const updatedOwner = await tx.user.update({
+          where: { id: ownerId },
+          data: {
+            creditBalance: { decrement: creditApplied },
+            lastCreditEntryAt: new Date(),
+          },
+        });
+        await tx.creditLedger.create({
+          data: {
+            userId: ownerId,
+            type: "CREDIT_APPLIED",
+            amount: -creditApplied,
+            balanceAfter: Number(updatedOwner.creditBalance),
+            description: `Saldo aplicado en nueva reservación`,
+            reservationId: created[0]?.id ?? null,
+          },
+        });
+      }
+
+      return created;
+    });
+
+    // ─── Post-commit (no crítico): notificaciones y lecturas auxiliares ───
+    // Baños contratados: avisar a staff/admin (fire-and-forget).
+    for (const res of reservations) {
+      const bath = bathByPet.get(res.petId);
+      if (!bath) continue;
+      const variantRow = await prisma.serviceVariant.findUnique({
+        where: { id: bath.variantId },
+      });
+      if (variantRow) {
+        notifyBathContracted(prisma, {
+          reservationId: res.id,
+          petName: res.pet.name,
+          assignedStaffId: res.staffId,
+          deslanado: variantRow.deslanado,
+          corte: variantRow.corte,
+          price: bath.price,
+        }).catch((err) => fastify.log.error({ err }, "notifyBathContracted falló"));
       }
     }
 
-    // Deduct credit applied (if any) and write ledger entry
+    // Saldo a favor aplicado: avisar al dueño (fire-and-forget).
     if (creditApplied > 0) {
-      const updatedOwner = await prisma.user.update({
-        where: { id: ownerId },
-        data: {
-          creditBalance: { decrement: creditApplied },
-          lastCreditEntryAt: new Date(),
-        },
-      });
-      await prisma.creditLedger.create({
-        data: {
-          userId: ownerId,
-          type: "CREDIT_APPLIED",
-          amount: -creditApplied,
-          balanceAfter: Number(updatedOwner.creditBalance),
-          description: `Saldo aplicado en nueva reservación`,
-          reservationId: reservations[0]?.id ?? null,
-        },
-      });
-      // Fire-and-forget: el push no debe bloquear la respuesta al cliente.
       notifyUser(prisma, {
         userId: ownerId,
         type: "CREDIT_APPLIED",
@@ -925,7 +931,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
 
     // Notificar a todos los staff de nueva reservación disponible
-    const petNames = reservations.map((r: any) => r.pet?.name).filter(Boolean).join(", ");
+    const petNames = reservations.map((r) => r.pet?.name).filter(Boolean).join(", ");
     const staffUsers = await prisma.user.findMany({
       where: { role: "STAFF", isActive: true },
       select: { id: true },
@@ -933,7 +939,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (staffUsers.length > 0) {
       // Fire-and-forget: notificar al staff no debe bloquear la respuesta.
       notifyUsers(prisma, staffUsers.map((s) => s.id), {
-        type: "NEW_RESERVATION" as any,
+        type: "NEW_RESERVATION",
         title: "Nueva reservación creada 🐾",
         body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
         data: { reservationId: reservations[0]?.id },
@@ -944,10 +950,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (owner.email) {
       const depositAmount = paymentType === "DEPOSIT" ? grandTotal * 0.20 : grandTotal;
       const remainingAmount = grandTotal - depositAmount;
-      const roomNames = [...new Set(reservations.map((r: any) => r.room?.name).filter(Boolean))];
+      const roomNames = [...new Set(reservations.map((r) => r.room?.name).filter(Boolean))];
       const tpl = reservationConfirmedTemplate({
         ownerFirstName: owner.firstName,
-        petNames: reservations.map((r: any) => r.pet.name),
+        petNames: reservations.map((r) => r.pet.name),
         checkIn,
         checkOut,
         roomName: roomNames.length === 1 ? (roomNames[0] as string) : null,

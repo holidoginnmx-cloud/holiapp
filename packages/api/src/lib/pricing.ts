@@ -1,25 +1,29 @@
 import type { PrismaClient } from "@prisma/client";
+import {
+  DEFAULT_LODGING_PRICING,
+  DEFAULT_PRICE_PER_DAY_SMALL,
+  DEFAULT_PRICE_PER_DAY_LARGE,
+  DEFAULT_LARGE_WEIGHT_KG,
+  DEFAULT_MEDICATION_SURCHARGE_PCT,
+  type LodgingPricingConfig,
+  computeDays,
+  pricePerDayForWeight,
+} from "@holidoginn/shared";
 
-// Defaults — usados si la fila singleton aún no existe (DB recién creada,
-// pruebas, etc.). Mantienen el comportamiento histórico.
-export const DEFAULT_PRICE_PER_DAY_SMALL = 350;
-export const DEFAULT_PRICE_PER_DAY_LARGE = 450;
-export const DEFAULT_LARGE_WEIGHT_KG = 20;
-export const DEFAULT_MEDICATION_SURCHARGE_PCT = 0.10;
-
-export interface LodgingPricingConfig {
-  pricePerDaySmall: number;
-  pricePerDayLarge: number;
-  largeWeightKg: number;
-  medicationSurchargePct: number;
-}
-
-const DEFAULT_CONFIG: LodgingPricingConfig = {
-  pricePerDaySmall: DEFAULT_PRICE_PER_DAY_SMALL,
-  pricePerDayLarge: DEFAULT_PRICE_PER_DAY_LARGE,
-  largeWeightKg: DEFAULT_LARGE_WEIGHT_KG,
-  medicationSurchargePct: DEFAULT_MEDICATION_SURCHARGE_PCT,
-};
+// Re-exporta las funciones/constantes puras de pricing desde el paquete
+// compartido (FUENTE ÚNICA). Las rutas siguen importándolas desde
+// "../lib/pricing" sin cambios, pero la lógica vive una sola vez en shared.
+export {
+  sizeFromWeight,
+  bathSizeKey,
+  computeDays,
+  pricePerDayForWeight,
+  DEFAULT_PRICE_PER_DAY_SMALL,
+  DEFAULT_PRICE_PER_DAY_LARGE,
+  DEFAULT_LARGE_WEIGHT_KG,
+  DEFAULT_MEDICATION_SURCHARGE_PCT,
+} from "@holidoginn/shared";
+export type { LodgingPricingConfig } from "@holidoginn/shared";
 
 /**
  * Lee la configuración de tarifas de hospedaje (singleton). Si la fila no
@@ -39,54 +43,6 @@ export async function getLodgingPricing(
     largeWeightKg: Number(row.largeWeightKg),
     medicationSurchargePct: Number(row.medicationSurchargePct),
   };
-}
-
-/**
- * Number of nights between two dates, counted as calendar-day delta in UTC.
- *
- * Why: callers may pass dates with different times of day (e.g. when a client
- * sends `new Date()` rather than UTC midnight) and a raw ms diff with `Math.ceil`
- * over-counts when checkOut > checkIn by less than a full 24h. Anchoring both
- * to their UTC date components yields exact integer days regardless of TZ.
- */
-export function computeDays(checkIn: Date, checkOut: Date): number {
-  const ciUTC = Date.UTC(
-    checkIn.getUTCFullYear(),
-    checkIn.getUTCMonth(),
-    checkIn.getUTCDate(),
-  );
-  const coUTC = Date.UTC(
-    checkOut.getUTCFullYear(),
-    checkOut.getUTCMonth(),
-    checkOut.getUTCDate(),
-  );
-  return Math.round((coUTC - ciUTC) / 86_400_000);
-}
-
-// Tamaño a partir del peso (kg). Misma tabla que usan reservations.ts,
-// payments.ts y baths.ts; centralizada aquí para que el flujo de invitado web
-// la reutilice sin redefinirla.
-export function sizeFromWeight(kg: number): "S" | "M" | "L" | "XL" {
-  if (kg <= 5) return "S";
-  if (kg <= 15) return "M";
-  if (kg <= 24) return "L";
-  return "XL";
-}
-
-// Las variantes de baño se catalogan por S/M/L/XL — XS colapsa a S.
-export function bathSizeKey(
-  size: "XS" | "S" | "M" | "L" | "XL"
-): "S" | "M" | "L" | "XL" {
-  return size === "XS" ? "S" : size;
-}
-
-export function pricePerDayForWeight(
-  weightKg: number | null,
-  config: LodgingPricingConfig = DEFAULT_CONFIG
-): number {
-  return weightKg && weightKg >= config.largeWeightKg
-    ? config.pricePerDayLarge
-    : config.pricePerDaySmall;
 }
 
 interface ChangeTotalInput {
@@ -117,7 +73,7 @@ export function computeChangeTotal({
   newCheckOut,
   hasMedication,
   existingBathTotal,
-  config = DEFAULT_CONFIG,
+  config = DEFAULT_LODGING_PRICING,
 }: ChangeTotalInput): ChangeTotalResult {
   const newTotalDays = computeDays(newCheckIn, newCheckOut);
   const pricePerDay = pricePerDayForWeight(petWeightKg, config);
