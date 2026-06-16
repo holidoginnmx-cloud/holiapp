@@ -464,18 +464,21 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         method: "CARD",
         reservationStatus: "CONFIRMED",
       });
-      await sendEmail({ to: owner.email, ...tpl });
+      // Fire-and-forget: el correo no debe bloquear la respuesta.
+      sendEmail({ to: owner.email, ...tpl }).catch((err) =>
+        fastify.log.error({ err }, "sendEmail(pago saldo) falló")
+      );
     }
 
-    // Notificación + push in-app
+    // Notificación + push in-app (fire-and-forget)
     if (pet) {
-      await notifyUser(prisma, {
+      notifyUser(prisma, {
         userId: reservation.ownerId,
         type: "PAYMENT_RECEIVED",
         title: "Pago recibido ✅",
         body: `Se registró tu pago de $${(paymentIntent.amount / 100).toLocaleString("es-MX")} para la estancia de ${pet.name}.`,
         data: { reservationId, amount: paymentIntent.amount / 100 },
-      });
+      }).catch((err) => fastify.log.error({ err }, "notifyUser(pago saldo) falló"));
     }
 
     return reply.send({ success: true });

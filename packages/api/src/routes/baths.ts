@@ -1237,14 +1237,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           select: { name: true },
         });
         if (pet) {
-          await notifyBathBooked(prisma, {
+          // Fire-and-forget: el push a admins no debe bloquear la respuesta.
+          notifyBathBooked(prisma, {
             reservationId: result.reservation.id,
             petName: pet.name,
             appointmentAt,
             deslanado: variant.deslanado,
             corte: variant.corte,
             price: Number(variant.price),
-          });
+          }).catch((err) => fastify.log.error({ err }, "notifyBathBooked falló"));
         }
 
         return reply.send({ success: true, reservation: result.reservation });

@@ -882,14 +882,15 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           where: { id: bath.variantId },
         });
         if (variantRow) {
-          await notifyBathContracted(prisma, {
+          // Fire-and-forget: el push no debe bloquear la respuesta.
+          notifyBathContracted(prisma, {
             reservationId: res.id,
             petName: res.pet.name,
             assignedStaffId: res.staffId,
             deslanado: variantRow.deslanado,
             corte: variantRow.corte,
             price: bath.price,
-          });
+          }).catch((err) => fastify.log.error({ err }, "notifyBathContracted falló"));
         }
       }
     }
@@ -913,13 +914,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           reservationId: reservations[0]?.id ?? null,
         },
       });
-      await notifyUser(prisma, {
+      // Fire-and-forget: el push no debe bloquear la respuesta al cliente.
+      notifyUser(prisma, {
         userId: ownerId,
         type: "CREDIT_APPLIED",
         title: "Saldo a favor aplicado 💰",
         body: `Se aplicaron $${creditApplied.toLocaleString("es-MX")} de tu saldo a la nueva reservación.`,
         data: { reservationId: reservations[0]?.id, amount: creditApplied },
-      });
+      }).catch((err) => fastify.log.error({ err }, "notifyUser(credit) falló"));
     }
 
     // Notificar a todos los staff de nueva reservación disponible
@@ -929,12 +931,13 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       select: { id: true },
     });
     if (staffUsers.length > 0) {
-      await notifyUsers(prisma, staffUsers.map((s) => s.id), {
+      // Fire-and-forget: notificar al staff no debe bloquear la respuesta.
+      notifyUsers(prisma, staffUsers.map((s) => s.id), {
         type: "NEW_RESERVATION" as any,
         title: "Nueva reservación creada 🐾",
         body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
         data: { reservationId: reservations[0]?.id },
-      });
+      }).catch((err) => fastify.log.error({ err }, "notifyUsers(staff) falló"));
     }
 
     // Email de confirmación al dueño
@@ -952,7 +955,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         paymentType: paymentType as "FULL" | "DEPOSIT",
         remainingAmount,
       });
-      await sendEmail({ to: owner.email, ...tpl });
+      // Fire-and-forget: el correo (Resend, ~2-5 s) no debe bloquear la
+      // respuesta; sendEmail ya es tolerante a fallas internamente.
+      sendEmail({ to: owner.email, ...tpl }).catch((err) =>
+        fastify.log.error({ err }, "sendEmail(confirmación) falló")
+      );
     }
 
     return reply.status(201).send({ reservations, grandTotal, groupId, creditApplied });
