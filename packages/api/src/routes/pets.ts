@@ -259,6 +259,43 @@ export default async function petsRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // DELETE /pets/:id — eliminar (soft delete: isActive=false). Owner del pet o admin.
+  // Bloquea si la mascota tiene reservaciones activas (CONFIRMED/CHECKED_IN) para
+  // no romper estancias en curso. El registro se conserva por integridad histórica.
+  fastify.delete<{ Params: { id: string } }>(
+    "/pets/:id",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({ where: { id: request.params.id } });
+      if (!pet || !pet.isActive) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      // Solo el dueño o un admin pueden eliminar (staff no).
+      if (!isAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+
+      const activeReservations = await prisma.reservation.count({
+        where: {
+          petId: pet.id,
+          status: { in: ["CONFIRMED", "CHECKED_IN"] },
+        },
+      });
+      if (activeReservations > 0) {
+        return reply.status(409).send({
+          error:
+            "No puedes eliminar a tu mascota mientras tenga reservaciones activas.",
+        });
+      }
+
+      await prisma.pet.update({
+        where: { id: pet.id },
+        data: { isActive: false },
+      });
+      return reply.status(204).send();
+    }
+  );
+
   // POST /pets/:id/vaccines — agregar vacuna (owner del pet o staff/admin)
   fastify.post<{ Params: { id: string } }>(
     "/pets/:id/vaccines",
