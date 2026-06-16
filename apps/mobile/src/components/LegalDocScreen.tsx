@@ -89,15 +89,6 @@ export function LegalDocScreen({
           <Text style={styles.versionLabel}>Versión vigente: {version}</Text>
         ) : null}
 
-        <View style={styles.placeholderBanner}>
-          <Text style={styles.placeholderBannerTitle}>⚠️ Texto pendiente de revisión legal</Text>
-          <Text style={styles.placeholderBannerBody}>
-            El contenido de abajo es un marcador. Antes del lanzamiento, reemplázalo
-            con la versión revisada por tu abogado y sube la versión en
-            <Text style={{ fontWeight: "700" }}>{" packages/api/src/lib/legal.ts"}</Text>.
-          </Text>
-        </View>
-
         <View style={styles.bodyWrap}>{body}</View>
       </ScrollView>
 
@@ -152,25 +143,6 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginBottom: 16,
     fontFamily: "monospace",
-  },
-  placeholderBanner: {
-    backgroundColor: "#FEF3C7",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: "#D97706",
-  },
-  placeholderBannerTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#92400E",
-    marginBottom: 4,
-  },
-  placeholderBannerBody: {
-    fontSize: 12,
-    color: "#78350F",
-    lineHeight: 18,
   },
   bodyWrap: { gap: 10 },
   footer: {
