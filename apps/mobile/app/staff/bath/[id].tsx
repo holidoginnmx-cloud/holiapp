@@ -1,5 +1,9 @@
 import { COLORS } from "@/constants/colors";
 import { ErrorState } from "@/components/ErrorState";
+import {
+  PaymentManualModal,
+  type ManualPaymentValues,
+} from "@/components/PaymentManualModal";
 import { styles, extrasStyles } from "@/styles/bathDetailStyles";
 import { useMemo, useState } from "react";
 import {
@@ -727,35 +731,22 @@ function ManualPaymentSection({
   onSuccess: () => void;
 }) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<"CASH" | "TRANSFER">("CASH");
-  const [notes, setNotes] = useState("");
   const [registering, setRegistering] = useState(false);
 
   function openModal() {
-    setAmount(balance.total.toFixed(2));
-    setMethod("CASH");
-    setNotes("");
     setModalVisible(true);
   }
   function closeModal() {
     setModalVisible(false);
-    setAmount("");
-    setNotes("");
   }
 
-  const parsedAmount = parseFloat(amount);
-  const isAmountValid =
-    Number.isFinite(parsedAmount) && parsedAmount > 0;
-
-  async function registerPayment() {
-    if (!isAmountValid) return;
+  async function registerPayment(values: ManualPaymentValues) {
     setRegistering(true);
     try {
       const res = await registerBathManualPayment(reservationId, {
-        amount: parsedAmount,
-        method,
-        notes: notes.trim() || undefined,
+        amount: values.amount,
+        method: values.method,
+        notes: values.notes,
       });
       onSuccess();
       closeModal();
@@ -806,93 +797,13 @@ function ManualPaymentSection({
         <Text style={styles.registerPaymentText}>Registrar pago manual</Text>
       </TouchableOpacity>
 
-      <Modal
+      <PaymentManualModal
         visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closeModal}
-      >
-        <Pressable style={styles.modalOverlay} onPress={closeModal}>
-          <KeyboardAvoidingView
-            style={styles.modalKav}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>Registrar pago manual</Text>
-
-              <Text style={styles.inputLabel}>Monto</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="0.00"
-                placeholderTextColor={COLORS.textDisabled}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-              />
-
-              <Text style={styles.inputLabel}>Método</Text>
-              <View style={styles.methodRow}>
-                {(["CASH", "TRANSFER"] as const).map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[
-                      styles.methodChip,
-                      method === m && styles.methodChipActive,
-                    ]}
-                    onPress={() => setMethod(m)}
-                  >
-                    <Ionicons
-                      name={m === "CASH" ? "cash-outline" : "swap-horizontal-outline"}
-                      size={16}
-                      color={method === m ? COLORS.white : COLORS.textTertiary}
-                    />
-                    <Text
-                      style={[
-                        styles.methodChipText,
-                        method === m && { color: COLORS.white },
-                      ]}
-                    >
-                      {m === "CASH" ? "Efectivo" : "Transferencia"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.inputLabel}>Notas (opcional)</Text>
-              <TextInput
-                style={[styles.modalInput, { minHeight: 60 }]}
-                placeholder="Referencia, número de operación, etc."
-                placeholderTextColor={COLORS.textDisabled}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-              />
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={styles.modalBtnCancel}
-                  onPress={closeModal}
-                  disabled={registering}
-                >
-                  <Text style={styles.modalBtnCancelText}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modalBtnConfirm,
-                    (!isAmountValid || registering) && { opacity: 0.5 },
-                  ]}
-                  onPress={registerPayment}
-                  disabled={!isAmountValid || registering}
-                >
-                  <Text style={styles.modalBtnConfirmText}>
-                    {registering ? "Registrando..." : "Registrar"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
+        onClose={closeModal}
+        submitting={registering}
+        initialAmount={balance.total.toFixed(2)}
+        onSubmit={registerPayment}
+      />
     </View>
   );
 }

@@ -2,13 +2,10 @@ import { StyleSheet } from "react-native";
 import { COLORS } from "@/constants/colors";
 
 /**
- * Estilos compartidos por las tarjetas de pago de saldo pendiente
- * (BathExtrasPaymentCard y ExtensionPaymentCard). Eran idénticos en ambas;
- * se unifican aquí. Las claves `breakdown*`/`total*` solo las usa la de baño.
- *
- * Nota: la lógica de cada tarjeta sigue separada a propósito (distinto modelo
- * de datos y endpoints). Un merge de lógica en un único PaymentCardFlow queda
- * pendiente para hacerse junto con la prueba e2e del flujo de pago.
+ * Estilos compartidos por la tarjeta de pago de saldo pendiente PaymentCardFlow
+ * (que fusiona la lógica de las antiguas BathExtrasPaymentCard y
+ * ExtensionPaymentCard). Las claves `breakdown*`/`total*` solo las usa el
+ * desglose del baño; `price` solo el encabezado de la extensión.
  */
 export const styles = StyleSheet.create({
   card: {

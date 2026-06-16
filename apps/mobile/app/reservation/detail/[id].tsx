@@ -23,8 +23,7 @@ import {
   confirmBalancePayment,
 } from "@/lib/api";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
-import { BathExtrasPaymentCard } from "@/components/BathExtrasPaymentCard";
-import { ExtensionPaymentCard } from "@/components/ExtensionPaymentCard";
+import { PaymentCardFlow } from "@/components/PaymentCardFlow";
 import {
   formatName,
   formatCurrency,
@@ -546,14 +545,16 @@ function ReservationDetailScreenContent() {
 
       {/* Extension payment options (after approval) */}
       {approvedExtension && (
-        <ExtensionPaymentCard
+        <PaymentCardFlow
+          kind="extension"
           reservationId={reservation.id}
           changeRequest={approvedExtension}
         />
       )}
       {approvedExtensionPaidShortcut &&
         approvedExtensionPaidShortcut.id !== approvedExtension?.id && (
-          <ExtensionPaymentCard
+          <PaymentCardFlow
+            kind="extension"
             reservationId={reservation.id}
             changeRequest={approvedExtensionPaidShortcut}
           />
@@ -643,7 +644,7 @@ function ReservationDetailScreenContent() {
       {/* Baño primario: servicios contratados.
           - Pagado: itemizado con precios y total, marca verde.
           - Aún sin precio: chips + nota explicando cobro post-servicio.
-          - Con precio pero pendiente/al recoger: chips simples; el BathExtrasPaymentCard maneja la acción. */}
+          - Con precio pero pendiente/al recoger: chips simples; el PaymentCardFlow maneja la acción. */}
       {isBath && (bathHasDeslanado || bathHasCorte) && (
         <View
           style={[
@@ -757,8 +758,9 @@ function ReservationDetailScreenContent() {
             a.extraPaymentStatus !== "PAID",
         )
         .map((a) => (
-          <BathExtrasPaymentCard
+          <PaymentCardFlow
             key={a.id}
+            kind="bath"
             reservationId={reservation.id}
             addon={a}
           />

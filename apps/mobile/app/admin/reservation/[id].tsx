@@ -1,5 +1,10 @@
 import { COLORS } from "@/constants/colors";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectionListModal } from "@/components/SelectionListModal";
+import {
+  PaymentManualModal,
+  type ManualPaymentValues,
+} from "@/components/PaymentManualModal";
 import { styles } from "@/styles/reservationDetailStyles";
 import {
   View,
@@ -9,9 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  TextInput,
   Image,
-  Pressable,
   Dimensions,
 } from "react-native";
 
@@ -115,9 +118,6 @@ export default function AdminReservationDetail() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
-  const [paymentNotes, setPaymentNotes] = useState("");
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [roomModalVisible, setRoomModalVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -128,11 +128,7 @@ export default function AdminReservationDetail() {
     return () => clearTimeout(t);
   }, [successMessage]);
 
-  const closePaymentModal = () => {
-    setPaymentModalVisible(false);
-    setPaymentAmount("");
-    setPaymentNotes("");
-  };
+  const closePaymentModal = () => setPaymentModalVisible(false);
 
   // Visor de fotos del baño y mutación para eliminar.
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -280,18 +276,16 @@ export default function AdminReservationDetail() {
   });
 
   const paymentMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: ManualPaymentValues) =>
       registerManualPayment({
         reservationId: id!,
-        amount: parseFloat(paymentAmount),
-        method: paymentMethod,
-        notes: paymentNotes || undefined,
+        amount: values.amount,
+        method: values.method,
+        notes: values.notes,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       setPaymentModalVisible(false);
-      setPaymentAmount("");
-      setPaymentNotes("");
       Alert.alert("Pago registrado", "El pago se registró correctamente y se notificó al dueño.");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -1237,261 +1231,131 @@ export default function AdminReservationDetail() {
     </ScrollView>
 
     {/* Payment Modal */}
-    <Modal
+    <PaymentManualModal
       visible={paymentModalVisible}
-      transparent
-      animationType="slide"
-      onRequestClose={closePaymentModal}
-    >
-      <Pressable style={styles.modalOverlay} onPress={closePaymentModal}>
-        <Pressable style={styles.modalContent} onPress={() => {}}>
-          <Text style={styles.modalTitle}>Registrar pago manual</Text>
-
-          <Text style={styles.inputLabel}>Monto</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="0.00"
-            placeholderTextColor={COLORS.textDisabled}
-            value={paymentAmount}
-            onChangeText={setPaymentAmount}
-            keyboardType="decimal-pad"
-          />
-
-          <Text style={styles.inputLabel}>Método</Text>
-          <View style={styles.methodRow}>
-            {(["CASH", "TRANSFER"] as const).map((m) => (
-              <TouchableOpacity
-                key={m}
-                style={[
-                  styles.methodChip,
-                  paymentMethod === m && styles.methodChipActive,
-                ]}
-                onPress={() => setPaymentMethod(m)}
-              >
-                <Ionicons
-                  name={m === "CASH" ? "cash-outline" : "swap-horizontal-outline"}
-                  size={16}
-                  color={paymentMethod === m ? COLORS.white : COLORS.textTertiary}
-                />
-                <Text
-                  style={[
-                    styles.methodChipText,
-                    paymentMethod === m && { color: COLORS.white },
-                  ]}
-                >
-                  {m === "CASH" ? "Efectivo" : "Transferencia"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.inputLabel}>Notas (opcional)</Text>
-          <TextInput
-            style={[styles.modalInput, { minHeight: 60 }]}
-            placeholder="Referencia, número de operación, etc."
-            placeholderTextColor={COLORS.textDisabled}
-            value={paymentNotes}
-            onChangeText={setPaymentNotes}
-            multiline
-          />
-
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={styles.modalBtnCancel}
-              onPress={closePaymentModal}
-            >
-              <Text style={styles.modalBtnCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.modalBtnConfirm,
-                (!paymentAmount || parseFloat(paymentAmount) <= 0) && { opacity: 0.5 },
-              ]}
-              onPress={() => paymentMutation.mutate()}
-              disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || paymentMutation.isPending}
-            >
-              <Text style={styles.modalBtnConfirmText}>
-                {paymentMutation.isPending ? "Registrando..." : "Registrar"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      onClose={closePaymentModal}
+      submitting={paymentMutation.isPending}
+      onSubmit={(values) => paymentMutation.mutate(values)}
+    />
 
     {/* Staff Picker Modal */}
-    <Modal
+    <SelectionListModal
+      variant="view"
       visible={staffModalVisible}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setStaffModalVisible(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.staffModalHeader}>
-            <Text style={styles.modalTitle}>Asignar staff</Text>
-            <TouchableOpacity
-              onPress={() => setStaffModalVisible(false)}
-              hitSlop={8}
-            >
-              <Ionicons name="close" size={22} color={COLORS.textTertiary} />
-            </TouchableOpacity>
+      onClose={() => setStaffModalVisible(false)}
+      title="Asignar staff"
+      subtitle="Se notificará al staff por la app cuando sea asignado."
+      data={staffList}
+      emptyText="No hay staff activo registrado."
+      keyExtractor={(s) => s.id}
+      isItemSelected={(s) => reservation.staff?.id === s.id}
+      isItemPending={(s) =>
+        assignStaffMutation.isPending && assignStaffMutation.variables === s.id
+      }
+      styles={{
+        overlay: styles.modalOverlay,
+        content: styles.modalContent,
+        header: styles.staffModalHeader,
+        title: styles.modalTitle,
+        subtitle: styles.staffModalSubtitle,
+        list: styles.staffList,
+        empty: styles.staffEmptyText,
+      }}
+      renderItem={(s, { selected: isCurrent, pending: isPending }) => (
+        <TouchableOpacity
+          style={[styles.staffRow, isCurrent && styles.staffRowCurrent]}
+          onPress={() => assignStaffMutation.mutate(s.id)}
+          disabled={isCurrent || assignStaffMutation.isPending}
+          activeOpacity={0.7}
+        >
+          <View style={styles.staffAvatar}>
+            <Text style={styles.staffAvatarText}>
+              {(s.firstName?.[0] ?? "S").toUpperCase()}
+            </Text>
           </View>
-          <Text style={styles.staffModalSubtitle}>
-            Se notificará al staff por la app cuando sea asignado.
-          </Text>
-
-          {!staffList ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <ActivityIndicator color={COLORS.primary} />
-            </View>
-          ) : staffList.length === 0 ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <Text style={styles.staffEmptyText}>
-                No hay staff activo registrado.
-              </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.staffName} numberOfLines={1}>
+              {formatName(s.firstName)} {formatName(s.lastName)}
+            </Text>
+            <Text style={styles.staffEmail} numberOfLines={1}>
+              {s.email}
+            </Text>
+          </View>
+          {isPending ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : isCurrent ? (
+            <View style={styles.currentPill}>
+              <Text style={styles.currentPillText}>Asignado</Text>
             </View>
           ) : (
-            <View style={styles.staffList}>
-              {staffList.map((s) => {
-                const isCurrent = reservation.staff?.id === s.id;
-                const isPending =
-                  assignStaffMutation.isPending &&
-                  assignStaffMutation.variables === s.id;
-                return (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[
-                      styles.staffRow,
-                      isCurrent && styles.staffRowCurrent,
-                    ]}
-                    onPress={() => assignStaffMutation.mutate(s.id)}
-                    disabled={
-                      isCurrent || assignStaffMutation.isPending
-                    }
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.staffAvatar}>
-                      <Text style={styles.staffAvatarText}>
-                        {(s.firstName?.[0] ?? "S").toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.staffName} numberOfLines={1}>
-                        {formatName(s.firstName)} {formatName(s.lastName)}
-                      </Text>
-                      <Text style={styles.staffEmail} numberOfLines={1}>
-                        {s.email}
-                      </Text>
-                    </View>
-                    {isPending ? (
-                      <ActivityIndicator color={COLORS.primary} size="small" />
-                    ) : isCurrent ? (
-                      <View style={styles.currentPill}>
-                        <Text style={styles.currentPillText}>Asignado</Text>
-                      </View>
-                    ) : (
-                      <Ionicons
-                        name="chevron-forward"
-                        size={18}
-                        color={COLORS.textTertiary}
-                      />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={COLORS.textTertiary}
+            />
           )}
-        </View>
-      </View>
-    </Modal>
+        </TouchableOpacity>
+      )}
+    />
 
     {/* Room Picker Modal */}
-    <Modal
+    <SelectionListModal
+      variant="view"
       visible={roomModalVisible}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setRoomModalVisible(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.staffModalHeader}>
-            <Text style={styles.modalTitle}>Asignar cuarto</Text>
-            <TouchableOpacity
-              onPress={() => setRoomModalVisible(false)}
-              hitSlop={8}
-            >
-              <Ionicons name="close" size={22} color={COLORS.textTertiary} />
-            </TouchableOpacity>
+      onClose={() => setRoomModalVisible(false)}
+      title="Asignar cuarto"
+      subtitle={`Solo se muestran cuartos para el tamaño de ${formatName(reservation.pet.name)}.`}
+      data={roomList}
+      emptyText="No hay cuartos para el tamaño de esta mascota."
+      keyExtractor={(r) => r.id}
+      isItemSelected={(r) => reservation.room?.id === r.id}
+      isItemPending={(r) =>
+        assignRoomMutation.isPending && assignRoomMutation.variables === r.id
+      }
+      styles={{
+        overlay: styles.modalOverlay,
+        content: styles.modalContent,
+        header: styles.staffModalHeader,
+        title: styles.modalTitle,
+        subtitle: styles.staffModalSubtitle,
+        list: styles.staffList,
+        listMaxHeight: ROOM_LIST_MAX_HEIGHT,
+        empty: styles.staffEmptyText,
+      }}
+      renderItem={(r, { selected: isCurrent, pending: isPending }) => (
+        <TouchableOpacity
+          style={[styles.staffRow, isCurrent && styles.staffRowCurrent]}
+          onPress={() => assignRoomMutation.mutate(r.id)}
+          disabled={isCurrent || assignRoomMutation.isPending}
+          activeOpacity={0.7}
+        >
+          <View style={styles.staffAvatar}>
+            <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
           </View>
-          <Text style={styles.staffModalSubtitle}>
-            Solo se muestran cuartos para el tamaño de {formatName(reservation.pet.name)}.
-          </Text>
-
-          {!roomList ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <ActivityIndicator color={COLORS.primary} />
-            </View>
-          ) : roomList.length === 0 ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <Text style={styles.staffEmptyText}>
-                No hay cuartos para el tamaño de esta mascota.
-              </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.staffName} numberOfLines={1}>
+              {r.name}
+            </Text>
+            <Text style={styles.staffEmail} numberOfLines={1}>
+              Capacidad {r.capacity}
+            </Text>
+          </View>
+          {isPending ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : isCurrent ? (
+            <View style={styles.currentPill}>
+              <Text style={styles.currentPillText}>Asignado</Text>
             </View>
           ) : (
-            <ScrollView
-              style={{ maxHeight: ROOM_LIST_MAX_HEIGHT }}
-              contentContainerStyle={styles.staffList}
-              showsVerticalScrollIndicator={false}
-            >
-              {roomList.map((r) => {
-                const isCurrent = reservation.room?.id === r.id;
-                const isPending =
-                  assignRoomMutation.isPending &&
-                  assignRoomMutation.variables === r.id;
-                return (
-                  <TouchableOpacity
-                    key={r.id}
-                    style={[
-                      styles.staffRow,
-                      isCurrent && styles.staffRowCurrent,
-                    ]}
-                    onPress={() => assignRoomMutation.mutate(r.id)}
-                    disabled={isCurrent || assignRoomMutation.isPending}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.staffAvatar}>
-                      <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.staffName} numberOfLines={1}>
-                        {r.name}
-                      </Text>
-                      <Text style={styles.staffEmail} numberOfLines={1}>
-                        Capacidad {r.capacity}
-                      </Text>
-                    </View>
-                    {isPending ? (
-                      <ActivityIndicator color={COLORS.primary} size="small" />
-                    ) : isCurrent ? (
-                      <View style={styles.currentPill}>
-                        <Text style={styles.currentPillText}>Asignado</Text>
-                      </View>
-                    ) : (
-                      <Ionicons
-                        name="chevron-forward"
-                        size={18}
-                        color={COLORS.textTertiary}
-                      />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={COLORS.textTertiary}
+            />
           )}
-        </View>
-      </View>
-    </Modal>
+        </TouchableOpacity>
+      )}
+    />
 
     {/* Toast de éxito al hacer check-in / check-out. */}
     <Modal

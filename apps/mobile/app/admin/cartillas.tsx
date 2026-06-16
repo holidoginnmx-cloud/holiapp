@@ -30,28 +30,25 @@ import {
   type VaccineCatalogEntry,
   type ReviewCartillaPayload,
   type CartillaVaccine,
-  type DewormingType,
 } from "@/lib/api";
 import {
   formatName,
   formatPhoneInput,
   formatDayShort,
-  formatDayShortYear,
 } from "@/lib/format";
 import { styles } from "@/styles/cartillasStyles";
 import { cloudinaryResized } from "@/lib/cloudinary";
-
-function endOfToday(): Date {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function clampDate(value: Date, min?: Date, max?: Date): Date {
-  if (max && value > max) return max;
-  if (min && value < min) return min;
-  return value;
-}
+import { VaccineCapture } from "@/components/cartilla/VaccineCapture";
+import { DewormingCapture } from "@/components/cartilla/DewormingCapture";
+import {
+  addDays,
+  clampDate,
+  endOfToday,
+  formatShort,
+  DEWORMING_TYPES,
+  type VaccineRow,
+  type DewormingRow,
+} from "@/components/cartilla/helpers";
 
 const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "PENDING", label: "Pendientes" },
@@ -59,34 +56,6 @@ const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "REJECTED", label: "Rechazadas" },
   { key: "EXPIRED", label: "Vencidas" },
 ];
-
-type VaccineRow = {
-  catalogId: string | null;
-  appliedAt: Date;
-  expiresAt: Date;
-};
-
-type DewormingRow = {
-  type: DewormingType;
-  productName: string;
-  appliedAt: Date;
-  expiresAt: Date;
-  notes: string;
-};
-
-const DEWORMING_TYPES: { key: DewormingType; label: string }[] = [
-  { key: "INTERNAL", label: "Interna" },
-  { key: "EXTERNAL", label: "Externa" },
-  { key: "BOTH", label: "Ambas" },
-];
-
-// Próxima dosis sugerida para desparasitantes (común: 3 meses).
-const DEWORMING_DEFAULT_DAYS = 90;
-
-const addDays = (d: Date, days: number) =>
-  new Date(d.getTime() + days * 86_400_000);
-
-const formatShort = (d: Date) => formatDayShortYear(d);
 
 export default function AdminCartillas() {
   const queryClient = useQueryClient();
@@ -114,17 +83,9 @@ export default function AdminCartillas() {
   const [capturing, setCapturing] = useState(false);
   const [vaccineRows, setVaccineRows] = useState<VaccineRow[]>([]);
   const [catalogPickerForRow, setCatalogPickerForRow] = useState<number | null>(null);
-  const [appliedPickerForRow, setAppliedPickerForRow] = useState<number | null>(null);
-  const [expiresPickerForRow, setExpiresPickerForRow] = useState<number | null>(null);
 
   // Captura de desparasitaciones al aprobar.
   const [dewormingRows, setDewormingRows] = useState<DewormingRow[]>([]);
-  const [dewormingAppliedPickerForRow, setDewormingAppliedPickerForRow] = useState<
-    number | null
-  >(null);
-  const [dewormingExpiresPickerForRow, setDewormingExpiresPickerForRow] = useState<
-    number | null
-  >(null);
 
   // Edición de vacuna existente.
   const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null);
@@ -282,11 +243,7 @@ export default function AdminCartillas() {
     setCapturing(false);
     setVaccineRows([]);
     setCatalogPickerForRow(null);
-    setAppliedPickerForRow(null);
-    setExpiresPickerForRow(null);
     setDewormingRows([]);
-    setDewormingAppliedPickerForRow(null);
-    setDewormingExpiresPickerForRow(null);
     cancelEdit();
   };
 
@@ -296,17 +253,6 @@ export default function AdminCartillas() {
     setDewormingRows([]);
   };
 
-  const addRow = () => {
-    const today = new Date();
-    setVaccineRows((rows) => [
-      ...rows,
-      { catalogId: null, appliedAt: today, expiresAt: addDays(today, 365) },
-    ]);
-  };
-
-  const removeRow = (index: number) =>
-    setVaccineRows((rows) => rows.filter((_, i) => i !== index));
-
   const updateRowCatalog = (index: number, catalogId: string) => {
     setVaccineRows((rows) =>
       rows.map((r, i) => {
@@ -315,57 +261,6 @@ export default function AdminCartillas() {
         const expires = cat ? addDays(r.appliedAt, cat.defaultDurationDays) : r.expiresAt;
         return { ...r, catalogId, expiresAt: expires };
       })
-    );
-  };
-
-  const updateRowApplied = (index: number, appliedAt: Date) => {
-    setVaccineRows((rows) =>
-      rows.map((r, i) => {
-        if (i !== index) return r;
-        const cat = r.catalogId ? catalogById.get(r.catalogId) : undefined;
-        const expires = cat ? addDays(appliedAt, cat.defaultDurationDays) : r.expiresAt;
-        return { ...r, appliedAt, expiresAt: expires };
-      })
-    );
-  };
-
-  const updateRowExpires = (index: number, expiresAt: Date) => {
-    setVaccineRows((rows) =>
-      rows.map((r, i) => (i === index ? { ...r, expiresAt } : r))
-    );
-  };
-
-  // ─── Desparasitaciones ────────────────────────────────────
-  const addDewormingRow = () => {
-    const today = new Date();
-    setDewormingRows((rows) => [
-      ...rows,
-      {
-        type: "INTERNAL",
-        productName: "",
-        appliedAt: today,
-        expiresAt: addDays(today, DEWORMING_DEFAULT_DAYS),
-        notes: "",
-      },
-    ]);
-  };
-
-  const removeDewormingRow = (index: number) =>
-    setDewormingRows((rows) => rows.filter((_, i) => i !== index));
-
-  const updateDewormingRow = (index: number, patch: Partial<DewormingRow>) => {
-    setDewormingRows((rows) =>
-      rows.map((r, i) => (i === index ? { ...r, ...patch } : r))
-    );
-  };
-
-  const updateDewormingApplied = (index: number, appliedAt: Date) => {
-    setDewormingRows((rows) =>
-      rows.map((r, i) =>
-        i === index
-          ? { ...r, appliedAt, expiresAt: addDays(appliedAt, DEWORMING_DEFAULT_DAYS) }
-          : r
-      )
     );
   };
 
@@ -1007,326 +902,19 @@ export default function AdminCartillas() {
                 {/* Modo: capturando vacunas */}
                 {capturing && (
                   <View style={{ marginTop: 14 }}>
-                    <Text style={styles.captureTitle}>Capturar vacunas</Text>
-                    <Text style={styles.captureHint}>
-                      Agrega las vacunas visibles en la cartilla. La fecha de vencimiento
-                      se calcula automáticamente, pero la puedes editar si la cartilla
-                      muestra otra.
-                    </Text>
+                    <VaccineCapture
+                      key={`vc-${selectedPet?.id ?? "none"}`}
+                      rows={vaccineRows}
+                      onChange={setVaccineRows}
+                      catalog={catalog ?? []}
+                      onRequestCatalogPicker={setCatalogPickerForRow}
+                    />
 
-                    {vaccineRows.map((row, idx) => {
-                      const cat = row.catalogId ? catalogById.get(row.catalogId) : null;
-                      return (
-                        <View key={idx} style={styles.vaccineRow}>
-                          <View style={styles.vaccineRowHeader}>
-                            <Text style={styles.vaccineRowTitle}>Vacuna {idx + 1}</Text>
-                            <TouchableOpacity onPress={() => removeRow(idx)}>
-                              <Ionicons
-                                name="trash-outline"
-                                size={18}
-                                color={COLORS.errorText}
-                              />
-                            </TouchableOpacity>
-                          </View>
-
-                          <Text style={styles.label}>Tipo</Text>
-                          <TouchableOpacity
-                            style={styles.selectRow}
-                            onPress={() => setCatalogPickerForRow(idx)}
-                          >
-                            <Text
-                              style={[
-                                styles.selectText,
-                                !cat && { color: COLORS.textDisabled },
-                              ]}
-                            >
-                              {cat?.displayName ?? "Selecciona el tipo"}
-                            </Text>
-                            <Ionicons
-                              name="chevron-down"
-                              size={18}
-                              color={COLORS.textTertiary}
-                            />
-                          </TouchableOpacity>
-
-                          <Text style={styles.label}>Fecha aplicada</Text>
-                          <TouchableOpacity
-                            style={styles.selectRow}
-                            onPress={() => setAppliedPickerForRow(idx)}
-                          >
-                            <Ionicons
-                              name="calendar-outline"
-                              size={18}
-                              color={COLORS.primary}
-                            />
-                            <Text style={styles.selectText}>
-                              {formatShort(row.appliedAt)}
-                            </Text>
-                          </TouchableOpacity>
-
-                          <Text style={styles.label}>
-                            Vence{" "}
-                            {cat && (
-                              <Text style={styles.labelHint}>
-                                · sugerido +{cat.defaultDurationDays} días
-                              </Text>
-                            )}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.selectRow}
-                            onPress={() => setExpiresPickerForRow(idx)}
-                          >
-                            <Ionicons
-                              name="alarm-outline"
-                              size={18}
-                              color={COLORS.warningText}
-                            />
-                            <Text style={styles.selectText}>
-                              {formatShort(row.expiresAt)}
-                            </Text>
-                          </TouchableOpacity>
-
-                          {/* DatePicker aplicada */}
-                          {appliedPickerForRow === idx && (() => {
-                            const max = endOfToday();
-                            return (
-                              <DateTimePicker
-                                value={clampDate(row.appliedAt, undefined, max)}
-                                mode="date"
-                                display={Platform.OS === "ios" ? "spinner" : "default"}
-                                themeVariant="light"
-                                textColor={COLORS.textPrimary}
-                                maximumDate={max}
-                                onChange={(_, d) => {
-                                  setAppliedPickerForRow(
-                                    Platform.OS === "ios" ? idx : null
-                                  );
-                                  if (d) updateRowApplied(idx, d);
-                                }}
-                              />
-                            );
-                          })()}
-                          {Platform.OS === "ios" && appliedPickerForRow === idx && (
-                            <TouchableOpacity
-                              style={styles.pickerDone}
-                              onPress={() => setAppliedPickerForRow(null)}
-                            >
-                              <Text style={styles.pickerDoneText}>Listo</Text>
-                            </TouchableOpacity>
-                          )}
-
-                          {/* DatePicker vence */}
-                          {expiresPickerForRow === idx && (
-                            <DateTimePicker
-                              value={clampDate(row.expiresAt, row.appliedAt)}
-                              mode="date"
-                              display={Platform.OS === "ios" ? "spinner" : "default"}
-                              themeVariant="light"
-                              textColor={COLORS.textPrimary}
-                              minimumDate={row.appliedAt}
-                              onChange={(_, d) => {
-                                setExpiresPickerForRow(
-                                  Platform.OS === "ios" ? idx : null
-                                );
-                                if (d) updateRowExpires(idx, d);
-                              }}
-                            />
-                          )}
-                          {Platform.OS === "ios" && expiresPickerForRow === idx && (
-                            <TouchableOpacity
-                              style={styles.pickerDone}
-                              onPress={() => setExpiresPickerForRow(null)}
-                            >
-                              <Text style={styles.pickerDoneText}>Listo</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      );
-                    })}
-
-                    <TouchableOpacity style={styles.addRowBtn} onPress={addRow}>
-                      <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                      <Text style={styles.addRowText}>Agregar vacuna</Text>
-                    </TouchableOpacity>
-
-                    {/* Desparasitaciones */}
-                    <Text style={[styles.captureTitle, { marginTop: 20 }]}>
-                      Desparasitaciones
-                    </Text>
-                    <Text style={styles.captureHint}>
-                      Registra las desparasitaciones visibles en la cartilla. La próxima
-                      dosis se sugiere a {DEWORMING_DEFAULT_DAYS} días; puedes editarla.
-                    </Text>
-
-                    {dewormingRows.map((row, idx) => (
-                      <View key={`dw-${idx}`} style={styles.vaccineRow}>
-                        <View style={styles.vaccineRowHeader}>
-                          <Text style={styles.vaccineRowTitle}>
-                            Desparasitación {idx + 1}
-                          </Text>
-                          <TouchableOpacity onPress={() => removeDewormingRow(idx)}>
-                            <Ionicons
-                              name="trash-outline"
-                              size={18}
-                              color={COLORS.errorText}
-                            />
-                          </TouchableOpacity>
-                        </View>
-
-                        <Text style={styles.label}>Tipo</Text>
-                        <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
-                          {DEWORMING_TYPES.map((opt) => {
-                            const active = row.type === opt.key;
-                            return (
-                              <TouchableOpacity
-                                key={opt.key}
-                                style={[
-                                  styles.dewormingChip,
-                                  active && styles.dewormingChipActive,
-                                ]}
-                                onPress={() =>
-                                  updateDewormingRow(idx, { type: opt.key })
-                                }
-                              >
-                                <Text
-                                  style={[
-                                    styles.dewormingChipText,
-                                    active && { color: COLORS.white },
-                                  ]}
-                                >
-                                  {opt.label}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-
-                        <Text style={styles.label}>Producto (opcional)</Text>
-                        <TextInput
-                          style={styles.dewormingInput}
-                          value={row.productName}
-                          onChangeText={(t) =>
-                            updateDewormingRow(idx, { productName: t })
-                          }
-                          placeholder="Bravecto, Nexgard, Drontal..."
-                          placeholderTextColor={COLORS.textDisabled}
-                        />
-
-                        <Text style={styles.label}>Fecha aplicada</Text>
-                        <TouchableOpacity
-                          style={styles.selectRow}
-                          onPress={() => setDewormingAppliedPickerForRow(idx)}
-                        >
-                          <Ionicons
-                            name="calendar-outline"
-                            size={18}
-                            color={COLORS.primary}
-                          />
-                          <Text style={styles.selectText}>
-                            {formatShort(row.appliedAt)}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <Text style={styles.label}>
-                          Próxima dosis{" "}
-                          <Text style={styles.labelHint}>
-                            · sugerido +{DEWORMING_DEFAULT_DAYS} días
-                          </Text>
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.selectRow}
-                          onPress={() => setDewormingExpiresPickerForRow(idx)}
-                        >
-                          <Ionicons
-                            name="alarm-outline"
-                            size={18}
-                            color={COLORS.warningText}
-                          />
-                          <Text style={styles.selectText}>
-                            {formatShort(row.expiresAt)}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <Text style={styles.label}>Notas (opcional)</Text>
-                        <TextInput
-                          style={[styles.dewormingInput, { minHeight: 60 }]}
-                          value={row.notes}
-                          onChangeText={(t) =>
-                            updateDewormingRow(idx, { notes: t })
-                          }
-                          placeholder="Observaciones..."
-                          placeholderTextColor={COLORS.textDisabled}
-                          multiline
-                        />
-
-                        {dewormingAppliedPickerForRow === idx && (() => {
-                          const max = endOfToday();
-                          return (
-                            <DateTimePicker
-                              value={clampDate(row.appliedAt, undefined, max)}
-                              mode="date"
-                              display={Platform.OS === "ios" ? "spinner" : "default"}
-                              themeVariant="light"
-                              textColor={COLORS.textPrimary}
-                              maximumDate={max}
-                              onChange={(_, d) => {
-                                setDewormingAppliedPickerForRow(
-                                  Platform.OS === "ios" ? idx : null
-                                );
-                                if (d) updateDewormingApplied(idx, d);
-                              }}
-                            />
-                          );
-                        })()}
-                        {Platform.OS === "ios" &&
-                          dewormingAppliedPickerForRow === idx && (
-                            <TouchableOpacity
-                              style={styles.pickerDone}
-                              onPress={() => setDewormingAppliedPickerForRow(null)}
-                            >
-                              <Text style={styles.pickerDoneText}>Listo</Text>
-                            </TouchableOpacity>
-                          )}
-
-                        {dewormingExpiresPickerForRow === idx && (
-                          <DateTimePicker
-                            value={clampDate(row.expiresAt, row.appliedAt)}
-                            mode="date"
-                            display={Platform.OS === "ios" ? "spinner" : "default"}
-                            themeVariant="light"
-                            textColor={COLORS.textPrimary}
-                            minimumDate={row.appliedAt}
-                            onChange={(_, d) => {
-                              setDewormingExpiresPickerForRow(
-                                Platform.OS === "ios" ? idx : null
-                              );
-                              if (d) updateDewormingRow(idx, { expiresAt: d });
-                            }}
-                          />
-                        )}
-                        {Platform.OS === "ios" &&
-                          dewormingExpiresPickerForRow === idx && (
-                            <TouchableOpacity
-                              style={styles.pickerDone}
-                              onPress={() => setDewormingExpiresPickerForRow(null)}
-                            >
-                              <Text style={styles.pickerDoneText}>Listo</Text>
-                            </TouchableOpacity>
-                          )}
-                      </View>
-                    ))}
-
-                    <TouchableOpacity
-                      style={styles.addRowBtn}
-                      onPress={addDewormingRow}
-                    >
-                      <Ionicons
-                        name="add-circle-outline"
-                        size={20}
-                        color={COLORS.primary}
-                      />
-                      <Text style={styles.addRowText}>Agregar desparasitación</Text>
-                    </TouchableOpacity>
+                    <DewormingCapture
+                      key={`dc-${selectedPet?.id ?? "none"}`}
+                      rows={dewormingRows}
+                      onChange={setDewormingRows}
+                    />
 
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                       <TouchableOpacity

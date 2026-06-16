@@ -43,6 +43,11 @@ import {
 import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectionListModal } from "@/components/SelectionListModal";
+import {
+  PaymentManualModal,
+  type ManualPaymentValues,
+} from "@/components/PaymentManualModal";
 import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency, formatDayShortYear, formatDayShort, formatDateTimeShort } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 import { styles } from "@/styles/stayDetailStyles";
@@ -78,9 +83,7 @@ export default function StayDetail() {
   const [tagNotes, setTagNotes] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "TRANSFER">("CASH");
-  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentInitialAmount, setPaymentInitialAmount] = useState("");
   const [roomModalVisible, setRoomModalVisible] = useState(false);
 
   const { data: stay, isLoading, isError, error, refetch } = useQuery({
@@ -152,17 +155,15 @@ export default function StayDetail() {
   });
 
   const manualPaymentMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: ManualPaymentValues) =>
       registerStayManualPayment(id!, {
-        amount: parseFloat(paymentAmount),
-        method: paymentMethod,
-        notes: paymentNotes.trim() || undefined,
+        amount: values.amount,
+        method: values.method,
+        notes: values.notes,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
       setPaymentModalVisible(false);
-      setPaymentAmount("");
-      setPaymentNotes("");
       Alert.alert(
         "Pago registrado",
         `Se registró ${formatCurrency(res.amount)} y se notificó al dueño.`,
@@ -173,8 +174,6 @@ export default function StayDetail() {
 
   function closePaymentModal() {
     setPaymentModalVisible(false);
-    setPaymentAmount("");
-    setPaymentNotes("");
   }
 
   const checkoutMutation = useMutation({
@@ -697,9 +696,7 @@ export default function StayDetail() {
             <TouchableOpacity
               style={styles.registerPaymentBtn}
               onPress={() => {
-                setPaymentAmount(balance.toFixed(2));
-                setPaymentMethod("CASH");
-                setPaymentNotes("");
+                setPaymentInitialAmount(balance.toFixed(2));
                 setPaymentModalVisible(true);
               }}
               activeOpacity={0.7}
@@ -1230,198 +1227,67 @@ export default function StayDetail() {
       </Modal>
 
       {/* Modal de pago manual (estilo admin/baño) */}
-      <Modal
+      <PaymentManualModal
         visible={paymentModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closePaymentModal}
-      >
-        <Pressable style={styles.payModalOverlay} onPress={closePaymentModal}>
-          <KeyboardAvoidingView
-            style={styles.modalKav}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <Pressable
-              style={styles.payModalContent}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <Text style={styles.payModalTitle}>Registrar pago manual</Text>
-
-              <Text style={styles.payInputLabel}>Monto</Text>
-              <TextInput
-                style={styles.payModalInput}
-                placeholder="0.00"
-                placeholderTextColor={COLORS.textDisabled}
-                value={paymentAmount}
-                onChangeText={setPaymentAmount}
-                keyboardType="decimal-pad"
-              />
-
-              <Text style={styles.payInputLabel}>Método</Text>
-              <View style={styles.payMethodRow}>
-                {(["CASH", "TRANSFER"] as const).map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[
-                      styles.payMethodChip,
-                      paymentMethod === m && styles.payMethodChipActive,
-                    ]}
-                    onPress={() => setPaymentMethod(m)}
-                  >
-                    <Ionicons
-                      name={
-                        m === "CASH"
-                          ? "cash-outline"
-                          : "swap-horizontal-outline"
-                      }
-                      size={16}
-                      color={
-                        paymentMethod === m
-                          ? COLORS.white
-                          : COLORS.textTertiary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.payMethodChipText,
-                        paymentMethod === m && { color: COLORS.white },
-                      ]}
-                    >
-                      {m === "CASH" ? "Efectivo" : "Transferencia"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.payInputLabel}>Notas (opcional)</Text>
-              <TextInput
-                style={[styles.payModalInput, { minHeight: 60 }]}
-                placeholder="Referencia, número de operación, etc."
-                placeholderTextColor={COLORS.textDisabled}
-                value={paymentNotes}
-                onChangeText={setPaymentNotes}
-                multiline
-              />
-
-              <View style={styles.payModalButtons}>
-                <TouchableOpacity
-                  style={styles.payModalBtnCancel}
-                  onPress={closePaymentModal}
-                  disabled={manualPaymentMutation.isPending}
-                >
-                  <Text style={styles.payModalBtnCancelText}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.payModalBtnConfirm,
-                    (!paymentAmount ||
-                      parseFloat(paymentAmount) <= 0 ||
-                      manualPaymentMutation.isPending) && { opacity: 0.5 },
-                  ]}
-                  onPress={() => manualPaymentMutation.mutate()}
-                  disabled={
-                    !paymentAmount ||
-                    parseFloat(paymentAmount) <= 0 ||
-                    manualPaymentMutation.isPending
-                  }
-                >
-                  <Text style={styles.payModalBtnConfirmText}>
-                    {manualPaymentMutation.isPending
-                      ? "Registrando..."
-                      : "Registrar"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
+        onClose={closePaymentModal}
+        submitting={manualPaymentMutation.isPending}
+        initialAmount={paymentInitialAmount}
+        onSubmit={(values) => manualPaymentMutation.mutate(values)}
+      />
 
       {/* Room Picker Modal */}
-      <Modal
+      <SelectionListModal
+        variant="pressable"
         visible={roomModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRoomModalVisible(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setRoomModalVisible(false)}
-        >
-          <Pressable
-            style={styles.modalContent}
-            onPress={(e) => e.stopPropagation()}
+        onClose={() => setRoomModalVisible(false)}
+        title="Asignar cuarto"
+        subtitle={`Solo se muestran cuartos para el tamaño de ${formatName(stay.pet?.name ?? "la mascota")}.`}
+        data={roomList}
+        emptyText="No hay cuartos para el tamaño de esta mascota."
+        keyExtractor={(r) => r.id}
+        isItemSelected={(r) => stay.room?.id === r.id}
+        isItemPending={(r) =>
+          assignRoomMutation.isPending && assignRoomMutation.variables === r.id
+        }
+        styles={{
+          overlay: styles.modalOverlay,
+          content: styles.modalContent,
+          header: styles.modalHeader,
+          title: styles.modalTitle,
+          subtitle: styles.modalDescription,
+          listMaxHeight: ROOM_LIST_MAX_HEIGHT,
+          empty: styles.modalDescription,
+        }}
+        renderItem={(r, { selected: isCurrent, pending: isPending }) => (
+          <TouchableOpacity
+            style={styles.roomRow}
+            onPress={() => assignRoomMutation.mutate(r.id)}
+            disabled={isCurrent || assignRoomMutation.isPending}
+            activeOpacity={0.7}
           >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Asignar cuarto</Text>
-              <TouchableOpacity
-                onPress={() => setRoomModalVisible(false)}
-                hitSlop={8}
-              >
-                <Ionicons name="close" size={22} color={COLORS.textTertiary} />
-              </TouchableOpacity>
+            <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.roomRowName} numberOfLines={1}>
+                {r.name}
+              </Text>
+              <Text style={styles.roomRowSub} numberOfLines={1}>
+                Capacidad {r.capacity}
+              </Text>
             </View>
-            <Text style={styles.modalDescription}>
-              Solo se muestran cuartos para el tamaño de{" "}
-              {formatName(stay.pet?.name ?? "la mascota")}.
-            </Text>
-
-            {!roomList ? (
-              <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                <ActivityIndicator color={COLORS.primary} />
-              </View>
-            ) : roomList.length === 0 ? (
-              <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                <Text style={styles.modalDescription}>
-                  No hay cuartos para el tamaño de esta mascota.
-                </Text>
-              </View>
+            {isPending ? (
+              <ActivityIndicator color={COLORS.primary} size="small" />
+            ) : isCurrent ? (
+              <Text style={styles.roomRowCurrent}>Asignado</Text>
             ) : (
-              <ScrollView
-                style={{ maxHeight: ROOM_LIST_MAX_HEIGHT }}
-                showsVerticalScrollIndicator={false}
-              >
-                {roomList.map((r) => {
-                  const isCurrent = stay.room?.id === r.id;
-                  const isPending =
-                    assignRoomMutation.isPending &&
-                    assignRoomMutation.variables === r.id;
-                  return (
-                    <TouchableOpacity
-                      key={r.id}
-                      style={styles.roomRow}
-                      onPress={() => assignRoomMutation.mutate(r.id)}
-                      disabled={isCurrent || assignRoomMutation.isPending}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.roomRowName} numberOfLines={1}>
-                          {r.name}
-                        </Text>
-                        <Text style={styles.roomRowSub} numberOfLines={1}>
-                          Capacidad {r.capacity}
-                        </Text>
-                      </View>
-                      {isPending ? (
-                        <ActivityIndicator color={COLORS.primary} size="small" />
-                      ) : isCurrent ? (
-                        <Text style={styles.roomRowCurrent}>Asignado</Text>
-                      ) : (
-                        <Ionicons
-                          name="chevron-forward"
-                          size={18}
-                          color={COLORS.textTertiary}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={COLORS.textTertiary}
+              />
             )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </TouchableOpacity>
+        )}
+      />
 
     </ScrollView>
   );
