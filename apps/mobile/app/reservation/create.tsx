@@ -41,6 +41,7 @@ import {
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
 import { formatName } from "@/lib/format";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 
 function priceForPet(weight: number | null): number {
   return weight && weight >= 20 ? 450 : 350;
@@ -569,12 +570,7 @@ function CreateReservationScreenContent() {
 
         const { error: payError } = await presentPaymentSheet();
 
-        if (payError) {
-          if (payError.code !== "Canceled") {
-            Alert.alert("Error de pago", payError.message);
-          }
-          return;
-        }
+        if (handlePaymentSheetError(payError, "reservation")) return;
       }
 
       // 4. Payment succeeded — create reservations

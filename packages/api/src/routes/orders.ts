@@ -153,6 +153,7 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(total * 100),
         currency: "mxn",
+        automatic_payment_methods: { enabled: true },
         receipt_email: email,
         metadata: {
           source: "store",

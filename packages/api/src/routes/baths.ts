@@ -476,6 +476,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(chargeAmount * 100),
         currency: "mxn",
+        automatic_payment_methods: { enabled: true },
         metadata: {
           ownerId: pet.ownerId,
           petId: pet.id,

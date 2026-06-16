@@ -199,6 +199,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(chargeBase * 100),
         currency: "mxn",
+        automatic_payment_methods: { enabled: true },
         receipt_email: owner.email,
         metadata: {
           source: "web",

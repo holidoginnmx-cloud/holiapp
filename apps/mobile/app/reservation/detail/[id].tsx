@@ -27,6 +27,7 @@ import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { BathExtrasPaymentCard } from "@/components/BathExtrasPaymentCard";
 import { ExtensionPaymentCard } from "@/components/ExtensionPaymentCard";
 import { formatName } from "@/lib/format";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
@@ -253,12 +254,7 @@ function ReservationDetailScreenContent() {
       }
 
       const { error: payError } = await presentPaymentSheet();
-      if (payError) {
-        if (payError.code !== "Canceled") {
-          Alert.alert("Error de pago", payError.message);
-        }
-        return;
-      }
+      if (handlePaymentSheetError(payError, "balance")) return;
 
       await confirmBalancePayment(id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });

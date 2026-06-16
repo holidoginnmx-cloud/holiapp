@@ -17,6 +17,7 @@ import {
   chooseExtrasPayOnPickup,
   type ReservationAddonWithVariant,
 } from "@/lib/api";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 
 interface Props {
   reservationId: string;
@@ -60,12 +61,7 @@ export function BathExtrasPaymentCard({ reservationId, addon }: Props) {
         return;
       }
       const { error: payError } = await presentPaymentSheet();
-      if (payError) {
-        if (payError.code !== "Canceled") {
-          Alert.alert("Error de pago", payError.message);
-        }
-        return;
-      }
+      if (handlePaymentSheetError(payError, "bath-extras")) return;
       await confirmExtrasPayment(reservationId, addon.id, intent.paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", reservationId] });
     } catch (err) {

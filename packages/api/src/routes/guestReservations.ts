@@ -248,6 +248,7 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         const paymentIntent = await stripe.paymentIntents.create({
           amount: Math.round(depositAmountBase * 100),
           currency: "mxn",
+          automatic_payment_methods: { enabled: true },
           receipt_email: owner.email,
           metadata,
         });

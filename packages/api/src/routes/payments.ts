@@ -308,10 +308,20 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Guard against amounts Stripe will reject. MXN minimum charge is $0.50;
+    // a non-finite or sub-minimum chargeAmount (e.g. credit leaves $0.30) would
+    // otherwise fail at PaymentIntent confirmation with a generic 500.
+    if (!Number.isFinite(chargeAmount) || chargeAmount < 0.5) {
+      return reply.status(400).send({
+        error: "El monto a cobrar es inválido o menor al mínimo permitido ($0.50 MXN).",
+      });
+    }
+
     // Create Stripe PaymentIntent (amount in centavos)
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(chargeAmount * 100),
       currency: "mxn",
+      automatic_payment_methods: { enabled: true },
       metadata: {
         ownerId,
         petIds: petIds.join(","),
@@ -389,6 +399,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(remaining * 100),
       currency: "mxn",
+      automatic_payment_methods: { enabled: true },
       metadata: {
         reservationId,
         type: "balance",

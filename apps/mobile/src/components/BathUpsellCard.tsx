@@ -19,6 +19,7 @@ import {
   type BathVariant,
   type ReservationDetail,
 } from "@/lib/api";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 
 function bathSizeFromWeight(kg: number | null | undefined): "S" | "M" | "L" | "XL" {
   const w = kg ?? 0;
@@ -145,12 +146,7 @@ export function BathUpsellCard({ reservation }: Props) {
       }
 
       const { error: payError } = await presentPaymentSheet();
-      if (payError) {
-        if (payError.code !== "Canceled") {
-          Alert.alert("Error de pago", payError.message);
-        }
-        return;
-      }
+      if (handlePaymentSheetError(payError, "bath-upsell")) return;
 
       await confirmBathAddonPayment(reservation.id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", reservation.id] });

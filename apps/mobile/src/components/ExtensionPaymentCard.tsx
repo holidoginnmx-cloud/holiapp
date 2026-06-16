@@ -17,6 +17,7 @@ import {
   changeRequestPayOnPickup,
   type ChangeRequest,
 } from "@/lib/api";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 
 interface Props {
   reservationId: string;
@@ -56,12 +57,7 @@ export function ExtensionPaymentCard({ reservationId, changeRequest }: Props) {
         return;
       }
       const { error: payError } = await presentPaymentSheet();
-      if (payError) {
-        if (payError.code !== "Canceled") {
-          Alert.alert("Error de pago", payError.message);
-        }
-        return;
-      }
+      if (handlePaymentSheetError(payError, "extension")) return;
       await changeRequestPayNowConfirm(
         reservationId,
         changeRequest.id,

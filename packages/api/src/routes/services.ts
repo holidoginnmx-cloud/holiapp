@@ -151,6 +151,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100),
         currency: "mxn",
+        automatic_payment_methods: { enabled: true },
         metadata: {
           reservationId: reservation.id,
           type: "bath_addon",
@@ -286,6 +287,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100),
         currency: "mxn",
+        automatic_payment_methods: { enabled: true },
         metadata: {
           reservationId: addon.reservation.id,
           addonId: addon.id,

@@ -36,6 +36,7 @@ import {
 } from "@/components/DeliveryAddressPicker";
 
 import { formatName } from "@/lib/format";
+import { handlePaymentSheetError } from "@/lib/paymentError";
 
 function sizeFromWeight(kg: number): "S" | "M" | "L" | "XL" {
   if (kg <= 5) return "S";
@@ -224,12 +225,7 @@ function CreateBathScreenContent() {
           return;
         }
         const { error: payError } = await presentPaymentSheet();
-        if (payError) {
-          if (payError.code !== "Canceled") {
-            Alert.alert("Error de pago", payError.message);
-          }
-          return;
-        }
+        if (handlePaymentSheetError(payError, "bath")) return;
       }
 
       await confirmBath(
