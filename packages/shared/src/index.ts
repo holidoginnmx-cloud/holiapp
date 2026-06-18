@@ -832,6 +832,29 @@ export const ConfirmBathSchema = z.object({
 export type ConfirmBath = z.infer<typeof ConfirmBathSchema>;
 
 // ========================
+// Tienda en línea (e-commerce) — DTOs del sitio web
+// La dirección de envío del checkout reutiliza HomeDeliveryInputSchema (mismo
+// shape address/lat/lng/placeId); el backend SIEMPRE recalcula la tarifa.
+// ========================
+
+export const FulfillmentTypeEnum = z.enum([
+  "PICKUP",
+  "LOCAL_DELIVERY",
+  "NATIONAL_SHIPPING",
+]);
+export type FulfillmentType = z.infer<typeof FulfillmentTypeEnum>;
+
+// Reseña de producto creada por el cliente. Entra como NO aprobada; el admin la
+// modera antes de publicarla. `authorName` se muestra públicamente.
+export const CreateProductReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  title: z.string().trim().max(120).nullable().optional(),
+  body: z.string().trim().min(1).max(1500),
+  authorName: z.string().trim().min(1).max(80),
+});
+export type CreateProductReview = z.infer<typeof CreateProductReviewSchema>;
+
+// ========================
 // Pricing & sizing — re-exportado desde ./pricing (módulo puro, SIN zod).
 // Vive en un archivo aparte para que la app móvil pueda importar estas
 // funciones sin arrastrar zod al bundle. FUENTE ÚNICA: no redefinir en

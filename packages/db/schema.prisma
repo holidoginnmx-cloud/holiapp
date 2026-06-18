@@ -233,8 +233,9 @@ model User {
   legalAcceptances LegalAcceptance[]
 
   // Tienda en línea (e-commerce de productos)
-  carts  Cart[]
-  orders Order[]
+  carts          Cart[]
+  orders         Order[]
+  productReviews ProductReview[]
 
   @@map("users")
 }
@@ -919,8 +920,11 @@ model DeliveryConfig {
   // Precio por kilómetro (se aplica a la distancia redonda ida+vuelta).
   pricePerKm Decimal  @default(0) @db.Decimal(10, 2)
   // Permite apagar el servicio sin perder la configuración de precios.
-  isActive   Boolean  @default(false)
-  updatedAt  DateTime @updatedAt
+  isActive            Boolean  @default(false)
+  // Tarifa plana del envío nacional (NATIONAL_SHIPPING). Nullable: si es null la
+  // tienda no ofrece envío nacional. La paquetería real queda fuera de alcance.
+  nationalShippingFee Decimal? @db.Decimal(10, 2)
+  updatedAt           DateTime @updatedAt
 
   @@map("delivery_config")
 }
@@ -1038,6 +1042,7 @@ model Product {
 
   variants ProductVariant[]
   images   ProductImage[]
+  reviews  ProductReview[]
 
   @@index([categoryId])
   @@map("products")
@@ -1151,6 +1156,15 @@ model Order {
   total                 Decimal         @db.Decimal(10, 2)
   stripePaymentIntentId String?         @unique
   notes                 String?
+  // Dirección de envío (LOCAL_DELIVERY / NATIONAL_SHIPPING). Nullable: PICKUP no
+  // la usa. lat/lng como Float? para igualar User.addressLat/Lng.
+  shippingAddress       String?
+  shippingLat           Float?
+  shippingLng           Float?
+  shippingPlaceId       String?
+  // Rastreo del envío nacional (lo captura el admin al despachar).
+  trackingCarrier       String?
+  trackingNumber        String?
   paidAt                DateTime?
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -1218,4 +1232,29 @@ model PendingDeliveryAddress {
   lat             Float?
   lng             Float?
   createdAt       DateTime @default(now())
+}
+
+// RESEÑA DE PRODUCTO — distinta de `Review` (que es post-estancia de hotel).
+// La escribe cualquier usuario con sesión; el admin la modera (isApproved) antes
+// de publicarla. `orderId` marca "compra verificada" si hay una orden PAID del
+// usuario con el producto.
+model ProductReview {
+  id         String   @id @default(cuid())
+  rating     Int // 1..5 (se valida en la API)
+  title      String?
+  body       String
+  authorName String
+  // Verificación de compra: id de una orden PAID del usuario con este producto.
+  orderId    String?
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId, isApproved])
+  @@map("product_reviews")
 }

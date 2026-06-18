@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Prisma } from "@holidoginn/db";
 import { createAuthMiddleware, createOptionalAuthMiddleware } from "../middleware/auth";
 import { getCartToken, loadCartDetail, resolveActiveCart } from "../lib/store";
+import { quoteDelivery } from "../lib/delivery";
 
 // ---------------------------------------------------------------------------
 // Tienda en línea — pedidos y checkout.
@@ -31,6 +32,12 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
       fulfillmentType?: string;
       discountCode?: string;
       notes?: string;
+      // Dirección de entrega (LOCAL_DELIVERY / NATIONAL_SHIPPING). Capturada con
+      // Google Places en el sitio; la tarifa SIEMPRE se recalcula server-side.
+      address?: string;
+      lat?: number;
+      lng?: number;
+      placeId?: string;
     };
   }>(
     "/store/orders/create-intent",
@@ -113,7 +120,54 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
         discountCodeId = dc.id;
       }
 
-      const shippingTotal = 0; // Fase 1: solo recoger en hotel.
+      // Envío según el tipo de entrega. La tarifa SIEMPRE se recalcula aquí
+      // (nunca se confía en el cliente). PICKUP = sin costo.
+      let shippingTotal = 0;
+      let shippingAddress: string | null = null;
+      let shippingLat: number | null = null;
+      let shippingLng: number | null = null;
+      let shippingPlaceId: string | null = null;
+
+      if (fulfillmentType === "LOCAL_DELIVERY") {
+        const lat = Number(body.lat);
+        const lng = Number(body.lng);
+        const addr = (body.address ?? "").trim();
+        if (!addr || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return reply.status(400).send({ error: "Dirección de entrega requerida" });
+        }
+        const quote = await quoteDelivery(prisma, lat, lng);
+        if (!quote.active) {
+          return reply
+            .status(400)
+            .send({ error: "La entrega a domicilio no está disponible por ahora" });
+        }
+        shippingTotal = quote.fee;
+        shippingAddress = addr;
+        shippingLat = lat;
+        shippingLng = lng;
+        shippingPlaceId = body.placeId?.trim() || null;
+      } else if (fulfillmentType === "NATIONAL_SHIPPING") {
+        const config = await prisma.deliveryConfig.upsert({
+          where: { id: "singleton" },
+          update: {},
+          create: { id: "singleton" },
+        });
+        if (config.nationalShippingFee === null) {
+          return reply
+            .status(400)
+            .send({ error: "El envío nacional no está disponible por ahora" });
+        }
+        const addr = (body.address ?? "").trim();
+        if (!addr) {
+          return reply.status(400).send({ error: "Dirección de envío requerida" });
+        }
+        shippingTotal = Number(config.nationalShippingFee);
+        shippingAddress = addr;
+        shippingPlaceId = body.placeId?.trim() || null;
+        if (Number.isFinite(Number(body.lat))) shippingLat = Number(body.lat);
+        if (Number.isFinite(Number(body.lng))) shippingLng = Number(body.lng);
+      }
+
       const total = Number((subtotal - discountTotal + shippingTotal).toFixed(2));
       if (total <= 0) {
         return reply.status(400).send({ error: "El total debe ser mayor a cero" });
@@ -133,6 +187,10 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
             total: new Prisma.Decimal(total),
             discountCodeId,
             notes: body.notes?.trim() || null,
+            shippingAddress,
+            shippingLat,
+            shippingLng,
+            shippingPlaceId,
           },
         });
         await tx.orderItem.createMany({
@@ -214,6 +272,7 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
         fulfillmentType: order.fulfillmentType,
         subtotal: Number(order.subtotal),
         discountTotal: Number(order.discountTotal),
+        shippingTotal: Number(order.shippingTotal),
         total: Number(order.total),
         items: order.items.map((it) => ({
           name: it.productNameSnapshot,
@@ -245,4 +304,94 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
       })),
     };
   });
+
+  // Validación de cupón en vivo (feedback antes de pagar). create-intent es la
+  // autoridad final; esto solo da retroalimentación inmediata en el checkout.
+  fastify.post<{ Body: { code?: string; subtotal?: number } }>(
+    "/store/discounts/validate",
+    { preHandler: [optionalAuth] },
+    async (request, reply) => {
+      const code = (request.body?.code ?? "").trim().toUpperCase();
+      const subtotal = Number(request.body?.subtotal);
+      if (!code) return reply.status(400).send({ error: "Código requerido" });
+      if (!Number.isFinite(subtotal) || subtotal <= 0) {
+        return reply.status(400).send({ error: "Subtotal inválido" });
+      }
+
+      const dc = await prisma.discountCode.findUnique({ where: { code } });
+      const now = new Date();
+      const valido =
+        dc &&
+        dc.isActive &&
+        (!dc.startsAt || dc.startsAt <= now) &&
+        (!dc.endsAt || dc.endsAt >= now) &&
+        (dc.maxUses === null || dc.usesCount < dc.maxUses);
+
+      if (!dc || !valido) {
+        return reply.send({ valid: false, discountTotal: 0, message: "Código inválido o expirado" });
+      }
+      if (dc.minSubtotal && subtotal < Number(dc.minSubtotal)) {
+        return reply.send({
+          valid: false,
+          discountTotal: 0,
+          message: `Aplica desde ${Number(dc.minSubtotal).toFixed(2)} de subtotal`,
+        });
+      }
+
+      const value = Math.max(0, Number(dc.value));
+      let discountTotal =
+        dc.type === "PERCENT"
+          ? Number(((subtotal * value) / 100).toFixed(2))
+          : Math.min(value, subtotal);
+      discountTotal = Math.min(Math.max(0, discountTotal), subtotal);
+
+      return reply.send({
+        valid: true,
+        discountTotal,
+        message: dc.firstOrderOnly
+          ? "Cupón aplicado (solo primera compra)"
+          : "Cupón aplicado",
+      });
+    }
+  );
+
+  // Detalle de un pedido del usuario logueado (página /cuenta/pedidos/[id]).
+  // Solo el dueño del pedido lo ve; los invitados usan /by-pi con client_secret.
+  fastify.get<{ Params: { id: string } }>(
+    "/store/orders/:id",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const order = await prisma.order.findUnique({
+        where: { id: request.params.id },
+        include: { items: true },
+      });
+      if (!order || order.userId !== request.userId) {
+        return reply.status(404).send({ error: "Pedido no encontrado" });
+      }
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        email: order.email,
+        fulfillmentType: order.fulfillmentType,
+        subtotal: Number(order.subtotal),
+        discountTotal: Number(order.discountTotal),
+        shippingTotal: Number(order.shippingTotal),
+        total: Number(order.total),
+        shippingAddress: order.shippingAddress,
+        trackingCarrier: order.trackingCarrier,
+        trackingNumber: order.trackingNumber,
+        notes: order.notes,
+        createdAt: order.createdAt,
+        paidAt: order.paidAt,
+        items: order.items.map((it) => ({
+          name: it.productNameSnapshot,
+          variantTitle: it.variantTitleSnapshot,
+          quantity: it.quantity,
+          unitPrice: Number(it.unitPrice),
+          lineTotal: Number(it.lineTotal),
+        })),
+      };
+    }
+  );
 }
