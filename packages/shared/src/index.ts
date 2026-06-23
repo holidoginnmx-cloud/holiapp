@@ -199,6 +199,10 @@ export const CreatePetSchema = PetSchema.omit({
   cartillaRejectionReason: true,
 }).extend({
   isActive: z.boolean().default(true),
+  // El dueño se deriva del usuario autenticado en el servidor; el cliente
+  // puede omitirlo o mandarlo null (p.ej. si su userId aún no sincronizó).
+  // Solo ADMIN puede crear para otro dueño pasando un ownerId explícito.
+  ownerId: z.string().nullish(),
   sex: z.string().nullable().default(null),
   behavior: z.string().nullable().default(null),
   walkPreference: z.string().nullable().default(null),

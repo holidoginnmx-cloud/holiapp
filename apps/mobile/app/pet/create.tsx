@@ -42,6 +42,7 @@ export default function CreatePetScreen() {
     focus?: string;
   }>();
   const userId = useAuthStore((s) => s.userId);
+  const syncUser = useAuthStore((s) => s.syncUser);
   const queryClient = useQueryClient();
   const isEditing = !!editId;
 
@@ -223,7 +224,7 @@ export default function CreatePetScreen() {
     },
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       return Alert.alert("Error", "El nombre es obligatorio");
     }
@@ -238,6 +239,15 @@ export default function CreatePetScreen() {
     }
     if (!emergencyContactPhone.trim()) {
       return Alert.alert("Error", "Ingresa el teléfono del contacto de emergencia");
+    }
+
+    // El id de la BD (userId) puede faltar un instante por una carrera con
+    // /users/me tras el login. Lo resolvemos antes de enviar: así no viaja un
+    // ownerId nulo y, al volver, la lista de mascotas (keyed por userId) se
+    // refresca. El servidor deriva el dueño del token de todos modos.
+    let ownerId = userId;
+    if (!isEditing && !ownerId) {
+      ownerId = await syncUser();
     }
 
     const data: Record<string, unknown> = {
@@ -268,8 +278,8 @@ export default function CreatePetScreen() {
       cartillaUrl: cartillaPhotos[0] ?? null,
     };
 
-    if (!isEditing) {
-      data.ownerId = userId;
+    if (!isEditing && ownerId) {
+      data.ownerId = ownerId;
     }
 
     mutation.mutate(data);

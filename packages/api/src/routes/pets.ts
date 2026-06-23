@@ -137,13 +137,21 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      if (!isAdmin(request.userRole) && parsed.data.ownerId !== request.userId) {
-        return reply
-          .status(403)
-          .send({ error: "Solo puedes crear mascotas para tu propia cuenta" });
+      // El dueño se deriva del usuario autenticado (el auth middleware siempre
+      // setea request.userId, autoprovisionando el registro de la BD). Para un
+      // OWNER se ignora cualquier ownerId que mande el cliente; solo un ADMIN
+      // puede crear para otro dueño pasando ownerId explícito. Esto evita el
+      // 400 cuando el cliente aún no sincronizó su userId (carrera con
+      // /users/me tras el login) y previene crear mascotas para terceros.
+      const ownerId =
+        isAdmin(request.userRole) && parsed.data.ownerId
+          ? parsed.data.ownerId
+          : request.userId;
+      if (!ownerId) {
+        return reply.status(401).send({ error: "No autorizado" });
       }
 
-      const owner = await prisma.user.findUnique({ where: { id: parsed.data.ownerId } });
+      const owner = await prisma.user.findUnique({ where: { id: ownerId } });
       if (!owner) {
         return reply.status(404).send({ error: "Dueño no encontrado" });
       }
@@ -163,6 +171,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       const pet = await prisma.pet.create({
         data: {
           ...parsed.data,
+          ownerId,
           cartillaPhotos: photos,
           cartillaUrl: parsed.data.cartillaUrl ?? photos[0] ?? null,
           cartillaStatus,
