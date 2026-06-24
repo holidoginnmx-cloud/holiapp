@@ -955,6 +955,24 @@ model Expense {
 }
 
 // =============================================================
+//  EXPENSE_CATEGORY — Catálogo de categorías de egresos.
+//  Fuente de verdad del mapeo categoría → tipo de costo (antes hardcodeado
+//  en el admin web). `name` coincide con Expense.category (texto libre).
+//  `keywords` alimenta el autocompletado por descripción en el admin web.
+//  La app móvil no la usa todavía; vive aquí para mantener el schema unificado.
+// =============================================================
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  costType  CostType
+  keywords  String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@map("expense_categories")
+}
+
+// =============================================================
 //  SPONSOR — Patrocinadores. Portado de `patrocinios` de la web.
 //  Cada uno puede patrocinar el baño y/o el corral.
 // =============================================================

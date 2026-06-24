@@ -129,20 +129,71 @@ group by 1, 2, 3, 4
 order by 1, 2, 5 desc;
 
 -- --- Ingresos del mes desglosados por servicio -----------------------------
+-- El baño incluido en una estancia (HOTEL) se modela como un reservation_addon
+-- BOOKING cuyo unitPrice YA está dentro de reservations.totalAmount. Para que el
+-- ingreso del baño se reporte como ESTETICA (no HOTEL), prorrateamos cada pago de
+-- un STAY: la fracción del baño (bano_base / totalAmount) va a ESTETICA y el resto
+-- a HOTEL. Pagos parciales (anticipo/abono) se reparten proporcionalmente. Los
+-- addons STANDALONE / extraPrice (flujo móvil post-servicio) quedan fuera de este
+-- corte; se atribuyen por reservationType como antes.
 create or replace view vw_ingresos_por_servicio as
+with bano_por_reserva as (
+  select
+    a."reservationId"            as rid,
+    sum(a."unitPrice")::numeric(12, 2) as bano_base
+  from reservation_addons a
+  join service_variants sv on sv.id = a."variantId"
+  join service_types    st on st.id = sv."serviceTypeId"
+  where st.code = 'BATH' and a."paidWith" = 'BOOKING'
+  group by a."reservationId"
+),
+pagos as (
+  select
+    extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
+    extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+    r."reservationType" as tipo,
+    p.amount            as monto,
+    case
+      when r."reservationType" = 'STAY'
+       and coalesce(b.bano_base, 0) > 0
+       and r."totalAmount" > 0
+      then least(b.bano_base / r."totalAmount", 1)
+      else 0
+    end                 as frac_bano
+  from payments p
+  join reservations r on r.id = p."reservationId"
+  left join bano_por_reserva b on b.rid = r.id
+  where p.status = 'PAID'
+),
+desglosado as (
+  -- Porción base por servicio (descontando el baño incluido de las estancias).
+  select
+    anio,
+    mes_num,
+    case tipo
+      when 'STAY'    then 'HOTEL'
+      when 'BATH'    then 'ESTETICA'
+      when 'DAYCARE' then 'GUARDERIA'
+    end                                  as servicio,
+    (monto * (1 - frac_bano))::numeric(12, 2) as total
+  from pagos
+  union all
+  -- Porción del baño incluido → ESTETICA.
+  select
+    anio,
+    mes_num,
+    'ESTETICA'                           as servicio,
+    (monto * frac_bano)::numeric(12, 2)  as total
+  from pagos
+  where frac_bano > 0
+)
 select
-  extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
-  extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
-  case r."reservationType"
-    when 'STAY'    then 'HOTEL'
-    when 'BATH'    then 'ESTETICA'
-    when 'DAYCARE' then 'GUARDERIA'
-  end                          as servicio,
-  sum(p.amount)::numeric(12, 2) as total,
-  count(*)                      as cantidad_pagos
-from payments p
-join reservations r on r.id = p."reservationId"
-where p.status = 'PAID'
+  anio,
+  mes_num,
+  servicio,
+  sum(total)::numeric(12, 2) as total,
+  count(*)                   as cantidad_pagos
+from desglosado
 group by 1, 2, 3;
 
 -- --- Ingresos del mes por perro (Top 10 facturado) -------------------------
