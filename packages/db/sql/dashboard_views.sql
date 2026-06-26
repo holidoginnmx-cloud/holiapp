@@ -131,20 +131,49 @@ order by 1, 2, 5 desc;
 -- --- Ingresos del mes desglosados por servicio -----------------------------
 -- El baño incluido en una estancia (HOTEL) se modela como un reservation_addon
 -- BOOKING cuyo unitPrice YA está dentro de reservations.totalAmount. Para que el
--- ingreso del baño se reporte como ESTETICA (no HOTEL), prorrateamos cada pago de
--- un STAY: la fracción del baño (bano_base / totalAmount) va a ESTETICA y el resto
--- a HOTEL. Pagos parciales (anticipo/abono) se reparten proporcionalmente. Los
--- addons STANDALONE / extraPrice (flujo móvil post-servicio) quedan fuera de este
--- corte; se atribuyen por reservationType como antes.
+-- ingreso del baño se reporte como ESTETICA (no HOTEL) aplicamos los pagos de un
+-- STAY en CASCADA por orden cronológico: primero cubren el hospedaje
+-- (totalAmount − baño) y el excedente cae en la banda de estética.
+-- El EXTRA del deslanado/corte (extraPrice) se cobra como un Payment aparte y NO
+-- está en totalAmount; extendemos la banda de estética a
+-- [hotel_base, hotel_base + bano_base + extra_base] (extra_base = extras ya
+-- cobrados) para que ese pago también se reporte como ESTETICA. En ESTETICA pura
+-- todo el pago ya es estética por su tipo, así que el extra no necesita banda.
+-- El DESPARASITANTE (addon DEWORMING, paidWith=BOOKING, ya en totalAmount) se
+-- reporta como ESTETICA SOLO si la estancia tiene baño (bano_base > 0); si no,
+-- se queda en HOTEL. Para ello sumamos deworm_estetica a la banda de estética y
+-- lo restamos de hotel_base.
 create or replace view vw_ingresos_por_servicio as
 with bano_por_reserva as (
   select
-    a."reservationId"            as rid,
+    a."reservationId"                  as rid,
     sum(a."unitPrice")::numeric(12, 2) as bano_base
   from reservation_addons a
   join service_variants sv on sv.id = a."variantId"
   join service_types    st on st.id = sv."serviceTypeId"
   where st.code = 'BATH' and a."paidWith" = 'BOOKING'
+  group by a."reservationId"
+),
+deworm_por_reserva as (
+  -- Desparasitante incluido (paidWith=BOOKING): ya está dentro de totalAmount.
+  select
+    a."reservationId"                  as rid,
+    sum(a."unitPrice")::numeric(12, 2) as deworm_base
+  from reservation_addons a
+  join service_variants sv on sv.id = a."variantId"
+  join service_types    st on st.id = sv."serviceTypeId"
+  where st.code = 'DEWORMING' and a."paidWith" = 'BOOKING'
+  group by a."reservationId"
+),
+extra_por_reserva as (
+  -- Extra del deslanado/corte ya cobrado (su Payment ya existe).
+  select
+    a."reservationId"                   as rid,
+    sum(a."extraPrice")::numeric(12, 2) as extra_base
+  from reservation_addons a
+  join service_variants sv on sv.id = a."variantId"
+  join service_types    st on st.id = sv."serviceTypeId"
+  where st.code = 'BATH' and a."extraPaymentStatus" = 'PAID' and a."extraPrice" is not null
   group by a."reservationId"
 ),
 pagos as (
@@ -153,20 +182,47 @@ pagos as (
     extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
     r."reservationType" as tipo,
     p.amount            as monto,
-    case
-      when r."reservationType" = 'STAY'
-       and coalesce(b.bano_base, 0) > 0
-       and r."totalAmount" > 0
-      then least(b.bano_base / r."totalAmount", 1)
-      else 0
-    end                 as frac_bano
+    -- Baño incluido, extra y base del hospedaje (solo aplica a estancias STAY).
+    case when r."reservationType" = 'STAY'
+         then coalesce(b.bano_base, 0) else 0 end as bano_base,
+    case when r."reservationType" = 'STAY'
+         then coalesce(ex.extra_base, 0) else 0 end as extra_base,
+    -- Desparasitante → ESTETICA solo si la estancia tiene baño (bano_base > 0).
+    case when r."reservationType" = 'STAY' and coalesce(b.bano_base, 0) > 0
+         then coalesce(d.deworm_base, 0) else 0 end as deworm_estetica,
+    case when r."reservationType" = 'STAY'
+         then greatest(
+                coalesce(r."totalAmount", 0)
+                - coalesce(b.bano_base, 0)
+                - (case when coalesce(b.bano_base, 0) > 0 then coalesce(d.deworm_base, 0) else 0 end),
+              0)
+         else coalesce(r."totalAmount", 0) end    as hotel_base,
+    -- Suma de pagos previos de la MISMA reserva, en orden cronológico. Define el
+    -- punto del "waterfall" en el que entra este pago.
+    coalesce(sum(p.amount) over (
+      partition by p."reservationId"
+      order by coalesce(p."paidAt", p."createdAt"), p."createdAt", p.id
+      rows between unbounded preceding and 1 preceding
+    ), 0) as running_before
   from payments p
   join reservations r on r.id = p."reservationId"
-  left join bano_por_reserva b on b.rid = r.id
+  left join bano_por_reserva    b  on b.rid  = r.id
+  left join deworm_por_reserva  d  on d.rid  = r.id
+  left join extra_por_reserva   ex on ex.rid = r.id
   where p.status = 'PAID'
 ),
+atribuido as (
+  select
+    anio, mes_num, tipo, monto, bano_base, deworm_estetica, extra_base, hotel_base,
+    running_before,
+    running_before + monto as running_after
+  from pagos
+),
 desglosado as (
-  -- Porción base por servicio (descontando el baño incluido de las estancias).
+  -- Porción del servicio base. En estancias con baño/desparasitante/extra, HOTEL
+  -- recibe el monto del pago MENOS lo que cae en la banda de estética
+  -- [hotel_base, hotel_base + bano_base + deworm_estetica + extra_base] (así
+  -- hotel + estética = monto y el total cuadra; el sobrepago queda en HOTEL).
   select
     anio,
     mes_num,
@@ -174,18 +230,22 @@ desglosado as (
       when 'STAY'    then 'HOTEL'
       when 'BATH'    then 'ESTETICA'
       when 'DAYCARE' then 'GUARDERIA'
-    end                                  as servicio,
-    (monto * (1 - frac_bano))::numeric(12, 2) as total
-  from pagos
+    end as servicio,
+    case
+      when tipo = 'STAY' and (bano_base + deworm_estetica + extra_base) > 0
+      then monto - greatest(0, least(running_after, hotel_base + bano_base + deworm_estetica + extra_base) - greatest(running_before, hotel_base))
+      else monto
+    end as total
+  from atribuido
   union all
-  -- Porción del baño incluido → ESTETICA.
+  -- Baño + desparasitante + extra → ESTETICA: lo que cae en la banda de estética.
   select
     anio,
     mes_num,
-    'ESTETICA'                           as servicio,
-    (monto * frac_bano)::numeric(12, 2)  as total
-  from pagos
-  where frac_bano > 0
+    'ESTETICA' as servicio,
+    greatest(0, least(running_after, hotel_base + bano_base + deworm_estetica + extra_base) - greatest(running_before, hotel_base)) as total
+  from atribuido
+  where tipo = 'STAY' and (bano_base + deworm_estetica + extra_base) > 0
 )
 select
   anio,
@@ -194,6 +254,7 @@ select
   sum(total)::numeric(12, 2) as total,
   count(*)                   as cantidad_pagos
 from desglosado
+where total > 0
 group by 1, 2, 3;
 
 -- --- Ingresos del mes por perro (Top 10 facturado) -------------------------
