@@ -156,6 +156,32 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Dueño no encontrado" });
       }
 
+      // Candado anti-duplicado: si el dueño ya tiene una mascota activa con el
+      // mismo nombre, avisamos en vez de crear otra. Esto evita que un cliente
+      // preexistente (cuyo perro ya estaba en la BD) lo registre de nuevo. El
+      // cliente puede forzar la creación con `allowDuplicateName` (dos perros
+      // que sí se llaman igual). No aplica cuando un ADMIN crea para un dueño.
+      const allowDuplicateName =
+        (request.body as { allowDuplicateName?: unknown })
+          ?.allowDuplicateName === true;
+      if (!allowDuplicateName && !isAdmin(request.userRole)) {
+        const dup = await prisma.pet.findFirst({
+          where: {
+            ownerId,
+            isActive: true,
+            name: { equals: parsed.data.name, mode: "insensitive" },
+          },
+          select: { id: true, name: true },
+        });
+        if (dup) {
+          return reply.status(409).send({
+            error: "DUPLICATE_PET",
+            petId: dup.id,
+            message: `Ya tienes registrado a ${dup.name}.`,
+          });
+        }
+      }
+
       // Si el owner subió cartilla en el create (uno o más fotos), marcar PENDING.
       // Soportamos tanto `cartillaUrl` (legacy, single) como `cartillaPhotos`
       // (nuevo, array). Si llega `cartillaUrl` y no `cartillaPhotos`, lo

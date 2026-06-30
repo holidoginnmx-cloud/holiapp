@@ -15,7 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSignUp, useSSO } from "@clerk/clerk-expo";
 import { useCallback, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
-import { BASE_URL } from "@/constants/api";
 import { formatName } from "@/lib/format";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -95,25 +94,11 @@ export default function RegisterScreen() {
       // Check if sign-up is already complete (happens when username is disabled)
       if ((createResult as any)._status === "complete") {
 
-        // Sign-up is complete, activate session and create in DB
+        // Sign-up is complete, activate session and enter the app.
         if ((createResult as any).createdSessionId) {
-          // Create user in DB
-          try {
-            await fetch(`${BASE_URL}/users`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                clerkId: (createResult as any).createdUserId,
-                firstName: cleanFirstName,
-                lastName: cleanLastName,
-                email: email.trim().toLowerCase(),
-                role: "OWNER",
-              }),
-            });
-          } catch (err) {
-            // Error handled by syncUser() in layout
-          }
-
+          // El registro en BD lo crea/vincula el backend en el primer
+          // GET /users/me (syncUser en el layout), que además vincula por
+          // email a un cliente preexistente. No llamamos POST /users aquí.
           await setActive({ session: (createResult as any).createdSessionId });
           router.replace("/(tabs)/home");
         }
@@ -181,23 +166,8 @@ export default function RegisterScreen() {
 
       // Now check if we have a valid session to activate
       if (result.createdSessionId && result.createdUserId) {
-        // Create user in DB
-        try {
-          await fetch(`${BASE_URL}/users`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              clerkId: result.createdUserId,
-              firstName: formatName(firstName),
-              lastName: formatName(lastName),
-              email: email.trim().toLowerCase(),
-              role: "OWNER",
-            }),
-          });
-        } catch (err) {
-          // Error handled by syncUser() in layout
-        }
-
+        // El registro en BD lo crea/vincula el backend en el primer
+        // GET /users/me (syncUser en el layout). No llamamos POST /users aquí.
         await setActive({ session: result.createdSessionId });
         router.replace("/(tabs)/home");
       } else {

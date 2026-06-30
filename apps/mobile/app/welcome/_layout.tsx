@@ -4,6 +4,7 @@ export default function WelcomeLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="tour" />
+      <Stack.Screen name="claim" />
     </Stack>
   );
 }

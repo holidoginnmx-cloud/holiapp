@@ -49,6 +49,9 @@ export default function CreatePetScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const cartillaYRef = useRef<number | null>(null);
   const didScrollToCartillaRef = useRef(false);
+  // Última carga enviada, para poder reintentar forzando duplicado si el
+  // backend responde 409 DUPLICATE_PET.
+  const lastSubmitRef = useRef<Record<string, unknown> | null>(null);
 
   const formReadyRef = useRef(false);
   const maybeScrollToCartilla = useCallback(() => {
@@ -177,7 +180,44 @@ export default function CreatePetScreen() {
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => {
+      const err = e as Error & {
+        status?: number;
+        body?: { error?: string; petId?: string; message?: string };
+      };
+      // El dueño ya tiene una mascota con ese nombre: avisamos en vez de
+      // duplicar. Puede ver el perfil existente o forzar la creación (dos
+      // perros que de verdad se llaman igual).
+      if (err.status === 409 && err.body?.error === "DUPLICATE_PET") {
+        const petId = err.body.petId;
+        Alert.alert(
+          "Mascota ya registrada",
+          err.body.message ??
+            "Ya tienes una mascota registrada con ese nombre.",
+          [
+            {
+              text: "Ver perfil",
+              onPress: () => {
+                if (petId) router.replace(`/pet/${petId}` as any);
+              },
+            },
+            {
+              text: "Crear de todos modos",
+              style: "destructive",
+              onPress: () => {
+                const data = lastSubmitRef.current;
+                if (data) {
+                  mutation.mutate({ ...data, allowDuplicateName: true });
+                }
+              },
+            },
+            { text: "Cancelar", style: "cancel" },
+          ],
+        );
+        return;
+      }
+      Alert.alert("Error", e.message);
+    },
   });
 
   // Al editar, la cartilla se persiste apenas se sube — no espera al
@@ -282,6 +322,7 @@ export default function CreatePetScreen() {
       data.ownerId = ownerId;
     }
 
+    lastSubmitRef.current = data;
     mutation.mutate(data);
   };
 

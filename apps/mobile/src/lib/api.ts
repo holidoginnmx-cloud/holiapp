@@ -129,8 +129,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     if (__DEV__) console.log("❌ API error:", res.status, JSON.stringify(body));
     const msg = typeof body.error === "string" ? body.error : `Error ${res.status}`;
-    const err = new Error(msg) as Error & { status?: number };
+    const err = new Error(msg) as Error & { status?: number; body?: any };
     err.status = res.status;
+    // Adjuntamos el cuerpo completo para que el caller pueda leer campos extra
+    // (p. ej. el 409 DUPLICATE_PET trae `petId`).
+    err.body = body;
     throw err;
   }
 
@@ -151,6 +154,29 @@ export const getUsers = () =>
 
 export const getUserById = (id: string) =>
   apiFetch<User & { pets: Pet[] }>(`${ENDPOINTS.users}/${id}`);
+
+// ─── Reclamar cuenta preexistente ("¿Ya eres cliente?") ──
+
+export type ClaimCandidate = {
+  candidateId: string;
+  firstName: string;
+  pets: { name: string; breed: string | null; photoUrl: string | null }[];
+};
+
+/** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
+ * por teléfono y, como respaldo, por correo. */
+export const lookupExistingAccount = (data: { phone?: string; email?: string }) =>
+  apiFetch<{ candidates: ClaimCandidate[] }>("/users/claim/lookup", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+/** Confirma y fusiona la cuenta nueva con la preexistente elegida. */
+export const confirmClaim = (data: { candidateId: string; phone?: string }) =>
+  apiFetch<User>("/users/claim/confirm", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 
 // ─── Pets ────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ import { getMyLegalStatus } from "@/lib/api";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TOUR_SEEN_KEY = "welcome-tour-seen";
+const CLAIM_SEEN_KEY = "welcome-claim-seen";
 
 // tokenCache endurecido: si SecureStore falla (Keychain inaccesible, valor
 // corrupto, etc.) NO debe romper la inicialización de Clerk — devolvemos null
@@ -89,41 +90,49 @@ function ClerkTokenSync() {
     }
   }, [isSignedIn, userId]);
 
-  // Gate de consentimientos legales: solo aplica a OWNER. STAFF/ADMIN entran
-  // al dashboard interno y no pasan por el flujo de reserva.
-  // Solo corre una vez por sign-in del OWNER. No reactivar en cada navegación
-  // o causaría redirects spurios a /legal/onboarding → home cuando el owner
-  // navega a un detalle (reservation, pet, etc).
-  const legalCheckedRef = useRef(false);
+  // Gate de onboarding del OWNER, en orden: (1) "¿Ya eres cliente?" para
+  // vincular una cuenta preexistente y no duplicar mascotas, (2) consentimientos
+  // legales, (3) tour de bienvenida. STAFF/ADMIN entran al dashboard interno y
+  // no pasan por aquí. Mientras el usuario está en una de esas pantallas
+  // (welcome/legal) rearmamos el gate para reevaluar el siguiente paso cuando
+  // salga; fuera de ellas corre una sola vez para evitar redirects spurios al
+  // navegar a un detalle (reservation, pet, etc).
+  const onboardingCheckedRef = useRef(false);
   useEffect(() => {
     if (!isSignedIn || !dbUserId || role !== "OWNER") {
-      legalCheckedRef.current = false;
+      onboardingCheckedRef.current = false;
       return;
     }
-    if (legalCheckedRef.current) return;
-    // No redirigir si ya estamos en legal, auth o welcome
     const inLegal = segments[0] === "legal";
     const inAuth = segments[0] === "(auth)";
     const inWelcome = segments[0] === "welcome";
-    if (inLegal || inAuth || inWelcome) return;
+    if (inLegal || inAuth || inWelcome) {
+      onboardingCheckedRef.current = false;
+      return;
+    }
+    if (onboardingCheckedRef.current) return;
+    onboardingCheckedRef.current = true;
 
-    legalCheckedRef.current = true;
-    getMyLegalStatus()
-      .then(async (status) => {
-        if (!status.canBook) {
-          router.replace("/legal/onboarding");
-          return;
-        }
-        const seen = await SecureStore.getItemAsync(TOUR_SEEN_KEY).catch(() => null);
-        if (!seen) {
-          router.replace("/welcome/tour" as any);
-        }
-      })
-      .catch((err) => {
-        if (__DEV__) console.error("[legal] status check failed:", err);
-        legalCheckedRef.current = false; // permite reintentar en siguiente nav
-      });
-  }, [isSignedIn, dbUserId, role, segments]);
+    (async () => {
+      const claimSeen = await SecureStore.getItemAsync(CLAIM_SEEN_KEY).catch(() => null);
+      if (!claimSeen) {
+        router.replace("/welcome/claim" as any);
+        return;
+      }
+      const status = await getMyLegalStatus();
+      if (!status.canBook) {
+        router.replace("/legal/onboarding");
+        return;
+      }
+      const tourSeen = await SecureStore.getItemAsync(TOUR_SEEN_KEY).catch(() => null);
+      if (!tourSeen) {
+        router.replace("/welcome/tour" as any);
+      }
+    })().catch((err) => {
+      if (__DEV__) console.error("[onboarding] gate failed:", err);
+      onboardingCheckedRef.current = false; // permite reintentar en siguiente nav
+    });
+  }, [isSignedIn, dbUserId, role, segments, router]);
 
   // Clear store on sign-out so the next user starts with a clean slate
   useEffect(() => {

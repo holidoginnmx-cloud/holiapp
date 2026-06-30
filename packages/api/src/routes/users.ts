@@ -2,6 +2,8 @@ import { FastifyInstance } from "fastify";
 import { clerkClient } from "@clerk/fastify";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import { normalizePhone } from "../lib/phone";
+import { mergeFreshIntoLegacy, ClaimUnavailableError } from "../lib/userMerge";
 
 export default async function usersRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -30,6 +32,122 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     { preHandler: [createAuthMiddleware(prisma)] },
     async (request, reply) => {
       return request.dbUser;
+    }
+  );
+
+  // POST /users/claim/lookup — el cliente recién registrado busca su cuenta
+  // preexistente (creada por el admin, aún sin app vinculada) por teléfono y,
+  // como respaldo, por correo. Devuelve datos mínimos para reconocerla
+  // (primer nombre + mascotas). Es el primer paso de la pantalla "¿Ya eres
+  // cliente?".
+  fastify.post<{ Body: { phone?: string; email?: string } }>(
+    "/users/claim/lookup",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const currentUserId = request.userId!;
+      const phone = normalizePhone(request.body?.phone);
+      const email = request.body?.email?.trim().toLowerCase() || null;
+      if (!phone && !email) {
+        return reply
+          .status(400)
+          .send({ error: "Ingresa tu teléfono o tu correo" });
+      }
+
+      // Por teléfono: la columna está en formato libre, así que comparamos los
+      // últimos 10 dígitos vía SQL. Solo cuentas OWNER activas SIN app vinculada.
+      let candidateIds: string[] = [];
+      if (phone) {
+        const rows = await prisma.$queryRaw<{ id: string }[]>`
+          SELECT id FROM users
+          WHERE "clerkId" IS NULL AND "isActive" = true AND role = 'OWNER'
+            AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
+          LIMIT 10
+        `;
+        candidateIds = rows.map((r) => r.id);
+      }
+      // Respaldo por correo exacto si el teléfono no encontró nada.
+      if (candidateIds.length === 0 && email) {
+        const byEmail = await prisma.user.findFirst({
+          where: { email, clerkId: null, isActive: true, role: "OWNER" },
+          select: { id: true },
+        });
+        if (byEmail) candidateIds = [byEmail.id];
+      }
+
+      candidateIds = candidateIds.filter((id) => id !== currentUserId);
+      if (candidateIds.length === 0) {
+        return reply.send({ candidates: [] });
+      }
+
+      const users = await prisma.user.findMany({
+        where: { id: { in: candidateIds } },
+        select: {
+          id: true,
+          firstName: true,
+          pets: {
+            where: { isActive: true },
+            select: { name: true, breed: true, photoUrl: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+
+      return reply.send({
+        candidates: users.map((u) => ({
+          candidateId: u.id,
+          firstName: u.firstName,
+          pets: u.pets,
+        })),
+      });
+    }
+  );
+
+  // POST /users/claim/confirm — el cliente confirma cuál cuenta es la suya.
+  // Fusiona su cuenta nueva (Clerk) dentro del registro preexistente,
+  // preservando mascotas e historial. Ver lib/userMerge.ts.
+  fastify.post<{ Body: { candidateId?: string; phone?: string } }>(
+    "/users/claim/confirm",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const fresh = request.dbUser!;
+      const candidateId = request.body?.candidateId;
+      if (!candidateId) {
+        return reply.status(400).send({ error: "candidateId requerido" });
+      }
+      if (candidateId === fresh.id) {
+        return reply
+          .status(400)
+          .send({ error: "No puedes vincularte a tu propia cuenta" });
+      }
+
+      // La cuenta actual debe ser nueva (sin historial) para no perder datos al
+      // consolidar en el registro legacy.
+      const [petCount, resCount] = await Promise.all([
+        prisma.pet.count({ where: { ownerId: fresh.id } }),
+        prisma.reservation.count({ where: { ownerId: fresh.id } }),
+      ]);
+      if (petCount > 0 || resCount > 0) {
+        return reply.status(409).send({
+          error:
+            "Tu cuenta ya tiene información registrada; escríbenos para vincularla.",
+        });
+      }
+
+      const enteredPhone = request.body?.phone?.trim() || null;
+      try {
+        const merged = await mergeFreshIntoLegacy(
+          prisma,
+          fresh,
+          candidateId,
+          enteredPhone
+        );
+        return reply.send(merged);
+      } catch (err) {
+        if (err instanceof ClaimUnavailableError) {
+          return reply.status(409).send({ error: err.message });
+        }
+        throw err;
+      }
     }
   );
 
