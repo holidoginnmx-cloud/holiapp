@@ -46,7 +46,12 @@ export default function ClaimAccountScreen() {
   const [candidates, setCandidates] = useState<ClaimCandidate[]>([]);
 
   const finish = useCallback(async () => {
-    await SecureStore.setItemAsync(CLAIM_SEEN_KEY, "1").catch(() => {});
+    // Marca POR USUARIO (lee el id más reciente del store: tras un claim el
+    // userId pasa a ser el de la cuenta consolidada).
+    const uid = useAuthStore.getState().userId;
+    if (uid) {
+      await SecureStore.setItemAsync(`${CLAIM_SEEN_KEY}-${uid}`, "1").catch(() => {});
+    }
     router.replace("/(tabs)/home" as any);
   }, [router]);
 

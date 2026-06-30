@@ -114,7 +114,12 @@ function ClerkTokenSync() {
     onboardingCheckedRef.current = true;
 
     (async () => {
-      const claimSeen = await SecureStore.getItemAsync(CLAIM_SEEN_KEY).catch(() => null);
+      // La marca es POR USUARIO (no por dispositivo): así una cuenta nueva en
+      // el mismo teléfono sí evalúa el claim, y no se hereda el "visto" de otra
+      // sesión (el logout no limpia SecureStore).
+      const claimSeen = await SecureStore.getItemAsync(
+        `${CLAIM_SEEN_KEY}-${dbUserId}`
+      ).catch(() => null);
       if (!claimSeen) {
         router.replace("/welcome/claim" as any);
         return;
