@@ -327,11 +327,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
-      if (pet.cartillaStatus !== "APPROVED") {
-        return reply
-          .status(400)
-          .send({ error: "La cartilla de la mascota debe estar aprobada" });
-      }
+      // El baño no requiere cartilla de vacunación aprobada (solo el hospedaje).
 
       const cfg = await ensureConfig(prisma);
       if (!cfg.isActive) {
