@@ -3,7 +3,11 @@ import { clerkClient } from "@clerk/fastify";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { normalizePhone } from "../lib/phone";
-import { mergeFreshIntoLegacy, ClaimUnavailableError } from "../lib/userMerge";
+import {
+  claimPetsIntoAccount,
+  ClaimUnavailableError,
+  ClaimForbiddenError,
+} from "../lib/userMerge";
 
 export default async function usersRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -86,7 +90,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           firstName: true,
           pets: {
             where: { isActive: true },
-            select: { name: true, breed: true, photoUrl: true },
+            select: { id: true, name: true, breed: true, photoUrl: true },
             orderBy: { createdAt: "asc" },
           },
         },
@@ -102,23 +106,22 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // POST /users/claim/confirm — el cliente confirma cuál cuenta es la suya.
-  // Fusiona su cuenta nueva (Clerk) dentro del registro preexistente,
-  // preservando mascotas e historial. Ver lib/userMerge.ts.
-  fastify.post<{ Body: { candidateId?: string; phone?: string } }>(
+  // POST /users/claim/confirm — el cliente confirma cuáles mascotas son suyas.
+  // Consolida su cuenta nueva (Clerk) con esas mascotas bajo un solo registro,
+  // reuniendo las que estaban repartidas en registros legacy duplicados.
+  // Ver lib/userMerge.ts (claimPetsIntoAccount).
+  fastify.post<{
+    Body: {
+      petIds?: string[];
+      candidateId?: string; // compat con apps previas (un solo registro)
+      phone?: string;
+      email?: string;
+    };
+  }>(
     "/users/claim/confirm",
     { preHandler: [authMiddleware] },
     async (request, reply) => {
       const fresh = request.dbUser!;
-      const candidateId = request.body?.candidateId;
-      if (!candidateId) {
-        return reply.status(400).send({ error: "candidateId requerido" });
-      }
-      if (candidateId === fresh.id) {
-        return reply
-          .status(400)
-          .send({ error: "No puedes vincularte a tu propia cuenta" });
-      }
 
       // La cuenta actual debe ser nueva (sin historial) para no perder datos al
       // consolidar en el registro legacy.
@@ -133,16 +136,111 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         });
       }
 
+      const selectedPetIds = Array.isArray(request.body?.petIds)
+        ? [
+            ...new Set(
+              request.body!.petIds.filter(
+                (id) => typeof id === "string" && id.length > 0
+              )
+            ),
+          ]
+        : [];
+
+      let allowedIds: string[];
+      let petIds: string[];
+
+      if (selectedPetIds.length > 0) {
+        // Flujo nuevo (selección por mascota). Autorización: re-derivar los
+        // registros legacy permitidos con la MISMA lógica del lookup (teléfono
+        // últimos-10, respaldo por correo). No confiamos en ids del cliente:
+        // las mascotas se validan contra estos registros dentro de la
+        // transacción de claimPetsIntoAccount.
+        const phone = normalizePhone(request.body?.phone);
+        const email = request.body?.email?.trim().toLowerCase() || null;
+        if (!phone && !email) {
+          return reply
+            .status(400)
+            .send({ error: "Falta el teléfono o correo con el que buscaste" });
+        }
+        allowedIds = [];
+        if (phone) {
+          const rows = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM users
+            WHERE "clerkId" IS NULL AND "isActive" = true AND role = 'OWNER'
+              AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
+            LIMIT 20
+          `;
+          allowedIds = rows.map((r) => r.id);
+        }
+        if (allowedIds.length === 0 && email) {
+          const byEmail = await prisma.user.findMany({
+            where: { email, clerkId: null, isActive: true, role: "OWNER" },
+            select: { id: true },
+          });
+          allowedIds = byEmail.map((u) => u.id);
+        }
+        allowedIds = allowedIds.filter((id) => id !== fresh.id);
+        if (allowedIds.length === 0) {
+          return reply
+            .status(404)
+            .send({ error: "No encontramos una cuenta con ese dato" });
+        }
+        petIds = selectedPetIds;
+      } else if (request.body?.candidateId) {
+        // Compat con apps previas: mandaban un `candidateId` (un solo registro).
+        // Autorizamos ese registro directamente y reclamamos todas sus mascotas
+        // (replica el comportamiento anterior de merge de un candidato).
+        const candidateId = request.body.candidateId;
+        if (candidateId === fresh.id) {
+          return reply
+            .status(400)
+            .send({ error: "No puedes vincularte a tu propia cuenta" });
+        }
+        const candidate = await prisma.user.findFirst({
+          where: {
+            id: candidateId,
+            clerkId: null,
+            isActive: true,
+            role: "OWNER",
+          },
+          select: { id: true },
+        });
+        if (!candidate) {
+          return reply
+            .status(404)
+            .send({ error: "No encontramos esa cuenta para vincular" });
+        }
+        const pets = await prisma.pet.findMany({
+          where: { ownerId: candidateId, isActive: true },
+          select: { id: true },
+        });
+        if (pets.length === 0) {
+          return reply
+            .status(400)
+            .send({ error: "Esa cuenta no tiene mascotas para vincular" });
+        }
+        allowedIds = [candidateId];
+        petIds = pets.map((p) => p.id);
+      } else {
+        return reply
+          .status(400)
+          .send({ error: "Selecciona al menos una mascota" });
+      }
+
       const enteredPhone = request.body?.phone?.trim() || null;
       try {
-        const merged = await mergeFreshIntoLegacy(
+        const merged = await claimPetsIntoAccount(
           prisma,
           fresh,
-          candidateId,
+          petIds,
+          allowedIds,
           enteredPhone
         );
         return reply.send(merged);
       } catch (err) {
+        if (err instanceof ClaimForbiddenError) {
+          return reply.status(403).send({ error: err.message });
+        }
         if (err instanceof ClaimUnavailableError) {
           return reply.status(409).send({ error: err.message });
         }
