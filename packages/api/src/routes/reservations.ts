@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import Stripe from "stripe";
 import { notifyBathContracted } from "./services";
 import { createAuthMiddleware } from "../middleware/auth";
+import { resolveDiscount } from "../lib/discounts";
 import {
   reservationConfirmedTemplate,
   sendEmail,
@@ -481,6 +482,33 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     return null;
   }
 
+  // POST /reservations/discounts/validate — feedback en vivo del código de
+  // descuento al reservar (hotel o baño). create-intent es la autoridad final;
+  // esto solo da retroalimentación inmediata. Alcance RESERVATIONS/BOTH.
+  fastify.post<{ Body: { code?: string; subtotal?: number } }>(
+    "/reservations/discounts/validate",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const code = (request.body?.code ?? "").trim();
+      const subtotal = Number(request.body?.subtotal);
+      if (!code) return reply.status(400).send({ error: "Código requerido" });
+      if (!Number.isFinite(subtotal) || subtotal <= 0) {
+        return reply.status(400).send({ error: "Subtotal inválido" });
+      }
+      const discount = await resolveDiscount(prisma, {
+        code,
+        subtotal,      });
+      if (discount.error) {
+        return reply.send({ valid: false, discountTotal: 0, message: discount.error });
+      }
+      return reply.send({
+        valid: true,
+        discountTotal: discount.discountTotal,
+        message: "Cupón aplicado",
+      });
+    }
+  );
+
   // POST /reservations/multi — crear reservaciones para múltiples mascotas
   fastify.post("/reservations/multi", { preHandler: [authMiddleware] }, async (request, reply) => {
     const parsed = CreateMultiReservationSchema.safeParse(request.body);
@@ -488,7 +516,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const { checkIn, checkOut, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet, homeDelivery } = parsed.data;
+    const { checkIn, checkOut, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet, homeDelivery, discountCode } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo.
     const isStaffOrAdmin =
@@ -530,6 +558,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // Verify Stripe payment succeeded (allow credit-only bypass when no intent was created)
     let paymentIntent: Stripe.PaymentIntent | null = null;
     let creditApplied = 0;
+    // Descuento: en el flujo Stripe se lee del metadata del PI (autoritativo,
+    // fijado en create-intent); en credit-only se re-valida más abajo.
+    let discountTotal = 0;
+    let discountCodeId: string | null = null;
     if (stripePaymentIntentId) {
       // IDEMPOTENCIA: si este PaymentIntent ya generó reservación(es) (p. ej. el
       // cliente reintentó tras 3DS o recargó la página de confirmación), devolver
@@ -544,9 +576,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           ? await prisma.reservation.findMany({ where: { groupId } })
           : [existingPayment.reservation];
         const grandTotal = reservations.reduce((s, r) => s + Number(r.totalAmount), 0);
-        return reply
-          .status(200)
-          .send({ reservations, grandTotal, groupId: groupId ?? null, creditApplied: 0, idempotent: true });
+        return reply.status(200).send({
+          reservations,
+          grandTotal,
+          discountTotal: reservations.reduce((s, r) => s + Number(r.discountTotal ?? 0), 0),
+          groupId: groupId ?? null,
+          creditApplied: 0,
+          idempotent: true,
+        });
       }
 
       paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
@@ -559,6 +596,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "El pago no corresponde a esta cuenta" });
       }
       creditApplied = Number(paymentIntent.metadata?.creditApplied ?? 0);
+      discountTotal = Number(paymentIntent.metadata?.discountTotal ?? 0);
+      discountCodeId = paymentIntent.metadata?.discountCodeId || null;
     }
     // creditOnly = true when the deposit/total was fully covered by the
     // owner's saldo a favor and no Stripe charge was created. We compute the
@@ -753,6 +792,22 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const medicationTotal = Array.from(medicationSurchargeByPet.values()).reduce((s, n) => s + n, 0);
     const baseTotal = lodgingTotal + bathTotal + medicationTotal;
 
+    // Descuento credit-only (sin PI): re-validar server-side contra el subtotal
+    // del servicio. En el flujo Stripe ya se leyó del metadata del PI.
+    if (creditOnly) {
+      const d = await resolveDiscount(prisma, {
+        code: discountCode,
+        subtotal: baseTotal,      });
+      if (d.error) {
+        return reply.status(400).send({ error: d.error });
+      }
+      discountTotal = d.discountTotal;
+      discountCodeId = d.discountCodeId;
+    }
+    // Acotar defensivamente (el metadata del PI podría no cuadrar con la base).
+    discountTotal = Math.min(Math.max(0, discountTotal), baseTotal);
+    const discountedBase = baseTotal - discountTotal;
+
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%
     const hoursUntilCheckIn = (checkIn.getTime() - Date.now()) / (60 * 60 * 1000);
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
@@ -774,7 +829,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const grandTotal = baseTotal * surchargeMultiplier + deliveryFee;
+    const grandTotal = discountedBase * surchargeMultiplier + deliveryFee;
 
     // Credit-only path: owner's saldo covers the deposit/total and no Stripe
     // charge was created. Recompute creditApplied here so we register the
@@ -796,6 +851,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       const created: Prisma.ReservationGetPayload<{
         include: { pet: true; room: true };
       }>[] = [];
+      // Reparto del descuento del booking entre las reservas (proporcional a la
+      // base de cada una); la última fila absorbe el redondeo para que la suma
+      // de discountTotal sea exactamente el descuento total.
+      let allocatedDiscount = 0;
 
       for (let i = 0; i < assignments.length; i++) {
         const a = assignments[i];
@@ -806,9 +865,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         // (un viaje cubre a todas las mascotas del mismo dueño).
         const isFirst = i === 0;
         const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
+        const rowBase = a.amount + (bath?.price ?? 0) + medSurcharge;
+        const isLast = i === assignments.length - 1;
+        const rowDiscount =
+          discountTotal <= 0 || baseTotal <= 0
+            ? 0
+            : isLast
+              ? Math.max(0, Number((discountTotal - allocatedDiscount).toFixed(2)))
+              : Number(((discountTotal * rowBase) / baseTotal).toFixed(2));
+        allocatedDiscount += rowDiscount;
         const reservationAmount =
-          (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier +
-          deliveryForThis;
+          (rowBase - rowDiscount) * surchargeMultiplier + deliveryForThis;
 
         const res = await tx.reservation.create({
           data: {
@@ -816,6 +883,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             checkOut,
             totalDays,
             totalAmount: new Prisma.Decimal(reservationAmount),
+            ...(discountCodeId
+              ? { discountCodeId, discountTotal: new Prisma.Decimal(rowDiscount) }
+              : {}),
             notes,
             medicationNotes: medNotes,
             legalAccepted,
@@ -896,6 +966,16 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // Incrementar el uso del código UNA vez por booking. Idempotente: un
+      // reintento del mismo PI devuelve las reservas existentes (rama de arriba)
+      // sin re-entrar a esta transacción.
+      if (discountCodeId) {
+        await tx.discountCode.update({
+          where: { id: discountCodeId },
+          data: { usesCount: { increment: 1 } },
+        });
+      }
+
       return created;
     });
 
@@ -968,7 +1048,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       );
     }
 
-    return reply.status(201).send({ reservations, grandTotal, groupId, creditApplied });
+    return reply.status(201).send({ reservations, grandTotal, discountTotal, groupId, creditApplied });
   });
 
   // GET /reservations/:id/checklists — reportes diarios (owner o staff/admin)

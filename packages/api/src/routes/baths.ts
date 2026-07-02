@@ -10,6 +10,7 @@ import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } fr
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import { resolveDiscount } from "../lib/discounts";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -316,7 +317,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
-      const { petId, deslanado, corte, appointmentAt, notes, paymentType, homeDelivery } = parsed.data;
+      const { petId, deslanado, corte, appointmentAt, notes, paymentType, homeDelivery, discountCode } = parsed.data;
 
       const pet = await prisma.pet.findUnique({ where: { id: petId } });
       if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
@@ -415,6 +416,18 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const ownerCredit = Number(owner?.creditBalance ?? 0);
       const price = Number(variant.price);
 
+      // Código de descuento (alcance reservas). Aplica sobre el precio del baño;
+      // NO sobre el envío a domicilio. Monto autoritativo (server-side); viaja en
+      // el metadata del PI para que /baths/confirm lo persista al confirmar.
+      const discount = await resolveDiscount(prisma, {
+        code: discountCode,
+        subtotal: price,      });
+      if (discount.error) {
+        return reply.status(400).send({ error: discount.error });
+      }
+      const discountTotal = discount.discountTotal;
+      const discountedPrice = price - discountTotal;
+
       // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng. Es
       // un add-on al precio del baño: el anticipo de slot (BATH_DEPOSIT_AMOUNT)
       // no cambia; la fee se suma al total y queda en el saldo a pagar al
@@ -430,7 +443,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           deliveryDistanceKm = quote.distanceKm;
         }
       }
-      const total = price + deliveryFee;
+      const total = discountedPrice + deliveryFee;
 
       // Owner elige cuánto pagar ahora:
       //  - DEPOSIT: anticipo fijo (BATH_DEPOSIT_AMOUNT) y resto al recoger.
@@ -456,6 +469,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           deliveryFee,
           deliveryDistanceKm,
           deliveryActive,
+          discountTotal,
+          discountCode: discount.dc?.code ?? null,
         });
       }
 
@@ -472,6 +487,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           creditApplied: String(creditApplied),
           depositAmount: String(chargeBase),
           paymentType,
+          discountCode: discount.dc?.code ?? "",
+          discountCodeId: discount.discountCodeId ?? "",
+          discountTotal: String(discountTotal),
           ...(notes ? { notes } : {}),
           // Domicilio: persistimos los valores server-computed en el PI para que
           // /baths/confirm los use tal cual (no se recalcula en el flujo Stripe).
@@ -498,6 +516,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         deliveryFee,
         deliveryDistanceKm,
         deliveryActive,
+        discountTotal,
+        discountCode: discount.dc?.code ?? null,
       });
     }
   );
@@ -1011,6 +1031,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         appointmentAt?: string;
         notes?: string;
         homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+        discountCode?: string;
       };
 
       let ownerId: string;
@@ -1020,6 +1041,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let notes: string | undefined;
       let creditApplied = 0;
       let stripeAmount = 0;
+      // Descuento: en Stripe se lee del metadata del PI; en credit-only se
+      // re-valida contra el precio de la variante (más abajo).
+      let discountTotal = 0;
+      let discountCodeId: string | null = null;
       let paymentIntentId: string | null = null;
       let chosenPaymentType: "DEPOSIT" | "FULL" = "DEPOSIT";
       // Servicio a domicilio: en el flujo Stripe se leen los valores
@@ -1046,6 +1071,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         appointmentAtIso = String(pi.metadata.appointmentAt);
         notes = typeof pi.metadata.notes === "string" ? pi.metadata.notes : undefined;
         creditApplied = Number(pi.metadata.creditApplied || 0);
+        discountTotal = Number(pi.metadata.discountTotal || 0);
+        discountCodeId = pi.metadata.discountCodeId || null;
         stripeAmount = pi.amount / 100;
         paymentIntentId = pi.id;
         if (pi.metadata?.paymentType === "FULL") {
@@ -1097,6 +1124,21 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const variant = await prisma.serviceVariant.findUnique({ where: { id: variantId } });
       if (!variant) return reply.status(404).send({ error: "Variante no encontrada" });
 
+      // Descuento en credit-only (sin PI): re-validar server-side contra el
+      // precio de la variante. En el flujo Stripe ya vino del metadata del PI.
+      if (!paymentIntentId) {
+        const d = await resolveDiscount(prisma, {
+          code: body.discountCode,
+          subtotal: Number(variant.price),        });
+        if (d.error) {
+          return reply.status(400).send({ error: d.error });
+        }
+        discountTotal = d.discountTotal;
+        discountCodeId = d.discountCodeId;
+      }
+      // Acotar defensivamente al precio de la variante.
+      discountTotal = Math.min(Math.max(0, discountTotal), Number(variant.price));
+
       try {
         const result = await prisma.$transaction(async (tx) => {
           // Lock transaccional por slot: serializa confirmaciones concurrentes
@@ -1104,7 +1146,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           // READ COMMITTED dos confirmaciones verían ambas taken=0 y crearían
           // dos baños en un slot de capacidad 1). El lock se libera al cerrar la
           // transacción. Namespace 42 = slots de baño.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
           const taken = await tx.reservation.count({
             where: {
               reservationType: "BATH",
@@ -1117,8 +1159,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           }
 
           const price = Number(variant.price);
-          // Total = precio del baño + servicio a domicilio (si aplica).
-          const total = price + deliveryFee;
+          // Total = precio del baño (con descuento) + servicio a domicilio.
+          const discountedPrice = price - discountTotal;
+          const total = discountedPrice + deliveryFee;
           // El paymentType viene del intent (owner eligió DEPOSIT o FULL).
           // Si el total es ≤ anticipo, no hay saldo aunque haya elegido DEPOSIT.
           const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
@@ -1130,6 +1173,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               appointmentAt,
               status: "CONFIRMED",
               totalAmount: new Prisma.Decimal(total),
+              ...(discountCodeId
+                ? { discountCodeId, discountTotal: new Prisma.Decimal(discountTotal) }
+                : {}),
               notes,
               legalAccepted: true,
               // DEPOSIT cuando aún hay saldo por cobrar al recoger;
@@ -1220,6 +1266,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               paymentId: payment?.id,
             },
           });
+
+          // Contar el uso del código UNA vez. En Stripe, el @unique de
+          // Payment.stripePaymentIntentId evita doble conteo ante reintento.
+          if (discountCodeId) {
+            await tx.discountCode.update({
+              where: { id: discountCodeId },
+              data: { usesCount: { increment: 1 } },
+            });
+          }
 
           return { reservation, payment };
         });

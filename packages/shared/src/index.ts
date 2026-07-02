@@ -467,6 +467,9 @@ export const CreateMultiReservationSchema = z.object({
   bathSelectionsByPet: z.record(z.string(), BathSelectionSchema).optional(),
   medicationByPet: z.record(z.string(), MedicationSelectionSchema).optional(),
   homeDelivery: HomeDeliveryInputSchema.optional(),
+  // Solo se usa en la ruta credit-only (sin PaymentIntent): el servidor re-valida
+  // el código. En el flujo Stripe el descuento se lee del metadata del PI.
+  discountCode: z.string().max(40).optional(),
 });
 
 export const UpdateReservationStatusSchema = z.object({
@@ -827,11 +830,17 @@ export const CreateBathIntentSchema = z.object({
   // FULL: cobra el precio total ahora.
   paymentType: z.enum(["DEPOSIT", "FULL"]).default("DEPOSIT"),
   homeDelivery: HomeDeliveryInputSchema.optional(),
+  // Código de descuento opcional (alcance RESERVATIONS/BOTH). El servidor lo
+  // valida y aplica; el monto lo calcula server-side (nunca se confía al cliente).
+  discountCode: z.string().max(40).optional(),
 });
 export type CreateBathIntent = z.infer<typeof CreateBathIntentSchema>;
 
 export const ConfirmBathSchema = z.object({
   paymentIntentId: z.string(),
+  // Solo se usa en la ruta credit-only (sin PaymentIntent): el servidor re-valida
+  // el código. En el flujo Stripe el descuento se lee del metadata del PI.
+  discountCode: z.string().max(40).optional(),
 });
 export type ConfirmBath = z.infer<typeof ConfirmBathSchema>;
 

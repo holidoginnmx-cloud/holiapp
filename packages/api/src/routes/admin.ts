@@ -428,6 +428,132 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Códigos de descuento (admin) ──────────────────────────────
+  //   GET    /admin/discount-codes        listar
+  //   POST   /admin/discount-codes        crear
+  //   PATCH  /admin/discount-codes/:id    actualizar
+  //   DELETE /admin/discount-codes/:id    borrar
+  // Para el admin móvil; la web gestiona la MISMA tabla vía Supabase directo.
+  const DISCOUNT_TYPES = ["PERCENT", "FIXED"] as const;
+
+  // Normaliza + valida el cuerpo de un código. En creación (partial=false) exige
+  // code/type/scope/value; en edición (partial=true) solo valida lo enviado.
+  function parseDiscountBody(
+    body: any,
+    partial: boolean
+  ): { error: string } | { data: Record<string, unknown> } {
+    const data: Record<string, unknown> = {};
+    if (!partial || body.code !== undefined) {
+      const code = String(body.code ?? "").trim().toUpperCase();
+      if (code.length < 2) return { error: "El código debe tener al menos 2 caracteres" };
+      data.code = code;
+    }
+    if (!partial || body.type !== undefined) {
+      if (!DISCOUNT_TYPES.includes(body.type)) return { error: "Tipo inválido" };
+      data.type = body.type;
+    }
+    if (!partial || body.value !== undefined) {
+      const value = Number(body.value);
+      if (!Number.isFinite(value) || value <= 0) return { error: "El valor debe ser mayor a 0" };
+      data.value = value;
+    }
+    if (body.minSubtotal !== undefined) {
+      if (body.minSubtotal === null || body.minSubtotal === "") data.minSubtotal = null;
+      else {
+        const m = Number(body.minSubtotal);
+        if (!Number.isFinite(m) || m < 0) return { error: "Mín. subtotal inválido" };
+        data.minSubtotal = m;
+      }
+    }
+    if (body.maxUses !== undefined) {
+      if (body.maxUses === null || body.maxUses === "") data.maxUses = null;
+      else {
+        const n = Number(body.maxUses);
+        if (!Number.isInteger(n) || n < 0) return { error: "Máx. usos inválido" };
+        data.maxUses = n;
+      }
+    }
+    if (body.firstOrderOnly !== undefined) data.firstOrderOnly = Boolean(body.firstOrderOnly);
+    if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+    return { data };
+  }
+
+  fastify.get(
+    "/admin/discount-codes",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async () => {
+      const rows = await prisma.discountCode.findMany({ orderBy: { code: "asc" } });
+      return rows.map((d) => ({
+        id: d.id,
+        code: d.code,
+        type: d.type,
+        value: Number(d.value),
+        minSubtotal: d.minSubtotal == null ? null : Number(d.minSubtotal),
+        maxUses: d.maxUses,
+        usesCount: d.usesCount,
+        firstOrderOnly: d.firstOrderOnly,
+        isActive: d.isActive,
+      }));
+    }
+  );
+
+  fastify.post(
+    "/admin/discount-codes",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = parseDiscountBody(request.body ?? {}, false);
+      if ("error" in parsed) return reply.status(400).send({ error: parsed.error });
+      const code = parsed.data.code as string;
+      const existing = await prisma.discountCode.findUnique({ where: { code } });
+      if (existing) return reply.status(409).send({ error: "Ya existe un código con ese nombre" });
+      const created = await prisma.discountCode.create({ data: parsed.data as any });
+      return reply.status(201).send({ id: created.id });
+    }
+  );
+
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/discount-codes/:id",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = parseDiscountBody(request.body ?? {}, true);
+      if ("error" in parsed) return reply.status(400).send({ error: parsed.error });
+      if (Object.keys(parsed.data).length === 0) {
+        return reply.status(400).send({ error: "No hay cambios" });
+      }
+      // Si cambia el code, evitar colisión con otro registro.
+      if (parsed.data.code) {
+        const other = await prisma.discountCode.findUnique({
+          where: { code: parsed.data.code as string },
+        });
+        if (other && other.id !== request.params.id) {
+          return reply.status(409).send({ error: "Ya existe un código con ese nombre" });
+        }
+      }
+      try {
+        await prisma.discountCode.update({
+          where: { id: request.params.id },
+          data: parsed.data as any,
+        });
+      } catch {
+        return reply.status(404).send({ error: "Código no encontrado" });
+      }
+      return { ok: true };
+    }
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/admin/discount-codes/:id",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      try {
+        await prisma.discountCode.delete({ where: { id: request.params.id } });
+      } catch {
+        return reply.status(404).send({ error: "Código no encontrado" });
+      }
+      return { ok: true };
+    }
+  );
+
   // ─── PATCH /admin/lodging-pricing — actualizar tarifas ────────
   fastify.patch<{
     Body: Partial<{

@@ -12,6 +12,7 @@ import {
   bathSizeKey,
 } from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
+import { resolveDiscount } from "../lib/discounts";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -92,9 +93,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       bathSelectionsByPet?: Record<string, { deslanado: boolean; corte: boolean }>;
       medicationByPet?: Record<string, { notes: string }>;
       homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+      discountCode?: string;
     };
 
-    const { petIds, checkIn, checkOut, ownerId, roomPreference, paymentType = "FULL", bathSelectionsByPet, medicationByPet, homeDelivery } = body;
+    const { petIds, checkIn, checkOut, ownerId, roomPreference, paymentType = "FULL", bathSelectionsByPet, medicationByPet, homeDelivery, discountCode } = body;
 
     if (!petIds?.length || !checkIn || !checkOut || !ownerId) {
       return reply.status(400).send({ error: "Faltan campos requeridos" });
@@ -240,10 +242,24 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
 
     const baseTotal = breakdown.reduce((sum, b) => sum + b.subtotal, 0) + bathTotal + medicationTotal;
 
+    // Código de descuento (alcance reservas). Aplica sobre el subtotal del
+    // servicio (hospedaje + baño + medicación); NO sobre el envío a domicilio.
+    // El monto es autoritativo (server-side) y viaja en el metadata del PI para
+    // que /reservations/multi lo persista al confirmar.
+    const discount = await resolveDiscount(prisma, {
+      code: discountCode,
+      subtotal: baseTotal,    });
+    if (discount.error) {
+      return reply.status(400).send({ error: discount.error });
+    }
+    const discountTotal = discount.discountTotal;
+    const discountedBase = baseTotal - discountTotal;
+
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%
+    // (sobre la base YA descontada, para que cuadre con el cargo de Stripe).
     const hoursUntilCheckIn = (checkInDate.getTime() - Date.now()) / (60 * 60 * 1000);
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
-    const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.20) : 0;
+    const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
 
     // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (no se
     // confía en el cliente). Es un costo logístico fijo: NO aplica el recargo
@@ -260,7 +276,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const grandTotal = baseTotal + surchargeAmount + deliveryFee;
+    const grandTotal = discountedBase + surchargeAmount + deliveryFee;
     const depositAmountBase = paymentType === "DEPOSIT" ? Math.ceil(grandTotal * 0.20) : grandTotal;
 
     // Apply credit balance before Stripe charge
@@ -298,6 +314,8 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         deliveryFee,
         deliveryDistanceKm,
         deliveryActive,
+        discountTotal,
+        discountCode: discount.dc?.code ?? null,
       });
     }
 
@@ -327,6 +345,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         sameDaySurcharge: sameDaySurcharge ? "1" : "0",
         creditApplied: String(creditApplied),
         deliveryFee: deliveryActive ? String(deliveryFee) : "",
+        discountCode: discount.dc?.code ?? "",
+        discountCodeId: discount.discountCodeId ?? "",
+        discountTotal: String(discountTotal),
       },
     });
 
@@ -351,6 +372,8 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       deliveryFee,
       deliveryDistanceKm,
       deliveryActive,
+      discountTotal,
+      discountCode: discount.dc?.code ?? null,
     });
   } catch (err: any) {
     fastify.log.error(err);

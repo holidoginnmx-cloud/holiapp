@@ -440,6 +440,13 @@ model Reservation {
   roomId String?
   room   Room?   @relation(fields: [roomId], references: [id])
 
+  // Código de descuento aplicado. `discountTotal` es el monto descontado
+  // atribuido a ESTA reserva (en grupos multi-mascota, su parte proporcional).
+  // `totalAmount` ya se guarda NETO (con el descuento restado).
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
+  discountTotal  Decimal?      @db.Decimal(10, 2)
+
   // Staff asignado
   staffId String?
   staff   User?   @relation("StaffAssignments", fields: [staffId], references: [id])
@@ -1221,21 +1228,22 @@ model OrderItem {
 
 // CÓDIGO DE DESCUENTO — p. ej. WEB10 (10% primera compra).
 model DiscountCode {
-  id             String       @id @default(cuid())
-  code           String       @unique
+  id             String        @id @default(cuid())
+  code           String        @unique
   type           DiscountType
-  value          Decimal      @db.Decimal(10, 2)
-  minSubtotal    Decimal?     @db.Decimal(10, 2)
-  firstOrderOnly Boolean      @default(false)
+  value          Decimal       @db.Decimal(10, 2)
+  minSubtotal    Decimal?      @db.Decimal(10, 2)
+  firstOrderOnly Boolean       @default(false)
   maxUses        Int?
-  usesCount      Int          @default(0)
+  usesCount      Int           @default(0)
   startsAt       DateTime?
   endsAt         DateTime?
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  orders Order[]
+  orders       Order[]
+  reservations Reservation[]
 
   @@map("discount_codes")
 }

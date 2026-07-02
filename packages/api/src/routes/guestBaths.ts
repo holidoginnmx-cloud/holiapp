@@ -316,7 +316,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
           // Lock transaccional por slot (mismo namespace 42 que /baths/confirm):
           // serializa confirmaciones concurrentes del mismo horario para que el
           // count-then-create sea atómico y no se sobre-reserve el slot.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
           const taken = await tx.reservation.count({
             where: { reservationType: "BATH", status: { not: "CANCELLED" }, appointmentAt },
           });

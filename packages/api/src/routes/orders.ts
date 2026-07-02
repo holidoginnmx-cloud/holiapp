@@ -4,6 +4,7 @@ import { Prisma } from "@holidoginn/db";
 import { createAuthMiddleware, createOptionalAuthMiddleware } from "../middleware/auth";
 import { getCartToken, loadCartDetail, resolveActiveCart } from "../lib/store";
 import { quoteDelivery } from "../lib/delivery";
+import { resolveDiscount } from "../lib/discounts";
 
 // ---------------------------------------------------------------------------
 // Tienda en línea — pedidos y checkout.
@@ -78,47 +79,29 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
 
       const subtotal = detail.subtotal;
 
-      // Validar y aplicar código de descuento.
-      let discountTotal = 0;
-      let discountCodeId: string | null = null;
-      if (body.discountCode?.trim()) {
-        const code = body.discountCode.trim().toUpperCase();
-        const dc = await prisma.discountCode.findUnique({ where: { code } });
-        const now = new Date();
-        const valido =
-          dc &&
-          dc.isActive &&
-          (!dc.startsAt || dc.startsAt <= now) &&
-          (!dc.endsAt || dc.endsAt >= now) &&
-          (dc.maxUses === null || dc.usesCount < dc.maxUses) &&
-          (!dc.minSubtotal || subtotal >= Number(dc.minSubtotal));
-
-        if (!dc || !valido) {
-          return reply.status(400).send({ error: "Código de descuento inválido" });
-        }
-        // "Primera compra": para logueados se verifica por userId; para invitados
-        // por email. No es a prueba de balas (un invitado puede usar otro email),
-        // pero cierra la reutilización trivial con el mismo correo.
-        if (dc.firstOrderOnly) {
-          const prev = await prisma.order.count({
-            where: {
-              status: { in: ["PAID", "FULFILLED"] },
-              ...(userId ? { userId } : { email }),
-            },
-          });
-          if (prev > 0) {
-            return reply.status(400).send({ error: "Este código es solo para tu primera compra" });
-          }
-        }
-        // value siempre >= 0 (defensa por si se insertó un código inválido en BD).
-        const value = Math.max(0, Number(dc.value));
-        discountTotal =
-          dc.type === "PERCENT"
-            ? Number(((subtotal * value) / 100).toFixed(2))
-            : Math.min(value, subtotal);
-        discountTotal = Math.min(Math.max(0, discountTotal), subtotal);
-        discountCodeId = dc.id;
+      // Validar y aplicar código de descuento (helper compartido; alcance tienda).
+      const discount = await resolveDiscount(prisma, {
+        code: body.discountCode,
+        subtotal,      });
+      if (discount.error) {
+        return reply.status(400).send({ error: "Código de descuento inválido" });
       }
+      // "Primera compra": específico de la tienda (historial de Orders). Para
+      // logueados se verifica por userId; para invitados por email. No es a
+      // prueba de balas, pero cierra la reutilización trivial con el mismo correo.
+      if (discount.dc?.firstOrderOnly) {
+        const prev = await prisma.order.count({
+          where: {
+            status: { in: ["PAID", "FULFILLED"] },
+            ...(userId ? { userId } : { email }),
+          },
+        });
+        if (prev > 0) {
+          return reply.status(400).send({ error: "Este código es solo para tu primera compra" });
+        }
+      }
+      const discountTotal = discount.discountTotal;
+      const discountCodeId = discount.discountCodeId;
 
       // Envío según el tipo de entrega. La tarifa SIEMPRE se recalcula aquí
       // (nunca se confía en el cliente). PICKUP = sin costo.
@@ -318,37 +301,16 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Subtotal inválido" });
       }
 
-      const dc = await prisma.discountCode.findUnique({ where: { code } });
-      const now = new Date();
-      const valido =
-        dc &&
-        dc.isActive &&
-        (!dc.startsAt || dc.startsAt <= now) &&
-        (!dc.endsAt || dc.endsAt >= now) &&
-        (dc.maxUses === null || dc.usesCount < dc.maxUses);
-
-      if (!dc || !valido) {
-        return reply.send({ valid: false, discountTotal: 0, message: "Código inválido o expirado" });
+      const discount = await resolveDiscount(prisma, {
+        code,
+        subtotal,      });
+      if (discount.error) {
+        return reply.send({ valid: false, discountTotal: 0, message: discount.error });
       }
-      if (dc.minSubtotal && subtotal < Number(dc.minSubtotal)) {
-        return reply.send({
-          valid: false,
-          discountTotal: 0,
-          message: `Aplica desde ${Number(dc.minSubtotal).toFixed(2)} de subtotal`,
-        });
-      }
-
-      const value = Math.max(0, Number(dc.value));
-      let discountTotal =
-        dc.type === "PERCENT"
-          ? Number(((subtotal * value) / 100).toFixed(2))
-          : Math.min(value, subtotal);
-      discountTotal = Math.min(Math.max(0, discountTotal), subtotal);
-
       return reply.send({
         valid: true,
-        discountTotal,
-        message: dc.firstOrderOnly
+        discountTotal: discount.discountTotal,
+        message: discount.dc?.firstOrderOnly
           ? "Cupón aplicado (solo primera compra)"
           : "Cupón aplicado",
       });
