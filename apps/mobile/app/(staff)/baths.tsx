@@ -34,6 +34,7 @@ import { formatName, formatCurrency, formatWeekdayDayShort } from "@/lib/format"
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
+import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
 type BathTypeFilter = "loose" | "stay";
 
@@ -115,6 +116,7 @@ function buildRows(baths: StaffBath[]): Row[] {
 export default function StaffBaths() {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isTablet } = useResponsive();
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<BathTypeFilter>("loose");
   // Ref espejo del filtro para que el PanResponder lea el valor actual sin
@@ -508,7 +510,7 @@ export default function StaffBaths() {
         </View>
       ) : (
         <View
-          style={styles.swipeWrap}
+          style={[styles.swipeWrap, isTablet && styles.swipeWrapTablet]}
           onLayout={(e) => setContentWidth(e.nativeEvent.layout.width)}
           {...swipePan.panHandlers}
         >
@@ -719,6 +721,11 @@ const extrasStyles = StyleSheet.create({
     borderTopRightRadius: 18,
     padding: 20,
     paddingBottom: 32,
+    // En iPad el bottom-sheet se acota y centra; en teléfono (ancho < 520)
+    // width:100% manda y no cambia nada.
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
   },
   header: {
     flexDirection: "row",
@@ -807,6 +814,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   swipeWrap: { flex: 1, overflow: "hidden" },
+  // En iPad centramos y acotamos el área de contenido (el header y las tabs
+  // siguen a ancho completo). El swipe mide este ancho vía onLayout, así que
+  // la mecánica de deslizamiento sigue siendo consistente.
+  swipeWrapTablet: { alignSelf: "center", width: "100%", maxWidth: CONTENT_MAX_WIDTH },
   swipeTrack: { flex: 1, flexDirection: "row" },
   listContent: { padding: 16, paddingBottom: 40 },
   sectionHeader: {

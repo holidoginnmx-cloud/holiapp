@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -23,6 +24,7 @@ import {
   getBathSlots,
   createBathIntent,
   confirmBath,
+  validateReservationDiscount,
   getDeliveryStatus,
   getDeliveryAddress,
   saveDeliveryAddress,
@@ -82,6 +84,9 @@ function CreateBathScreenContent() {
   // ── Servicio a domicilio ──
   const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
 
   const { data: deliveryStatus } = useQuery({
     queryKey: ["delivery-status"],
@@ -163,10 +168,9 @@ function CreateBathScreenContent() {
     [pets, selectedPetId],
   );
 
-  const eligiblePets = useMemo(
-    () => (pets ?? []).filter((p) => p.cartillaStatus === "APPROVED"),
-    [pets],
-  );
+  // El baño no exige cartilla aprobada (a diferencia del hospedaje): se listan
+  // todas las mascotas del dueño.
+  const selectablePets = useMemo(() => pets ?? [], [pets]);
 
   const variant = useMemo(() => {
     if (!selectedPet || !variants) return null;
@@ -186,6 +190,43 @@ function CreateBathScreenContent() {
     !deliveryIncomplete &&
     !submitting;
 
+  async function applyDiscount() {
+    if (!variant) return;
+    const code = discountCodeInput.trim();
+    if (!code) return;
+    setApplyingDiscount(true);
+    try {
+      const res = await validateReservationDiscount({
+        code,
+        subtotal: Number(variant.price),
+      });
+      if (res.valid) {
+        setAppliedDiscount({ code: code.toUpperCase(), discountTotal: res.discountTotal });
+      } else {
+        setAppliedDiscount(null);
+        Alert.alert("Código de descuento", res.message);
+      }
+    } catch (err) {
+      Alert.alert(
+        "Código de descuento",
+        err instanceof Error ? err.message : "No se pudo validar el código"
+      );
+    } finally {
+      setApplyingDiscount(false);
+    }
+  }
+
+  function removeDiscount() {
+    setAppliedDiscount(null);
+    setDiscountCodeInput("");
+  }
+
+  // Si cambia el precio (mascota u opciones de baño), el descuento previo puede
+  // quedar desactualizado; se limpia para que el usuario lo vuelva a aplicar.
+  useEffect(() => {
+    setAppliedDiscount(null);
+  }, [selectedPetId, deslanado, corte]);
+
   async function handleSubmit() {
     if (!selectedPet || !variant || !selectedSlotIso) return;
     setSubmitting(true);
@@ -197,6 +238,7 @@ function CreateBathScreenContent() {
         appointmentAt: selectedSlotIso,
         paymentType,
         homeDelivery: homeDeliveryPayload,
+        discountCode: appliedDiscount?.code,
       });
 
       if (!intent.coveredByCredit && intent.clientSecret) {
@@ -220,6 +262,7 @@ function CreateBathScreenContent() {
               variantId: intent.variantId,
               appointmentAt: selectedSlotIso,
               homeDelivery: homeDeliveryPayload,
+              discountCode: appliedDiscount?.code,
             }
           : { paymentIntentId: intent.paymentIntentId! },
       );
@@ -284,16 +327,16 @@ function CreateBathScreenContent() {
           />
         ) : petsLoading ? (
           <ActivityIndicator color={COLORS.primary} />
-        ) : eligiblePets.length === 0 ? (
+        ) : selectablePets.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Ionicons name="shield-outline" size={28} color={COLORS.warningText} />
+            <Ionicons name="paw-outline" size={28} color={COLORS.primary} />
             <Text style={styles.emptyText}>
-              Necesitas una mascota con cartilla aprobada para agendar baño.
+              Necesitas registrar una mascota para agendar baño.
             </Text>
           </View>
         ) : (
           <View style={styles.petList}>
-            {eligiblePets.map((p) => {
+            {selectablePets.map((p) => {
               const selected = p.id === selectedPetId;
               return (
                 <TouchableOpacity
@@ -439,7 +482,9 @@ function CreateBathScreenContent() {
 
             {variant && (() => {
               const price = Number(variant.price);
-              const total = price + deliveryFee;
+              const discountTotal = appliedDiscount?.discountTotal ?? 0;
+              const discountedPrice = Math.max(0, price - discountTotal);
+              const total = discountedPrice + deliveryFee;
               const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
               const hasBalance = total > baseDeposit;
               const payNow = paymentType === "FULL" ? total : baseDeposit;
@@ -458,6 +503,49 @@ function CreateBathScreenContent() {
                       <Text style={styles.priceLineValue}>
                         {formatCurrency(deliveryFee)}
                       </Text>
+                    </View>
+                  )}
+
+                  {/* Código de descuento */}
+                  {appliedDiscount ? (
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceLabel}>
+                        Descuento ({appliedDiscount.code})
+                      </Text>
+                      <View style={styles.discountAppliedValue}>
+                        <Text style={styles.discountValueText}>
+                          −{formatCurrency(discountTotal)}
+                        </Text>
+                        <TouchableOpacity onPress={removeDiscount} hitSlop={8}>
+                          <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.discountRow}>
+                      <TextInput
+                        style={styles.discountInput}
+                        placeholder="Código de descuento"
+                        placeholderTextColor={COLORS.textTertiary}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        value={discountCodeInput}
+                        onChangeText={setDiscountCodeInput}
+                        editable={!applyingDiscount}
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.discountApplyBtn,
+                          (applyingDiscount || !discountCodeInput.trim()) &&
+                            styles.discountApplyBtnDisabled,
+                        ]}
+                        onPress={applyDiscount}
+                        disabled={applyingDiscount || !discountCodeInput.trim()}
+                      >
+                        <Text style={styles.discountApplyText}>
+                          {applyingDiscount ? "…" : "Aplicar"}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   )}
 
@@ -647,7 +735,8 @@ function CreateBathScreenContent() {
               <ActivityIndicator color={COLORS.white} />
             ) : (() => {
               const price = Number(variant.price);
-              const total = price + deliveryFee;
+              const discountedPrice = Math.max(0, price - (appliedDiscount?.discountTotal ?? 0));
+              const total = discountedPrice + deliveryFee;
               const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
               const payNow = paymentType === "FULL" ? total : baseDeposit;
               const isFull = paymentType === "FULL" || total <= baseDeposit;
@@ -761,6 +850,30 @@ const styles = StyleSheet.create({
   priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontWeight: "600" },
   priceValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
   priceLineValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  discountRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  discountInput: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    backgroundColor: "#fff",
+  },
+  discountApplyBtn: {
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  discountApplyBtnDisabled: { opacity: 0.5 },
+  discountApplyText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  discountAppliedValue: { flexDirection: "row", alignItems: "center", gap: 8 },
+  discountValueText: { fontSize: 15, fontWeight: "700", color: COLORS.successText },
   bathDeliveryFee: { fontSize: 15, fontWeight: "700", color: COLORS.primary },
   deliveryQuoteRow: {
     flexDirection: "row",

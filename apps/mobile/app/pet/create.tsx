@@ -21,6 +21,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getPetById, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
+import { BreedAutocomplete } from "@/components/BreedAutocomplete";
 import { formatName, formatPhoneInput, formatDayLongYear } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -383,12 +384,10 @@ export default function CreatePetScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Raza</Text>
-          <TextInput
-            style={styles.input}
+          <BreedAutocomplete
             value={breed}
-            onChangeText={setBreed}
+            onChange={setBreed}
             placeholder="Ej: Golden Retriever"
-            placeholderTextColor={COLORS.textDisabled}
           />
         </View>
 

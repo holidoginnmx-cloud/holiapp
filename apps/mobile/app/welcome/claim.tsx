@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -40,10 +40,25 @@ export default function ClaimAccountScreen() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [candidates, setCandidates] = useState<ClaimCandidate[]>([]);
+  const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
+
+  // Mascotas de TODOS los candidatos: un teléfono puede traer varios registros
+  // duplicados del mismo cliente (o de un familiar que comparte teléfono).
+  const allCandidatePets = useMemo(
+    () =>
+      candidates.flatMap((c) =>
+        c.pets.map((p) => ({ ...p, ownerName: c.firstName })),
+      ),
+    [candidates],
+  );
+  const distinctOwnerCount = useMemo(
+    () => new Set(candidates.map((c) => c.firstName)).size,
+    [candidates],
+  );
 
   const finish = useCallback(async () => {
     // Marca POR USUARIO (lee el id más reciente del store: tras un claim el
@@ -93,6 +108,7 @@ export default function ClaimAccountScreen() {
     try {
       const res = await lookupExistingAccount(payload);
       setCandidates(res.candidates);
+      setSelectedPetIds(new Set());
       setSearched(true);
     } catch (e: any) {
       setError(e?.message ?? "No pudimos buscar tu cuenta. Intenta de nuevo.");
@@ -101,13 +117,24 @@ export default function ClaimAccountScreen() {
     }
   };
 
-  const handleConfirm = async (candidate: ClaimCandidate) => {
+  const togglePet = (petId: string) => {
+    setSelectedPetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(petId)) next.delete(petId);
+      else next.add(petId);
+      return next;
+    });
+  };
+
+  const handleConfirm = async () => {
+    if (selectedPetIds.size === 0) return;
     setError(null);
-    setConfirmingId(candidate.candidateId);
+    setSubmitting(true);
     try {
       await confirmClaim({
-        candidateId: candidate.candidateId,
+        petIds: [...selectedPetIds],
         phone: useEmail ? undefined : phone.trim() || undefined,
+        email: useEmail ? email.trim().toLowerCase() || undefined : undefined,
       });
       // Refrescar el usuario (ahora apunta al registro consolidado) y la lista
       // de mascotas antes de salir.
@@ -115,7 +142,7 @@ export default function ClaimAccountScreen() {
       queryClient.invalidateQueries({ queryKey: ["pets"] });
       await finish();
     } catch (e: any) {
-      setConfirmingId(null);
+      setSubmitting(false);
       setError(
         e?.message ?? "No pudimos vincular tu cuenta. Intenta de nuevo.",
       );
@@ -203,6 +230,7 @@ export default function ClaimAccountScreen() {
             setError(null);
             setSearched(false);
             setCandidates([]);
+            setSelectedPetIds(new Set());
           }}
           style={styles.linkBtn}
         >
@@ -226,51 +254,83 @@ export default function ClaimAccountScreen() {
           </View>
         )}
 
-        {candidates.map((c) => (
-          <View key={c.candidateId} style={styles.candidateCard}>
-            <Text style={styles.candidateName}>
-              {c.firstName}
-              {c.pets.length > 0 ? "" : " — sin mascotas registradas"}
+        {allCandidatePets.length > 0 && (
+          <View style={styles.candidateCard}>
+            <Text style={styles.candidateName}>¿Cuáles son tuyas?</Text>
+            <Text style={styles.pickHint}>
+              Marca todas tus mascotas para vincularlas a tu cuenta y no
+              duplicarlas.
             </Text>
-            {c.pets.length > 0 && (
-              <View style={styles.petRow}>
-                {c.pets.map((p, i) => (
-                  <View key={i} style={styles.petChip}>
-                    {p.photoUrl ? (
-                      <Image source={{ uri: p.photoUrl }} style={styles.petPhoto} />
-                    ) : (
-                      <View style={[styles.petPhoto, styles.petPhotoFallback]}>
-                        <Ionicons name="paw" size={14} color={COLORS.primary} />
-                      </View>
-                    )}
+            {allCandidatePets.map((p) => {
+              const selected = selectedPetIds.has(p.id);
+              const meta = [
+                p.breed,
+                distinctOwnerCount > 1 ? p.ownerName : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.petSelectRow,
+                    selected && styles.petSelectRowOn,
+                  ]}
+                  onPress={() => togglePet(p.id)}
+                  activeOpacity={0.8}
+                  testID={`claim-pet-${p.id}`}
+                >
+                  {p.photoUrl ? (
+                    <Image
+                      source={{ uri: p.photoUrl }}
+                      style={styles.petPhoto}
+                    />
+                  ) : (
+                    <View style={[styles.petPhoto, styles.petPhotoFallback]}>
+                      <Ionicons name="paw" size={14} color={COLORS.primary} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.petName}>{p.name}</Text>
+                    {meta.length > 0 && (
+                      <Text style={styles.petMeta}>{meta}</Text>
+                    )}
                   </View>
-                ))}
-              </View>
-            )}
+                  <Ionicons
+                    name={selected ? "checkmark-circle" : "ellipse-outline"}
+                    size={24}
+                    color={selected ? COLORS.primary : COLORS.textDisabled}
+                  />
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
               style={[
                 styles.confirmButton,
-                confirmingId === c.candidateId && styles.buttonDisabled,
+                (selectedPetIds.size === 0 || submitting) &&
+                  styles.buttonDisabled,
               ]}
-              onPress={() => handleConfirm(c)}
+              onPress={handleConfirm}
               activeOpacity={0.85}
-              disabled={!!confirmingId}
+              disabled={selectedPetIds.size === 0 || submitting}
               testID="claim-confirm-button"
             >
-              {confirmingId === c.candidateId ? (
+              {submitting ? (
                 <ActivityIndicator color={COLORS.white} />
               ) : (
-                <Text style={styles.confirmButtonText}>Sí, soy yo</Text>
+                <Text style={styles.confirmButtonText}>
+                  Vincular mis mascotas
+                  {selectedPetIds.size > 0 ? ` (${selectedPetIds.size})` : ""}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
-        ))}
+        )}
 
         <TouchableOpacity
           onPress={finish}
           style={styles.skipBtn}
-          disabled={!!confirmingId}
+          disabled={submitting}
           testID="claim-skip-button"
         >
           <Text style={styles.skipText}>
@@ -456,5 +516,31 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     fontSize: 14,
     fontWeight: "600",
+  },
+  pickHint: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    lineHeight: 18,
+    marginTop: -4,
+  },
+  petSelectRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.bgPage,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  petSelectRowOn: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  petMeta: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 1,
   },
 });

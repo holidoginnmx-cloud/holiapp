@@ -51,6 +51,7 @@ import {
 import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency, formatDayShortYear, formatDayShort, formatDateTimeShort } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 import { styles } from "@/styles/stayDetailStyles";
+import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
 const ALERT_TYPES: { key: AlertType; label: string; icon: string }[] = [
   { key: "NOT_EATING", label: "No está comiendo", icon: "restaurant-outline" },
@@ -71,6 +72,7 @@ const BEHAVIOR_TAGS: { key: BehaviorTagValue; label: string }[] = [
 
 export default function StayDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { isTablet } = useResponsive();
   const router = useRouter();
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((s) => s.userId);
@@ -382,6 +384,9 @@ export default function StayDetail() {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={
+        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" }
+      }
       refreshControl={
         <RefreshControl refreshing={false} onRefresh={refetch} tintColor={COLORS.primary} />
       }

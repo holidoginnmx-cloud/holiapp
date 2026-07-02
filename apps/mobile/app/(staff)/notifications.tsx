@@ -17,6 +17,7 @@ import {
   markAllNotificationsAsRead,
 } from "@/lib/api";
 import { NotificationItem } from "@/components/NotificationItem";
+import { ScreenContainer } from "@/components/ScreenContainer";
 import { dayGroupLabel } from "@/lib/format";
 
 export default function StaffNotificationsScreen() {
@@ -93,7 +94,7 @@ export default function StaffNotificationsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer backgroundColor={COLORS.white}>
       {unreadCount > 0 && (
         <TouchableOpacity
           style={styles.markAllButton}
@@ -140,7 +141,7 @@ export default function StaffNotificationsScreen() {
           </View>
         }
       />
-    </View>
+    </ScreenContainer>
   );
 }
 

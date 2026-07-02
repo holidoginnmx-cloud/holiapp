@@ -164,6 +164,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/delivery-config" as any)}
         />
         <MenuItem
+          icon="ticket-outline"
+          iconTint={COLORS.primary}
+          label="Códigos de descuento"
+          subtitle="Crear y gestionar cupones para hotel y baño"
+          onPress={() => router.push("/admin/discount-codes" as any)}
+        />
+        <MenuItem
           icon="warning-outline"
           iconTint={COLORS.warningText}
           label="Alertas"

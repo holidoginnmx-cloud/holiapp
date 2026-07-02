@@ -19,6 +19,8 @@ import {
   type CalendarReservation,
 } from "@/components/CalendarView";
 import { ErrorState } from "@/components/ErrorState";
+import { ScreenContainer } from "@/components/ScreenContainer";
+import { WIDE_MAX_WIDTH } from "@/lib/responsive";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
 // Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
@@ -129,7 +131,7 @@ export default function StaffStays() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer maxWidth={WIDE_MAX_WIDTH}>
       {/* Search bar */}
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={18} color={COLORS.textDisabled} />
@@ -168,7 +170,7 @@ export default function StaffStays() {
           refetchBaths();
         }}
       />
-    </View>
+    </ScreenContainer>
   );
 }
 

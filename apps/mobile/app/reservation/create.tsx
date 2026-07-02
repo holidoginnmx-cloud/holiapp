@@ -20,6 +20,7 @@ import {
   getPetsByOwner,
   createMultiReservation,
   createPaymentIntent,
+  validateReservationDiscount,
   getBathVariants,
   getAvailableRooms,
   getMe,
@@ -101,6 +102,9 @@ function CreateReservationScreenContent() {
   // ── Servicio a domicilio ──
   const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
 
   // ¿El servicio está activo? Gate para mostrar la opción.
   const { data: deliveryStatus } = useQuery({
@@ -393,17 +397,55 @@ function CreateReservationScreenContent() {
 
   const baseTotal = lodgingTotal + bathTotal + medicationTotal;
 
+  // Descuento aplicado (preview; el backend recalcula el monto autoritativo).
+  // Aplica sobre el subtotal del servicio, NO sobre el envío a domicilio.
+  const discountTotal = appliedDiscount?.discountTotal ?? 0;
+  const discountedBase = Math.max(0, baseTotal - discountTotal);
+
   // Same-day surcharge: OWNER reservando con menos de 24h de anticipación paga +20%
   const hoursUntilCheckIn = checkIn
     ? (checkIn.getTime() - Date.now()) / (60 * 60 * 1000)
     : Infinity;
   const sameDaySurcharge = role === "OWNER" && hoursUntilCheckIn < 24;
-  const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.20) : 0;
+  const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
 
   // La fee de domicilio es un costo logístico fijo: no lleva el recargo
   // mismo-día, pero sí entra en la base del anticipo (igual que el backend).
-  const grandTotal = baseTotal + surchargeAmount + deliveryFee;
+  const grandTotal = discountedBase + surchargeAmount + deliveryFee;
   const depositAmount = Math.ceil(grandTotal * 0.20);
+
+  async function applyDiscount() {
+    const code = discountCodeInput.trim();
+    if (!code || baseTotal <= 0) return;
+    setApplyingDiscount(true);
+    try {
+      const res = await validateReservationDiscount({ code, subtotal: baseTotal });
+      if (res.valid) {
+        setAppliedDiscount({ code: code.toUpperCase(), discountTotal: res.discountTotal });
+      } else {
+        setAppliedDiscount(null);
+        Alert.alert("Código de descuento", res.message);
+      }
+    } catch (err) {
+      Alert.alert(
+        "Código de descuento",
+        err instanceof Error ? err.message : "No se pudo validar el código"
+      );
+    } finally {
+      setApplyingDiscount(false);
+    }
+  }
+
+  function removeDiscount() {
+    setAppliedDiscount(null);
+    setDiscountCodeInput("");
+  }
+
+  // Si cambia el subtotal (mascotas, fechas, baños, medicamentos), el descuento
+  // previo puede quedar desactualizado; se limpia para volverlo a aplicar.
+  useEffect(() => {
+    setAppliedDiscount(null);
+  }, [baseTotal]);
 
   // Build payload for API (only enabled pets)
   const bathSelectionsPayload: BathSelectionsByPet | undefined = useMemo(() => {
@@ -500,6 +542,7 @@ function CreateReservationScreenContent() {
         bathSelectionsByPet: bathSelectionsPayload,
         medicationByPet: medicationPayload,
         homeDelivery: homeDeliveryPayload,
+        discountCode: appliedDiscount?.code,
       });
 
       // 2. Saldo a favor cubre todo: confirmar con el usuario antes de aplicar
@@ -575,6 +618,7 @@ function CreateReservationScreenContent() {
         bathSelectionsByPet: bathSelectionsPayload,
         medicationByPet: medicationPayload,
         homeDelivery: homeDeliveryPayload,
+        discountCode: appliedDiscount?.code,
       });
 
       // Guarda la dirección para precargarla en futuras reservas (best-effort).
@@ -1280,6 +1324,47 @@ function CreateReservationScreenContent() {
               <Text style={styles.priceValue}>
                 {formatCurrency(deliveryFee)}
               </Text>
+            </View>
+          )}
+          {appliedDiscount ? (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>
+                Descuento ({appliedDiscount.code})
+              </Text>
+              <View style={styles.discountAppliedValue}>
+                <Text style={styles.discountValueText}>
+                  −{formatCurrency(discountTotal)}
+                </Text>
+                <TouchableOpacity onPress={removeDiscount} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.discountRow}>
+              <TextInput
+                style={styles.discountInput}
+                placeholder="Código de descuento"
+                placeholderTextColor={COLORS.textTertiary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                value={discountCodeInput}
+                onChangeText={setDiscountCodeInput}
+                editable={!applyingDiscount}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.discountApplyBtn,
+                  (applyingDiscount || !discountCodeInput.trim()) &&
+                    styles.discountApplyBtnDisabled,
+                ]}
+                onPress={applyDiscount}
+                disabled={applyingDiscount || !discountCodeInput.trim()}
+              >
+                <Text style={styles.discountApplyText}>
+                  {applyingDiscount ? "…" : "Aplicar"}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
           {(() => {

@@ -8,6 +8,7 @@ import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InteractionManager, StyleSheet } from "react-native";
 import Animated, { FadeOut } from "react-native-reanimated";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { Baloo2_800ExtraBold } from "@expo-google-fonts/baloo-2";
@@ -215,7 +216,8 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+    <SafeAreaProvider>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
         <StatusBar style="dark" />
@@ -246,6 +248,7 @@ export default function RootLayout() {
         <DevRoleSwitcher />
         <SplashGate />
       </QueryClientProvider>
-    </ClerkProvider>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }

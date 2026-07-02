@@ -2,7 +2,6 @@ import { COLORS } from "@/constants/colors";
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
@@ -15,6 +14,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { getStaffStays } from "@/lib/api";
 import { AlertItem } from "@/components/AlertItem";
 import { ErrorState } from "@/components/ErrorState";
+import { ScreenContainer } from "@/components/ScreenContainer";
+import { CardGrid } from "@/components/CardGrid";
+import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import { formatName, formatTime } from "@/lib/format";
 
 type ListType = "hospedados" | "alertas" | "checkins" | "checkouts" | "reportes";
@@ -69,6 +71,7 @@ function isSameLocalDay(date: Date | string | null | undefined): boolean {
 export default function StaffListScreen() {
   const { type } = useLocalSearchParams<{ type: ListType }>();
   const router = useRouter();
+  const { columns } = useResponsive();
   const t = (type as ListType) ?? "hospedados";
 
   const {
@@ -163,8 +166,9 @@ export default function StaffListScreen() {
     (t !== "alertas" && stayList.length === 0) || isAlertasEmpty;
 
   return (
-    <ScrollView
-      style={styles.container}
+    <ScreenContainer
+      scroll
+      maxWidth={WIDE_MAX_WIDTH}
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
@@ -181,7 +185,7 @@ export default function StaffListScreen() {
           <Text style={styles.emptySubtitle}>{copy.emptySubtitle}</Text>
         </View>
       ) : t === "alertas" ? (
-        <View>
+        <CardGrid columns={Math.min(columns, 2)} gap={12}>
           {staysWithMedication.map((stay) => (
             <AlertItem
               key={`med-${stay.id}`}
@@ -221,9 +225,9 @@ export default function StaffListScreen() {
               />
             );
           })}
-        </View>
+        </CardGrid>
       ) : (
-        <View>
+        <CardGrid columns={columns} gap={12}>
           {stayList.map((stay) => (
             <TouchableOpacity
               key={stay.id}
@@ -305,9 +309,9 @@ export default function StaffListScreen() {
               />
             </TouchableOpacity>
           ))}
-        </View>
+        </CardGrid>
       )}
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 

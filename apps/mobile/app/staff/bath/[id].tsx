@@ -5,6 +5,7 @@ import {
   type ManualPaymentValues,
 } from "@/components/PaymentManualModal";
 import { styles, extrasStyles } from "@/styles/bathDetailStyles";
+import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { useMemo, useState } from "react";
 import {
   View,
@@ -98,6 +99,7 @@ function bathOutstandingBalance(bath: StaffBath): {
 
 export default function StaffBathDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { isTablet } = useResponsive();
   const queryClient = useQueryClient();
   const [completing, setCompleting] = useState(false);
   const [photoFullscreen, setPhotoFullscreen] = useState<string | null>(null);
@@ -257,7 +259,10 @@ export default function StaffBathDetail() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" },
+      ]}
       refreshControl={
         <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
       }

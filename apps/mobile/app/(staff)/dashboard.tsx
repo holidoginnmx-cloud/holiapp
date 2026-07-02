@@ -4,7 +4,6 @@ import {
   View,
   Text,
   Image,
-  ScrollView,
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
@@ -24,6 +23,9 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { AlertItem } from "@/components/AlertItem";
 import { ErrorState } from "@/components/ErrorState";
+import { ScreenContainer } from "@/components/ScreenContainer";
+import { CardGrid } from "@/components/CardGrid";
+import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import { formatName, formatDateLong, formatDayShort, formatTime, formatWeekdayDayShort } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
@@ -31,6 +33,7 @@ type SectionKey = "baths" | "active" | "unassigned" | "upcoming";
 
 export default function StaffDashboard() {
   const router = useRouter();
+  const { columns, isTablet } = useResponsive();
   const firstName = useAuthStore((s) => s.firstName);
   const userId = useAuthStore((s) => s.userId);
   const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
@@ -183,9 +186,70 @@ export default function StaffDashboard() {
     );
   }
 
+  // Tiles de estadísticas: se construyen una vez y se renderizan en dos filas
+  // (2 + 3) en teléfono o en una sola tira de 5 en iPad.
+  const statItems = [
+    <StatCard
+      key="hospedados"
+      label="Hospedados"
+      value={activeStays?.length ?? 0}
+      icon="paw"
+      color={COLORS.successText}
+      onPress={() => router.push("/staff-list/hospedados" as any)}
+    />,
+    <StatCard
+      key="alertas"
+      label="Alertas"
+      value={totalAlerts}
+      icon="alert-circle"
+      color={totalAlerts > 0 ? COLORS.warningText : COLORS.successText}
+      badge={badges.alerts}
+      onPress={() => {
+        markSeen("alerts");
+        router.push("/staff-list/alertas" as any);
+      }}
+    />,
+    <StatCard
+      key="checkins"
+      label="Check-ins hoy"
+      value={checkInsToday.length}
+      icon="log-in-outline"
+      color={COLORS.infoText}
+      badge={badges.checkins}
+      onPress={() => {
+        markSeen("checkins");
+        router.push("/staff-list/checkins" as any);
+      }}
+    />,
+    <StatCard
+      key="checkouts"
+      label="Check-outs hoy"
+      value={checkOutsToday.length}
+      icon="log-out-outline"
+      color={COLORS.warningText}
+      badge={badges.checkouts}
+      onPress={() => {
+        markSeen("checkouts");
+        router.push("/staff-list/checkouts" as any);
+      }}
+    />,
+    <StatCard
+      key="reportes"
+      label="Reportes"
+      value={`${reportsDone}/${reportsTotal}`}
+      icon="document-text"
+      color={reportsDone === reportsTotal && reportsTotal > 0
+        ? COLORS.successText
+        : COLORS.primary}
+      onPress={() => router.push("/staff-list/reportes" as any)}
+    />,
+  ];
+
   return (
-    <ScrollView
-      style={styles.container}
+    <ScreenContainer
+      scroll
+      maxWidth={WIDE_MAX_WIDTH}
+      backgroundColor={COLORS.bgPage}
       refreshControl={
         <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={COLORS.primary} />
       }
@@ -196,65 +260,22 @@ export default function StaffDashboard() {
         <Text style={styles.date}>{formatDate()}</Text>
       </View>
 
-      {/* Stats row 1 */}
-      <View style={styles.statsRow}>
-        <StatCard
-          label="Hospedados"
-          value={activeStays?.length ?? 0}
-          icon="paw"
-          color={COLORS.successText}
-          onPress={() => router.push("/staff-list/hospedados" as any)}
-        />
-        <View style={{ width: 12 }} />
-        <StatCard
-          label="Alertas"
-          value={totalAlerts}
-          icon="alert-circle"
-          color={totalAlerts > 0 ? COLORS.warningText : COLORS.successText}
-          badge={badges.alerts}
-          onPress={() => {
-            markSeen("alerts");
-            router.push("/staff-list/alertas" as any);
-          }}
-        />
-      </View>
-
-      {/* Stats row 2 — check-ins/outs hoy + progreso reportes */}
-      <View style={styles.statsRow}>
-        <StatCard
-          label="Check-ins hoy"
-          value={checkInsToday.length}
-          icon="log-in-outline"
-          color={COLORS.infoText}
-          badge={badges.checkins}
-          onPress={() => {
-            markSeen("checkins");
-            router.push("/staff-list/checkins" as any);
-          }}
-        />
-        <View style={{ width: 12 }} />
-        <StatCard
-          label="Check-outs hoy"
-          value={checkOutsToday.length}
-          icon="log-out-outline"
-          color={COLORS.warningText}
-          badge={badges.checkouts}
-          onPress={() => {
-            markSeen("checkouts");
-            router.push("/staff-list/checkouts" as any);
-          }}
-        />
-        <View style={{ width: 12 }} />
-        <StatCard
-          label="Reportes"
-          value={`${reportsDone}/${reportsTotal}`}
-          icon="document-text"
-          color={reportsDone === reportsTotal && reportsTotal > 0
-            ? COLORS.successText
-            : COLORS.primary}
-          onPress={() => router.push("/staff-list/reportes" as any)}
-        />
-      </View>
+      {/* Stats — 2+3 en teléfono, tira de 5 en iPad */}
+      {isTablet ? (
+        <View style={styles.statsStripTablet}>{statItems}</View>
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            {statItems[0]}
+            {statItems[1]}
+          </View>
+          <View style={styles.statsRow}>
+            {statItems[2]}
+            {statItems[3]}
+            {statItems[4]}
+          </View>
+        </>
+      )}
 
       {/* Próximos baños */}
       {orderedBaths.length > 0 && (
@@ -287,21 +308,24 @@ export default function StaffDashboard() {
               color={COLORS.textTertiary}
             />
           </Pressable>
-          {!collapsed.baths &&
-            orderedBaths.map((bath) => (
-              <BathCard
-                key={bath.id}
-                bath={bath}
-                done={isBathDone(bath)}
-                onPress={() => {
-                  if (bath.reservationType === "BATH") {
-                    router.push(`/staff/bath/${bath.id}` as any);
-                  } else {
-                    router.push(`/staff/stay/${bath.id}` as any);
-                  }
-                }}
-              />
-            ))}
+          {!collapsed.baths && (
+            <CardGrid columns={columns} gap={12}>
+              {orderedBaths.map((bath) => (
+                <BathCard
+                  key={bath.id}
+                  bath={bath}
+                  done={isBathDone(bath)}
+                  onPress={() => {
+                    if (bath.reservationType === "BATH") {
+                      router.push(`/staff/bath/${bath.id}` as any);
+                    } else {
+                      router.push(`/staff/stay/${bath.id}` as any);
+                    }
+                  }}
+                />
+              ))}
+            </CardGrid>
+          )}
         </View>
       )}
 
@@ -325,18 +349,20 @@ export default function StaffDashboard() {
           ((activeStays ?? []).length === 0 ? (
             <Text style={styles.emptyText}>No hay estancias activas</Text>
           ) : (
-            (activeStays ?? []).map((stay) => (
-              <StayCard
-                key={stay.id}
-                stay={stay}
-                statusLabel="Hospedado"
-                statusBg={COLORS.successBg}
-                statusColor={COLORS.successText}
-                accentColor={COLORS.successText}
-                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
-                variant="active"
-              />
-            ))
+            <CardGrid columns={columns} gap={12}>
+              {(activeStays ?? []).map((stay) => (
+                <StayCard
+                  key={stay.id}
+                  stay={stay}
+                  statusLabel="Hospedado"
+                  statusBg={COLORS.successBg}
+                  statusColor={COLORS.successText}
+                  accentColor={COLORS.successText}
+                  onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+                  variant="active"
+                />
+              ))}
+            </CardGrid>
           ))}
       </View>
 
@@ -357,16 +383,19 @@ export default function StaffDashboard() {
               color={COLORS.textTertiary}
             />
           </Pressable>
-          {!collapsed.unassigned &&
-            (unassignedStays ?? []).map((stay) => (
-              <AlertItem
-                key={stay.id}
-                icon="person-add-outline"
-                text={`${formatName(stay.pet?.name ?? "—")} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
-                severity="info"
-                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
-              />
-            ))}
+          {!collapsed.unassigned && (
+            <CardGrid columns={Math.min(columns, 2)} gap={12}>
+              {(unassignedStays ?? []).map((stay) => (
+                <AlertItem
+                  key={stay.id}
+                  icon="person-add-outline"
+                  text={`${formatName(stay.pet?.name ?? "—")} — ${stay.status === "CHECKED_IN" ? "Hospedado" : "Confirmada"} sin responsable`}
+                  severity="info"
+                  onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+                />
+              ))}
+            </CardGrid>
+          )}
         </View>
       )}
 
@@ -390,23 +419,25 @@ export default function StaffDashboard() {
           ((confirmedStays ?? []).length === 0 ? (
             <Text style={styles.emptyText}>No hay llegadas próximas</Text>
           ) : (
-            (confirmedStays ?? []).map((stay) => (
-              <StayCard
-                key={stay.id}
-                stay={stay}
-                statusLabel="Confirmada"
-                statusBg={COLORS.infoBg}
-                statusColor={COLORS.infoText}
-                accentColor={COLORS.infoText}
-                onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
-                variant="upcoming"
-              />
-            ))
+            <CardGrid columns={columns} gap={12}>
+              {(confirmedStays ?? []).map((stay) => (
+                <StayCard
+                  key={stay.id}
+                  stay={stay}
+                  statusLabel="Confirmada"
+                  statusBg={COLORS.infoBg}
+                  statusColor={COLORS.infoText}
+                  accentColor={COLORS.infoText}
+                  onPress={() => router.push(`/staff/stay/${stay.id}` as any)}
+                  variant="upcoming"
+                />
+              ))}
+            </CardGrid>
           ))}
       </View>
 
       <View style={{ height: 40 }} />
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 
@@ -829,6 +860,13 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+  },
+  statsStripTablet: {
+    flexDirection: "row",
+    gap: 12,
     paddingHorizontal: 20,
     paddingVertical: 6,
   },

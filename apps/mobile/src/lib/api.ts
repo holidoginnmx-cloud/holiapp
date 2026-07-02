@@ -160,7 +160,12 @@ export const getUserById = (id: string) =>
 export type ClaimCandidate = {
   candidateId: string;
   firstName: string;
-  pets: { name: string; breed: string | null; photoUrl: string | null }[];
+  pets: {
+    id: string;
+    name: string;
+    breed: string | null;
+    photoUrl: string | null;
+  }[];
 };
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
@@ -171,8 +176,13 @@ export const lookupExistingAccount = (data: { phone?: string; email?: string }) 
     body: JSON.stringify(data),
   });
 
-/** Confirma y fusiona la cuenta nueva con la preexistente elegida. */
-export const confirmClaim = (data: { candidateId: string; phone?: string }) =>
+/** Confirma el claim: reúne las mascotas seleccionadas (pueden venir de varios
+ * registros duplicados) bajo la cuenta del usuario. */
+export const confirmClaim = (data: {
+  petIds: string[];
+  phone?: string;
+  email?: string;
+}) =>
   apiFetch<User>("/users/claim/confirm", {
     method: "POST",
     body: JSON.stringify(data),
@@ -361,8 +371,11 @@ export const createMultiReservation = (data: {
   bathSelectionsByPet?: BathSelectionsByPet;
   medicationByPet?: MedicationByPet;
   homeDelivery?: HomeDeliveryInput;
+  // Solo se usa en la ruta credit-only (sin PaymentIntent); en el flujo Stripe
+  // el descuento se lee del metadata del PI en el servidor.
+  discountCode?: string;
 }) =>
-  apiFetch<{ reservations: ReservationDetail[]; grandTotal: number; groupId: string | null }>(
+  apiFetch<{ reservations: ReservationDetail[]; grandTotal: number; discountTotal?: number; groupId: string | null }>(
     `${ENDPOINTS.reservations}/multi`,
     { method: "POST", body: JSON.stringify(data) }
   );
@@ -377,6 +390,7 @@ export const createPaymentIntent = (data: {
   bathSelectionsByPet?: BathSelectionsByPet;
   medicationByPet?: MedicationByPet;
   homeDelivery?: HomeDeliveryInput;
+  discountCode?: string;
 }) =>
   apiFetch<{
     // Both null when saldo a favor covered the entire deposit/total — no
@@ -399,10 +413,20 @@ export const createPaymentIntent = (data: {
     deliveryFee: number;
     deliveryDistanceKm: number;
     deliveryActive: boolean;
+    discountTotal: number;
+    discountCode?: string | null;
   }>(`${ENDPOINTS.payments}/create-intent`, {
     method: "POST",
     body: JSON.stringify(data),
   });
+
+// Validación en vivo del código de descuento al reservar (hotel o baño). Solo
+// informativo; el create-intent es la autoridad del monto. Alcance RESERVATIONS/BOTH.
+export const validateReservationDiscount = (data: { code: string; subtotal: number }) =>
+  apiFetch<{ valid: boolean; discountTotal: number; message: string }>(
+    `${ENDPOINTS.reservations}/discounts/validate`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
 
 export const createBalancePayment = (reservationId: string) =>
   apiFetch<{ clientSecret: string; paymentIntentId: string; remaining: number }>(
@@ -496,6 +520,7 @@ export const createBathIntent = (data: {
   notes?: string;
   paymentType?: "DEPOSIT" | "FULL";
   homeDelivery?: HomeDeliveryInput;
+  discountCode?: string;
 }) =>
   apiFetch<{
     clientSecret: string | null;
@@ -510,6 +535,8 @@ export const createBathIntent = (data: {
     deliveryFee: number;
     deliveryDistanceKm: number;
     deliveryActive: boolean;
+    discountTotal: number;
+    discountCode?: string | null;
   }>(`${ENDPOINTS.baths}/create-intent`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -522,6 +549,7 @@ export const confirmBath = (data: {
   appointmentAt?: string;
   notes?: string;
   homeDelivery?: HomeDeliveryInput;
+  discountCode?: string;
 }) =>
   apiFetch<{ success: boolean; reservation: Reservation }>(
     `${ENDPOINTS.baths}/confirm`,
@@ -902,6 +930,51 @@ export const updateAdminLodgingPricing = (
     method: "PATCH",
     body: JSON.stringify(data),
   });
+
+// ─── Códigos de descuento (admin) ────────────────────────
+export interface AdminDiscountCode {
+  id: string;
+  code: string;
+  type: "PERCENT" | "FIXED";  value: number;
+  minSubtotal: number | null;
+  maxUses: number | null;
+  usesCount: number;
+  firstOrderOnly: boolean;
+  isActive: boolean;
+}
+
+export const getAdminDiscountCodes = () =>
+  apiFetch<AdminDiscountCode[]>("/admin/discount-codes");
+
+export const createAdminDiscountCode = (data: {
+  code: string;
+  type: "PERCENT" | "FIXED";  value: number;
+  minSubtotal?: number | null;
+  maxUses?: number | null;
+  isActive?: boolean;
+}) =>
+  apiFetch<{ id: string }>("/admin/discount-codes", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateAdminDiscountCode = (
+  id: string,
+  data: Partial<{
+    code: string;
+    type: "PERCENT" | "FIXED";    value: number;
+    minSubtotal: number | null;
+    maxUses: number | null;
+    isActive: boolean;
+  }>
+) =>
+  apiFetch<{ ok: true }>(`/admin/discount-codes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteAdminDiscountCode = (id: string) =>
+  apiFetch<{ ok: true }>(`/admin/discount-codes/${id}`, { method: "DELETE" });
 
 // ─── Delivery config (servicio a domicilio) ───────────────
 export interface AdminDeliveryConfig {

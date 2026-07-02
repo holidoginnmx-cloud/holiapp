@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +15,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatName, formatMonthYear } from "@/lib/format";
 import { getStaffStats } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
+import { ScreenContainer } from "@/components/ScreenContainer";
 
 export default function StaffProfile() {
   const { signOut } = useClerk();
@@ -49,10 +49,7 @@ export default function StaffProfile() {
     (Constants.expoConfig?.version as string | undefined) ?? "1.0.0";
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
+    <ScreenContainer scroll contentContainerStyle={styles.content}>
       {/* Profile header */}
       <View style={styles.headerCard}>
         <View style={styles.avatarWrap}>
@@ -222,7 +219,7 @@ export default function StaffProfile() {
       </TouchableOpacity>
 
       <View style={{ height: 32 }} />
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 

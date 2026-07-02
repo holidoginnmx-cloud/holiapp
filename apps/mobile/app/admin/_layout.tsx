@@ -56,6 +56,10 @@ export default function AdminRootLayout() {
         name="delivery-config"
         options={{ title: "Servicio a domicilio" }}
       />
+      <Stack.Screen
+        name="discount-codes"
+        options={{ title: "Códigos de descuento" }}
+      />
       <Stack.Screen name="rooms" options={{ title: "Cuartos" }} />
       {/* Subdirectorios con su propio _layout.tsx — el Stack root no muestra header */}
       <Stack.Screen name="services" options={{ headerShown: false }} />

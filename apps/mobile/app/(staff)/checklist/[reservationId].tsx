@@ -24,6 +24,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
 import { formatName, utcDayKey, localDayKey, formatDateLong } from "@/lib/format";
+import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -36,6 +37,7 @@ const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
 
 export default function ChecklistForm() {
   const { reservationId } = useLocalSearchParams<{ reservationId: string }>();
+  const { isTablet } = useResponsive();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -221,6 +223,9 @@ export default function ChecklistForm() {
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={
+        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" }
+      }
       keyboardShouldPersistTaps="handled"
     >
       {/* Header */}
