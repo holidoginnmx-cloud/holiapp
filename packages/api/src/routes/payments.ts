@@ -109,16 +109,35 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         .send({ error: "Solo puedes crear pagos para tu propia cuenta" });
     }
 
-    // Verify owner
-    const owner = await prisma.user.findUnique({ where: { id: ownerId } });
+    // Todas las consultas independientes en paralelo — en serie sumaban ~1s de
+    // latencia acumulada contra DB/Google antes de siquiera llamar a Stripe.
+    const wantsBath =
+      !!bathSelectionsByPet && Object.keys(bathSelectionsByPet).length > 0;
+    const wantsDelivery =
+      !!homeDelivery &&
+      Number.isFinite(homeDelivery.lat) &&
+      Number.isFinite(homeDelivery.lng);
+    const [owner, acceptances, pets, pricingConfig, bathService, deliveryQuote] =
+      await Promise.all([
+        prisma.user.findUnique({ where: { id: ownerId } }),
+        prisma.legalAcceptance.findMany({
+          where: { userId: ownerId },
+          select: { documentType: true, version: true },
+        }),
+        prisma.pet.findMany({ where: { id: { in: petIds }, ownerId } }),
+        getLodgingPricing(prisma),
+        wantsBath
+          ? prisma.serviceType.findUnique({ where: { code: "BATH" } })
+          : null,
+        wantsDelivery
+          ? quoteDelivery(prisma, homeDelivery!.lat, homeDelivery!.lng)
+          : null,
+      ]);
+
     if (!owner) return reply.status(404).send({ error: "Dueño no encontrado" });
 
     // Gate legal — bloquear ANTES de crear el PaymentIntent para no cobrar y
     // luego no poder crear la reserva.
-    const acceptances = await prisma.legalAcceptance.findMany({
-      where: { userId: ownerId },
-      select: { documentType: true, version: true },
-    });
     const acceptedSet = new Set(
       acceptances.map((a) => `${a.documentType}@${a.version}`)
     );
@@ -135,9 +154,6 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     }
 
     // Verify pets belong to owner
-    const pets = await prisma.pet.findMany({
-      where: { id: { in: petIds }, ownerId },
-    });
     if (pets.length !== petIds.length) {
       return reply.status(400).send({ error: "Una o más mascotas no pertenecen al dueño" });
     }
@@ -178,7 +194,6 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     }
 
     // Calculate total — lodging
-    const pricingConfig = await getLodgingPricing(prisma);
     const breakdown = pets.map((pet) => {
       const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
       return {
@@ -193,32 +208,39 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     // Add bath addons to total (if any)
     let bathTotal = 0;
     const bathBreakdown: Array<{ petId: string; variantId: string; price: number }> = [];
-    if (bathSelectionsByPet && Object.keys(bathSelectionsByPet).length > 0) {
-      const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
-      if (bath) {
-        for (const [petId, sel] of Object.entries(bathSelectionsByPet)) {
-          const pet = pets.find((p) => p.id === petId);
-          if (!pet) continue;
+    if (wantsBath && bathService) {
+      // Lookups de variantes en paralelo (antes: un query por mascota en serie).
+      const entries = Object.entries(bathSelectionsByPet!).filter(([petId]) =>
+        pets.some((p) => p.id === petId)
+      );
+      const variants = await Promise.all(
+        entries.map(([petId, sel]) => {
+          const pet = pets.find((p) => p.id === petId)!;
           const size = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
-          const variant = await prisma.serviceVariant.findUnique({
+          return prisma.serviceVariant.findUnique({
             where: {
               serviceTypeId_petSize_deslanado_corte: {
-                serviceTypeId: bath.id,
+                serviceTypeId: bathService.id,
                 petSize: size,
                 deslanado: sel.deslanado,
                 corte: sel.corte,
               },
             },
           });
-          if (!variant || !variant.isActive) {
-            return reply.status(400).send({
-              error: `Variante de baño no disponible para ${pet.name}`,
-            });
-          }
-          const price = Number(variant.price);
-          bathTotal += price;
-          bathBreakdown.push({ petId, variantId: variant.id, price });
+        })
+      );
+      for (let i = 0; i < entries.length; i++) {
+        const [petId] = entries[i];
+        const variant = variants[i];
+        if (!variant || !variant.isActive) {
+          const pet = pets.find((p) => p.id === petId)!;
+          return reply.status(400).send({
+            error: `Variante de baño no disponible para ${pet.name}`,
+          });
         }
+        const price = Number(variant.price);
+        bathTotal += price;
+        bathBreakdown.push({ petId, variantId: variant.id, price });
       }
     }
 
@@ -267,13 +289,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     let deliveryFee = 0;
     let deliveryDistanceKm = 0;
     let deliveryActive = false;
-    if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
-      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
-      if (quote.active) {
-        deliveryActive = true;
-        deliveryFee = quote.fee;
-        deliveryDistanceKm = quote.distanceKm;
-      }
+    if (deliveryQuote?.active) {
+      deliveryActive = true;
+      deliveryFee = deliveryQuote.fee;
+      deliveryDistanceKm = deliveryQuote.distanceKm;
     }
 
     const grandTotal = discountedBase + surchargeAmount + deliveryFee;

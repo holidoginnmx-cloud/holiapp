@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -512,12 +512,33 @@ function CreateReservationScreenContent() {
 
   const [paying, setPaying] = useState(false);
   const [showCheckInReminder, setShowCheckInReminder] = useState(false);
+  // Prefetch del PaymentIntent: se dispara al abrir el modal de recordatorio
+  // para que, al presionar "Entendido", el intent ya esté listo (o casi).
+  const intentPromiseRef = useRef<ReturnType<typeof createPaymentIntent> | null>(null);
+
+  const buildIntentPayload = () => ({
+    petIds: selectedPetIds,
+    checkIn: checkIn!.toISOString(),
+    checkOut: checkOut!.toISOString(),
+    ownerId: userId!,
+    roomPreference,
+    paymentType,
+    bathSelectionsByPet: bathSelectionsPayload,
+    medicationByPet: medicationPayload,
+    homeDelivery: homeDeliveryPayload,
+    discountCode: appliedDiscount?.code,
+  });
 
   // Al presionar "Pagar y confirmar" mostramos primero el recordatorio de
   // horarios de check-in/check-out. El cobro real ocurre en runPayment cuando
   // el usuario presiona "Entendido".
   const handleSubmit = () => {
     if (!canSubmit) return;
+    const prefetch = createPaymentIntent(buildIntentPayload());
+    // El error (si lo hay) se maneja en runPayment al hacer await; este catch
+    // solo evita el warning de promesa rechazada sin manejar.
+    prefetch.catch(() => {});
+    intentPromiseRef.current = prefetch;
     setShowCheckInReminder(true);
   };
 
@@ -531,19 +552,11 @@ function CreateReservationScreenContent() {
 
     setPaying(true);
     try {
-      // 1. Create PaymentIntent on backend
-      const intent = await createPaymentIntent({
-        petIds: selectedPetIds,
-        checkIn: checkIn!.toISOString(),
-        checkOut: checkOut!.toISOString(),
-        ownerId: userId!,
-        roomPreference,
-        paymentType,
-        bathSelectionsByPet: bathSelectionsPayload,
-        medicationByPet: medicationPayload,
-        homeDelivery: homeDeliveryPayload,
-        discountCode: appliedDiscount?.code,
-      });
+      // 1. PaymentIntent: usa el prefetch lanzado al abrir el modal (fallback:
+      // pedirlo aquí si por alguna razón no existe).
+      const pending = intentPromiseRef.current;
+      intentPromiseRef.current = null;
+      const intent = await (pending ?? createPaymentIntent(buildIntentPayload()));
 
       // 2. Saldo a favor cubre todo: confirmar con el usuario antes de aplicar
       // el cargo. Sin esto el botón "Reservar" se sentiría mágico — Stripe no

@@ -319,7 +319,20 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       }
       const { petId, deslanado, corte, appointmentAt, notes, paymentType, homeDelivery, discountCode } = parsed.data;
 
-      const pet = await prisma.pet.findUnique({ where: { id: petId } });
+      // Consultas independientes en paralelo — en serie sumaban latencia
+      // acumulada contra DB/Google antes de siquiera llamar a Stripe.
+      const wantsDelivery =
+        !!homeDelivery &&
+        Number.isFinite(homeDelivery.lat) &&
+        Number.isFinite(homeDelivery.lng);
+      const [pet, cfg, bath, deliveryQuoteResult] = await Promise.all([
+        prisma.pet.findUnique({ where: { id: petId } }),
+        ensureConfig(prisma),
+        prisma.serviceType.findUnique({ where: { code: "BATH" } }),
+        wantsDelivery
+          ? quoteDelivery(prisma, homeDelivery!.lat, homeDelivery!.lng)
+          : null,
+      ]);
       if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
 
       const isStaffOrAdmin =
@@ -330,7 +343,6 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
       // El baño no requiere cartilla de vacunación aprobada (solo el hospedaje).
 
-      const cfg = await ensureConfig(prisma);
       if (!cfg.isActive) {
         return reply.status(400).send({ error: "Agenda de baños deshabilitada" });
       }
@@ -358,61 +370,60 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Horario fuera de los slots configurados" });
       }
 
-      // Capacidad del slot
-      const taken = await prisma.reservation.count({
-        where: {
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: appointmentDate,
-        },
-      });
-      if (taken >= cfg.maxConcurrentBaths) {
-        return reply.status(409).send({ error: "Slot sin disponibilidad" });
-      }
+      if (!bath) return reply.status(500).send({ error: "Servicio de baño no configurado" });
 
-      // Regla: misma mascota, mismo día — no permitido (excepto cancelados)
       const dayStart = validSlots[0];
       const dayEnd = new Date(
         validSlots[validSlots.length - 1].getTime() + cfg.slotMinutes * 60000
       );
-      const sameDay = await prisma.reservation.findFirst({
-        where: {
-          petId,
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: { gte: dayStart, lt: dayEnd },
-        },
-        select: { id: true },
-      });
+      const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
+
+      // Capacidad + regla misma-mascota + variante + dueño, en paralelo.
+      const [taken, sameDay, variant, owner] = await Promise.all([
+        prisma.reservation.count({
+          where: {
+            reservationType: "BATH",
+            status: { not: "CANCELLED" },
+            appointmentAt: appointmentDate,
+          },
+        }),
+        prisma.reservation.findFirst({
+          where: {
+            petId,
+            reservationType: "BATH",
+            status: { not: "CANCELLED" },
+            appointmentAt: { gte: dayStart, lt: dayEnd },
+          },
+          select: { id: true },
+        }),
+        prisma.serviceVariant.findUnique({
+          where: {
+            serviceTypeId_petSize_deslanado_corte: {
+              serviceTypeId: bath.id,
+              petSize,
+              deslanado,
+              corte,
+            },
+          },
+        }),
+        prisma.user.findUnique({
+          where: { id: pet.ownerId },
+          select: { creditBalance: true },
+        }),
+      ]);
+
+      if (taken >= cfg.maxConcurrentBaths) {
+        return reply.status(409).send({ error: "Slot sin disponibilidad" });
+      }
       if (sameDay) {
         return reply
           .status(409)
           .send({ error: "Ya existe una cita de baño para esta mascota ese día" });
       }
-
-      // Precio y variante
-      const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
-      const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
-      if (!bath) return reply.status(500).send({ error: "Servicio de baño no configurado" });
-
-      const variant = await prisma.serviceVariant.findUnique({
-        where: {
-          serviceTypeId_petSize_deslanado_corte: {
-            serviceTypeId: bath.id,
-            petSize,
-            deslanado,
-            corte,
-          },
-        },
-      });
       if (!variant || !variant.isActive) {
         return reply.status(404).send({ error: "Variante de baño no encontrada" });
       }
 
-      const owner = await prisma.user.findUnique({
-        where: { id: pet.ownerId },
-        select: { creditBalance: true },
-      });
       const ownerCredit = Number(owner?.creditBalance ?? 0);
       const price = Number(variant.price);
 
@@ -435,13 +446,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let deliveryFee = 0;
       let deliveryDistanceKm = 0;
       let deliveryActive = false;
-      if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
-        const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
-        if (quote.active) {
-          deliveryActive = true;
-          deliveryFee = quote.fee;
-          deliveryDistanceKm = quote.distanceKm;
-        }
+      if (deliveryQuoteResult?.active) {
+        deliveryActive = true;
+        deliveryFee = deliveryQuoteResult.fee;
+        deliveryDistanceKm = deliveryQuoteResult.distanceKm;
       }
       const total = discountedPrice + deliveryFee;
 
