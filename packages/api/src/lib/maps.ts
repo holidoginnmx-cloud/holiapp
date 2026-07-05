@@ -27,7 +27,11 @@ function hdiOrigin(): { lat: number; lng: number } {
 
 export type PlacePrediction = { placeId: string; description: string };
 
-/** Autocompletado de direcciones (restringido a México). */
+// Bounding box de Sonora (rectangle:south,west|north,east). Google no permite
+// filtrar por estado vía `components`, así que se restringe geográficamente.
+const SONORA_BOUNDS = "rectangle:26.0,-115.10|32.55,-108.30";
+
+/** Autocompletado de direcciones (restringido a Sonora, México). */
 export async function placesAutocomplete(
   input: string,
   sessionToken?: string
@@ -37,6 +41,7 @@ export async function placesAutocomplete(
     key: apiKey(),
     language: "es",
     components: "country:mx",
+    locationrestriction: SONORA_BOUNDS,
   });
   if (sessionToken) params.set("sessiontoken", sessionToken);
 
