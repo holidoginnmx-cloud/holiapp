@@ -11,10 +11,11 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { getUsers, updateUser, type AdminUserListItem } from "@/lib/api";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import type { User } from "@holidoginn/shared";
 import { formatName, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
@@ -59,7 +60,6 @@ const ALL_ROLES = ["OWNER", "STAFF", "ADMIN"] as const;
 
 export default function AdminUsers() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<RoleFilter>("OWNER");
   const [search, setSearch] = useState("");
 
@@ -90,13 +90,27 @@ export default function AdminUsers() {
     });
   }, [data, filter, search]);
 
-  const mutation = useMutation({
+  // Optimista: el badge/toggle cambia en el mismo frame del tap; si el server
+  // rechaza se revierte y se muestra el error. onSettled reconcilia la lista.
+  const mutation = useOptimisticMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<User> }) =>
       updateUser(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    },
+    patches: [
+      {
+        queryKey: ["admin", "users"],
+        updater: (old, { id, data }) =>
+          (old as AdminUserListItem[]).map((u) =>
+            u.id === id ? { ...u, ...data } : u
+          ),
+      },
+    ],
+    invalidateKeys: [["admin", "users"]],
+    errorTitle: "No se pudo actualizar",
   });
+
+  // Fila con mutación en vuelo → deshabilitada (evita doble tap mientras
+  // el server confirma el cambio ya visible).
+  const pendingUserId = mutation.isPending ? mutation.variables?.id : null;
 
   const handleToggleActive = (user: User) => {
     const newState = !user.isActive;
@@ -134,6 +148,7 @@ export default function AdminUsers() {
 
   const renderUser = ({ item }: { item: AdminUserListItem }) => {
     const roleConfig = ROLE_CONFIG[item.role] || ROLE_CONFIG.OWNER;
+    const pending = item.id === pendingUserId;
 
     return (
       <View style={[styles.userCard, !item.isActive && styles.userCardInactive]}>
@@ -156,12 +171,21 @@ export default function AdminUsers() {
           <View style={styles.badgeRow}>
             <TouchableOpacity
               onPress={() => handleChangeRole(item)}
-              style={[styles.roleBadge, { backgroundColor: roleConfig.bg }]}
+              disabled={pending}
+              style={[
+                styles.roleBadge,
+                { backgroundColor: roleConfig.bg },
+                pending && styles.pendingControl,
+              ]}
             >
               <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>
                 {roleConfig.label}
               </Text>
-              <Ionicons name="swap-horizontal" size={12} color={roleConfig.color} />
+              {pending ? (
+                <ActivityIndicator size={12} color={roleConfig.color} />
+              ) : (
+                <Ionicons name="swap-horizontal" size={12} color={roleConfig.color} />
+              )}
             </TouchableOpacity>
             {item.role === "OWNER" && (
               <View
@@ -189,7 +213,8 @@ export default function AdminUsers() {
         </View>
         <TouchableOpacity
           onPress={() => handleToggleActive(item)}
-          style={styles.toggleButton}
+          disabled={pending}
+          style={[styles.toggleButton, pending && styles.pendingControl]}
         >
           <Ionicons
             name={item.isActive ? "checkmark-circle" : "close-circle"}
@@ -484,6 +509,9 @@ const styles = StyleSheet.create({
   },
   toggleButton: {
     padding: 6,
+  },
+  pendingControl: {
+    opacity: 0.5,
   },
   empty: {
     alignItems: "center",

@@ -6,7 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { InteractionManager, StyleSheet } from "react-native";
+import { AppState, InteractionManager, StyleSheet } from "react-native";
 import Animated, { FadeOut } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -68,6 +68,38 @@ function ClerkTokenSync() {
   useEffect(() => {
     setTokenResolver(getToken);
   }, [getToken]);
+
+  // Keep-fresh del JWT de Clerk: el token expira ~60s y si un tap cae cerca de
+  // la expiración, apiFetch paga un viaje de red a Clerk EN SERIE antes del
+  // request real (taps que "aleatoriamente" tardan 300-500ms más). Refrescamos
+  // proactivamente cada 40s con la app activa y al volver de background, para
+  // que getToken() siempre resuelva del caché. Clerk dedupe/rota internamente.
+  useEffect(() => {
+    if (!isSignedIn) return;
+
+    const refresh = () => {
+      getToken().catch(() => {});
+    };
+
+    refresh();
+    let interval: ReturnType<typeof setInterval> | null = setInterval(refresh, 40_000);
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        // Primer tap tras reabrir la app: que no pague el refresh.
+        refresh();
+        if (!interval) interval = setInterval(refresh, 40_000);
+      } else if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    });
+
+    return () => {
+      if (interval) clearInterval(interval);
+      sub.remove();
+    };
+  }, [isSignedIn, getToken]);
 
   useEffect(() => {
     setClerkUserId(userId ?? null);

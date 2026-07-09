@@ -6,6 +6,7 @@ import { reservationConfirmedTemplate, sendEmail } from "./email";
 import { notifyUser, notifyUsers } from "./notify";
 import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "./pricing";
 import { quoteDelivery } from "./delivery";
+import { invalidateAuthCache } from "../middleware/auth";
 
 type ReservationStatusType = import("@holidoginn/db").ReservationStatus;
 
@@ -325,6 +326,8 @@ export async function createReservationGroup(
       where: { id: ownerId },
       data: { creditBalance: { decrement: creditApplied }, lastCreditEntryAt: new Date() },
     });
+    // /users/me sirve creditBalance — que no lea la copia cacheada vieja.
+    invalidateAuthCache(updatedOwner.clerkId);
     await prisma.creditLedger.create({
       data: {
         userId: ownerId,

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -187,6 +187,46 @@ const EMPTY_STATES_BATH: Record<string, EmptyState> = {
   },
 };
 
+// Fila memoizada: la closure de onPress solo cambia si cambia el item, así el
+// memo de ReservationCard sí evita re-renders al scrollear/cambiar de tab.
+const ReservationRow = memo(function ReservationRow({
+  item,
+  onPressItem,
+}: {
+  item: GroupedReservation;
+  onPressItem: (id: string) => void;
+}) {
+  return (
+    <ReservationCard
+      petName={item.petNames}
+      roomName={item.roomNames}
+      status={item.status}
+      checkIn={item.checkIn}
+      checkOut={item.checkOut}
+      reservationType={item.reservationType}
+      appointmentAt={item.appointmentAt}
+      totalAmount={item.totalAmount}
+      petCount={item.petCount}
+      paymentType={item.paymentType}
+      hasBalance={item.hasBalance}
+      hasPendingChangeRequest={item.hasPendingChangeRequest}
+      lastUpdateAt={item.lastUpdateAt}
+      hasReview={item.hasReview}
+      reviewRating={item.reviewRating}
+      hasDeslanado={item.hasDeslanado}
+      hasCorte={item.hasCorte}
+      onPress={() => onPressItem(item.id)}
+    />
+  );
+});
+
+const filterByTab = (list: GroupedReservation[], tabKey: string) =>
+  list.filter((r) =>
+    tabKey === "history"
+      ? r.status === "CHECKED_OUT" || r.status === "CANCELLED"
+      : r.status === tabKey
+  );
+
 export default function ReservationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
@@ -197,16 +237,13 @@ export default function ReservationsScreen() {
   const pagerRef = useRef<ScrollView>(null);
   // Sigue al pager scroll para que el underline siga al dedo en tiempo real.
   const scrollX = useRef(new Animated.Value(0)).current;
-  const tabProgress = useRef(new Animated.Value(0)).current;
 
-  // Mapea scrollX (pixels) → tabProgress (0..tabs.length-1).
-  useEffect(() => {
-    if (pageWidth <= 0) return;
-    const id = scrollX.addListener(({ value }) => {
-      tabProgress.setValue(value / pageWidth);
-    });
-    return () => scrollX.removeListener(id);
-  }, [pageWidth]);
+  // Progreso del underline derivado en el árbol de Animated (0..tabs-1) —
+  // antes un listener JS corría en CADA frame de scroll haciendo setValue.
+  const tabProgress = useMemo(
+    () => Animated.divide(scrollX, new Animated.Value(Math.max(1, pageWidth))),
+    [scrollX, pageWidth]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -229,13 +266,6 @@ export default function ReservationsScreen() {
     if (next && next !== activeTab) setActiveTab(next);
   };
 
-  const filterByTab = (list: GroupedReservation[], tabKey: string) =>
-    list.filter((r) =>
-      tabKey === "history"
-        ? r.status === "CHECKED_OUT" || r.status === "CANCELLED"
-        : r.status === tabKey
-    );
-
   const {
     data: reservations,
     isLoading,
@@ -248,18 +278,41 @@ export default function ReservationsScreen() {
     enabled: !!userId,
   });
 
-  const grouped = reservations ? groupReservations(reservations) : [];
+  // Derivados memoizados: antes se recalculaban (agrupar, filtrar 4 veces,
+  // contar) en CADA render de la pantalla.
+  const grouped = useMemo(
+    () => (reservations ? groupReservations(reservations) : []),
+    [reservations]
+  );
 
-  const byType = grouped.filter((r) => (r.reservationType ?? "STAY") === typeFilter);
+  const byType = useMemo(
+    () => grouped.filter((r) => (r.reservationType ?? "STAY") === typeFilter),
+    [grouped, typeFilter]
+  );
 
-  const tabCounts: Record<string, number> = {
-    CHECKED_IN: byType.filter((r) => r.status === "CHECKED_IN").length,
-    CONFIRMED: byType.filter((r) => r.status === "CONFIRMED").length,
-    history: byType.filter(
-      (r) => r.status === "CHECKED_OUT" || r.status === "CANCELLED"
-    ).length,
-  };
-  const tabsWithCounts = TABS.map((t) => ({ ...t, count: tabCounts[t.key] ?? 0 }));
+  const pages = useMemo(
+    () => TABS.map((t) => filterByTab(byType, t.key)),
+    [byType]
+  );
+
+  const tabsWithCounts = useMemo(
+    () => TABS.map((t, i) => ({ ...t, count: pages[i]?.length ?? 0 })),
+    [pages]
+  );
+
+  const onPressItem = useCallback(
+    (id: string) => {
+      router.push(`/reservation/detail/${id}?from=reservations` as any);
+    },
+    [router]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: GroupedReservation }) => (
+      <ReservationRow item={item} onPressItem={onPressItem} />
+    ),
+    [onPressItem]
+  );
 
   if (isLoading) {
     return (
@@ -344,40 +397,18 @@ export default function ReservationsScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {TABS.map((t) => {
-          const pageData = filterByTab(byType, t.key);
+        {TABS.map((t, idx) => {
+          const pageData = pages[idx];
           const empty = emptyStateFor(t.key);
           return (
             <View key={t.key} style={{ width: pageWidth }}>
               <FlatList
                 data={pageData}
                 keyExtractor={(item) => item.groupId ?? item.id}
-                renderItem={({ item }) => (
-                  <ReservationCard
-                    petName={item.petNames}
-                    roomName={item.roomNames}
-                    status={item.status}
-                    checkIn={item.checkIn}
-                    checkOut={item.checkOut}
-                    reservationType={item.reservationType}
-                    appointmentAt={item.appointmentAt}
-                    totalAmount={item.totalAmount}
-                    petCount={item.petCount}
-                    paymentType={item.paymentType}
-                    hasBalance={item.hasBalance}
-                    hasPendingChangeRequest={item.hasPendingChangeRequest}
-                    lastUpdateAt={item.lastUpdateAt}
-                    hasReview={item.hasReview}
-                    reviewRating={item.reviewRating}
-                    hasDeslanado={item.hasDeslanado}
-                    hasCorte={item.hasCorte}
-                    onPress={() => {
-                      router.push(
-                        `/reservation/detail/${item.id}?from=reservations` as any
-                      );
-                    }}
-                  />
-                )}
+                renderItem={renderItem}
+                initialNumToRender={6}
+                maxToRenderPerBatch={8}
+                windowSize={5}
                 contentContainerStyle={styles.list}
                 refreshControl={
                   <RefreshControl

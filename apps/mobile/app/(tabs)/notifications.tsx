@@ -7,18 +7,19 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
 import { getNotifications, markNotificationAsRead } from "@/lib/api";
+import type { Notification } from "@holidoginn/shared";
 import { NotificationItem } from "@/components/NotificationItem";
 import { ErrorState } from "@/components/ErrorState";
 import { dayGroupLabel } from "@/lib/format";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 
 export default function NotificationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
-  const qc = useQueryClient();
 
   const { data: notifications, isLoading, error, refetch } = useQuery({
     queryKey: ["notifications", userId],
@@ -26,9 +27,20 @@ export default function NotificationsScreen() {
     enabled: !!userId,
   });
 
-  const markOneMutation = useMutation({
+  // Optimista: el punto de "no leída" desaparece al tap (también actualiza el
+  // badge del tab, que lee esta misma query).
+  const markOneMutation = useOptimisticMutation({
     mutationFn: markNotificationAsRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
+    patches: [
+      {
+        queryKey: ["notifications", userId],
+        updater: (old, id) =>
+          (old as Notification[]).map((n) =>
+            n.id === id ? { ...n, isRead: true } : n
+          ),
+      },
+    ],
+    invalidateKeys: [["notifications", userId]],
   });
 
   const sections = useMemo(() => {

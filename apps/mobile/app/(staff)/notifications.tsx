@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useAuthStore } from "@/store/authStore";
 import {
@@ -16,14 +16,15 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from "@/lib/api";
+import type { Notification } from "@holidoginn/shared";
 import { NotificationItem } from "@/components/NotificationItem";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { dayGroupLabel } from "@/lib/format";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 
 export default function StaffNotificationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
-  const qc = useQueryClient();
 
   const { data: notifications, isLoading, error, refetch } = useQuery({
     queryKey: ["notifications", userId],
@@ -32,14 +33,33 @@ export default function StaffNotificationsScreen() {
     refetchInterval: 30_000,
   });
 
-  const markOneMutation = useMutation({
+  // Optimistas: leída/todas se reflejan al instante (lista + badge del tab).
+  const markOneMutation = useOptimisticMutation({
     mutationFn: markNotificationAsRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
+    patches: [
+      {
+        queryKey: ["notifications", userId],
+        updater: (old, id) =>
+          (old as Notification[]).map((n) =>
+            n.id === id ? { ...n, isRead: true } : n
+          ),
+      },
+    ],
+    invalidateKeys: [["notifications", userId]],
   });
 
-  const markAllMutation = useMutation({
+  const markAllMutation = useOptimisticMutation<{ updated: number }, void>({
     mutationFn: () => markAllNotificationsAsRead(userId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
+    patches: [
+      {
+        queryKey: ["notifications", userId],
+        updater: (old) =>
+          (old as Notification[]).map((n) =>
+            n.isRead ? n : { ...n, isRead: true }
+          ),
+      },
+    ],
+    invalidateKeys: [["notifications", userId]],
   });
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;

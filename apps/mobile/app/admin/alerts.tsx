@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
   getAdminAlerts,
@@ -30,6 +30,8 @@ import {
 } from "@/lib/format";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
+import { useSuccessBanner } from "@/components/SuccessBanner";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
@@ -72,22 +74,16 @@ const CATEGORY_KEYS: CategoryKey[] = ["all", "staff", "evidence", "vaccines"];
 
 export default function AdminAlerts() {
   const router = useRouter();
-  const qc = useQueryClient();
   const { width: pageWidth } = useWindowDimensions();
   const [category, setCategory] = useState<CategoryKey>("all");
   const pagerRef = useRef<ScrollView>(null);
-  // scrollX captura el offset horizontal del pager; un listener lo mapea
-  // a tabProgress (0..3) para que el underline siga al dedo en tiempo real.
+  // scrollX captura el offset horizontal del pager; el progreso del underline
+  // (0..3) se deriva en el árbol de Animated — sin listener JS por frame.
   const scrollX = useRef(new Animated.Value(0)).current;
-  const tabProgress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (pageWidth <= 0) return;
-    const id = scrollX.addListener(({ value }) => {
-      tabProgress.setValue(value / pageWidth);
-    });
-    return () => scrollX.removeListener(id);
-  }, [pageWidth]);
+  const tabProgress = useMemo(
+    () => Animated.divide(scrollX, new Animated.Value(Math.max(1, pageWidth))),
+    [scrollX, pageWidth]
+  );
 
   // Sincroniza el pager cuando cambia la categoría (tap en chip).
   useEffect(() => {
@@ -138,14 +134,21 @@ export default function AdminAlerts() {
     refetchResolved();
   };
 
-  const resolveMutation = useMutation({
+  const { banner, showSuccess } = useSuccessBanner();
+
+  // Optimista: la alerta sale de "pendientes" en el mismo frame del tap.
+  const resolveMutation = useOptimisticMutation({
     mutationFn: (id: string) => resolveAdminAlert(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin", "alerts"] });
-      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
-      Alert.alert("Listo", "Alerta marcada como resuelta");
-    },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["admin", "alerts", "unresolved"],
+        updater: (old, id) =>
+          (old as AdminAlert[]).filter((a) => a.id !== id),
+      },
+    ],
+    invalidateKeys: [["admin", "alerts"], ["admin", "stats"]],
+    onSuccess: () => showSuccess("Alerta marcada como resuelta"),
+    errorTitle: "No se pudo resolver la alerta",
   });
 
   // Una lista por categoría (para swipe). Cada lista muestra pendientes primero
@@ -436,6 +439,8 @@ export default function AdminAlerts() {
             </View>
           ))}
         </Animated.ScrollView>
+      {/* Confirmación de éxito no bloqueante. */}
+      {banner}
     </View>
   );
 }

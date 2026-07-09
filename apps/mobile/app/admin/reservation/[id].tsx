@@ -1,6 +1,8 @@
 import { COLORS } from "@/constants/colors";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectionListModal } from "@/components/SelectionListModal";
+import { useSuccessBanner } from "@/components/SuccessBanner";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   PaymentManualModal,
   type ManualPaymentValues,
@@ -13,13 +15,12 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Modal,
   Image,
   Dimensions,
 } from "react-native";
 
 const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -120,26 +121,28 @@ export default function AdminReservationDetail() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [roomModalVisible, setRoomModalVisible] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!successMessage) return;
-    const t = setTimeout(() => setSuccessMessage(null), 2000);
-    return () => clearTimeout(t);
-  }, [successMessage]);
+  const { banner, showSuccess } = useSuccessBanner();
 
   const closePaymentModal = () => setPaymentModalVisible(false);
 
-  // Visor de fotos del baño y mutación para eliminar.
+  // Visor de fotos del baño y mutación para eliminar (optimista: la foto
+  // desaparece al confirmar; si el server falla, reaparece).
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
-  const deletePhotoMutation = useMutation({
+  const deletePhotoMutation = useOptimisticMutation({
     mutationFn: (updateId: string) => deleteStayUpdate(updateId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-    },
-    onError: (err: Error) =>
-      Alert.alert("No se pudo eliminar", err.message),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, updateId) => {
+          const res = old as { updates?: { id: string }[] };
+          if (!res?.updates) return old;
+          return { ...res, updates: res.updates.filter((u) => u.id !== updateId) };
+        },
+      },
+    ],
+    invalidateKeys: [["reservation", id]],
+    errorTitle: "No se pudo eliminar",
   });
 
   // Marcar baño completado (sube foto + cierra cita).
@@ -245,16 +248,25 @@ export default function AdminReservationDetail() {
     refetchInterval: 30_000,
   });
 
+  // Invalidaciones dirigidas: antes se invalidaba la key ["admin"] completa,
+  // lo que refetcheaba TODAS las queries admin (stats, listas, cuartos,
+  // cartillas, revenue...) tras cada acción.
+  const invalidateAfterStatusChange = () => {
+    queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "reservations"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
+  };
+
   const statusMutation = useMutation({
     mutationFn: ({ newStatus }: { newStatus: string }) =>
       updateReservationStatus(id!, newStatus),
     onSuccess: (_data, { newStatus }) => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      queryClient.invalidateQueries({ queryKey: ["admin"] });
+      invalidateAfterStatusChange();
       if (newStatus === "CHECKED_OUT") {
-        setSuccessMessage("Check-out realizado correctamente");
+        showSuccess("Check-out realizado correctamente");
       } else if (newStatus === "CHECKED_IN") {
-        setSuccessMessage("Check-in realizado correctamente");
+        showSuccess("Check-in realizado correctamente");
       }
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -263,8 +275,7 @@ export default function AdminReservationDetail() {
   const cancelMutation = useMutation({
     mutationFn: () => adminCancelReservation(id!),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      queryClient.invalidateQueries({ queryKey: ["admin"] });
+      invalidateAfterStatusChange();
       Alert.alert(
         "Reserva cancelada",
         res.awaitingClientChoice
@@ -286,7 +297,7 @@ export default function AdminReservationDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       setPaymentModalVisible(false);
-      Alert.alert("Pago registrado", "El pago se registró correctamente y se notificó al dueño.");
+      showSuccess("Pago registrado y notificado al dueño");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -300,14 +311,31 @@ export default function AdminReservationDetail() {
       users.filter((u) => u.role === "STAFF" && u.isActive),
   });
 
-  const assignStaffMutation = useMutation({
+  // Optimista: el staff seleccionado aparece en el detalle en el mismo frame;
+  // el modal se cierra al tap y el server confirma en background.
+  const assignStaffMutation = useOptimisticMutation({
     mutationFn: (staffId: string) => adminAssignStaff(id!, staffId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      setStaffModalVisible(false);
-      Alert.alert("Staff asignado", "Se notificó al staff por la app.");
-    },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, staffId) => {
+          const selected = staffList?.find((s) => s.id === staffId);
+          if (!old || !selected) return old;
+          return {
+            ...(old as object),
+            staff: {
+              id: selected.id,
+              firstName: selected.firstName,
+              lastName: selected.lastName,
+              avatarUrl: selected.avatarUrl ?? null,
+            },
+          };
+        },
+      },
+    ],
+    invalidateKeys: [["reservation", id]],
+    onSuccess: () => showSuccess("Staff asignado y notificado"),
+    errorTitle: "No se pudo asignar el staff",
   });
 
   // Cuartos del tamaño de la mascota — solo se cargan al abrir el modal.
@@ -317,15 +345,21 @@ export default function AdminReservationDetail() {
     enabled: roomModalVisible && !!reservation?.pet?.size,
   });
 
-  const assignRoomMutation = useMutation({
+  const assignRoomMutation = useOptimisticMutation({
     mutationFn: (roomId: string) => adminAssignRoom(id!, roomId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      queryClient.invalidateQueries({ queryKey: ["admin"] });
-      setRoomModalVisible(false);
-      Alert.alert("Cuarto asignado", "El cuarto se asignó correctamente.");
-    },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, roomId) => {
+          const selected = roomList?.find((r) => r.id === roomId);
+          if (!old || !selected) return old;
+          return { ...(old as object), room: selected };
+        },
+      },
+    ],
+    invalidateKeys: [["reservation", id], ["admin", "rooms"]],
+    onSuccess: () => showSuccess("Cuarto asignado"),
+    errorTitle: "No se pudo asignar el cuarto",
   });
 
   const handleStatusChange = (action: StatusAction) => {
@@ -1264,7 +1298,10 @@ export default function AdminReservationDetail() {
       renderItem={(s, { selected: isCurrent, pending: isPending }) => (
         <TouchableOpacity
           style={[styles.staffRow, isCurrent && styles.staffRowCurrent]}
-          onPress={() => assignStaffMutation.mutate(s.id)}
+          onPress={() => {
+            assignStaffMutation.mutate(s.id);
+            setStaffModalVisible(false);
+          }}
           disabled={isCurrent || assignStaffMutation.isPending}
           activeOpacity={0.7}
         >
@@ -1325,7 +1362,10 @@ export default function AdminReservationDetail() {
       renderItem={(r, { selected: isCurrent, pending: isPending }) => (
         <TouchableOpacity
           style={[styles.staffRow, isCurrent && styles.staffRowCurrent]}
-          onPress={() => assignRoomMutation.mutate(r.id)}
+          onPress={() => {
+            assignRoomMutation.mutate(r.id);
+            setRoomModalVisible(false);
+          }}
           disabled={isCurrent || assignRoomMutation.isPending}
           activeOpacity={0.7}
         >
@@ -1357,26 +1397,8 @@ export default function AdminReservationDetail() {
       )}
     />
 
-    {/* Toast de éxito al hacer check-in / check-out. */}
-    <Modal
-      visible={!!successMessage}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setSuccessMessage(null)}
-    >
-      <View style={styles.toastOverlay} pointerEvents="none">
-        <View style={styles.toastCard}>
-          <View style={styles.toastIconWrap}>
-            <Ionicons
-              name="checkmark-circle"
-              size={48}
-              color={COLORS.successText}
-            />
-          </View>
-          <Text style={styles.toastText}>{successMessage}</Text>
-        </View>
-      </View>
-    </Modal>
+    {/* Confirmación de éxito no bloqueante (check-in/out, pago, staff, cuarto). */}
+    {banner}
     </>
   );
 }

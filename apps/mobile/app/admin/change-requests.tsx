@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { formatName, formatDayShort, formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { useSuccessBanner } from "@/components/SuccessBanner";
 
 function formatDate(d: string): string {
   return formatDayShort(d);
@@ -43,11 +44,15 @@ export default function AdminChangeRequestsScreen() {
     queryFn: () => listAdminChangeRequests("PENDING"),
   });
 
+  const { banner, showSuccess } = useSuccessBanner();
+
+  // NO optimistas: aprobar/rechazar mueve dinero (cargos/créditos) — el
+  // servidor es la autoridad. Feedback = spinner en el botón + banner.
   const approveMutation = useMutation({
     mutationFn: approveChangeRequest,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "change-requests"] });
-      Alert.alert("Aprobado", "La solicitud fue aprobada.");
+      showSuccess("Solicitud aprobada");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -59,7 +64,7 @@ export default function AdminChangeRequestsScreen() {
       qc.invalidateQueries({ queryKey: ["admin", "change-requests"] });
       setRejectModalFor(null);
       setRejectReason("");
-      Alert.alert("Rechazado", "El owner fue notificado.");
+      showSuccess("Solicitud rechazada — se notificó al dueño");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -156,7 +161,12 @@ export default function AdminChangeRequestsScreen() {
                   }
                   disabled={approveMutation.isPending}
                 >
-                  <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                  {approveMutation.isPending &&
+                  approveMutation.variables === item.id ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                  )}
                   <Text style={styles.approveText}>Aprobar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -224,6 +234,8 @@ export default function AdminChangeRequestsScreen() {
           </View>
         </View>
       </Modal>
+      {/* Confirmación de éxito no bloqueante. */}
+      {banner}
     </View>
   );
 }

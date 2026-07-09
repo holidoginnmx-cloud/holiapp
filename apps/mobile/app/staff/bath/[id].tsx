@@ -1,5 +1,6 @@
 import { COLORS } from "@/constants/colors";
 import { ErrorState } from "@/components/ErrorState";
+import { useSuccessBanner } from "@/components/SuccessBanner";
 import {
   PaymentManualModal,
   type ManualPaymentValues,
@@ -103,6 +104,7 @@ export default function StaffBathDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { isTablet } = useResponsive();
   const queryClient = useQueryClient();
+  const { banner, showSuccess } = useSuccessBanner();
   const [completing, setCompleting] = useState(false);
   const [photoFullscreen, setPhotoFullscreen] = useState<string | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
@@ -298,6 +300,7 @@ export default function StaffBathDetail() {
   const ownerEmail = bath.owner?.email;
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
@@ -383,6 +386,7 @@ export default function StaffBathDetail() {
           onSuccess={() =>
             queryClient.invalidateQueries({ queryKey: ["staff-baths"] })
           }
+          showSuccess={showSuccess}
         />
       )}
 
@@ -772,6 +776,9 @@ export default function StaffBathDetail() {
         />
       )}
     </ScrollView>
+    {/* Confirmación de éxito no bloqueante. */}
+    {banner}
+    </>
   );
 }
 
@@ -779,11 +786,13 @@ function ManualPaymentSection({
   reservationId,
   balance,
   onSuccess,
+  showSuccess,
 }: {
   reservationId: string;
   petName: string;
   balance: { deposit: number; extras: number; total: number };
   onSuccess: () => void;
+  showSuccess: (msg: string) => void;
 }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -805,11 +814,10 @@ function ManualPaymentSection({
       });
       onSuccess();
       closeModal();
-      Alert.alert(
-        "Pago registrado",
+      showSuccess(
         res.concluded
-          ? `Recibido ${formatCurrency(res.amount)}. El baño quedó concluido.`
-          : `Recibido ${formatCurrency(res.amount)}.`,
+          ? `Recibido ${formatCurrency(res.amount)} — baño concluido`
+          : `Recibido ${formatCurrency(res.amount)}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo registrar";

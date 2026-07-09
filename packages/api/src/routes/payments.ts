@@ -60,16 +60,18 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const reservation = await prisma.reservation.findUnique({
-        where: { id: parsed.data.reservationId },
-      });
+      // Checks de existencia en paralelo (antes eran 2 round-trips seriales).
+      const [reservation, user] = await Promise.all([
+        prisma.reservation.findUnique({
+          where: { id: parsed.data.reservationId },
+        }),
+        prisma.user.findUnique({
+          where: { id: parsed.data.userId },
+        }),
+      ]);
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-
-      const user = await prisma.user.findUnique({
-        where: { id: parsed.data.userId },
-      });
       if (!user) {
         return reply.status(404).send({ error: "Usuario no encontrado" });
       }
@@ -482,15 +484,17 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       },
     });
 
-    // Email "pago recibido"
-    const owner = await prisma.user.findUnique({
-      where: { id: reservation.ownerId },
-      select: { email: true, firstName: true },
-    });
-    const pet = await prisma.pet.findUnique({
-      where: { id: reservation.petId },
-      select: { name: true },
-    });
+    // Email "pago recibido" — lookups en paralelo (antes 2 seriales).
+    const [owner, pet] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: reservation.ownerId },
+        select: { email: true, firstName: true },
+      }),
+      prisma.pet.findUnique({
+        where: { id: reservation.petId },
+        select: { name: true },
+      }),
+    ]);
     if (owner?.email && pet) {
       const tpl = paymentReceivedTemplate({
         ownerFirstName: owner.firstName,

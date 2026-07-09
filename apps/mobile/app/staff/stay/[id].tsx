@@ -44,6 +44,8 @@ import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectionListModal } from "@/components/SelectionListModal";
+import { useSuccessBanner } from "@/components/SuccessBanner";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   PaymentManualModal,
   type ManualPaymentValues,
@@ -88,33 +90,36 @@ export default function StayDetail() {
   const [paymentInitialAmount, setPaymentInitialAmount] = useState("");
   const [roomModalVisible, setRoomModalVisible] = useState(false);
 
+  const { banner, showSuccess } = useSuccessBanner();
+
   const { data: stay, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["staff", "stay", id],
     queryFn: () => getStaffStayById(id!),
     enabled: !!id,
-    staleTime: 0,
   });
 
-  // Refetch al volver a la pantalla (ej. después de submitir un reporte).
-  // Invalidate + refetch para asegurar que se obtengan datos frescos del server,
-  // ignorando el cache local.
+  // Al volver a la pantalla: invalidar SIN bloquear — el cache se muestra al
+  // instante y el refetch corre en background (antes: staleTime 0 + refetch
+  // forzado = espera de red garantizada en cada regreso).
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
       queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
-      refetch();
     }, [id])
   );
 
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ["staff"] });
+  // Invalidación dirigida: detalle + listas de estancias. Antes se invalidaba
+  // ["staff"] completo (stats, checklists, todo) tras cada acción.
+  const invalidateStay = () => {
+    queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+    queryClient.invalidateQueries({ queryKey: ["staff", "stays"] });
   };
 
   const assignMutation = useMutation({
     mutationFn: () => assignStay(id!),
     onSuccess: () => {
-      invalidateAll();
-      Alert.alert("Listo", "Te has asignado como responsable");
+      invalidateStay();
+      showSuccess("Te has asignado como responsable");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -126,22 +131,30 @@ export default function StayDetail() {
     enabled: roomModalVisible && !!stay?.pet?.size,
   });
 
-  const assignRoomMutation = useMutation({
+  // Optimista: el cuarto seleccionado aparece al instante en el detalle.
+  const assignRoomMutation = useOptimisticMutation({
     mutationFn: (roomId: string) => adminAssignRoom(id!, roomId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
-      invalidateAll();
-      setRoomModalVisible(false);
-      Alert.alert("Cuarto asignado", "El cuarto se asignó correctamente.");
-    },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["staff", "stay", id],
+        updater: (old, roomId) => {
+          const selected = roomList?.find((r) => r.id === roomId);
+          if (!old || !selected) return old;
+          return { ...(old as object), room: selected };
+        },
+      },
+    ],
+    invalidateKeys: [["staff", "stay", id], ["staff", "stays"]],
+    onSuccess: () => showSuccess("Cuarto asignado"),
+    errorTitle: "No se pudo asignar el cuarto",
   });
 
   const checkinMutation = useMutation({
     mutationFn: () => staffCheckin(id!),
     onSuccess: () => {
-      invalidateAll();
-      Alert.alert("Check-in realizado", "Se notificó al dueño");
+      invalidateStay();
+      queryClient.invalidateQueries({ queryKey: ["staff", "me", "stats"] });
+      showSuccess("Check-in realizado — se notificó al dueño");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -149,9 +162,8 @@ export default function StayDetail() {
   const confirmPickupPaidMutation = useMutation({
     mutationFn: (crId: string) => staffConfirmChangeRequestPickupPaid(crId),
     onSuccess: () => {
-      invalidateAll();
-      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
-      Alert.alert("Pago registrado", "Se notificó al dueño");
+      invalidateStay();
+      showSuccess("Pago registrado — se notificó al dueño");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -164,12 +176,9 @@ export default function StayDetail() {
         notes: values.notes,
       }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
+      invalidateStay();
       setPaymentModalVisible(false);
-      Alert.alert(
-        "Pago registrado",
-        `Se registró ${formatCurrency(res.amount)} y se notificó al dueño.`,
-      );
+      showSuccess(`Pago de ${formatCurrency(res.amount)} registrado`);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -181,14 +190,16 @@ export default function StayDetail() {
   const checkoutMutation = useMutation({
     mutationFn: () => staffCheckout(id!),
     onSuccess: (data) => {
-      invalidateAll();
+      invalidateStay();
+      queryClient.invalidateQueries({ queryKey: ["staff", "me", "stats"] });
       if (data.warnings.length > 0) {
+        // Las advertencias sí bloquean: el staff debe leerlas.
         Alert.alert(
           "Check-out con advertencias",
           data.warnings.join("\n")
         );
       } else {
-        Alert.alert("Check-out realizado", "Se notificó al dueño");
+        showSuccess("Check-out realizado — se notificó al dueño");
       }
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -203,10 +214,10 @@ export default function StayDetail() {
         petId: stay!.petId,
       }),
     onSuccess: () => {
-      invalidateAll();
+      invalidateStay();
       setAlertModalVisible(false);
       setAlertDescription("");
-      Alert.alert("Alerta enviada", "Se notificó a los administradores");
+      showSuccess("Alerta enviada a los administradores");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -220,7 +231,7 @@ export default function StayDetail() {
         petId: stay!.petId,
       }),
     onSuccess: () => {
-      invalidateAll();
+      invalidateStay();
       setTagModalVisible(false);
       setSelectedTagKey(null);
       setTagNotes("");
@@ -228,10 +239,27 @@ export default function StayDetail() {
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
-  const deleteTagMutation = useMutation({
+  // Optimista: la etiqueta desaparece al confirmar; si falla, reaparece.
+  const deleteTagMutation = useOptimisticMutation({
     mutationFn: (tagId: string) => deleteBehaviorTag(tagId),
-    onSuccess: () => invalidateAll(),
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["staff", "stay", id],
+        updater: (old, tagId) => {
+          const s = old as { pet?: { behaviorTags?: { id: string }[] } };
+          if (!s?.pet?.behaviorTags) return old;
+          return {
+            ...s,
+            pet: {
+              ...s.pet,
+              behaviorTags: s.pet.behaviorTags.filter((t) => t.id !== tagId),
+            },
+          };
+        },
+      },
+    ],
+    invalidateKeys: [["staff", "stay", id]],
+    errorTitle: "No se pudo quitar la etiqueta",
   });
 
   const handleDeleteTag = (tagId: string, tagLabel: string) => {
@@ -249,21 +277,35 @@ export default function StayDetail() {
     );
   };
 
-  const resolveAlertMutation = useMutation({
+  // Optimista: la alerta se marca resuelta en el mismo frame del tap.
+  const resolveAlertMutation = useOptimisticMutation({
     mutationFn: (alertId: string) => resolveStaffAlert(alertId),
-    onSuccess: () => {
-      invalidateAll();
-      Alert.alert("Listo", "Alerta marcada como resuelta");
-    },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    patches: [
+      {
+        queryKey: ["staff", "stay", id],
+        updater: (old, alertId) => {
+          const s = old as { alerts?: { id: string; isResolved: boolean }[] };
+          if (!s?.alerts) return old;
+          return {
+            ...s,
+            alerts: s.alerts.map((a) =>
+              a.id === alertId ? { ...a, isResolved: true } : a
+            ),
+          };
+        },
+      },
+    ],
+    invalidateKeys: [["staff", "stay", id]],
+    onSuccess: () => showSuccess("Alerta marcada como resuelta"),
+    errorTitle: "No se pudo resolver la alerta",
   });
 
   const completeAddonMutation = useMutation({
     mutationFn: ({ addonId, mediaUrl }: { addonId: string; mediaUrl: string }) =>
       completeAddon(addonId, mediaUrl),
     onSuccess: () => {
-      invalidateAll();
-      Alert.alert("Listo", "Baño marcado como completado");
+      invalidateStay();
+      showSuccess("Baño marcado como completado");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
@@ -340,8 +382,8 @@ export default function StayDetail() {
         petId: stay.petId,
         staffId: currentUserId,
       });
-      invalidateAll();
-      Alert.alert("Listo", "Evidencia subida correctamente");
+      invalidateStay();
+      showSuccess("Evidencia subida correctamente");
     } catch (error: any) {
       Alert.alert("Error", error.message || "No se pudo subir la evidencia");
     } finally {
@@ -382,6 +424,7 @@ export default function StayDetail() {
     : null;
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={
@@ -1266,7 +1309,10 @@ export default function StayDetail() {
         renderItem={(r, { selected: isCurrent, pending: isPending }) => (
           <TouchableOpacity
             style={styles.roomRow}
-            onPress={() => assignRoomMutation.mutate(r.id)}
+            onPress={() => {
+              assignRoomMutation.mutate(r.id);
+              setRoomModalVisible(false);
+            }}
             disabled={isCurrent || assignRoomMutation.isPending}
             activeOpacity={0.7}
           >
@@ -1295,5 +1341,8 @@ export default function StayDetail() {
       />
 
     </ScrollView>
+    {/* Confirmación de éxito no bloqueante. */}
+    {banner}
+    </>
   );
 }

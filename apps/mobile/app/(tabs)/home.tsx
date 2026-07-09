@@ -14,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { getReservations, getMe, getPetsByOwner } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
@@ -68,69 +68,93 @@ export default function HomeScreen() {
     enabled: !!userId,
   });
 
-  const activePets = pets?.filter((p) => p.isActive) ?? [];
+  // Derivados memoizados: antes todo este bloque (filtros anidados, new Date
+  // por vacuna) se recalculaba en cada render de la pantalla de inicio.
+  const activePets = useMemo(
+    () => pets?.filter((p) => p.isActive) ?? [],
+    [pets]
+  );
   const hasActiveStays = (activeReservations?.length ?? 0) > 0;
   const hasUpcoming = (upcomingReservations?.length ?? 0) > 0;
   const hasAnyReservation = hasActiveStays || hasUpcoming;
 
-  const upcomingStays = (upcomingReservations ?? []).filter(
-    (r) => r.reservationType !== "BATH"
+  const upcomingStays = useMemo(
+    () => (upcomingReservations ?? []).filter((r) => r.reservationType !== "BATH"),
+    [upcomingReservations]
   );
-  const upcomingBaths = (upcomingReservations ?? []).filter(
-    (r) => r.reservationType === "BATH"
+  const upcomingBaths = useMemo(
+    () => (upcomingReservations ?? []).filter((r) => r.reservationType === "BATH"),
+    [upcomingReservations]
   );
 
   // Alertas inteligentes
-  const now = Date.now();
-  const balanceUrgent =
-    upcomingReservations?.filter(
-      (r) =>
-        r.hasBalance &&
-        r.depositDeadline &&
-        new Date(r.depositDeadline).getTime() > now &&
-        new Date(r.depositDeadline).getTime() - now < URGENT_BALANCE_WINDOW_MS
-    ) ?? [];
-  const cartillaPending = activePets.filter(
-    (p) => p.cartillaStatus === null || p.cartillaStatus === "REJECTED"
+  const balanceUrgent = useMemo(() => {
+    const now = Date.now();
+    return (
+      upcomingReservations?.filter(
+        (r) =>
+          r.hasBalance &&
+          r.depositDeadline &&
+          new Date(r.depositDeadline).getTime() > now &&
+          new Date(r.depositDeadline).getTime() - now < URGENT_BALANCE_WINDOW_MS
+      ) ?? []
+    );
+  }, [upcomingReservations]);
+
+  const cartillaPending = useMemo(
+    () =>
+      activePets.filter(
+        (p) => p.cartillaStatus === null || p.cartillaStatus === "REJECTED"
+      ),
+    [activePets]
   );
-  const changeAlerts = [
-    ...(activeReservations ?? []),
-    ...(upcomingReservations ?? []),
-  ].filter((r) => r.hasPendingChangeRequest);
+
+  const changeAlerts = useMemo(
+    () =>
+      [...(activeReservations ?? []), ...(upcomingReservations ?? [])].filter(
+        (r) => r.hasPendingChangeRequest
+      ),
+    [activeReservations, upcomingReservations]
+  );
 
   // Vacunas vencidas o por vencer (≤30 días) por mascota.
   // Si el backend ya marcó cartillaStatus = EXPIRED, se considera urgente
   // aunque la lista de vacunas esté limpia (pets ya marcadas se siguen alertando).
-  const VACCINE_WINDOW_MS = 30 * 86_400_000;
-  const petsWithVaccineAlert = activePets
-    .map((p) => {
-      const expired = (p.vaccines ?? []).filter(
-        (v) => v.expiresAt && new Date(v.expiresAt).getTime() <= now
+  const petsWithVaccineAlert = useMemo(() => {
+    const now = Date.now();
+    const VACCINE_WINDOW_MS = 30 * 86_400_000;
+    return activePets
+      .map((p) => {
+        const expired = (p.vaccines ?? []).filter(
+          (v) => v.expiresAt && new Date(v.expiresAt).getTime() <= now
+        );
+        const expiringSoon = (p.vaccines ?? []).filter((v) => {
+          if (!v.expiresAt) return false;
+          const ts = new Date(v.expiresAt).getTime();
+          return ts > now && ts - now <= VACCINE_WINDOW_MS;
+        });
+        const cartillaExpired = (p as any).cartillaStatus === "EXPIRED";
+        return { pet: p, expired, expiringSoon, cartillaExpired };
+      })
+      .filter(
+        (x) =>
+          x.expired.length > 0 || x.expiringSoon.length > 0 || x.cartillaExpired
       );
-      const expiringSoon = (p.vaccines ?? []).filter((v) => {
-        if (!v.expiresAt) return false;
-        const ts = new Date(v.expiresAt).getTime();
-        return ts > now && ts - now <= VACCINE_WINDOW_MS;
-      });
-      const cartillaExpired = (p as any).cartillaStatus === "EXPIRED";
-      return { pet: p, expired, expiringSoon, cartillaExpired };
-    })
-    .filter(
-      (x) =>
-        x.expired.length > 0 ||
-        x.expiringSoon.length > 0 ||
-        x.cartillaExpired
-    );
+  }, [activePets]);
 
-  const PRESTAY_WINDOW_MS = 48 * 60 * 60 * 1000;
-  const prestayReservations =
-    upcomingReservations?.filter(
-      (r) =>
-        r.reservationType !== "BATH" &&
-        r.checkIn &&
-        new Date(r.checkIn).getTime() > now &&
-        new Date(r.checkIn).getTime() - now < PRESTAY_WINDOW_MS,
-    ) ?? [];
+  const prestayReservations = useMemo(() => {
+    const now = Date.now();
+    const PRESTAY_WINDOW_MS = 48 * 60 * 60 * 1000;
+    return (
+      upcomingReservations?.filter(
+        (r) =>
+          r.reservationType !== "BATH" &&
+          r.checkIn &&
+          new Date(r.checkIn).getTime() > now &&
+          new Date(r.checkIn).getTime() - now < PRESTAY_WINDOW_MS,
+      ) ?? []
+    );
+  }, [upcomingReservations]);
 
   const prestayPetCartilla = (reservation: typeof prestayReservations[number]) => {
     const pet = activePets.find((p) => p.id === reservation.petId);

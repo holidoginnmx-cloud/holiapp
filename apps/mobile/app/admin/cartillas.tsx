@@ -1,6 +1,7 @@
 import { COLORS } from "@/constants/colors";
 import { ErrorState } from "@/components/ErrorState";
-import React, { useEffect, useState } from "react";
+import { useSuccessBanner } from "@/components/SuccessBanner";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -66,13 +67,8 @@ export default function AdminCartillas() {
   const [zoomImages, setZoomImages] = useState<string[]>([]);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [zoomVisible, setZoomVisible] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { banner, showSuccess } = useSuccessBanner();
 
-  useEffect(() => {
-    if (!successMessage) return;
-    const t = setTimeout(() => setSuccessMessage(null), 2000);
-    return () => clearTimeout(t);
-  }, [successMessage]);
   const openZoom = (photos: string[], index: number) => {
     setZoomImages(photos);
     setZoomIndex(index);
@@ -131,7 +127,7 @@ export default function AdminCartillas() {
             dCount === 1 ? "1 desparasitación" : `${dCount} desparasitaciones`
           );
         }
-        setSuccessMessage(
+        showSuccess(
           parts.length > 0
             ? `${parts.join(" y ")} agregada${
                 vCount + dCount === 1 ? "" : "s"
@@ -1101,26 +1097,8 @@ export default function AdminCartillas() {
         </View>
       </Modal>
 
-      {/* Toast de éxito al aprobar cartilla / agregar vacunas. */}
-      <Modal
-        visible={!!successMessage}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSuccessMessage(null)}
-      >
-        <View style={styles.toastOverlay} pointerEvents="none">
-          <View style={styles.toastCard}>
-            <View style={styles.toastIconWrap}>
-              <Ionicons
-                name="checkmark-circle"
-                size={48}
-                color={COLORS.successText}
-              />
-            </View>
-            <Text style={styles.toastText}>{successMessage}</Text>
-          </View>
-        </View>
-      </Modal>
+      {/* Confirmación de éxito no bloqueante al aprobar cartilla / vacunas. */}
+      {banner}
     </View>
   );
 }

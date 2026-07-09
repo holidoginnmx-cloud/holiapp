@@ -107,6 +107,10 @@ export type ReservationDetail = Reservation & {
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const { tokenResolver } = useAuthStore.getState();
 
+  // Timing (solo dev): separa el costo del token de Clerk del costo real de
+  // red/servidor. Es el marcador para medir las mejoras de latencia por tap.
+  const t0 = __DEV__ ? performance.now() : 0;
+
   let authHeader: Record<string, string> = {};
   if (tokenResolver) {
     const token = await tokenResolver();
@@ -114,6 +118,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       authHeader = { Authorization: `Bearer ${token}` };
     }
   }
+
+  const t1 = __DEV__ ? performance.now() : 0;
 
   const hasBody = options?.body != null;
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -124,6 +130,13 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
   });
+
+  if (__DEV__) {
+    const t2 = performance.now();
+    console.log(
+      `[api] ${options?.method ?? "GET"} ${path} token=${Math.round(t1 - t0)}ms fetch=${Math.round(t2 - t1)}ms`
+    );
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

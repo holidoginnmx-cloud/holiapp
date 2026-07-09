@@ -16,8 +16,10 @@ interface FilterTabsUnderlineProps {
   justified?: boolean;
   // Posición animada del underline en modo justified. Rango [0, tabs.length-1].
   // Cuando se provee, el underline por-tab se oculta y se renderiza una sola
-  // línea animada absoluta que sigue este progress.
-  progress?: Animated.Value;
+  // línea animada absoluta que sigue este progress. Acepta también nodos
+  // derivados (p.ej. Animated.divide(scrollX, pageWidth)) para no necesitar un
+  // listener JS por frame de scroll.
+  progress?: Animated.Value | Animated.AnimatedInterpolation<number>;
 }
 
 export function FilterTabsUnderline({

@@ -1,7 +1,12 @@
 import { FastifyInstance } from "fastify";
 import { clerkClient } from "@clerk/fastify";
+import { Prisma } from "@prisma/client";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
-import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createAdminMiddleware,
+  invalidateAuthCache,
+} from "../middleware/auth";
 import { normalizePhone } from "../lib/phone";
 import {
   claimPetsIntoAccount,
@@ -30,12 +35,18 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }));
   });
 
-  // GET /users/me — obtener usuario autenticado por token de Clerk
+  // GET /users/me — obtener usuario autenticado por token de Clerk.
+  // Lee SIEMPRE fresco de la DB (no la copia del caché de auth): este endpoint
+  // sirve creditBalance/perfil, que cambian desde muchos flujos (reembolsos,
+  // reservas con saldo, ajustes admin) y no vale la pena invalidar en todos.
   fastify.get(
     "/users/me",
     { preHandler: [createAuthMiddleware(prisma)] },
     async (request, reply) => {
-      return request.dbUser;
+      const fresh = await prisma.user.findUnique({
+        where: { id: request.userId! },
+      });
+      return fresh ?? request.dbUser;
     }
   );
 
@@ -236,6 +247,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           allowedIds,
           enteredPhone
         );
+        // El merge puede cambiar datos del usuario (teléfono, nombre) — el
+        // siguiente /users/me debe leer la versión consolidada.
+        invalidateAuthCache(fresh.clerkId);
         return reply.send(merged);
       } catch (err) {
         if (err instanceof ClaimForbiddenError) {
@@ -274,6 +288,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Nada para actualizar" });
       }
       const updated = await prisma.user.update({ where: { id: userId }, data });
+      invalidateAuthCache(updated.clerkId);
       return updated;
     }
   );
@@ -422,6 +437,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
       // Borrar usuario en Clerk para que no pueda iniciar sesi\u00f3n nuevamente.
       // Si esto falla, la cuenta ya qued\u00f3 anonimizada en BD — solo logueamos.
+      // La cuenta anonimizada no debe seguir resolviendo desde el caché.
+      invalidateAuthCache(clerkId);
+
       if (clerkId) {
         try {
           await clerkClient.users.deleteUser(clerkId);
@@ -467,6 +485,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         where: { id: request.userId! },
         data: { role: parsed.data.role },
       });
+      invalidateAuthCache(updated.clerkId);
       return updated;
     }
   );
@@ -507,7 +526,10 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(user);
   });
 
-  // PATCH /users/:id — actualizar (solo admin)
+  // PATCH /users/:id — actualizar (solo admin).
+  // Sin checks previos de existencia/email: el update es la única query y los
+  // errores de Prisma se mapean a los mismos status (P2025→404, P2002→409).
+  // Antes eran 2-3 findUnique seriales extra por cada cambio de rol.
   fastify.patch<{ Params: { id: string } }>(
     "/users/:id",
     { preHandler: adminAuth },
@@ -517,29 +539,27 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const user = await prisma.user.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!user) {
-        return reply.status(404).send({ error: "Usuario no encontrado" });
-      }
-
-      if (parsed.data.email && parsed.data.email !== user.email) {
-        const existing = await prisma.user.findUnique({
-          where: { email: parsed.data.email },
+      try {
+        const updated = await prisma.user.update({
+          where: { id: request.params.id },
+          data: parsed.data,
         });
-        if (existing) {
-          return reply
-            .status(409)
-            .send({ error: "Ya existe un usuario con ese email" });
+        // Cambios de rol/isActive deben aplicar de inmediato en el middleware.
+        invalidateAuthCache(updated.clerkId);
+        return updated;
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === "P2025") {
+            return reply.status(404).send({ error: "Usuario no encontrado" });
+          }
+          if (err.code === "P2002") {
+            return reply
+              .status(409)
+              .send({ error: "Ya existe un usuario con ese email" });
+          }
         }
+        throw err;
       }
-
-      const updated = await prisma.user.update({
-        where: { id: request.params.id },
-        data: parsed.data,
-      });
-      return updated;
     }
   );
 
@@ -548,18 +568,23 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     "/users/:id",
     { preHandler: adminAuth },
     async (request, reply) => {
-      const user = await prisma.user.findUnique({
-        where: { id: request.params.id },
-      });
-      if (!user) {
-        return reply.status(404).send({ error: "Usuario no encontrado" });
+      try {
+        const updated = await prisma.user.update({
+          where: { id: request.params.id },
+          data: { isActive: false },
+        });
+        // La desactivación debe cortar el acceso al instante, no tras el TTL.
+        invalidateAuthCache(updated.clerkId);
+        return updated;
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2025"
+        ) {
+          return reply.status(404).send({ error: "Usuario no encontrado" });
+        }
+        throw err;
       }
-
-      const updated = await prisma.user.update({
-        where: { id: request.params.id },
-        data: { isActive: false },
-      });
-      return updated;
     }
   );
 }

@@ -10,6 +10,25 @@ declare module "fastify" {
   }
 }
 
+// ─── Caché en memoria clerkId→User ─────────────────────────
+// Cada request autenticado pagaba un findUnique a Supabase ANTES del handler;
+// con el pooler cross-región eso era el mayor costo sistémico por tap. Solo se
+// cachea el happy path (usuario existente, activo, sin nombre placeholder).
+// El TTL de 30s es un respaldo: los cambios de rol/desactivación invalidan
+// explícitamente (ver invalidateAuthCache en routes/users.ts).
+// NOTA: asume UNA instancia (Railway). Si se escala horizontalmente, bajar el
+// TTL a ~10s o mover a un store compartido.
+const AUTH_CACHE_TTL_MS = 30_000;
+const authCache = new Map<string, { user: User; expiresAt: number }>();
+
+export function invalidateAuthCache(clerkId: string | null | undefined) {
+  if (clerkId) authCache.delete(clerkId);
+}
+
+export function clearAuthCache() {
+  authCache.clear();
+}
+
 export function createAdminMiddleware() {
   return async function adminMiddleware(
     request: FastifyRequest,
@@ -68,6 +87,15 @@ async function resolveDbUserFromClerk(
   prisma: PrismaClient,
   clerkUserId: string
 ): Promise<{ user?: User; error?: { status: number; message: string } }> {
+  // Cache hit → cero round-trips a la DB en este request.
+  const cached = authCache.get(clerkUserId);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      return { user: cached.user };
+    }
+    authCache.delete(clerkUserId);
+  }
+
   let user = await prisma.user.findUnique({
     where: { clerkId: clerkUserId },
   });
@@ -154,10 +182,21 @@ async function resolveDbUserFromClerk(
   }
 
   // Cuenta desactivada por un admin → bloquear acceso por completo.
+  // (Nunca se cachean usuarios inactivos.)
   if (!user.isActive) {
     return {
       error: { status: 403, message: "Tu cuenta está desactivada. Contacta al hotel." },
     };
+  }
+
+  // Solo cachear el happy path estable: los caminos de auto-create/vinculación/
+  // backfill de nombre corren una vez por cuenta y no vale la pena cachearlos.
+  if (!isPlaceholderName(user.firstName)) {
+    if (authCache.size > 1000) authCache.clear();
+    authCache.set(clerkUserId, {
+      user,
+      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+    });
   }
 
   return { user };

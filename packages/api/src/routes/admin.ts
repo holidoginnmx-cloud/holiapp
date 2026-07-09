@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify";
-import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createAdminMiddleware,
+  createStaffMiddleware,
+  invalidateAuthCache,
+} from "../middleware/auth";
 import { ReviewCartillaSchema, CartillaStatusEnum, UpdateVaccineSchema } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -906,6 +911,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           lastCreditEntryAt: new Date(),
         },
       });
+      // El saldo a favor se lee de /users/me — que no sirva una copia vieja.
+      invalidateAuthCache(updatedUser.clerkId);
 
       await prisma.creditLedger.create({
         data: {
