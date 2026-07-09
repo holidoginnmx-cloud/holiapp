@@ -71,24 +71,31 @@ function ClerkTokenSync() {
 
   // Keep-fresh del JWT de Clerk: el token expira ~60s y si un tap cae cerca de
   // la expiración, apiFetch paga un viaje de red a Clerk EN SERIE antes del
-  // request real (taps que "aleatoriamente" tardan 300-500ms más). Refrescamos
-  // proactivamente cada 40s con la app activa y al volver de background, para
-  // que getToken() siempre resuelva del caché. Clerk dedupe/rota internamente.
+  // request real (taps que "aleatoriamente" tardan 300-500ms más). El interval
+  // usa skipCache: SIN él, getToken() a los 40s devuelve el token cacheado (aún
+  // válido) sin renovarlo, expira a los 60s y los requests del segundo 60-80
+  // pagan el refresh completo — medido: ráfagas de token=1000-1400ms.
   useEffect(() => {
     if (!isSignedIn) return;
 
+    // Mint proactivo de un token nuevo (interval): nadie más paga el refresh.
+    const forceRefresh = () => {
+      getToken({ skipCache: true }).catch(() => {});
+    };
+    // Refresh normal (arranque / volver de background): si el caché ya expiró,
+    // getToken refresca solo; si sigue válido, no hay red.
     const refresh = () => {
       getToken().catch(() => {});
     };
 
     refresh();
-    let interval: ReturnType<typeof setInterval> | null = setInterval(refresh, 40_000);
+    let interval: ReturnType<typeof setInterval> | null = setInterval(forceRefresh, 40_000);
 
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         // Primer tap tras reabrir la app: que no pague el refresh.
         refresh();
-        if (!interval) interval = setInterval(refresh, 40_000);
+        if (!interval) interval = setInterval(forceRefresh, 40_000);
       } else if (interval) {
         clearInterval(interval);
         interval = null;
