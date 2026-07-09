@@ -22,7 +22,7 @@
     "ios": {
       "bundleIdentifier": "com.holidoginn.app",
       "icon": "./assets/icon.png",
-      "buildNumber": "23",
+      "buildNumber": "24",
       "deploymentTarget": "13.4",
       "usesAppleSignIn": true,
       "supportsTablet": true,
