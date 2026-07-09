@@ -269,14 +269,11 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Estancia no encontrada" });
       }
 
-      if (
-        request.userRole === "STAFF" &&
-        stay.staffId !== null &&
-        stay.staffId !== request.userId
-      ) {
-        return reply.status(403).send({ error: "Esta estancia no está asignada a ti" });
-      }
-
+      // Cualquier staff puede VER cualquier estancia: el calendario muestra la
+      // agenda completa y las acciones (assign/checkin/checkout) tampoco
+      // filtran por asignación — el responsable es accountability, no acceso.
+      // (Antes un 403 aquí dejaba al staff en un callejón sin salida al abrir
+      // estancias asignadas a un compañero.)
       return stay;
     }
   );

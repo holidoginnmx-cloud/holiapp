@@ -21,9 +21,17 @@ export function getErrorMessage(error: unknown): string {
     return "Sin conexión a internet. Revisa tu conexión e intenta de nuevo.";
   }
 
-  // Sesión expirada o sin permisos.
-  if (status === 401 || status === 403) {
+  // Sesión expirada: el token ya no es válido.
+  if (status === 401) {
     return "Tu sesión expiró. Inicia sesión de nuevo.";
+  }
+
+  // Sin permisos: mostrar la razón real del backend (p. ej. "Acceso
+  // restringido a administradores") en vez de culpar a la sesión.
+  if (status === 403) {
+    return message && !/^error \d{3}$/i.test(message)
+      ? message
+      : "No tienes permiso para ver esta información.";
   }
 
   // Error del servidor (5xx o mensaje crudo "Error 5xx").
