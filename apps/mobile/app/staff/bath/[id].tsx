@@ -31,11 +31,13 @@ import {
   getStaffBaths,
   completeStaffBath,
   createStaffUpdate,
+  deleteStayUpdate,
   setBathExtrasPrice,
   confirmExtrasPaidAtPickup,
   registerBathManualPayment,
   type StaffBath,
 } from "@/lib/api";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { formatName, phoneToTelUri, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { useAuthStore } from "@/store/authStore";
@@ -129,6 +131,45 @@ export default function StaffBathDetail() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  // Optimista: la foto desaparece al confirmar; si el server falla, reaparece.
+  const deletePhotoMutation = useOptimisticMutation({
+    mutationFn: (updateId: string) => deleteStayUpdate(updateId),
+    patches: [
+      {
+        queryKey: ["staff-baths", "upcoming"],
+        updater: (old, updateId) => {
+          const d = old as { baths?: StaffBath[] } | undefined;
+          if (!d?.baths) return old;
+          return {
+            ...d,
+            baths: d.baths.map((b) =>
+              b.id === id
+                ? { ...b, updates: b.updates.filter((u) => u.id !== updateId) }
+                : b
+            ),
+          };
+        },
+      },
+    ],
+    invalidateKeys: [["staff-baths"]],
+    errorTitle: "No se pudo eliminar la foto",
+  });
+
+  const confirmDeletePhoto = (updateId: string) => {
+    Alert.alert(
+      "Eliminar foto",
+      "El dueño dejará de verla. Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deletePhotoMutation.mutate(updateId),
+        },
+      ],
+    );
+  };
 
   async function pickPhoto(source: "camera" | "library"): Promise<string | null> {
     if (source === "camera") {
@@ -473,6 +514,15 @@ export default function StaffBathDetail() {
                   <View style={styles.photoExpandBadge}>
                     <Ionicons name="expand" size={12} color={COLORS.white} />
                   </View>
+                  <TouchableOpacity
+                    style={styles.photoDeleteBadge}
+                    onPress={() => confirmDeletePhoto(u.id)}
+                    disabled={deletePhotoMutation.isPending}
+                    hitSlop={6}
+                    testID={`staff-bath-photo-delete-${u.id}`}
+                  >
+                    <Ionicons name="trash" size={12} color={COLORS.white} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity

@@ -667,6 +667,17 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  photoDeleteBadge: {
+    position: "absolute",
+    right: 6,
+    top: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(220, 38, 38, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   fullscreenBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",

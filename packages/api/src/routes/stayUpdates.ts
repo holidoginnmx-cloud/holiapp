@@ -3,14 +3,12 @@ import { CreateStayUpdateSchema } from "@holidoginn/shared";
 import {
   createAuthMiddleware,
   createStaffMiddleware,
-  createAdminMiddleware,
 } from "../middleware/auth";
 
 export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
   const staffMiddleware = createStaffMiddleware();
-  const adminMiddleware = createAdminMiddleware();
 
   // GET /stay-updates/:reservationId — fotos de una reservación (owner o staff/admin)
   fastify.get<{ Params: { reservationId: string } }>(
@@ -71,11 +69,11 @@ export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // DELETE /stay-updates/:id — borrar una foto/update (solo admin)
-  // Útil cuando la foto subida por staff no cumple con la calidad esperada.
+  // DELETE /stay-updates/:id — borrar una foto/update (staff o admin)
+  // Útil cuando la evidencia subida no cumple con la calidad esperada.
   fastify.delete<{ Params: { id: string } }>(
     "/stay-updates/:id",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
       const update = await prisma.stayUpdate.findUnique({
         where: { id: request.params.id },

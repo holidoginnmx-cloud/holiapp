@@ -19,6 +19,8 @@ type Props = {
   checklists: ChecklistMaybeWithStaff[];
   onPressItem: (update: StayUpdate, allInGroup: StayUpdate[]) => void;
   onPressReport?: () => void;
+  /** Si se pasa, cada miniatura muestra botón de eliminar (solo staff/admin). */
+  onDeleteItem?: (update: StayUpdate) => void;
 };
 
 export function EvidenceByReports({
@@ -26,6 +28,7 @@ export function EvidenceByReports({
   checklists,
   onPressItem,
   onPressReport,
+  onDeleteItem,
 }: Props) {
   if (updates.length === 0) {
     return null;
@@ -99,7 +102,11 @@ export function EvidenceByReports({
                 {items.length} {items.length === 1 ? "evidencia" : "evidencias"}
               </Text>
             </View>
-            <EvidenceGrid items={items} onPressItem={onPressItem} />
+            <EvidenceGrid
+              items={items}
+              onPressItem={onPressItem}
+              onDeleteItem={onDeleteItem}
+            />
           </View>
         );
       })}
@@ -123,7 +130,11 @@ export function EvidenceByReports({
               {orphans.length === 1 ? "evidencia" : "evidencias"}
             </Text>
           </View>
-          <EvidenceGrid items={orphans} onPressItem={onPressItem} />
+          <EvidenceGrid
+            items={orphans}
+            onPressItem={onPressItem}
+            onDeleteItem={onDeleteItem}
+          />
         </View>
       )}
     </View>
@@ -133,9 +144,12 @@ export function EvidenceByReports({
 export function EvidenceGrid({
   items,
   onPressItem,
+  onDeleteItem,
 }: {
   items: StayUpdate[];
   onPressItem: (update: StayUpdate, allInGroup: StayUpdate[]) => void;
+  /** Si se pasa, cada miniatura muestra botón de eliminar (solo staff/admin). */
+  onDeleteItem?: (update: StayUpdate) => void;
 }) {
   return (
     <View style={styles.grid}>
@@ -157,6 +171,16 @@ export function EvidenceGrid({
               <View style={styles.playOverlay}>
                 <Ionicons name="play-circle" size={32} color={COLORS.white} />
               </View>
+            )}
+            {onDeleteItem && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={() => onDeleteItem(u)}
+                hitSlop={6}
+                testID={`evidence-delete-${u.id}`}
+              >
+                <Ionicons name="trash" size={13} color={COLORS.white} />
+              </TouchableOpacity>
             )}
           </TouchableOpacity>
         );
@@ -249,5 +273,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  deleteBtn: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(220, 38, 38, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

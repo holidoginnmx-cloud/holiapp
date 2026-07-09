@@ -11,6 +11,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +20,10 @@ import {
   getOwnerChecklists,
   getReservationById,
   getStayUpdates,
+  deleteStayUpdate,
 } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import { ChecklistSummaryCard } from "@/components/ChecklistSummaryCard";
 import { EvidenceGrid } from "@/components/EvidenceByReports";
 import { MediaViewer, type MediaViewerItem } from "@/components/MediaViewer";
@@ -40,6 +44,10 @@ export default function ChecklistsScreen() {
   const initRef = useRef(false);
 
   const [viewerItem, setViewerItem] = useState<MediaViewerItem | null>(null);
+
+  // Staff/admin pueden eliminar evidencias; los dueños solo las ven.
+  const role = useAuthStore((s) => s.role);
+  const canDelete = role === "ADMIN" || role === "STAFF";
 
   const { data: reservation } = useQuery({
     queryKey: ["reservation", id],
@@ -123,6 +131,42 @@ export default function ChecklistsScreen() {
       url: u.mediaUrl,
       type: u.mediaType === "video" ? "video" : "image",
     });
+
+  // Optimista: la evidencia desaparece al confirmar; si el server falla,
+  // reaparece. También se invalidan los reportes (recuentan fotos/videos).
+  const deleteMutation = useOptimisticMutation({
+    mutationFn: (updateId: string) => deleteStayUpdate(updateId),
+    patches: [
+      {
+        queryKey: ["stay-updates", id],
+        updater: (old, updateId) => {
+          const list = old as StayUpdate[] | undefined;
+          if (!Array.isArray(list)) return old;
+          return list.filter((u) => u.id !== updateId);
+        },
+      },
+    ],
+    invalidateKeys: [
+      ["stay-updates", id],
+      ["reservation-checklists", id],
+    ],
+    errorTitle: "No se pudo eliminar la evidencia",
+  });
+
+  const confirmDelete = (u: StayUpdate) => {
+    Alert.alert(
+      u.mediaType === "video" ? "Eliminar video" : "Eliminar foto",
+      "El dueño dejará de verla. Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(u.id),
+        },
+      ]
+    );
+  };
 
   if (isLoading) {
     return (
@@ -210,7 +254,11 @@ export default function ChecklistsScreen() {
                       <Text style={styles.evidenceTitle}>
                         Evidencias ({dayItems.length})
                       </Text>
-                      <EvidenceGrid items={dayItems} onPressItem={openItem} />
+                      <EvidenceGrid
+                        items={dayItems}
+                        onPressItem={openItem}
+                        onDeleteItem={canDelete ? confirmDelete : undefined}
+                      />
                     </View>
                   )}
                 </>
@@ -246,7 +294,11 @@ export default function ChecklistsScreen() {
               />
             </TouchableOpacity>
             {orphansExpanded && (
-              <EvidenceGrid items={orphans} onPressItem={openItem} />
+              <EvidenceGrid
+                items={orphans}
+                onPressItem={openItem}
+                onDeleteItem={canDelete ? confirmDelete : undefined}
+              />
             )}
           </View>
         )}
