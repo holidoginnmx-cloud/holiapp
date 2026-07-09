@@ -168,6 +168,20 @@ export const getUsers = () =>
 export const getUserById = (id: string) =>
   apiFetch<User & { pets: Pet[] }>(`${ENDPOINTS.users}/${id}`);
 
+/** Alta de cliente walk-in desde el admin. Sin email, el backend genera un
+ * placeholder @holidoginn.local (igual que el admin web); con teléfono, el
+ * cliente podrá reclamar su cuenta al descargar la app. */
+export const createUser = (data: {
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  email?: string;
+}) =>
+  apiFetch<User>(ENDPOINTS.users, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 // ─── Reclamar cuenta preexistente ("¿Ya eres cliente?") ──
 
 export type ClaimCandidate = {

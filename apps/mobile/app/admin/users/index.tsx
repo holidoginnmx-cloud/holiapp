@@ -228,7 +228,18 @@ export default function AdminUsers() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Usuarios</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Usuarios</Text>
+        <TouchableOpacity
+          style={styles.newClientBtn}
+          onPress={() => router.push("/admin/users/create" as any)}
+          activeOpacity={0.8}
+          testID="admin-users-create"
+        >
+          <Ionicons name="add" size={16} color={COLORS.white} />
+          <Text style={styles.newClientBtnText}>Nuevo cliente</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.filterRow}>
         {FILTER_ORDER.map((key) => {
@@ -361,11 +372,30 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: "600",
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
   title: {
     fontSize: 24,
     fontWeight: "800",
     color: COLORS.textPrimary,
-    marginBottom: 12,
+  },
+  newClientBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  newClientBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.white,
   },
   filterRow: {
     flexDirection: "row",

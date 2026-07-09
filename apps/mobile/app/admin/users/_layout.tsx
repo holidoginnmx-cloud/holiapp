@@ -25,6 +25,7 @@ export default function UsersLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "Usuarios", headerLeft: backButton }} />
+      <Stack.Screen name="create" options={{ title: "Nuevo cliente" }} />
     </Stack>
   );
 }

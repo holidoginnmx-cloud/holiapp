@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/fastify";
 import { Prisma } from "@prisma/client";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
@@ -506,11 +507,38 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // POST /users — crear (solo admin)
+  // POST /users — crear (solo admin). Pensado para dar de alta clientes
+  // walk-in desde el admin: el email es opcional (se genera el mismo
+  // placeholder @holidoginn.local que usa el admin web) y el teléfono se
+  // checa contra duplicados con la normalización del claim (últimos 10
+  // dígitos) para no repetir el problema de clientes duplicados.
   fastify.post("/users", { preHandler: adminAuth }, async (request, reply) => {
-    const parsed = CreateUserSchema.safeParse(request.body);
+    const raw = { ...((request.body ?? {}) as Record<string, unknown>) };
+    if (typeof raw.email !== "string" || !raw.email.trim()) {
+      raw.email = `walkin+${randomUUID()}@holidoginn.local`;
+    }
+
+    const parsed = CreateUserSchema.safeParse(raw);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    const phone = normalizePhone(parsed.data.phone);
+    if (phone) {
+      const [dup] = await prisma.$queryRaw<
+        { firstName: string; lastName: string }[]
+      >`
+        SELECT "firstName", "lastName" FROM users
+        WHERE "isActive" = true
+          AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
+        LIMIT 1
+      `;
+      if (dup) {
+        const dupName = `${dup.firstName} ${dup.lastName}`.trim();
+        return reply.status(409).send({
+          error: `Ese teléfono ya pertenece a ${dupName}. Búscalo en la lista para no duplicarlo.`,
+        });
+      }
     }
 
     const existing = await prisma.user.findUnique({
