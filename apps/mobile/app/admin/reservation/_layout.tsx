@@ -26,6 +26,7 @@ export default function AdminReservationLayout() {
     >
       <Stack.Screen name="create" options={{ title: "Crear reservación", headerLeft: backButton }} />
       <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backButton }} />
+      <Stack.Screen name="edit-dates" options={{ title: "Modificar fechas", headerLeft: backButton }} />
     </Stack>
   );
 }

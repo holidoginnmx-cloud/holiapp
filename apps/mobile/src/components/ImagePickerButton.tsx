@@ -10,8 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { pickAndUploadPhoto } from "@/lib/photoPicker";
 
 type Props = {
   /** Current image URL (from Cloudinary or existing) */
@@ -44,54 +43,19 @@ export function ImagePickerButton({
 }: Props) {
   const [uploading, setUploading] = useState(false);
 
-  const pickImage = async (source: "camera" | "gallery") => {
+  const handlePress = async () => {
     try {
-      const permissionFn =
-        source === "camera"
-          ? ImagePicker.requestCameraPermissionsAsync
-          : ImagePicker.requestMediaLibraryPermissionsAsync;
-
-      const { status } = await permissionFn();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permiso requerido",
-          `Necesitamos acceso a ${source === "camera" ? "la cámara" : "tus fotos"} para continuar. Ve a Ajustes para habilitarlo.`
-        );
-        return;
-      }
-
-      const launchFn =
-        source === "camera"
-          ? ImagePicker.launchCameraAsync
-          : ImagePicker.launchImageLibraryAsync;
-
-      const result = await launchFn({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const url = await pickAndUploadPhoto({
+        folder,
         allowsEditing,
-        ...(allowsEditing ? { aspect: [1, 1] as [number, number] } : {}),
-        quality: 0.8,
+        onUploadStart: () => setUploading(true),
       });
-
-      if (result.canceled) return;
-
-      const uri = result.assets[0].uri;
-      setUploading(true);
-
-      const data = await uploadToCloudinary(uri, folder);
-      onImageUploaded(data.secure_url);
+      if (url) onImageUploaded(url);
     } catch (error: any) {
       Alert.alert("Error", error.message || "No se pudo subir la imagen");
     } finally {
       setUploading(false);
     }
-  };
-
-  const handlePress = () => {
-    Alert.alert("Seleccionar foto", "¿De dónde quieres la foto?", [
-      { text: "Cámara", onPress: () => pickImage("camera") },
-      { text: "Galería", onPress: () => pickImage("gallery") },
-      { text: "Cancelar", style: "cancel" },
-    ]);
   };
 
   return (

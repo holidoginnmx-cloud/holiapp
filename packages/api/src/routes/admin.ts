@@ -5,9 +5,19 @@ import {
   createStaffMiddleware,
   invalidateAuthCache,
 } from "../middleware/auth";
-import { ReviewCartillaSchema, CartillaStatusEnum, UpdateVaccineSchema } from "@holidoginn/shared";
+import {
+  ReviewCartillaSchema,
+  CartillaStatusEnum,
+  UpdateVaccineSchema,
+  CreateChangeRequestSchema,
+} from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
+import {
+  getLodgingPricing,
+  computeDays,
+  pricePerDayForWeight,
+} from "../lib/pricing";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -824,6 +834,199 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       });
 
       return updated;
+    }
+  );
+
+  // ─── Cambio de fechas por el admin ─────────────────────────────
+  // A diferencia del flujo de change requests (que recalcula el total desde
+  // cero), aquí el nuevo total se obtiene por DELTA de hospedaje: noches ×
+  // tarifa vigente + recargo por medicamento. Así se preservan addons,
+  // domicilio y descuentos que ya están dentro de totalAmount.
+  async function buildAdminDatesChange(
+    reservationId: string,
+    newCheckIn: Date,
+    newCheckOut: Date
+  ) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: { pet: true },
+    });
+    if (!reservation) {
+      return { error: "Reservación no encontrada", statusCode: 404 as const };
+    }
+    if (
+      reservation.reservationType !== "STAY" ||
+      !reservation.checkIn ||
+      !reservation.checkOut
+    ) {
+      return {
+        error: "Solo se pueden modificar fechas de hospedajes",
+        statusCode: 400 as const,
+      };
+    }
+    if (!["CONFIRMED", "CHECKED_IN"].includes(reservation.status)) {
+      return {
+        error: "Solo se pueden modificar reservas confirmadas o activas",
+        statusCode: 400 as const,
+      };
+    }
+    if (newCheckOut <= newCheckIn) {
+      return {
+        error: "La fecha de salida debe ser posterior a la entrada",
+        statusCode: 400 as const,
+      };
+    }
+
+    const config = await getLodgingPricing(prisma);
+    const pricePerDay = pricePerDayForWeight(reservation.pet.weight, config);
+    const surchargePct = reservation.medicationNotes
+      ? config.medicationSurchargePct
+      : 0;
+    const lodgingFor = (from: Date, to: Date) => {
+      const days = computeDays(from, to);
+      const lodging = pricePerDay * days;
+      return { days, total: lodging + Math.ceil(lodging * surchargePct) };
+    };
+    const current = lodgingFor(reservation.checkIn, reservation.checkOut);
+    const next = lodgingFor(newCheckIn, newCheckOut);
+    const currentTotal = Number(reservation.totalAmount);
+    const newTotal = Math.max(0, currentTotal + (next.total - current.total));
+
+    return {
+      reservation,
+      preview: {
+        newTotalDays: next.days,
+        newTotal,
+        currentTotal,
+        delta: newTotal - currentTotal,
+      },
+    };
+  }
+
+  // ─── POST /admin/reservations/:id/dates/preview ────────────────
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/reservations/:id/dates/preview",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = CreateChangeRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const result = await buildAdminDatesChange(
+        request.params.id,
+        parsed.data.newCheckIn,
+        parsed.data.newCheckOut
+      );
+      if ("error" in result) {
+        return reply.status(result.statusCode ?? 400).send({ error: result.error });
+      }
+      return reply.send(result.preview);
+    }
+  );
+
+  // ─── PATCH /admin/reservations/:id/dates — modificar estadía ───
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/reservations/:id/dates",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = CreateChangeRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { newCheckIn, newCheckOut } = parsed.data;
+
+      const result = await buildAdminDatesChange(
+        request.params.id,
+        newCheckIn,
+        newCheckOut
+      );
+      if ("error" in result) {
+        return reply.status(result.statusCode ?? 400).send({ error: result.error });
+      }
+      const { reservation, preview } = result;
+
+      // Si el cliente tiene una solicitud de cambio pendiente, procesarla
+      // primero evita pisar los montos que ella ya calculó.
+      const pendingCR = await prisma.reservationChangeRequest.findFirst({
+        where: { reservationId: reservation.id, status: "PENDING" },
+      });
+      if (pendingCR) {
+        return reply.status(409).send({
+          error:
+            "El cliente tiene una solicitud de cambio pendiente. Apruébala o recházala antes de modificar las fechas.",
+        });
+      }
+
+      // Capacity guard del cuarto asignado en las nuevas fechas.
+      if (reservation.roomId) {
+        const room = await prisma.room.findUnique({
+          where: { id: reservation.roomId },
+        });
+        if (room) {
+          const taken = await prisma.reservation.count({
+            where: {
+              reservationType: "STAY",
+              roomId: reservation.roomId,
+              id: { not: reservation.id },
+              status: { notIn: ["CANCELLED", "CHECKED_OUT"] as any },
+              AND: [
+                { checkIn: { lt: newCheckOut } },
+                { checkOut: { gt: newCheckIn } },
+              ],
+            },
+          });
+          if (taken + 1 > room.capacity) {
+            return reply.status(409).send({
+              error: `Cuarto ${room.name} sin capacidad en las nuevas fechas (${taken}/${room.capacity} ocupado).`,
+              code: "ROOM_AT_CAPACITY",
+            });
+          }
+        }
+      }
+
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          checkIn: newCheckIn,
+          checkOut: newCheckOut,
+          totalDays: preview.newTotalDays,
+          totalAmount: preview.newTotal,
+          depositDeadline:
+            reservation.paymentType === "DEPOSIT"
+              ? newCheckIn
+              : reservation.depositDeadline,
+        },
+      });
+
+      // Las fechas se guardan como día UTC; formatear en UTC evita el
+      // corrimiento de un día.
+      const fmtDay = (d: Date) =>
+        d.toLocaleDateString("es-MX", {
+          day: "numeric",
+          month: "short",
+          timeZone: "UTC",
+        });
+      const range = `${fmtDay(newCheckIn)} al ${fmtDay(newCheckOut)}`;
+      const nightsLabel = `${preview.newTotalDays} ${preview.newTotalDays === 1 ? "noche" : "noches"}`;
+
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "GENERAL",
+        title: "Fechas de estadía actualizadas 📅",
+        body: `La estadía de ${reservation.pet.name} ahora es del ${range} (${nightsLabel}). Nuevo total: $${preview.newTotal.toLocaleString("es-MX")}.`,
+        data: { reservationId: reservation.id },
+      });
+      if (reservation.staffId) {
+        await notifyUser(prisma, {
+          userId: reservation.staffId,
+          type: "GENERAL",
+          title: `Cambio de fechas: ${reservation.pet.name}`,
+          body: `El admin movió la estadía al ${range} (${nightsLabel}).`,
+          data: { reservationId: reservation.id },
+        });
+      }
+
+      return reply.send({ success: true, ...preview });
     }
   );
 

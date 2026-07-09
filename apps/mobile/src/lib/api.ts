@@ -897,6 +897,31 @@ export const adminAssignRoom = (reservationId: string, roomId: string) =>
     body: JSON.stringify({ roomId }),
   });
 
+export type AdminDatesPreview = {
+  newTotalDays: number;
+  newTotal: number;
+  currentTotal: number;
+  delta: number;
+};
+
+export const adminPreviewReservationDates = (
+  reservationId: string,
+  data: { newCheckIn: string; newCheckOut: string }
+) =>
+  apiFetch<AdminDatesPreview>(
+    `/admin/reservations/${reservationId}/dates/preview`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+
+export const adminUpdateReservationDates = (
+  reservationId: string,
+  data: { newCheckIn: string; newCheckOut: string }
+) =>
+  apiFetch<{ success: boolean } & AdminDatesPreview>(
+    `/admin/reservations/${reservationId}/dates`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+
 export const adminAdjustCredit = (userId: string, amount: number, description: string) =>
   apiFetch<{ creditBalance: number }>(`/admin/users/${userId}/credit-adjust`, {
     method: "POST",

@@ -39,8 +39,10 @@ import {
   registerStayManualPayment,
   getRooms,
   adminAssignRoom,
+  updatePet,
 } from "@/lib/api";
 import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
+import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectionListModal } from "@/components/SelectionListModal";
@@ -86,6 +88,7 @@ export default function StayDetail() {
   const [selectedTagKey, setSelectedTagKey] = useState<BehaviorTagValue | null>(null);
   const [tagNotes, setTagNotes] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [uploadingPetPhoto, setUploadingPetPhoto] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentInitialAmount, setPaymentInitialAmount] = useState("");
   const [roomModalVisible, setRoomModalVisible] = useState(false);
@@ -123,6 +126,55 @@ export default function StayDetail() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  const petPhotoMutation = useMutation({
+    mutationFn: (photoUrl: string | null) =>
+      updatePet(stay!.pet!.id, { photoUrl }),
+    onSuccess: (_data, photoUrl) => {
+      invalidateStay();
+      queryClient.invalidateQueries({ queryKey: ["pet", stay?.pet?.id] });
+      queryClient.invalidateQueries({ queryKey: ["pets"] });
+      showSuccess(
+        photoUrl
+          ? "Foto de la mascota actualizada"
+          : "Foto de la mascota eliminada"
+      );
+    },
+    onError: (e: Error) =>
+      Alert.alert("No se pudo actualizar la foto", e.message),
+  });
+
+  const confirmRemovePetPhoto = () => {
+    Alert.alert(
+      "Eliminar foto",
+      `¿Quitar la foto de perfil de ${formatName(stay?.pet?.name ?? "la mascota")}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => petPhotoMutation.mutate(null),
+        },
+      ]
+    );
+  };
+
+  const changePetPhoto = async () => {
+    if (!stay?.pet?.id) return;
+    try {
+      const url = await pickAndUploadPhoto({
+        folder: "pets",
+        onUploadStart: () => setUploadingPetPhoto(true),
+        // Solo ofrecemos eliminar si hay foto que quitar.
+        onRemove: stay.pet.photoUrl ? confirmRemovePetPhoto : undefined,
+      });
+      if (url) petPhotoMutation.mutate(url);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo subir la imagen");
+    } finally {
+      setUploadingPetPhoto(false);
+    }
+  };
 
   // Cuartos del tamaño de la mascota — solo se cargan al abrir el modal.
   const { data: roomList } = useQuery({
@@ -514,16 +566,31 @@ export default function StayDetail() {
         <View style={styles.cardDivider} />
 
         <View style={styles.petProfileRow}>
-          {stay.pet?.photoUrl ? (
-            <Image
-              source={{ uri: cloudinaryResized(stay.pet.photoUrl, 210, "fill") }}
-              style={styles.petPhoto}
-            />
-          ) : (
-            <View style={[styles.petPhoto, styles.petPhotoPlaceholder]}>
-              <Ionicons name="paw" size={28} color={COLORS.border} />
-            </View>
-          )}
+          <TouchableOpacity
+            onPress={changePetPhoto}
+            disabled={uploadingPetPhoto || petPhotoMutation.isPending}
+            activeOpacity={0.8}
+          >
+            {stay.pet?.photoUrl ? (
+              <Image
+                source={{ uri: cloudinaryResized(stay.pet.photoUrl, 210, "fill") }}
+                style={styles.petPhoto}
+              />
+            ) : (
+              <View style={[styles.petPhoto, styles.petPhotoPlaceholder]}>
+                <Ionicons name="paw" size={28} color={COLORS.border} />
+              </View>
+            )}
+            {uploadingPetPhoto || petPhotoMutation.isPending ? (
+              <View style={styles.petPhotoLoadingOverlay}>
+                <ActivityIndicator size="small" color={COLORS.white} />
+              </View>
+            ) : (
+              <View style={styles.petPhotoCameraBadge}>
+                <Ionicons name="camera" size={11} color={COLORS.white} />
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.petDetails}>
             <Text style={styles.petBreed}>
               {stay.pet?.breed || "Sin raza"} — {stay.pet?.size ?? "—"}

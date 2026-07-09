@@ -407,6 +407,9 @@ export default function AdminReservationDetail() {
   const config = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.CONFIRMED;
   const actions = getActions(reservation.status);
   const isBath = reservation.reservationType === "BATH";
+  const canEditDates =
+    !isBath &&
+    (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
   const bathAddon = reservation.addons?.find(
     (a) => a.variant?.serviceType?.code === "BATH",
   );
@@ -582,9 +585,18 @@ export default function AdminReservationDetail() {
           </View>
         )}
 
-        {/* Date hero — entrada → salida con noches al centro */}
+        {/* Date hero — entrada → salida con noches al centro. Tocable para
+            modificar fechas mientras la estadía siga activa. */}
         {!isBath && reservation.checkIn && reservation.checkOut && (
-          <View style={styles.dateHero}>
+          <TouchableOpacity
+            style={styles.dateHero}
+            activeOpacity={0.7}
+            disabled={!canEditDates}
+            onPress={() =>
+              router.push(`/admin/reservation/edit-dates?id=${id}` as any)
+            }
+            testID="admin-reservation-edit-dates"
+          >
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>ENTRADA</Text>
               <Text style={styles.datePillDay}>
@@ -608,6 +620,9 @@ export default function AdminReservationDetail() {
                   {reservation.totalDays}{" "}
                   {reservation.totalDays === 1 ? "noche" : "noches"}
                 </Text>
+                {canEditDates && (
+                  <Ionicons name="pencil" size={11} color={COLORS.primary} />
+                )}
               </View>
               <View style={styles.connectorLine} />
             </View>
@@ -620,8 +635,13 @@ export default function AdminReservationDetail() {
               <Text style={styles.datePillSub}>
                 {formatWeekday(reservation.checkOut)}
               </Text>
+              {reservation.checkOutTime && (
+                <Text style={styles.datePillTime}>
+                  {formatTimeHHmm(reservation.checkOutTime)}
+                </Text>
+              )}
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* Cuarto + Staff lado a lado (sólo hospedajes) */}

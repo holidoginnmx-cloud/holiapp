@@ -18,10 +18,11 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getPetById, deletePet } from "@/lib/api";
+import { getPetById, deletePet, updatePet } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
+import { pickAndUploadPhoto } from "@/lib/photoPicker";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -82,6 +83,7 @@ export default function PetDetailScreen() {
   const userId = useAuthStore((s) => s.userId);
   const [cartillaFullSizeIdx, setCartillaFullSizeIdx] = useState<number | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   const { data: pet, isLoading, error, refetch } = useQuery({
     queryKey: ["pet", id],
@@ -110,6 +112,56 @@ export default function PetDetailScreen() {
       );
     },
   });
+
+  const photoMutation = useMutation({
+    mutationFn: (photoUrl: string | null) => updatePet(id!, { photoUrl }),
+    onSuccess: (_data, photoUrl) => {
+      // Optimista: la foto nueva aparece al instante en el detalle.
+      qc.setQueryData<any>(["pet", id], (old: any) =>
+        old ? { ...old, photoUrl } : old
+      );
+      // Listas del cliente y del admin en segundo plano.
+      qc.invalidateQueries({ queryKey: ["pets"] });
+      qc.invalidateQueries({ queryKey: ["admin", "pets"] });
+    },
+    onError: (err: Error) => {
+      Alert.alert(
+        "No se pudo actualizar la foto",
+        err.message || "Inténtalo de nuevo."
+      );
+    },
+  });
+
+  const confirmRemovePhoto = () => {
+    Alert.alert(
+      "Eliminar foto",
+      `¿Quitar la foto de perfil de ${formatName(pet?.name ?? "la mascota")}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => photoMutation.mutate(null),
+        },
+      ]
+    );
+  };
+
+  const changePhoto = async () => {
+    try {
+      const url = await pickAndUploadPhoto({
+        folder: "pets",
+        onUploadStart: () => setPhotoUploading(true),
+        // Solo ofrecemos eliminar si hay foto que quitar.
+        onRemove: pet?.photoUrl ? confirmRemovePhoto : undefined,
+      });
+      if (url) photoMutation.mutate(url);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "No se pudo subir la imagen");
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   const confirmDelete = () => {
     Alert.alert(
@@ -142,17 +194,33 @@ export default function PetDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header con foto */}
+      {/* Header con foto — tocar la foto permite cambiarla */}
       <View style={styles.header}>
-        <Image
-          source={
-            pet.photoUrl
-              ? { uri: pet.photoUrl }
-              : require("../../assets/pet-placeholder.png")
-          }
-          style={styles.photo}
-          defaultSource={require("../../assets/pet-placeholder.png")}
-        />
+        <TouchableOpacity
+          style={styles.photoWrap}
+          onPress={changePhoto}
+          disabled={photoUploading || photoMutation.isPending}
+          activeOpacity={0.8}
+        >
+          <Image
+            source={
+              pet.photoUrl
+                ? { uri: pet.photoUrl }
+                : require("../../assets/pet-placeholder.png")
+            }
+            style={styles.photo}
+            defaultSource={require("../../assets/pet-placeholder.png")}
+          />
+          {photoUploading || photoMutation.isPending ? (
+            <View style={styles.photoLoadingOverlay}>
+              <ActivityIndicator color={COLORS.white} />
+            </View>
+          ) : (
+            <View style={styles.photoCameraBadge}>
+              <Ionicons name="camera" size={15} color={COLORS.white} />
+            </View>
+          )}
+        </TouchableOpacity>
         <Text style={styles.name}>{formatName(pet.name)}</Text>
         <Text style={styles.breed}>{pet.breed || "Sin raza especificada"}</Text>
 
@@ -683,12 +751,38 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.bgSection,
   },
+  photoWrap: {
+    marginBottom: 12,
+  },
   photo: {
     width: 120,
     height: 120,
     borderRadius: 60,
     backgroundColor: COLORS.bgSection,
-    marginBottom: 12,
+  },
+  photoLoadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 60,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoCameraBadge: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
   },
   name: {
     fontSize: 26,
