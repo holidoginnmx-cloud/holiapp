@@ -97,6 +97,27 @@ export const styles = StyleSheet.create({
     textTransform: "capitalize",
     marginTop: 2,
   },
+  timeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: COLORS.bgSection,
+  },
+  timeChipSet: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  timeChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+  },
+  timeChipTextSet: {
+    color: COLORS.primary,
+  },
   dateConnector: {
     alignItems: "center",
     justifyContent: "center",

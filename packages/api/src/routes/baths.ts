@@ -1025,6 +1025,110 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────
+  //  POST /internal/stay-time-reminders — cron endpoint (diario)
+  //  Un día antes del check-in (o check-out) de un hospedaje, si el cliente
+  //  NO ha indicado la hora estimada de llegada (o recogida), se le pide por
+  //  push. checkIn/checkOut se guardan al día a las 00:00 local, así que con
+  //  el cron diario la ventana now+12h..+36h captura exactamente "mañana".
+  //  Idempotente: dedup por Notification.data.groupKey + kind (una sola
+  //  notificación por grupo multi-mascota).
+  // ────────────────────────────────────────────────────────────
+  fastify.post("/internal/stay-time-reminders", async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+
+    const now = new Date();
+    // Piso de 6h (no 12): GH Actions puede atrasarse >1h y el check-in de
+    // "mañana" (00:00 local ≈ 13h después del cron puntual) no debe escaparse.
+    const windowStart = new Date(now.getTime() + 6 * 3600 * 1000);
+    const windowEnd = new Date(now.getTime() + 36 * 3600 * 1000);
+
+    const [checkins, checkouts] = await Promise.all([
+      prisma.reservation.findMany({
+        where: {
+          reservationType: "STAY",
+          status: "CONFIRMED",
+          checkInTime: null,
+          checkIn: { gte: windowStart, lt: windowEnd },
+        },
+        include: { pet: { select: { name: true } } },
+      }),
+      prisma.reservation.findMany({
+        where: {
+          reservationType: "STAY",
+          status: { in: ["CONFIRMED", "CHECKED_IN"] },
+          checkOutTime: null,
+          checkOut: { gte: windowStart, lt: windowEnd },
+        },
+        include: { pet: { select: { name: true } } },
+      }),
+    ]);
+
+    let sent = 0;
+    const remind = async (
+      group: (typeof checkins)[number][],
+      kind: "CHECKIN_TIME" | "CHECKOUT_TIME",
+    ) => {
+      const first = group[0];
+      const groupKey = first.groupId ?? first.id;
+
+      const alreadyReminded = await prisma.notification.findFirst({
+        where: {
+          userId: first.ownerId,
+          type: "RESERVATION_REMINDER",
+          data: { path: ["kind"], equals: kind },
+          AND: [{ data: { path: ["groupKey"], equals: groupKey } }],
+        },
+      });
+      if (alreadyReminded) return;
+
+      const names = group.map((r) => r.pet.name);
+      const who =
+        names.length === 1 ? names[0] : "tus peluditos";
+      const title =
+        kind === "CHECKIN_TIME"
+          ? `¿A qué hora llega ${who} mañana? 🐾`
+          : `¿A qué hora recoges a ${who} mañana?`;
+      const body =
+        kind === "CHECKIN_TIME"
+          ? "Mañana es su check-in. Indícanos la hora de entrada en la app para tenerlo todo listo."
+          : "Mañana es su check-out. Indícanos la hora de recogida en la app (después de la 1:00 pm aplica guardería, $25/h).";
+
+      await notifyUser(prisma, {
+        userId: first.ownerId,
+        type: "RESERVATION_REMINDER",
+        title,
+        body,
+        data: { reservationId: first.id, kind, groupKey },
+      });
+      sent++;
+    };
+
+    // Agrupa por groupId (multi-mascota) para mandar UNA notificación por
+    // reserva del dueño, no una por mascota.
+    const groupBy = (rows: typeof checkins) => {
+      const map = new Map<string, typeof checkins>();
+      for (const r of rows) {
+        const key = r.groupId ?? r.id;
+        const arr = map.get(key) ?? [];
+        arr.push(r);
+        map.set(key, arr);
+      }
+      return [...map.values()];
+    };
+
+    for (const group of groupBy(checkins)) await remind(group, "CHECKIN_TIME");
+    for (const group of groupBy(checkouts)) await remind(group, "CHECKOUT_TIME");
+
+    return reply.send({
+      sent,
+      checked: checkins.length + checkouts.length,
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
   //  POST /baths/confirm — tras PI exitoso, crea la Reservation BATH
   //  Soporta también pagos 100% con crédito (paymentIntentId opcional).
   // ────────────────────────────────────────────────────────────

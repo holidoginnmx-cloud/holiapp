@@ -13,10 +13,11 @@ on:
     - cron: "0 15 * * *"   # expire-credits — diario (15:00 UTC ≈ 08:00 Hermosillo)
     - cron: "0 * * * *"    # bath-reminders — cada hora (idempotente)
     - cron: "*/15 * * * *" # reservation-reminders-90min — cada 15 min
+    - cron: "0 18 * * *"   # stay-time-reminders — diario (18:00 UTC ≈ 11:00 Hermosillo)
   workflow_dispatch:
     inputs:
       job:
-        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | all"
+        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | all"
         required: false
         default: "all"
 
@@ -49,4 +50,13 @@ jobs:
       - name: POST /internal/reservation-reminders-90min
         run: |
           curl -fsS --max-time 60 -X POST "$API_URL/internal/reservation-reminders-90min" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+
+  stay-time-reminders:
+    if: github.event.schedule == '0 18 * * *' || github.event.inputs.job == 'stay-time-reminders' || github.event.inputs.job == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/stay-time-reminders
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/stay-time-reminders" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

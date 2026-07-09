@@ -48,6 +48,7 @@ import {
   formatWeekdayShort,
   formatDateTimeShort,
   formatTime,
+  formatTimeHHmm,
 } from "@/lib/format";
 
 const STATUS_CONFIG: Record<
@@ -592,6 +593,11 @@ export default function AdminReservationDetail() {
               <Text style={styles.datePillSub}>
                 {formatWeekday(reservation.checkIn)}
               </Text>
+              {reservation.checkInTime && (
+                <Text style={styles.datePillTime}>
+                  {formatTimeHHmm(reservation.checkInTime)}
+                </Text>
+              )}
             </View>
 
             <View style={styles.dateConnector}>

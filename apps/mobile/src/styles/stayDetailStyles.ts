@@ -344,6 +344,13 @@ export const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginTop: 2,
   },
+  // Hora estimada indicada por el cliente (bajo la fecha de entrada/salida).
+  stayInfoTime: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginTop: 1,
+  },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",

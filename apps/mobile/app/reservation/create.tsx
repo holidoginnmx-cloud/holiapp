@@ -35,7 +35,10 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
-import { CheckInReminderModal } from "@/components/CheckInReminderModal";
+import {
+  CheckInReminderModal,
+  type ReservationTimes,
+} from "@/components/CheckInReminderModal";
 import { ErrorState } from "@/components/ErrorState";
 import {
   DeliveryAddressPicker,
@@ -515,6 +518,11 @@ function CreateReservationScreenContent() {
   // Prefetch del PaymentIntent: se dispara al abrir el modal de recordatorio
   // para que, al presionar "Entendido", el intent ya esté listo (o casi).
   const intentPromiseRef = useRef<ReturnType<typeof createPaymentIntent> | null>(null);
+  // Hora estimada de llegada/recogida elegida en el modal de horarios.
+  const reservationTimesRef = useRef<ReservationTimes>({
+    checkInTime: null,
+    checkOutTime: null,
+  });
 
   const buildIntentPayload = () => ({
     petIds: selectedPetIds,
@@ -542,7 +550,9 @@ function CreateReservationScreenContent() {
     setShowCheckInReminder(true);
   };
 
-  const handleReminderAcknowledge = () => {
+  const handleReminderAcknowledge = (times: ReservationTimes) => {
+    // Ref (no estado): runPayment corre en el mismo tick y necesita el valor.
+    reservationTimesRef.current = times;
     setShowCheckInReminder(false);
     runPayment();
   };
@@ -621,6 +631,8 @@ function CreateReservationScreenContent() {
       const result = await createMultiReservation({
         checkIn: checkIn!.toISOString(),
         checkOut: checkOut!.toISOString(),
+        checkInTime: reservationTimesRef.current.checkInTime ?? undefined,
+        checkOutTime: reservationTimesRef.current.checkOutTime ?? undefined,
         petIds: selectedPetIds,
         ownerId: userId!,
         notes: notes.trim() || null,

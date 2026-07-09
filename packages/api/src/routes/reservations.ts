@@ -3,6 +3,7 @@ import {
   CreateReservationSchema,
   CreateMultiReservationSchema,
   UpdateReservationStatusSchema,
+  UpdateReservationTimesSchema,
   ReservationStatus,
   CancelReservationSchema,
 } from "@holidoginn/shared";
@@ -409,6 +410,73 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(reservation);
   });
 
+  // PATCH /reservations/:id/times — hora estimada de llegada/recogida.
+  // La indica el dueño (o staff/admin). Se propaga a TODO el grupo
+  // multi-mascota: las mascotas del mismo dueño llegan y se recogen juntas.
+  fastify.patch<{ Params: { id: string } }>(
+    "/reservations/:id/times",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const parsed = UpdateReservationTimesSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+
+      const isStaffOrAdmin =
+        request.userRole === "ADMIN" || request.userRole === "STAFF";
+      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+
+      if (reservation.reservationType !== "STAY") {
+        return reply
+          .status(400)
+          .send({ error: "Solo aplica a reservaciones de hospedaje" });
+      }
+
+      const { checkInTime, checkOutTime } = parsed.data;
+      // La hora de llegada ya no tiene sentido después del check-in; la de
+      // recogida se puede indicar hasta antes del check-out.
+      if (checkInTime !== undefined && reservation.status !== "CONFIRMED") {
+        return reply
+          .status(400)
+          .send({ error: "La hora de llegada ya no se puede cambiar" });
+      }
+      if (
+        checkOutTime !== undefined &&
+        !["CONFIRMED", "CHECKED_IN"].includes(reservation.status)
+      ) {
+        return reply
+          .status(400)
+          .send({ error: "La hora de recogida ya no se puede cambiar" });
+      }
+
+      const data = {
+        ...(checkInTime !== undefined ? { checkInTime } : {}),
+        ...(checkOutTime !== undefined ? { checkOutTime } : {}),
+      };
+
+      await prisma.reservation.updateMany({
+        where: reservation.groupId
+          ? { groupId: reservation.groupId, ownerId: reservation.ownerId }
+          : { id: reservation.id },
+        data,
+      });
+
+      const updated = await prisma.reservation.findUnique({
+        where: { id: reservation.id },
+      });
+      return updated;
+    }
+  );
+
   // PATCH /reservations/:id/status — cambiar status
   fastify.patch<{ Params: { id: string } }>(
     "/reservations/:id/status",
@@ -516,7 +584,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const { checkIn, checkOut, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet, homeDelivery, discountCode } = parsed.data;
+    const { checkIn, checkOut, checkInTime, checkOutTime, ownerId, petIds, notes, legalAccepted, roomPreference, stripePaymentIntentId, paymentType, bathSelectionsByPet, medicationByPet, homeDelivery, discountCode } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo.
     const isStaffOrAdmin =
@@ -881,6 +949,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           data: {
             checkIn,
             checkOut,
+            checkInTime: checkInTime ?? null,
+            checkOutTime: checkOutTime ?? null,
             totalDays,
             totalAmount: new Prisma.Decimal(reservationAmount),
             ...(discountCodeId

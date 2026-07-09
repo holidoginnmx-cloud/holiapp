@@ -418,6 +418,11 @@ model Reservation {
   medicationNotes        String? // Instrucciones de administración si la mascota toma medicamento
   legalAccepted          Boolean           @default(false)
   groupId                String? // Agrupa reservaciones multi-mascota
+  // Hora estimada elegida por el CLIENTE ("HH:mm", hora local del hotel).
+  // Opcional al reservar; si falta, un recordatorio la pide un día antes.
+  // Independiente de checkIn/checkOut (que guardan solo el día a las 00:00).
+  checkInTime            String?
+  checkOutTime           String?
   paymentType            String? // "FULL" o "DEPOSIT"
   depositDeadline        DateTime? // 48h antes del checkIn, solo para anticipos
   // Reservaciones migradas del Excel histórico (web `origen_legacy`).

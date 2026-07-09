@@ -393,6 +393,9 @@ export const ReservationSchema = z.object({
   medicationNotes: z.string().nullable().optional(),
   legalAccepted: z.boolean(),
   groupId: z.string().nullable(),
+  // Hora estimada elegida por el cliente ("HH:mm", hora local del hotel).
+  checkInTime: z.string().nullable().optional(),
+  checkOutTime: z.string().nullable().optional(),
   paymentType: z.string().nullable(),
   depositDeadline: z.coerce.date().nullable(),
   ownerId: z.string(),
@@ -452,9 +455,17 @@ export const CreateReservationSchema = z.object({
   homeDelivery: HomeDeliveryInputSchema.optional(),
 });
 
+// Hora local del hotel en formato 24h "HH:mm" (p.ej. "09:30", "17:00").
+export const TimeHHmmSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora inválida (formato HH:mm)");
+
 export const CreateMultiReservationSchema = z.object({
   checkIn: z.coerce.date(),
   checkOut: z.coerce.date(),
+  // Hora estimada de llegada/recogida (opcional al reservar).
+  checkInTime: TimeHHmmSchema.optional(),
+  checkOutTime: TimeHHmmSchema.optional(),
   notes: z.string().nullable().default(null),
   legalAccepted: z.boolean(),
   ownerId: z.string(),
@@ -475,6 +486,18 @@ export const CreateMultiReservationSchema = z.object({
 export const UpdateReservationStatusSchema = z.object({
   status: ReservationStatusEnum,
 });
+
+// Hora estimada de llegada/recogida: el dueño (o staff/admin) la puede
+// indicar o cambiar después de reservar; null la borra.
+export const UpdateReservationTimesSchema = z
+  .object({
+    checkInTime: TimeHHmmSchema.nullable().optional(),
+    checkOutTime: TimeHHmmSchema.nullable().optional(),
+  })
+  .refine(
+    (d) => d.checkInTime !== undefined || d.checkOutTime !== undefined,
+    { message: "Indica al menos una hora" },
+  );
 
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type CreateReservation = z.infer<typeof CreateReservationSchema>;

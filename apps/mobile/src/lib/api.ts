@@ -387,6 +387,9 @@ export const createMultiReservation = (data: {
   petIds: string[];
   checkIn: string;
   checkOut: string;
+  // Hora estimada de llegada/recogida ("HH:mm" local), opcional al reservar.
+  checkInTime?: string;
+  checkOutTime?: string;
   notes?: string | null;
   legalAccepted: boolean;
   ownerId: string;
@@ -1190,6 +1193,17 @@ export const updateReservationStatus = (id: string, status: string) =>
   apiFetch<ReservationDetail>(`${ENDPOINTS.reservations}/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+
+/** Hora estimada de llegada/recogida ("HH:mm" local; null la borra). El
+ * backend la propaga a todo el grupo multi-mascota. */
+export const updateReservationTimes = (
+  id: string,
+  data: { checkInTime?: string | null; checkOutTime?: string | null },
+) =>
+  apiFetch<Reservation>(`${ENDPOINTS.reservations}/${id}/times`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 
 export const updateRoom = (id: string, data: Partial<Room>) =>

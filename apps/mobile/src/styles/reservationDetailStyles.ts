@@ -266,6 +266,13 @@ export const styles = StyleSheet.create({
     textTransform: "capitalize",
     marginTop: 2,
   },
+  // Hora estimada indicada por el cliente.
+  datePillTime: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginTop: 3,
+  },
   dateConnector: {
     alignItems: "center",
     justifyContent: "center",

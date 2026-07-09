@@ -50,7 +50,7 @@ import {
   PaymentManualModal,
   type ManualPaymentValues,
 } from "@/components/PaymentManualModal";
-import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency, formatDayShortYear, formatDayShort, formatDateTimeShort } from "@/lib/format";
+import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency, formatDayShortYear, formatDayShort, formatDateTimeShort, formatTimeHHmm } from "@/lib/format";
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 import { styles } from "@/styles/stayDetailStyles";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
@@ -601,6 +601,11 @@ export default function StayDetail() {
                 ? formatDayShort(stay.checkIn)
                 : "—"}
             </Text>
+            {stay.checkInTime && (
+              <Text style={styles.stayInfoTime}>
+                {formatTimeHHmm(stay.checkInTime)}
+              </Text>
+            )}
           </View>
           <View style={styles.stayInfoItem}>
             <Text style={styles.stayInfoLabel}>Salida</Text>
@@ -609,6 +614,11 @@ export default function StayDetail() {
                 ? formatDayShort(stay.checkOut)
                 : "—"}
             </Text>
+            {stay.checkOutTime && (
+              <Text style={styles.stayInfoTime}>
+                {formatTimeHHmm(stay.checkOutTime)}
+              </Text>
+            )}
           </View>
           <TouchableOpacity
             style={styles.stayInfoItem}

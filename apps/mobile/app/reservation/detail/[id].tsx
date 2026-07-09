@@ -21,9 +21,12 @@ import {
   getOwnerChecklists,
   createBalancePayment,
   confirmBalancePayment,
+  updateReservationTimes,
 } from "@/lib/api";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { PaymentCardFlow } from "@/components/PaymentCardFlow";
+import { TimeSlotPicker } from "@/components/TimeSlotPicker";
+import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   formatName,
   formatCurrency,
@@ -31,6 +34,7 @@ import {
   formatWeekdayShort,
   formatWeekdayDayShort,
   formatTime,
+  formatTimeHHmm,
 } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
@@ -108,6 +112,8 @@ function ReservationDetailScreenContent() {
   const [cancelModalMode, setCancelModalMode] = useState<
     null | "cancel" | "issue-refund"
   >(null);
+  // Selector de hora estimada de llegada ("in") / recogida ("out").
+  const [timePickerFor, setTimePickerFor] = useState<"in" | "out" | null>(null);
   const {
     data: reservation,
     isLoading,
@@ -172,6 +178,26 @@ function ReservationDetailScreenContent() {
     reservation.reservationType !== "BATH" &&
     ["CONFIRMED", "CHECKED_IN"].includes(reservation.status) &&
     !pendingChange;
+  // Hora estimada: llegada editable hasta el check-in; recogida hasta el check-out.
+  const canEditCheckInTime = reservation?.status === "CONFIRMED";
+  const canEditCheckOutTime =
+    !!reservation && ["CONFIRMED", "CHECKED_IN"].includes(reservation.status);
+
+  // Optimista: la hora aparece en el pill al instante; el backend la propaga
+  // a todo el grupo multi-mascota.
+  const timesMutation = useOptimisticMutation({
+    mutationFn: (data: { checkInTime?: string | null; checkOutTime?: string | null }) =>
+      updateReservationTimes(id!, data),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, data) =>
+          old ? { ...(old as object), ...data } : old,
+      },
+    ],
+    invalidateKeys: [["reservation", id], ["reservations"]],
+    errorTitle: "No se pudo guardar la hora",
+  });
   const canCancel =
     reservation && reservation.status === "CONFIRMED";
   // Count both PAID and PARTIAL — both are real money already paid by owner.
@@ -454,6 +480,34 @@ function ReservationDetailScreenContent() {
                 <Text style={styles.datePillSub}>
                   {formatWeekdayShort(reservation.checkIn)}
                 </Text>
+                {(canEditCheckInTime || reservation.checkInTime) && (
+                  <TouchableOpacity
+                    style={[
+                      styles.timeChip,
+                      reservation.checkInTime && styles.timeChipSet,
+                    ]}
+                    onPress={() => setTimePickerFor("in")}
+                    disabled={!canEditCheckInTime}
+                    activeOpacity={0.7}
+                    testID="reservation-checkin-time-chip"
+                  >
+                    <Ionicons
+                      name="time-outline"
+                      size={11}
+                      color={reservation.checkInTime ? COLORS.primary : COLORS.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.timeChipText,
+                        reservation.checkInTime && styles.timeChipTextSet,
+                      ]}
+                    >
+                      {reservation.checkInTime
+                        ? formatTimeHHmm(reservation.checkInTime)
+                        : "Indicar hora"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.dateConnector}>
@@ -478,6 +532,34 @@ function ReservationDetailScreenContent() {
                 <Text style={styles.datePillSub}>
                   {formatWeekdayShort(reservation.checkOut)}
                 </Text>
+                {(canEditCheckOutTime || reservation.checkOutTime) && (
+                  <TouchableOpacity
+                    style={[
+                      styles.timeChip,
+                      reservation.checkOutTime && styles.timeChipSet,
+                    ]}
+                    onPress={() => setTimePickerFor("out")}
+                    disabled={!canEditCheckOutTime}
+                    activeOpacity={0.7}
+                    testID="reservation-checkout-time-chip"
+                  >
+                    <Ionicons
+                      name="time-outline"
+                      size={11}
+                      color={reservation.checkOutTime ? COLORS.primary : COLORS.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.timeChipText,
+                        reservation.checkOutTime && styles.timeChipTextSet,
+                      ]}
+                    >
+                      {reservation.checkOutTime
+                        ? formatTimeHHmm(reservation.checkOutTime)
+                        : "Indicar hora"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           )
@@ -921,6 +1003,29 @@ function ReservationDetailScreenContent() {
             router.setParams({ action: undefined });
           }
         }}
+      />
+
+      <TimeSlotPicker
+        visible={timePickerFor !== null}
+        title={timePickerFor === "in" ? "Hora de llegada" : "Hora de recogida"}
+        subtitle={
+          timePickerFor === "in"
+            ? "¿A qué hora planeas dejar a tu peludito? Así lo tenemos todo listo."
+            : "¿A qué hora planeas recogerlo? Después de la 1:00 pm aplica guardería ($25/h)."
+        }
+        value={
+          timePickerFor === "in"
+            ? reservation.checkInTime ?? null
+            : reservation.checkOutTime ?? null
+        }
+        warnFrom={timePickerFor === "out" ? "13:00" : undefined}
+        warnLabel={timePickerFor === "out" ? "guardería" : undefined}
+        onSelect={(v) => {
+          const field = timePickerFor === "in" ? "checkInTime" : "checkOutTime";
+          setTimePickerFor(null);
+          timesMutation.mutate({ [field]: v });
+        }}
+        onClose={() => setTimePickerFor(null)}
       />
       </ScrollView>
 

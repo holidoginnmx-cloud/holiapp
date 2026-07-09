@@ -378,3 +378,15 @@ export function formatTime(
     ...opts,
   });
 }
+
+/**
+ * Hora "HH:mm" (24h, hora local del hotel — p.ej. checkInTime/checkOutTime
+ * de una reserva) → "9:30 am". Sin zonas: el string YA es hora local.
+ */
+export function formatTimeHHmm(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  const suffix = h < 12 ? "am" : "pm";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+}

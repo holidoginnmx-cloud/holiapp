@@ -17,6 +17,7 @@ import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { AnimatedSplash } from "@/components/splash";
 import { registerForPushNotifications } from "@/lib/pushNotifications";
+import * as Notifications from "expo-notifications";
 import { getMyLegalStatus } from "@/lib/api";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
@@ -242,6 +243,37 @@ function SplashGate() {
   );
 }
 
+/**
+ * Deep link al tocar una notificación PUSH (app en background o cerrada;
+ * expo-notifications re-emite al listener la respuesta que abrió la app).
+ * Espejo del tap in-app de (tabs)/notifications.tsx: por defecto,
+ * data.reservationId → detalle de la reserva.
+ */
+function PushNavigationHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined;
+        const reservationId = data?.reservationId;
+        if (typeof reservationId === "string" && reservationId) {
+          // InteractionManager: deja terminar la navegación inicial de auth
+          // antes de empujar el detalle.
+          InteractionManager.runAfterInteractions(() => {
+            router.push(`/reservation/detail/${reservationId}` as any);
+          });
+        }
+      }
+    );
+    return () => sub.remove();
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
@@ -259,6 +291,7 @@ export default function RootLayout() {
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
+        <PushNavigationHandler />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{
