@@ -8,6 +8,7 @@ import { resolveOrCreateGuestPet } from "../lib/guestPet";
 import { recordRequiredAcceptances } from "../lib/legal";
 import { cartillaBlocks } from "../lib/cartilla";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import type { SizeKey } from "@holidoginn/shared";
 import { quoteDelivery } from "../lib/delivery";
 import { notifyUsers } from "../lib/notify";
 import {
@@ -93,6 +94,38 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       return { config: cfg, slots };
     }
   );
+
+  // ── GET /guest/baths/pricing — tarifas base por talla (público) ─────────
+  // La tienda web las pinta en el selector de tamaño. Devuelve el precio de la
+  // variante BASE (deslanado=false, corte=false) de cada talla: deslanado y
+  // corte NO suman al reservar (el staff los cobra después según el pelaje).
+  // Los rangos de peso son los de sizeFromWeight() — fuente única en shared.
+  fastify.get("/guest/baths/pricing", async (_request, reply) => {
+    const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
+    if (!bath || !bath.isActive) {
+      return reply.status(404).send({ error: "Servicio de baño no disponible" });
+    }
+
+    const variants = await prisma.serviceVariant.findMany({
+      where: { serviceTypeId: bath.id, deslanado: false, corte: false, isActive: true },
+      select: { petSize: true, price: true },
+    });
+
+    // Rangos de peso alineados con sizeFromWeight (S ≤5, M ≤15, L ≤24, XL >24).
+    const RANGES: Record<SizeKey, { minKg: number; maxKg: number | null; label: string }> = {
+      S: { minKg: 0, maxKg: 5, label: "Pequeño" },
+      M: { minKg: 5, maxKg: 15, label: "Mediano" },
+      L: { minKg: 15, maxKg: 24, label: "Grande" },
+      XL: { minKg: 24, maxKg: null, label: "Extra grande" },
+    };
+
+    const priceBySize = new Map(variants.map((v) => [v.petSize, Number(v.price)]));
+    const sizes = (Object.keys(RANGES) as SizeKey[])
+      .filter((size) => priceBySize.has(size))
+      .map((size) => ({ size, price: priceBySize.get(size) as number, ...RANGES[size] }));
+
+    return { sizes, depositAmount: BATH_DEPOSIT_AMOUNT };
+  });
 
   // ── POST /guest/baths/create-intent ─────────────────────────────────────
   fastify.post(
