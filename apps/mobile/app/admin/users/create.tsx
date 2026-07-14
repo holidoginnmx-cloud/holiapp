@@ -12,20 +12,25 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { createUser } from "@/lib/api";
-import { formatPhoneInput } from "@/lib/format";
+import { formatFullName, formatPhoneInput } from "@/lib/format";
 
 /**
  * Alta de cliente walk-in desde el admin: clientes que llegan sin la app
  * (teléfono/WhatsApp). Con su teléfono capturado, cuando descarguen la app
  * podrán reclamar su cuenta y ver a sus mascotas ("¿Ya eres cliente?").
+ *
+ * Con `?next=pet` es el paso 1 del alta de mascota (desde el "+" de Mascotas):
+ * al crear al dueño encadena al formulario del perro en vez de terminar aquí.
  */
 export default function AdminCreateClient() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { next } = useLocalSearchParams<{ next?: string }>();
+  const chainToPet = next === "pet";
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -52,6 +57,17 @@ export default function AdminCreateClient() {
       }),
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      if (chainToPet) {
+        // Paso 2: los datos del perro, ya ligado a este dueño. `replace` para
+        // que el back del formulario no regrese a un alta de cliente ya hecha.
+        const ownerName = formatFullName(user.firstName, user.lastName);
+        router.replace(
+          `/pet/create?ownerId=${user.id}&ownerName=${encodeURIComponent(
+            ownerName,
+          )}` as any,
+        );
+        return;
+      }
       Alert.alert(
         "Cliente creado",
         `${user.firstName} ya aparece en la lista de clientes.`,
@@ -73,8 +89,9 @@ export default function AdminCreateClient() {
         <View style={styles.introCard}>
           <Ionicons name="person-add" size={20} color={COLORS.primary} />
           <Text style={styles.introText}>
-            Da de alta a un cliente que llega sin la app. Con su teléfono,
-            cuando la descargue podrá vincular su cuenta y ver a sus mascotas.
+            {chainToPet
+              ? "Paso 1 de 2: los datos del dueño. Al continuar capturas los datos de su mascota."
+              : "Da de alta a un cliente que llega sin la app. Con su teléfono, cuando la descargue podrá vincular su cuenta y ver a sus mascotas."}
           </Text>
         </View>
 
@@ -150,8 +167,14 @@ export default function AdminCreateClient() {
             <ActivityIndicator color={COLORS.white} />
           ) : (
             <>
-              <Ionicons name="checkmark" size={18} color={COLORS.white} />
-              <Text style={styles.submitBtnText}>Crear cliente</Text>
+              <Ionicons
+                name={chainToPet ? "arrow-forward" : "checkmark"}
+                size={18}
+                color={COLORS.white}
+              />
+              <Text style={styles.submitBtnText}>
+                {chainToPet ? "Continuar con la mascota" : "Crear cliente"}
+              </Text>
             </>
           )}
         </TouchableOpacity>

@@ -320,6 +320,17 @@ export default function AdminClients() {
           }
         />
       )}
+
+      {/* Alta de mascota (con su dueño, nuevo o existente) */}
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.85}
+        onPress={() => router.push("/admin/pets/owner" as any)}
+        accessibilityLabel="Nueva mascota"
+        testID="admin-new-pet-fab"
+      >
+        <Ionicons name="add" size={30} color={COLORS.white} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -362,7 +373,24 @@ const styles = StyleSheet.create({
   list: {
     padding: 16,
     paddingTop: 8,
-    paddingBottom: 32,
+    // Espacio extra para que el FAB no tape la última tarjeta.
+    paddingBottom: 96,
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   empty: {
     alignItems: "center",

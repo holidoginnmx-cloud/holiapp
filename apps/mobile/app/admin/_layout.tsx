@@ -64,6 +64,7 @@ export default function AdminRootLayout() {
       {/* Subdirectorios con su propio _layout.tsx — el Stack root no muestra header */}
       <Stack.Screen name="services" options={{ headerShown: false }} />
       <Stack.Screen name="users" options={{ headerShown: false }} />
+      <Stack.Screen name="pets" options={{ headerShown: false }} />
       <Stack.Screen
         name="send-notification"
         options={{ headerShown: false }}

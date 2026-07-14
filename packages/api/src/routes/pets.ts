@@ -158,13 +158,14 @@ export default async function petsRoutes(fastify: FastifyInstance) {
 
       // Candado anti-duplicado: si el dueño ya tiene una mascota activa con el
       // mismo nombre, avisamos en vez de crear otra. Esto evita que un cliente
-      // preexistente (cuyo perro ya estaba en la BD) lo registre de nuevo. El
-      // cliente puede forzar la creación con `allowDuplicateName` (dos perros
-      // que sí se llaman igual). No aplica cuando un ADMIN crea para un dueño.
+      // preexistente (cuyo perro ya estaba en la BD) lo registre de nuevo, y
+      // que el admin lo recapture al dar de alta a un walk-in que ya existía.
+      // Quien crea puede forzarlo con `allowDuplicateName` (dos perros que sí
+      // se llaman igual).
       const allowDuplicateName =
         (request.body as { allowDuplicateName?: unknown })
           ?.allowDuplicateName === true;
-      if (!allowDuplicateName && !isAdmin(request.userRole)) {
+      if (!allowDuplicateName) {
         const dup = await prisma.pet.findFirst({
           where: {
             ownerId,

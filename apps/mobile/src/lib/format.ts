@@ -30,12 +30,17 @@ export function formatName(input: string | null | undefined): string {
 /**
  * Format a full name from firstName + lastName, applying capitalization.
  * Returns empty string if both are missing.
+ *
+ * Los clientes walk-in sin apellido se guardan con "—" (el schema exige
+ * lastName no vacío), así que ese placeholder se omite en vez de imprimirse:
+ * "María", no "María —".
  */
 export function formatFullName(
   firstName: string | null | undefined,
   lastName: string | null | undefined,
 ): string {
-  const parts = [formatName(firstName), formatName(lastName)].filter(Boolean);
+  const last = lastName?.trim() === "—" ? "" : formatName(lastName);
+  const parts = [formatName(firstName), last].filter(Boolean);
   return parts.join(" ");
 }
 

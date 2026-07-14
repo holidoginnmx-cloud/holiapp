@@ -38,14 +38,20 @@ function sizeLabel(size: string): string {
 
 export default function CreatePetScreen() {
   const router = useRouter();
-  const { editId, focus } = useLocalSearchParams<{
-    editId?: string;
-    focus?: string;
-  }>();
+  const { editId, focus, ownerId: ownerIdParam, ownerName } =
+    useLocalSearchParams<{
+      editId?: string;
+      focus?: string;
+      ownerId?: string;
+      ownerName?: string;
+    }>();
   const userId = useAuthStore((s) => s.userId);
   const syncUser = useAuthStore((s) => s.syncUser);
   const queryClient = useQueryClient();
   const isEditing = !!editId;
+  // Alta hecha por un admin para otro dueño (paso 2 del "+" de Mascotas). El
+  // backend solo respeta un ownerId ajeno si el rol es ADMIN.
+  const isAdminCreate = !isEditing && !!ownerIdParam;
 
   const scrollRef = useRef<ScrollView>(null);
   const cartillaYRef = useRef<number | null>(null);
@@ -173,6 +179,33 @@ export default function CreatePetScreen() {
       if (isEditing) {
         queryClient.invalidateQueries({ queryKey: ["pet", editId] });
       }
+      if (isAdminCreate) {
+        // La pestaña Mascotas del admin agrupa por dueño con su propia query.
+        queryClient.invalidateQueries({ queryKey: ["admin", "pets"] });
+        queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+        Alert.alert(
+          "Mascota registrada",
+          ownerName
+            ? `Quedó registrada a nombre de ${ownerName}.`
+            : "Quedó registrada a nombre del cliente.",
+          [
+            {
+              text: "OK",
+              // Cerramos el flujo entero (selector de dueño incluido) en vez de
+              // apilar la pestaña otra vez: `replace` montaría un segundo tab
+              // navigator y dejaría el selector debajo, atrapado en el back.
+              onPress: () => {
+                try {
+                  router.dismissTo("/(admin)/clients" as any);
+                } catch {
+                  router.replace("/(admin)/clients" as any);
+                }
+              },
+            },
+          ],
+        );
+        return;
+      }
       Alert.alert(
         isEditing ? "Mascota actualizada" : "Mascota registrada",
         isEditing
@@ -191,10 +224,15 @@ export default function CreatePetScreen() {
       // perros que de verdad se llaman igual).
       if (err.status === 409 && err.body?.error === "DUPLICATE_PET") {
         const petId = err.body.petId;
+        // El mensaje del servidor le habla al dueño ("Ya tienes registrado
+        // a X"), así que en el alta desde admin lo reescribimos en tercera
+        // persona: quien está capturando no es el dueño.
+        const duplicateMsg = isAdminCreate
+          ? `${ownerName ?? "Ese cliente"} ya tiene una mascota registrada con ese nombre.`
+          : err.body.message ?? "Ya tienes una mascota registrada con ese nombre.";
         Alert.alert(
           "Mascota ya registrada",
-          err.body.message ??
-            "Ya tienes una mascota registrada con ese nombre.",
+          duplicateMsg,
           [
             {
               text: "Ver perfil",
@@ -286,7 +324,7 @@ export default function CreatePetScreen() {
     // /users/me tras el login. Lo resolvemos antes de enviar: así no viaja un
     // ownerId nulo y, al volver, la lista de mascotas (keyed por userId) se
     // refresca. El servidor deriva el dueño del token de todos modos.
-    let ownerId = userId;
+    let ownerId = ownerIdParam ?? userId;
     if (!isEditing && !ownerId) {
       ownerId = await syncUser();
     }
@@ -354,6 +392,9 @@ export default function CreatePetScreen() {
       <Text style={styles.title}>
         {isEditing ? "Editar mascota" : "Nueva mascota"}
       </Text>
+      {isAdminCreate && ownerName ? (
+        <Text style={styles.ownerHint}>Dueño: {ownerName}</Text>
+      ) : null}
 
       {/* Foto */}
       <View style={styles.photoSection}>
@@ -856,6 +897,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "800",
     color: COLORS.textPrimary,
+    marginBottom: 20,
+  },
+  ownerHint: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+    marginTop: -14,
     marginBottom: 20,
   },
   photoSection: {
