@@ -407,7 +407,7 @@ model Reservation {
   reservationType        ReservationType   @default(STAY)
   checkIn                DateTime? // solo STAY
   checkOut               DateTime? // solo STAY
-  appointmentAt          DateTime? // solo BATH: inicio de la cita
+  appointmentAt          DateTime? // BATH: inicio de la cita · DAYCARE: día anclado a mediodía UTC (la hora real vive en checkInTime/checkOutTime)
   status                 ReservationStatus @default(CONFIRMED)
   totalDays              Int? // solo STAY
   totalAmount            Decimal           @db.Decimal(10, 2)
@@ -419,7 +419,8 @@ model Reservation {
   legalAccepted          Boolean           @default(false)
   groupId                String? // Agrupa reservaciones multi-mascota
   // Hora estimada elegida por el CLIENTE ("HH:mm", hora local del hotel).
-  // Opcional al reservar; si falta, un recordatorio la pide un día antes.
+  // STAY: opcional al reservar; si falta, un recordatorio la pide un día antes.
+  // DAYCARE: obligatorias — entrada/salida estimadas; el precio = horas × tarifa.
   // Independiente de checkIn/checkOut (que guardan solo el día a las 00:00).
   checkInTime            String?
   checkOutTime           String?
@@ -470,6 +471,7 @@ model Reservation {
   @@index([status, checkIn]) // check-ins del día (admin)
   @@index([paymentType, status, depositDeadline]) // cancelOverdueDeposits
   @@index([roomId, status]) // countOverlappingForRoom / ocupación
+  @@index([reservationType, status, appointmentAt]) // listas diarias de baños/guarderías (staff)
   @@map("reservations")
 }
 
@@ -725,6 +727,9 @@ model ServiceVariant {
 model ReservationAddon {
   id          String             @id @default(cuid())
   unitPrice   Decimal            @db.Decimal(10, 2) // Snapshot del precio al momento de compra
+  // Cantidad para addons cobrados por unidad (EXTRA_HOURS: nº de horas;
+  // unitPrice = monto TOTAL, no por unidad). Null = 1 implícito (baño, etc.).
+  quantity    Int?
   paidWith    AddonPaymentSource
   completedAt DateTime? // Fecha en que el staff completó el servicio
   createdAt   DateTime           @default(now())
@@ -896,8 +901,14 @@ model LodgingPricing {
   // Si el negocio deja de ofrecer ProBarf, basta con ignorarlas en el cálculo.
   priceProbarfSmall      Decimal  @default(300) @db.Decimal(10, 2)
   priceProbarfLarge      Decimal  @default(400) @db.Decimal(10, 2)
-  // Tarifa plana de guardería por día (← servicio GUARDERIA de la web).
+  // DEPRECADA: la guardería se cobra por hora (daycareExtraHourPrice), no por
+  // día. Se conserva la columna para no romper la DB compartida; ninguna UI la
+  // expone ya.
   daycarePricePerDay     Decimal  @default(250) @db.Decimal(10, 2)
+  // Tarifa ÚNICA por hora de guardería. La usan tanto el servicio GUARDERIA
+  // (horas estimadas × tarifa) como el add-on EXTRA_HOURS (exceder check-out).
+  // Editable en Ajustes (móvil) y Config → Tarifas (web).
+  daycareExtraHourPrice  Decimal  @default(25) @db.Decimal(10, 2)
   largeWeightKg          Float    @default(20)
   medicationSurchargePct Float    @default(0.10) // 0.10 = 10%
   updatedAt              DateTime @updatedAt

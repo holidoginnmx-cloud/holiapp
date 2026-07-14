@@ -18,6 +18,9 @@ interface ReservationCardProps {
   checkOut?: string | Date | null;
   reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
+  /** Guardería: horas estimadas de entrada/salida ("HH:mm"). */
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   /** Hospedaje que incluye un baño (servicio en el checkout). */
   hasBath?: boolean;
   totalAmount: number;
@@ -113,6 +116,8 @@ function ReservationCardBase({
   checkOut,
   reservationType,
   appointmentAt,
+  checkInTime,
+  checkOutTime,
   hasBath,
   totalAmount,
   ownerName,
@@ -130,6 +135,7 @@ function ReservationCardBase({
   onPress,
 }: ReservationCardProps) {
   const isBath = reservationType === "BATH";
+  const isDaycare = reservationType === "DAYCARE";
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.CONFIRMED;
 
   const showDepositAlert =
@@ -167,10 +173,10 @@ function ReservationCardBase({
         style={[
           styles.accentBar,
           {
-            // Baño activo/agendado → naranja (identidad de baño). Concluido →
-            // gris apagado, igual que un hospedaje finalizado.
+            // Baño/guardería activo o agendado → naranja (identidad de servicio
+            // de día). Concluido → gris apagado, igual que un hospedaje finalizado.
             backgroundColor:
-              isBath && status !== "CHECKED_OUT"
+              (isBath || isDaycare) && status !== "CHECKED_OUT"
                 ? COLORS.primary
                 : config.accent,
           },
@@ -348,7 +354,22 @@ function ReservationCardBase({
         )}
 
         {/* Date hero */}
-        {isBath && appointmentAt ? (
+        {isDaycare && appointmentAt ? (
+          <View style={styles.bathHero}>
+            <View style={styles.bathBadge}>
+              <Ionicons name="sunny" size={14} color={COLORS.primary} />
+              <Text style={styles.bathBadgeText}>Guardería</Text>
+            </View>
+            <View style={styles.bathInfoRow}>
+              <Text style={styles.bathDay}>{formatDayShort(appointmentAt)}</Text>
+              {checkInTime && checkOutTime && (
+                <Text style={styles.bathTime}>
+                  {checkInTime}–{checkOutTime}
+                </Text>
+              )}
+            </View>
+          </View>
+        ) : isBath && appointmentAt ? (
           <>
             <View style={styles.bathHero}>
               <View style={styles.bathBadge}>

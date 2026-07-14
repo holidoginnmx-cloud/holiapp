@@ -37,6 +37,8 @@ type Props = {
   /** Slots >= esta hora muestran la etiqueta de advertencia (p.ej. guardería). */
   warnFrom?: string;
   warnLabel?: string;
+  /** Slots "HH:mm" a ofrecer. Default: horario del hotel (9:00–18:00). */
+  slots?: string[];
 };
 
 export function TimeSlotPicker({
@@ -48,6 +50,7 @@ export function TimeSlotPicker({
   onClose,
   warnFrom,
   warnLabel,
+  slots = HOTEL_TIME_SLOTS,
 }: Props) {
   return (
     <Modal
@@ -76,7 +79,7 @@ export function TimeSlotPicker({
 
           <ScrollView style={styles.slotsScroll}>
             <View style={styles.grid}>
-              {HOTEL_TIME_SLOTS.map((slot) => {
+              {slots.map((slot) => {
                 const selected = value === slot;
                 const warned = !!warnFrom && slot > warnFrom;
                 return (

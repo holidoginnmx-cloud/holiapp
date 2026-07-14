@@ -447,6 +447,18 @@ export default function HomeScreen() {
           <Text style={styles.actionTitle}>Baño</Text>
           <Text style={styles.actionSub}>Agenda ya</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => router.push("/daycare/create" as any)}
+          activeOpacity={0.85}
+          testID="home-daycare-button"
+        >
+          <View style={styles.actionIconWrap}>
+            <Ionicons name="sunny-outline" size={26} color={COLORS.primary} />
+          </View>
+          <Text style={styles.actionTitle}>Guardería</Text>
+          <Text style={styles.actionSub}>Por día</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Estancias / Empty state */}

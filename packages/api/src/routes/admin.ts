@@ -438,6 +438,9 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         pricePerDayLarge: Number(row.pricePerDayLarge),
         largeWeightKg: Number(row.largeWeightKg),
         medicationSurchargePct: Number(row.medicationSurchargePct),
+        // Tarifa única por hora de guardería / horas extra (columna
+        // daycareExtraHourPrice; nombre histórico de la migración web 0019).
+        daycareHourPrice: Number(row.daycareExtraHourPrice),
         updatedAt: row.updatedAt,
       };
     }
@@ -576,6 +579,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       pricePerDayLarge: number;
       largeWeightKg: number;
       medicationSurchargePct: number;
+      daycareHourPrice: number;
     }>;
   }>(
     "/admin/lodging-pricing",
@@ -610,6 +614,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         }
         data.medicationSurchargePct = body.medicationSurchargePct;
       }
+      if (body.daycareHourPrice != null) {
+        if (!(body.daycareHourPrice > 0)) {
+          return reply.status(400).send({ error: "daycareHourPrice debe ser > 0" });
+        }
+        data.daycareExtraHourPrice = body.daycareHourPrice;
+      }
 
       if (Object.keys(data).length === 0) {
         return reply.status(400).send({ error: "No hay cambios" });
@@ -625,6 +635,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         pricePerDayLarge: Number(row.pricePerDayLarge),
         largeWeightKg: Number(row.largeWeightKg),
         medicationSurchargePct: Number(row.medicationSurchargePct),
+        daycareHourPrice: Number(row.daycareExtraHourPrice),
         updatedAt: row.updatedAt,
       };
     }

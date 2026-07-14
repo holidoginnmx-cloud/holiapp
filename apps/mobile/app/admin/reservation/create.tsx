@@ -31,6 +31,7 @@ import {
   registerManualPayment,
   getDeliveryStatus,
   deliveryQuote,
+  getAdminLodgingPricing,
   type PetWithOwner,
 } from "@/lib/api";
 import {
@@ -38,12 +39,23 @@ import {
   formatFullName,
   formatWeekdayDayShort,
   formatTime,
+  formatCurrency,
 } from "@/lib/format";
-import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
+import {
+  sizeFromWeight,
+  computeDaycareHours,
+  DAYCARE_OPEN_HOUR,
+  DAYCARE_CLOSE_HOUR,
+} from "@holidoginn/shared/src/pricing";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
-type ReservationType = "STAY" | "BATH";
+type ReservationType = "STAY" | "BATH" | "DAYCARE";
+
+// Date → "HH:mm" (hora local del dispositivo, que corre en hora del hotel).
+function toHHmm(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 function formatDate(d: Date | null): string {
   if (!d) return "Seleccionar";
@@ -86,6 +98,16 @@ export default function AdminCreateReservation() {
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
 
+  // DAYCARE (guardería): día + horas estimadas ("HH:mm") + total editable.
+  const [dcDate, setDcDate] = useState<Date | null>(null);
+  const [showDcDatePicker, setShowDcDatePicker] = useState(false);
+  const [dcInTime, setDcInTime] = useState("09:00");
+  const [dcOutTime, setDcOutTime] = useState("13:00");
+  const [showDcInPicker, setShowDcInPicker] = useState(false);
+  const [showDcOutPicker, setShowDcOutPicker] = useState(false);
+  // Total sugerido editable (walk-in con precio pactado). Vacío = usar sugerido.
+  const [dcTotalOverride, setDcTotalOverride] = useState("");
+
   // Baño como complemento de un hospedaje (STAY)
   const [stayBathEnabled, setStayBathEnabled] = useState(false);
   const [stayDeslanado, setStayDeslanado] = useState(false);
@@ -120,30 +142,52 @@ export default function AdminCreateReservation() {
   });
 
   // Clientes derivados de las mascotas (solo dueños con mascota activa).
-  // Se guarda la primera foto de mascota disponible del cliente para el avatar.
+  // La búsqueda coincide por nombre de cliente o de mascota (sin acentos);
+  // si coincidió una mascota se muestra como subtítulo y queda preseleccionada.
   const owners = useMemo(() => {
-    const map = new Map<
-      string,
-      { id: string; name: string; photoUrl: string | null }
-    >();
+    type OwnerEntry = {
+      id: string;
+      name: string;
+      photoUrl: string | null;
+      pets: { id: string; name: string; photoUrl: string | null }[];
+    };
+    const map = new Map<string, OwnerEntry>();
     for (const p of pets ?? []) {
       if (!p.owner) continue;
-      const existing = map.get(p.owner.id);
-      if (!existing) {
-        map.set(p.owner.id, {
+      let entry = map.get(p.owner.id);
+      if (!entry) {
+        entry = {
           id: p.owner.id,
           name: formatFullName(p.owner.firstName, p.owner.lastName),
-          photoUrl: p.photoUrl ?? null,
-        });
-      } else if (!existing.photoUrl && p.photoUrl) {
-        existing.photoUrl = p.photoUrl;
+          photoUrl: null,
+          pets: [],
+        };
+        map.set(p.owner.id, entry);
       }
+      entry.pets.push({
+        id: p.id,
+        name: formatName(p.name),
+        photoUrl: p.photoUrl ?? null,
+      });
+      if (!entry.photoUrl && p.photoUrl) entry.photoUrl = p.photoUrl;
     }
     const list = Array.from(map.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-    const q = clientSearch.trim().toLowerCase();
-    return q ? list.filter((o) => o.name.toLowerCase().includes(q)) : list;
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const q = norm(clientSearch.trim());
+    if (!q) {
+      return list.map((o) => ({ ...o, matchedPet: null as OwnerEntry["pets"][number] | null }));
+    }
+    return list.flatMap((o) => {
+      const matchedPet = o.pets.find((p) => norm(p.name).includes(q)) ?? null;
+      if (!norm(o.name).includes(q) && !matchedPet) return [];
+      return [{ ...o, matchedPet }];
+    });
   }, [pets, clientSearch]);
 
   const ownerPets = useMemo(
@@ -180,6 +224,22 @@ export default function AdminCreateReservation() {
     queryFn: getBathVariants,
     enabled: reservationType === "BATH" || stayBathEnabled,
   });
+
+  // Tarifa por hora de guardería (para sugerir el total). Se recalcula server-side.
+  const { data: lodgingPricing } = useQuery({
+    queryKey: ["admin", "lodging-pricing"],
+    queryFn: getAdminLodgingPricing,
+    enabled: reservationType === "DAYCARE",
+  });
+  const daycareHourPrice = lodgingPricing?.daycareHourPrice ?? 0;
+
+  // Estimado de guardería: horas (ceil, mín 1) × tarifa única.
+  const daycareEstimate = useMemo(() => {
+    if (reservationType !== "DAYCARE") return null;
+    const hours = computeDaycareHours(dcInTime, dcOutTime);
+    if (hours <= 0 || daycareHourPrice <= 0) return null;
+    return { hours, total: hours * daycareHourPrice };
+  }, [reservationType, dcInTime, dcOutTime, daycareHourPrice]);
 
   // Staff (rol STAFF) para asignación opcional.
   const { data: allUsers } = useQuery({
@@ -253,6 +313,15 @@ export default function AdminCreateReservation() {
       const bath = stayBathEnabled ? stayBathPrice ?? 0 : 0;
       return lodging + med + bath + deliveryFeeEstimate;
     }
+    if (reservationType === "DAYCARE") {
+      const override = Number(dcTotalOverride);
+      const base =
+        dcTotalOverride.trim() && override > 0
+          ? override
+          : daycareEstimate?.total ?? null;
+      if (base == null) return null;
+      return base + deliveryFeeEstimate;
+    }
     if (bathEstimate == null) return null;
     return bathEstimate + deliveryFeeEstimate;
   }, [
@@ -263,6 +332,8 @@ export default function AdminCreateReservation() {
     stayBathEnabled,
     stayBathPrice,
     bathEstimate,
+    daycareEstimate,
+    dcTotalOverride,
     deliveryFeeEstimate,
   ]);
 
@@ -272,9 +343,10 @@ export default function AdminCreateReservation() {
     return d;
   }, []);
 
-  function selectOwner(id: string) {
+  function selectOwner(id: string, matchedPetId?: string) {
     setOwnerId(id);
-    setPetId(null);
+    // Si la búsqueda coincidió por mascota, se preselecciona directamente.
+    setPetId(matchedPetId ?? null);
     setRoomId(null);
     setClientSearch(""); // colapsa la lista tras elegir
   }
@@ -353,6 +425,30 @@ export default function AdminCreateReservation() {
           ? { bath: { deslanado: stayDeslanado, corte: stayCorte } }
           : {}),
       };
+    } else if (reservationType === "DAYCARE") {
+      if (!dcDate) {
+        Alert.alert("Faltan datos", "Selecciona el día de la guardería.");
+        return;
+      }
+      if (computeDaycareHours(dcInTime, dcOutTime) <= 0) {
+        Alert.alert(
+          "Horario inválido",
+          "La hora de salida debe ser posterior a la de entrada.",
+        );
+        return;
+      }
+      const override = Number(dcTotalOverride);
+      payload = {
+        ...common,
+        reservationType: "DAYCARE",
+        // La hora del ISO no importa: el server ancla el día a mediodía UTC.
+        appointmentAt: dcDate.toISOString(),
+        checkInTime: dcInTime,
+        checkOutTime: dcOutTime,
+        ...(dcTotalOverride.trim() && override > 0
+          ? { totalAmountOverride: override }
+          : {}),
+      };
     } else {
       if (!appointmentAt) {
         Alert.alert("Faltan datos", "Selecciona la fecha y hora de la cita.");
@@ -420,6 +516,7 @@ export default function AdminCreateReservation() {
           options={[
             { key: "STAY", label: "Hospedaje" },
             { key: "BATH", label: "Baño" },
+            { key: "DAYCARE", label: "Guardería" },
           ]}
           selected={reservationType}
           onSelect={(k) => {
@@ -446,7 +543,7 @@ export default function AdminCreateReservation() {
               <Ionicons name="search" size={16} color={COLORS.textDisabled} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Buscar cliente..."
+                placeholder="Buscar cliente o mascota..."
                 placeholderTextColor={COLORS.textDisabled}
                 value={clientSearch}
                 onChangeText={setClientSearch}
@@ -466,30 +563,43 @@ export default function AdminCreateReservation() {
                 {owners.length === 0 ? (
                   <Text style={styles.emptyText}>Sin coincidencias</Text>
                 ) : (
-                  owners.map((o) => (
-                    <TouchableOpacity
-                      key={o.id}
-                      style={[styles.row, ownerId === o.id && styles.rowSelected]}
-                      onPress={() => selectOwner(o.id)}
-                      activeOpacity={0.7}
-                    >
-                      {o.photoUrl ? (
-                        <Image source={{ uri: o.photoUrl }} style={styles.avatar} />
-                      ) : (
-                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                          <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
-                        </View>
-                      )}
-                      <Text
-                        style={[styles.rowText, ownerId === o.id && styles.rowTextSelected]}
+                  owners.map((o) => {
+                    const avatarUrl = o.matchedPet?.photoUrl ?? o.photoUrl;
+                    return (
+                      <TouchableOpacity
+                        key={o.id}
+                        style={[styles.row, ownerId === o.id && styles.rowSelected]}
+                        onPress={() => selectOwner(o.id, o.matchedPet?.id)}
+                        activeOpacity={0.7}
                       >
-                        {o.name}
-                      </Text>
-                      {ownerId === o.id && (
-                        <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
-                      )}
-                    </TouchableOpacity>
-                  ))
+                        {avatarUrl ? (
+                          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                        ) : (
+                          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                            <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={[
+                              styles.rowText,
+                              ownerId === o.id && styles.rowTextSelected,
+                            ]}
+                          >
+                            {o.name}
+                          </Text>
+                          {o.matchedPet && (
+                            <Text style={styles.rowSubText}>
+                              🐾 {o.matchedPet.name}
+                            </Text>
+                          )}
+                        </View>
+                        {ownerId === o.id && (
+                          <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
                 )}
               </View>
             )}
@@ -725,65 +835,72 @@ export default function AdminCreateReservation() {
           <>
             <Text style={styles.label}>Fecha y hora de la cita</Text>
             <View style={styles.dateRow}>
-              <TouchableOpacity
-                style={styles.dateBtn}
-                onPress={() => setShowBathDatePicker(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dateBtnLabel}>Fecha</Text>
-                <Text style={styles.dateBtnValue}>
-                  {appointmentAt ? formatDate(appointmentAt) : "Seleccionar"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateBtn}
-                onPress={() => setShowBathTimePicker(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dateBtnLabel}>Hora</Text>
-                <Text style={styles.dateBtnValue}>
-                  {appointmentAt
-                    ? formatTime(appointmentAt)
-                    : "Seleccionar"}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.dateCol}>
+                <TouchableOpacity
+                  style={styles.dateBtn}
+                  onPress={() => setShowBathDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dateBtnLabel}>Fecha</Text>
+                  <Text style={styles.dateBtnValue}>
+                    {appointmentAt ? formatDate(appointmentAt) : "Seleccionar"}
+                  </Text>
+                </TouchableOpacity>
+                {showBathDatePicker && (
+                  <View style={styles.pickerWrap}>
+                    <DateTimePicker
+                      value={appointmentAt ?? today}
+                      mode="date"
+                      minimumDate={today}
+                      themeVariant="light"
+                      textColor={COLORS.textPrimary}
+                      onChange={(_, date) => {
+                        setShowBathDatePicker(Platform.OS === "ios");
+                        if (date) {
+                          const base = appointmentAt ?? new Date(today);
+                          const next = new Date(date);
+                          next.setHours(base.getHours(), base.getMinutes(), 0, 0);
+                          setAppointmentAt(next);
+                        }
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+              <View style={styles.dateCol}>
+                <TouchableOpacity
+                  style={styles.dateBtn}
+                  onPress={() => setShowBathTimePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dateBtnLabel}>Hora</Text>
+                  <Text style={styles.dateBtnValue}>
+                    {appointmentAt
+                      ? formatTime(appointmentAt)
+                      : "Seleccionar"}
+                  </Text>
+                </TouchableOpacity>
+                {showBathTimePicker && (
+                  <View style={styles.pickerWrap}>
+                    <DateTimePicker
+                      value={appointmentAt ?? today}
+                      mode="time"
+                      themeVariant="light"
+                      textColor={COLORS.textPrimary}
+                      onChange={(_, date) => {
+                        setShowBathTimePicker(Platform.OS === "ios");
+                        if (date) {
+                          const base = appointmentAt ?? new Date(today);
+                          const next = new Date(base);
+                          next.setHours(date.getHours(), date.getMinutes(), 0, 0);
+                          setAppointmentAt(next);
+                        }
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
             </View>
-
-            {showBathDatePicker && (
-              <DateTimePicker
-                value={appointmentAt ?? today}
-                mode="date"
-                minimumDate={today}
-                themeVariant="light"
-                textColor={COLORS.textPrimary}
-                onChange={(_, date) => {
-                  setShowBathDatePicker(Platform.OS === "ios");
-                  if (date) {
-                    const base = appointmentAt ?? new Date(today);
-                    const next = new Date(date);
-                    next.setHours(base.getHours(), base.getMinutes(), 0, 0);
-                    setAppointmentAt(next);
-                  }
-                }}
-              />
-            )}
-            {showBathTimePicker && (
-              <DateTimePicker
-                value={appointmentAt ?? today}
-                mode="time"
-                themeVariant="light"
-                textColor={COLORS.textPrimary}
-                onChange={(_, date) => {
-                  setShowBathTimePicker(Platform.OS === "ios");
-                  if (date) {
-                    const base = appointmentAt ?? new Date(today);
-                    const next = new Date(base);
-                    next.setHours(date.getHours(), date.getMinutes(), 0, 0);
-                    setAppointmentAt(next);
-                  }
-                }}
-              />
-            )}
 
             <LevelSelector
               label="Deslanado"
@@ -811,6 +928,124 @@ export default function AdminCreateReservation() {
                 No hay variante configurada para esta combinación
               </Text>
             ) : null}
+          </>
+        )}
+
+        {/* ── DAYCARE: día + horas estimadas + total ── */}
+        {petId && reservationType === "DAYCARE" && (
+          <>
+            <Text style={styles.label}>Día de guardería</Text>
+            <TouchableOpacity
+              style={styles.dateBtn}
+              onPress={() => setShowDcDatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.dateBtnLabel}>Fecha</Text>
+              <Text style={styles.dateBtnValue}>
+                {dcDate ? formatDate(dcDate) : "Seleccionar"}
+              </Text>
+            </TouchableOpacity>
+            {showDcDatePicker && (
+              <View style={styles.pickerWrap}>
+                <DateTimePicker
+                  value={dcDate ?? today}
+                  mode="date"
+                  minimumDate={today}
+                  themeVariant="light"
+                  textColor={COLORS.textPrimary}
+                  onChange={(_, date) => {
+                    setShowDcDatePicker(Platform.OS === "ios");
+                    if (date) setDcDate(date);
+                  }}
+                />
+              </View>
+            )}
+
+            <Text style={styles.label}>Horario estimado</Text>
+            <View style={styles.dateRow}>
+              <View style={styles.dateCol}>
+                <TouchableOpacity
+                  style={styles.dateBtn}
+                  onPress={() => setShowDcInPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dateBtnLabel}>Entrada</Text>
+                  <Text style={styles.dateBtnValue}>{dcInTime}</Text>
+                </TouchableOpacity>
+                {showDcInPicker && (
+                  <View style={styles.pickerWrap}>
+                    <DateTimePicker
+                      value={(() => {
+                        const [h, m] = dcInTime.split(":").map(Number);
+                        const d = new Date(today);
+                        d.setHours(h, m, 0, 0);
+                        return d;
+                      })()}
+                      mode="time"
+                      themeVariant="light"
+                      textColor={COLORS.textPrimary}
+                      onChange={(_, date) => {
+                        setShowDcInPicker(Platform.OS === "ios");
+                        if (date) setDcInTime(toHHmm(date));
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+              <View style={styles.dateCol}>
+                <TouchableOpacity
+                  style={styles.dateBtn}
+                  onPress={() => setShowDcOutPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dateBtnLabel}>Salida</Text>
+                  <Text style={styles.dateBtnValue}>{dcOutTime}</Text>
+                </TouchableOpacity>
+                {showDcOutPicker && (
+                  <View style={styles.pickerWrap}>
+                    <DateTimePicker
+                      value={(() => {
+                        const [h, m] = dcOutTime.split(":").map(Number);
+                        const d = new Date(today);
+                        d.setHours(h, m, 0, 0);
+                        return d;
+                      })()}
+                      mode="time"
+                      themeVariant="light"
+                      textColor={COLORS.textPrimary}
+                      onChange={(_, date) => {
+                        setShowDcOutPicker(Platform.OS === "ios");
+                        if (date) setDcOutTime(toHHmm(date));
+                      }}
+                    />
+                  </View>
+                )}
+              </View>
+            </View>
+            <Text style={styles.hint}>
+              Horario de guardería: {DAYCARE_OPEN_HOUR}:00 a {DAYCARE_CLOSE_HOUR}:00.
+            </Text>
+
+            {daycareEstimate ? (
+              <Text style={styles.estimate}>
+                Sugerido: {daycareEstimate.hours}{" "}
+                {daycareEstimate.hours === 1 ? "hora" : "horas"} ×{" "}
+                {formatCurrency(daycareHourPrice)} ={" "}
+                {formatCurrency(daycareEstimate.total)}
+              </Text>
+            ) : null}
+
+            <Text style={styles.label}>Total a cobrar (editable)</Text>
+            <TextInput
+              style={styles.amountInput}
+              placeholder={
+                daycareEstimate ? String(daycareEstimate.total) : "Total"
+              }
+              placeholderTextColor={COLORS.textDisabled}
+              value={dcTotalOverride}
+              onChangeText={setDcTotalOverride}
+              keyboardType="numeric"
+            />
           </>
         )}
 
@@ -1065,6 +1300,7 @@ const styles = StyleSheet.create({
   },
   rowSelected: { backgroundColor: COLORS.bgSection },
   rowText: { flex: 1, fontSize: 14, color: COLORS.textPrimary },
+  rowSubText: { fontSize: 12, color: COLORS.textTertiary, marginTop: 1 },
   rowTextSelected: { fontWeight: "700", color: COLORS.primary },
   avatar: {
     width: 28,
@@ -1112,6 +1348,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   estimateWarn: { fontSize: 13, color: COLORS.errorText, marginTop: 8 },
+  hint: { fontSize: 12, color: COLORS.textTertiary, marginTop: 4, marginBottom: 2 },
   totalRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -2,14 +2,14 @@ import { COLORS } from "@/constants/colors";
 import { Stack, useRouter } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
 
-export default function ServicesLayout() {
+export default function DaycareLayout() {
   const router = useRouter();
 
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(admin)/settings" as any);
+      router.replace("/(staff)/daycares" as any);
     }
   };
 
@@ -18,20 +18,16 @@ export default function ServicesLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerShown: true,
         headerTintColor: COLORS.primary,
         animation: "slide_from_right",
         animationTypeForReplace: "pop",
       }}
     >
       <Stack.Screen
-        name="index"
-        options={{ title: "Servicios y precios", headerLeft: backButton }}
+        name="[id]"
+        options={{ title: "Detalle de guardería", headerLeft: backButton }}
       />
-      <Stack.Screen name="baths" options={{ title: "Baños" }} />
-      <Stack.Screen name="hospedajes" options={{ title: "Hospedajes" }} />
-      <Stack.Screen name="guarderia" options={{ title: "Guardería" }} />
     </Stack>
   );
 }

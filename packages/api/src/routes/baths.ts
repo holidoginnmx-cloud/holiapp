@@ -900,16 +900,31 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
     const windowStart = new Date(now.getTime() + 23 * 3600 * 1000);
     const windowEnd = new Date(now.getTime() + 25 * 3600 * 1000);
 
-    const upcoming = await prisma.reservation.findMany({
-      where: {
-        reservationType: "BATH",
-        status: { not: "CANCELLED" },
-        appointmentAt: { gte: windowStart, lt: windowEnd },
-      },
-      include: {
-        pet: { select: { name: true } },
-      },
-    });
+    // Guarderías: su appointmentAt está anclado a MEDIODÍA UTC (no codifica la
+    // hora real — esa vive en checkInTime), así que se recuerdan con ventana de
+    // día completo, no con la ventana fina de 23-25h de los baños.
+    const [upcoming, upcomingDaycares] = await Promise.all([
+      prisma.reservation.findMany({
+        where: {
+          reservationType: "BATH",
+          status: { not: "CANCELLED" },
+          appointmentAt: { gte: windowStart, lt: windowEnd },
+        },
+        include: {
+          pet: { select: { name: true } },
+        },
+      }),
+      prisma.reservation.findMany({
+        where: {
+          reservationType: "DAYCARE",
+          status: "CONFIRMED",
+          appointmentAt: { gte: windowStart, lt: windowEnd },
+        },
+        include: {
+          pet: { select: { name: true } },
+        },
+      }),
+    ]);
 
     let sent = 0;
     for (const res of upcoming) {
@@ -942,7 +957,38 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       sent++;
     }
 
-    return reply.send({ sent, checked: upcoming.length });
+    for (const res of upcomingDaycares) {
+      if (!res.appointmentAt) continue;
+
+      const alreadyReminded = await prisma.notification.findFirst({
+        where: {
+          userId: res.ownerId,
+          type: "RESERVATION_REMINDER",
+          data: { path: ["reservationId"], equals: res.id },
+        },
+      });
+      if (alreadyReminded) continue;
+
+      const day = res.appointmentAt.toLocaleString("es-MX", {
+        timeZone: "America/Hermosillo",
+        day: "numeric",
+        month: "short",
+      });
+
+      await notifyUser(prisma, {
+        userId: res.ownerId,
+        type: "RESERVATION_REMINDER",
+        title: "Recordatorio: guardería mañana 🐾",
+        body: `${res.pet.name} tiene guardería el ${day}${res.checkInTime ? ` a las ${res.checkInTime}` : ""}. ¡Te esperamos!`,
+        data: { reservationId: res.id, kind: "DAYCARE_REMINDER" },
+      });
+      sent++;
+    }
+
+    return reply.send({
+      sent,
+      checked: upcoming.length + upcomingDaycares.length,
+    });
   });
 
   // ────────────────────────────────────────────────────────────

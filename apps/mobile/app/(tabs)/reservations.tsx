@@ -34,6 +34,8 @@ type GroupedReservation = {
   status: string;
   reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   checkIn: string | Date | null;
   checkOut: string | Date | null;
   totalAmount: number;
@@ -79,6 +81,10 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       status: items[0].status,
       checkIn: items[0].checkIn,
       checkOut: items[0].checkOut,
+      // Guardería multi-mascota: el día y las horas son iguales en el grupo.
+      appointmentAt: items[0].appointmentAt,
+      checkInTime: items[0].checkInTime,
+      checkOutTime: items[0].checkOutTime,
       totalAmount: items.reduce((sum, i) => sum + Number(i.totalAmount), 0),
       reservationIds: items.map((i) => i.id),
       petCount: items.length,
@@ -111,6 +117,8 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       status: r.status,
       reservationType: r.reservationType,
       appointmentAt: r.appointmentAt,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
       checkIn: r.checkIn,
       checkOut: r.checkOut,
       totalAmount: Number(r.totalAmount),
@@ -136,11 +144,12 @@ const TABS = [
   { key: "history", label: "Historial" },
 ];
 
-type TypeFilter = "STAY" | "BATH";
+type TypeFilter = "STAY" | "BATH" | "DAYCARE";
 
 const TYPE_FILTERS: { key: TypeFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "STAY", label: "Hotel", icon: "bed-outline" },
   { key: "BATH", label: "Baños", icon: "water-outline" },
+  { key: "DAYCARE", label: "Guardería", icon: "sunny-outline" },
 ];
 
 type EmptyState = {
@@ -187,6 +196,25 @@ const EMPTY_STATES_BATH: Record<string, EmptyState> = {
   },
 };
 
+const EMPTY_STATES_DAYCARE: Record<string, EmptyState> = {
+  CHECKED_IN: {
+    icon: "sunny-outline",
+    message: "No hay peludos en guardería ahora mismo",
+  },
+  CONFIRMED: {
+    icon: "sunny-outline",
+    message: "No tienes días de guardería agendados",
+    cta: "Reservar guardería",
+    ctaHref: "/daycare/create",
+  },
+  history: {
+    icon: "archive-outline",
+    message: "Aún no tienes guarderías en tu historial",
+    cta: "Reservar guardería",
+    ctaHref: "/daycare/create",
+  },
+};
+
 // Fila memoizada: la closure de onPress solo cambia si cambia el item, así el
 // memo de ReservationCard sí evita re-renders al scrollear/cambiar de tab.
 const ReservationRow = memo(function ReservationRow({
@@ -205,6 +233,8 @@ const ReservationRow = memo(function ReservationRow({
       checkOut={item.checkOut}
       reservationType={item.reservationType}
       appointmentAt={item.appointmentAt}
+      checkInTime={item.checkInTime}
+      checkOutTime={item.checkOutTime}
       totalAmount={item.totalAmount}
       petCount={item.petCount}
       paymentType={item.paymentType}
@@ -334,7 +364,11 @@ export default function ReservationsScreen() {
   }
 
   const emptyStateFor = (tabKey: string) =>
-    typeFilter === "BATH" ? EMPTY_STATES_BATH[tabKey] : EMPTY_STATES[tabKey];
+    typeFilter === "BATH"
+      ? EMPTY_STATES_BATH[tabKey]
+      : typeFilter === "DAYCARE"
+        ? EMPTY_STATES_DAYCARE[tabKey]
+        : EMPTY_STATES[tabKey];
 
   return (
     <View style={styles.container} testID="reservations-screen">

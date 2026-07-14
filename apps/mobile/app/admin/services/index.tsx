@@ -29,6 +29,14 @@ const CARDS: Card[] = [
     bg: COLORS.infoBg,
     href: "/admin/services/baths",
   },
+  {
+    title: "Guardería",
+    subtitle: "Tarifa por hora (y horas extra)",
+    icon: "sunny",
+    color: COLORS.primary,
+    bg: COLORS.primaryLight,
+    href: "/admin/services/guarderia",
+  },
 ];
 
 export default function AdminServicesHub() {

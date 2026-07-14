@@ -32,6 +32,7 @@ export default function StaffRootLayout() {
       {/* Subdirectorios con su propio _layout.tsx — el Stack root no muestra header */}
       <Stack.Screen name="bath" options={{ headerShown: false }} />
       <Stack.Screen name="stay" options={{ headerShown: false }} />
+      <Stack.Screen name="daycare" options={{ headerShown: false }} />
     </Stack>
   );
 }

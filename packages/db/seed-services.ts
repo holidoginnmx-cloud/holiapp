@@ -107,6 +107,41 @@ async function seedServices() {
   }
 
   console.log(`✅ Servicio DEWORMING creado con ${dewormCreated} variantes de precio.`);
+
+  // ----------------------------------------------------------------------------
+  // Horas extra (EXTRA_HOURS). Add-on cobrado por CANTIDAD: monto = tarifa por
+  // hora (lodging_pricing.daycareExtraHourPrice, única para todos los perros)
+  // × horas (reservation_addons.quantity). La variante es solo un "ancla" para
+  // satisfacer el FK variantId; el precio real NO sale de ahí. Espejo de la
+  // migración web 0019_horas_extra.sql.
+  // ----------------------------------------------------------------------------
+  const extraHoursService = await prisma.serviceType.upsert({
+    where: { code: "EXTRA_HOURS" },
+    update: { name: "Horas extra", isActive: true },
+    create: { code: "EXTRA_HOURS", name: "Horas extra", isActive: true },
+  });
+
+  await prisma.serviceVariant.upsert({
+    where: {
+      serviceTypeId_petSize_deslanado_corte: {
+        serviceTypeId: extraHoursService.id,
+        petSize: "S",
+        deslanado: false,
+        corte: false,
+      },
+    },
+    update: { isActive: true },
+    create: {
+      serviceTypeId: extraHoursService.id,
+      petSize: "S",
+      deslanado: false,
+      corte: false,
+      price: new Prisma.Decimal(0),
+      isActive: true,
+    },
+  });
+
+  console.log("✅ Servicio EXTRA_HOURS creado con su variante ancla.");
 }
 
 seedServices()

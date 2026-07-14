@@ -278,8 +278,9 @@ select
   r.id,
   pe.name                  as perro,
   (u."firstName" || ' ' || u."lastName") as cliente,
-  r."checkIn"::date        as fecha_inicio,
-  r."checkOut"::date       as fecha_fin,
+  -- DAYCARE no tiene checkIn/checkOut: su día vive en appointmentAt.
+  coalesce(r."checkIn", r."appointmentAt")::date  as fecha_inicio,
+  coalesce(r."checkOut", r."appointmentAt")::date as fecha_fin,
   case r."reservationType"
     when 'STAY'    then 'HOTEL'
     when 'BATH'    then 'ESTETICA'
@@ -296,8 +297,8 @@ join pets pe  on pe.id = r."petId"
 join users u  on u.id  = r."ownerId"
 where r.status in ('CONFIRMED', 'CHECKED_IN')
   and r."reservationType" in ('STAY', 'DAYCARE')
-  and current_date between r."checkIn"::date
-                       and coalesce(r."checkOut"::date, current_date);
+  and current_date between coalesce(r."checkIn", r."appointmentAt")::date
+                       and coalesce(r."checkOut", r."appointmentAt", current_date)::date;
 
 
 -- ============================================================================

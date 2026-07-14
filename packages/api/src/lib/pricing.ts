@@ -22,6 +22,15 @@ export {
   DEFAULT_PRICE_PER_DAY_LARGE,
   DEFAULT_LARGE_WEIGHT_KG,
   DEFAULT_MEDICATION_SURCHARGE_PCT,
+  DEFAULT_DAYCARE_HOUR_PRICE,
+  DAYCARE_OPEN_HOUR,
+  DAYCARE_CLOSE_HOUR,
+  DAYCARE_LATE_TOLERANCE_MIN,
+  DAYCARE_MIN_HOURS,
+  minutesFromHHmm,
+  computeDaycareHours,
+  computeDaycareExtraHours,
+  isWithinDaycareHours,
 } from "@holidoginn/shared";
 export type { LodgingPricingConfig } from "@holidoginn/shared";
 
@@ -42,6 +51,9 @@ export async function getLodgingPricing(
     pricePerDayLarge: Number(row.pricePerDayLarge),
     largeWeightKg: Number(row.largeWeightKg),
     medicationSurchargePct: Number(row.medicationSurchargePct),
+    // Tarifa única por hora de guardería/horas extra. La columna conserva el
+    // nombre histórico daycareExtraHourPrice (migración web 0019).
+    daycareHourPrice: Number(row.daycareExtraHourPrice),
   };
 }
 

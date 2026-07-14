@@ -29,6 +29,8 @@ import cartRoutes from "./routes/cart";
 import ordersRoutes from "./routes/orders";
 import guestReservationsRoutes from "./routes/guestReservations";
 import guestBathsRoutes from "./routes/guestBaths";
+import daycareRoutes from "./routes/daycare";
+import guestDaycareRoutes from "./routes/guestDaycare";
 
 const app = Fastify({ logger: true });
 
@@ -118,6 +120,8 @@ app.register(cartRoutes);
 app.register(ordersRoutes);
 app.register(guestReservationsRoutes);
 app.register(guestBathsRoutes);
+app.register(daycareRoutes);
+app.register(guestDaycareRoutes);
 
 const start = async () => {
   try {

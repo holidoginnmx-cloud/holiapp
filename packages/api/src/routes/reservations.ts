@@ -22,7 +22,12 @@ import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
-import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "../lib/pricing";
+import {
+  getLodgingPricing,
+  pricePerDayForWeight,
+  sizeFromWeight,
+  computeDaycareHours,
+} from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -308,6 +313,68 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(201).send(reservation);
     }
 
+    // ── Rama DAYCARE: día único cobrado por hora (tarifa única), sin cuarto
+    // y sin cartilla. appointmentAt se normaliza a mediodía UTC (convención
+    // del admin web); la hora real vive en checkInTime/checkOutTime.
+    if (reservationType === "DAYCARE") {
+      if (!appointmentAt || Number.isNaN(appointmentAt.getTime())) {
+        return reply
+          .status(400)
+          .send({ error: "appointmentAt es requerido para una guardería" });
+      }
+      const inTime = parsed.data.checkInTime ?? null;
+      const outTime = parsed.data.checkOutTime ?? null;
+      if (!inTime || !outTime) {
+        return reply.status(400).send({
+          error: "checkInTime y checkOutTime son requeridos para una guardería",
+        });
+      }
+      const hours = computeDaycareHours(inTime, outTime);
+      if (hours <= 0) {
+        return reply.status(400).send({
+          error: "La hora de salida debe ser posterior a la de entrada",
+        });
+      }
+
+      const dayAnchor = new Date(
+        Date.UTC(
+          appointmentAt.getUTCFullYear(),
+          appointmentAt.getUTCMonth(),
+          appointmentAt.getUTCDate(),
+          12
+        )
+      );
+
+      // Total sugerido = horas × tarifa única; el admin puede sobrescribirlo
+      // (walk-in con precio pactado). El domicilio siempre se suma aparte.
+      const pricingConfig = await getLodgingPricing(prisma);
+      const baseAmount =
+        parsed.data.totalAmountOverride != null
+          ? parsed.data.totalAmountOverride
+          : hours * pricingConfig.daycareHourPrice;
+      const daycareTotal = new Prisma.Decimal(baseAmount).add(deliveryFee);
+
+      // Sin pago en creación manual: el total queda como saldo pendiente y el
+      // admin registra el cobro después (igual que la rama BATH).
+      const reservation = await prisma.reservation.create({
+        data: {
+          reservationType: "DAYCARE",
+          appointmentAt: dayAnchor,
+          checkInTime: inTime,
+          checkOutTime: outTime,
+          totalAmount: daycareTotal,
+          notes,
+          legalAccepted,
+          status: "CONFIRMED",
+          ownerId,
+          petId,
+          ...extraData,
+        },
+        include: { pet: true, room: true },
+      });
+      return reply.status(201).send(reservation);
+    }
+
     // ── Rama STAY (default): estancia con rango de fechas y cuarto.
     if (!checkIn || !checkOut) {
       return reply
@@ -435,10 +502,27 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
-      if (reservation.reservationType !== "STAY") {
+      if (!["STAY", "DAYCARE"].includes(reservation.reservationType)) {
         return reply
           .status(400)
-          .send({ error: "Solo aplica a reservaciones de hospedaje" });
+          .send({ error: "Solo aplica a hospedajes y guarderías" });
+      }
+
+      // En guardería las horas SON el precio (horas × tarifa): si el dueño
+      // pudiera extender la salida estimada gratis, evitaría el cobro de horas
+      // extra al recoger. Solo staff/admin ajustan horas de guardería (y
+      // regularizan el cobro con el add-on de horas extra si hace falta).
+      if (reservation.reservationType === "DAYCARE") {
+        if (!isStaffOrAdmin) {
+          return reply.status(403).send({
+            error: "Contáctanos para cambiar las horas de tu guardería",
+          });
+        }
+        if (parsed.data.checkInTime === null || parsed.data.checkOutTime === null) {
+          return reply.status(400).send({
+            error: "Las horas de la guardería no se pueden borrar",
+          });
+        }
       }
 
       const { checkInTime, checkOutTime } = parsed.data;

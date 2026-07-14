@@ -67,6 +67,9 @@ export type ReservationAddonWithVariant = {
   reservationId: string;
   variantId: string;
   unitPrice: string;
+  // Cantidad para addons cobrados por unidad (EXTRA_HOURS: nº de horas;
+  // unitPrice = monto total). Null = 1 implícito.
+  quantity: number | null;
   paidWith: "BOOKING" | "STANDALONE";
   paymentId: string | null;
   completedAt: string | null;
@@ -586,6 +589,77 @@ export const confirmBath = (data: {
     { method: "POST", body: JSON.stringify(data) },
   );
 
+// ─── Guardería (DAYCARE, día completo cobrado por hora) ──
+
+export type DaycareAvailability = {
+  date: string;
+  maxCapacity: number;
+  occupied: number;
+  remaining: number;
+  openHour: number;
+  closeHour: number;
+  lateToleranceMin: number;
+  minHours: number;
+  hourPrice: number;
+};
+
+export const getDaycareAvailability = (date: string) =>
+  apiFetch<DaycareAvailability>(
+    `${ENDPOINTS.daycare}/availability?date=${encodeURIComponent(date)}`,
+  );
+
+export const createDaycareIntent = (data: {
+  petIds: string[];
+  date: string; // "YYYY-MM-DD" (día local del hotel)
+  checkInTime: string; // "HH:mm"
+  checkOutTime: string; // "HH:mm"
+  notes?: string;
+  homeDelivery?: HomeDeliveryInput;
+  discountCode?: string;
+}) =>
+  apiFetch<{
+    // Ambos null cuando el saldo a favor cubre el total (sin cargo Stripe).
+    clientSecret: string | null;
+    paymentIntentId: string | null;
+    coveredByCredit: boolean;
+    creditApplied: number;
+    hours: number;
+    hourPrice: number;
+    subtotal: number;
+    discountTotal: number;
+    discountCode: string | null;
+    deliveryFee: number;
+    deliveryDistanceKm: number;
+    deliveryActive: boolean;
+    total: number;
+  }>(`${ENDPOINTS.daycare}/create-intent`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const confirmDaycare = (data: {
+  // Null en el flujo 100% crédito: se mandan los campos eco y el servidor
+  // re-valida todo (mismo contrato que confirmBath).
+  paymentIntentId: string | null;
+  petIds?: string[];
+  date?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  notes?: string;
+  homeDelivery?: HomeDeliveryInput;
+  discountCode?: string;
+}) =>
+  apiFetch<{
+    success: boolean;
+    reservations: Reservation[];
+    groupId: string | null;
+    grandTotal?: number;
+    hours?: number;
+  }>(`${ENDPOINTS.daycare}/confirm`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 // ─── Staff: bath appointments ─────────────────────────────
 
 export type StaffBath = Reservation & {
@@ -675,6 +749,42 @@ export const registerBathManualPayment = (
 ) =>
   apiFetch<{ success: boolean; amount: number; concluded: boolean }>(
     `/staff/baths/${reservationId}/register-manual-payment`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+
+// ─── Guardería (staff) ───────────────────────────────────
+// Mismo shape que StaffBath (pet, owner, addons, payments) + horas estimadas.
+export type StaffDaycare = StaffBath;
+
+export const getStaffDaycares = (date?: string) =>
+  apiFetch<{ date: string; daycares: StaffDaycare[] }>(
+    `/staff/daycares${date ? `?date=${encodeURIComponent(date)}` : ""}`,
+  );
+
+export const checkInStaffDaycare = (id: string) =>
+  apiFetch<{ success: boolean }>(`/staff/daycares/${id}/check-in`, {
+    method: "POST",
+  });
+
+export const checkOutStaffDaycare = (id: string, pickupTime?: string) =>
+  apiFetch<{
+    success: boolean;
+    extraHours: number;
+    extraAmount: number;
+    newTotal: number;
+    balance: number;
+    concluded: boolean;
+  }>(`/staff/daycares/${id}/check-out`, {
+    method: "POST",
+    body: JSON.stringify(pickupTime ? { pickupTime } : {}),
+  });
+
+export const registerDaycareManualPayment = (
+  reservationId: string,
+  payload: { amount: number; method?: "CASH" | "TRANSFER"; notes?: string },
+) =>
+  apiFetch<{ success: boolean; amount: number; concluded: boolean }>(
+    `/staff/daycares/${reservationId}/register-manual-payment`,
     { method: "POST", body: JSON.stringify(payload) },
   );
 
@@ -972,6 +1082,8 @@ export interface AdminLodgingPricing {
   pricePerDayLarge: number;
   largeWeightKg: number;
   medicationSurchargePct: number;
+  // Tarifa única por hora de guardería (y horas extra al exceder check-out).
+  daycareHourPrice: number;
   updatedAt: string;
 }
 

@@ -451,7 +451,27 @@ function ReservationDetailScreenContent() {
 
       {/* Info card */}
       <View style={styles.card}>
-        {reservation.reservationType === "BATH" ? (
+        {reservation.reservationType === "DAYCARE" ? (
+          <View style={styles.bathHero}>
+            <View style={styles.bathBadge}>
+              <Ionicons name="sunny" size={14} color={COLORS.primary} />
+              <Text style={styles.bathBadgeText}>Guardería</Text>
+            </View>
+            {reservation.appointmentAt && (
+              <View style={styles.bathInfoRow}>
+                <Text style={styles.bathDay}>
+                  {formatWeekdayDayShort(reservation.appointmentAt)}
+                </Text>
+                {reservation.checkInTime && reservation.checkOutTime && (
+                  <Text style={styles.bathTime}>
+                    {formatTimeHHmm(reservation.checkInTime)}–
+                    {formatTimeHHmm(reservation.checkOutTime)}
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        ) : reservation.reservationType === "BATH" ? (
           <View style={styles.bathHero}>
             <View style={styles.bathBadge}>
               <Ionicons name="water" size={14} color={COLORS.primary} />
@@ -565,7 +585,7 @@ function ReservationDetailScreenContent() {
           )
         )}
 
-        {reservation.reservationType !== "BATH" && (
+        {reservation.reservationType === "STAY" && (
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
               <View style={styles.metaIconWrap}>
@@ -721,7 +741,9 @@ function ReservationDetailScreenContent() {
       )}
 
       {/* Bath upsell: solo para STAYS donde se puede sumar un baño de salida. */}
-      {!isBath && <BathUpsellCard reservation={reservation} />}
+      {reservation.reservationType === "STAY" && (
+        <BathUpsellCard reservation={reservation} />
+      )}
 
       {/* Baño primario: servicios contratados.
           - Pagado: itemizado con precios y total, marca verde.

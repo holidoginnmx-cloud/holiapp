@@ -432,7 +432,7 @@ export const HomeDeliveryInputSchema = z.object({
 export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
 
 export const CreateReservationSchema = z.object({
-  reservationType: z.enum(["STAY", "BATH"]).default("STAY"),
+  reservationType: z.enum(["STAY", "BATH", "DAYCARE"]).default("STAY"),
   notes: z.string().nullable().default(null),
   legalAccepted: z.boolean(),
   ownerId: z.string(),
@@ -445,9 +445,15 @@ export const CreateReservationSchema = z.object({
   // deslanado/corte de nivel superior.
   bath: BathSelectionSchema.optional(),
   // BATH (cita puntual; el precio se resuelve server-side desde la variante)
+  // DAYCARE: appointmentAt = día de la guardería (se ancla a mediodía UTC).
   appointmentAt: z.coerce.date().optional(),
   deslanado: z.boolean().optional(),
   corte: z.boolean().optional(),
+  // DAYCARE: entrada/salida estimadas; precio = horas × tarifa única. El total
+  // sugerido puede sobrescribirse con totalAmountOverride (walk-in, admin).
+  checkInTime: z.string().optional(),
+  checkOutTime: z.string().optional(),
+  totalAmountOverride: z.number().nonnegative().optional(),
   // Campos adicionales (creación manual desde admin)
   staffId: z.string().optional(),
   medicationNotes: z.string().nullable().optional(),
@@ -567,6 +573,24 @@ export const GuestBathIntentSchema = z.object({
 export type GuestBathIntent = z.infer<typeof GuestBathIntentSchema>;
 
 export const GuestBathConfirmSchema = z.object({
+  paymentIntentId: z.string(),
+});
+
+export const GuestDaycareIntentSchema = z.object({
+  source: z.literal("web"),
+  guest: GuestContactSchema,
+  // Una o más mascotas inline (cartilla PENDING; sin requisito de aprobación).
+  pets: z.array(GuestPetSchema).min(1).max(6),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)"),
+  checkInTime: TimeHHmmSchema,
+  checkOutTime: TimeHHmmSchema,
+  notes: z.string().max(500).optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+  legal: GuestLegalSchema,
+});
+export type GuestDaycareIntent = z.infer<typeof GuestDaycareIntentSchema>;
+
+export const GuestDaycareConfirmSchema = z.object({
   paymentIntentId: z.string(),
 });
 
@@ -866,6 +890,40 @@ export const ConfirmBathSchema = z.object({
   discountCode: z.string().max(40).optional(),
 });
 export type ConfirmBath = z.infer<typeof ConfirmBathSchema>;
+
+// ========================
+// Guardería (DAYCARE) — servicio de día cobrado por hora.
+// Reserva de UN día (multi-mascota) con entrada/salida estimadas; el cliente
+// paga el estimado completo al reservar y el excedente real se cobra al
+// recoger como add-on EXTRA_HOURS.
+// ========================
+
+export const CreateDaycareIntentSchema = z.object({
+  petIds: z.array(z.string()).min(1).max(6),
+  // Día de la guardería (fecha local del hotel, "YYYY-MM-DD").
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)"),
+  checkInTime: TimeHHmmSchema,
+  checkOutTime: TimeHHmmSchema,
+  notes: z.string().max(500).optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+  // El servidor valida y calcula el monto; nunca se confía al cliente.
+  discountCode: z.string().max(40).optional(),
+});
+export type CreateDaycareIntent = z.infer<typeof CreateDaycareIntentSchema>;
+
+export const ConfirmDaycareSchema = z.object({
+  // Null cuando el saldo a favor cubrió el total y no se creó PaymentIntent;
+  // en ese caso el servidor re-valida los campos eco del intent.
+  paymentIntentId: z.string().nullable(),
+  petIds: z.array(z.string()).min(1).max(6).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  checkInTime: TimeHHmmSchema.optional(),
+  checkOutTime: TimeHHmmSchema.optional(),
+  notes: z.string().max(500).optional(),
+  homeDelivery: HomeDeliveryInputSchema.optional(),
+  discountCode: z.string().max(40).optional(),
+});
+export type ConfirmDaycare = z.infer<typeof ConfirmDaycareSchema>;
 
 // ========================
 // Tienda en línea (e-commerce) — DTOs del sitio web
