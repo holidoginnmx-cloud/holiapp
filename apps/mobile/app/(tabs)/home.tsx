@@ -457,7 +457,7 @@ export default function HomeScreen() {
             <Ionicons name="sunny-outline" size={26} color={COLORS.primary} />
           </View>
           <Text style={styles.actionTitle}>Guardería</Text>
-          <Text style={styles.actionSub}>Por día</Text>
+          <Text style={styles.actionSub}>Por hora</Text>
         </TouchableOpacity>
       </View>
 
