@@ -436,7 +436,11 @@ export const CreateReservationSchema = z.object({
   notes: z.string().nullable().default(null),
   legalAccepted: z.boolean(),
   ownerId: z.string(),
-  petId: z.string(),
+  // Una mascota (flujo clásico) o varias (multi-perro desde admin: se crea
+  // UNA reserva por mascota con groupId compartido). Al menos uno es
+  // requerido; se valida en la ruta.
+  petId: z.string().optional(),
+  petIds: z.array(z.string()).min(1).optional(),
   // STAY
   checkIn: z.coerce.date().optional(),
   checkOut: z.coerce.date().optional(),
@@ -449,10 +453,12 @@ export const CreateReservationSchema = z.object({
   appointmentAt: z.coerce.date().optional(),
   deslanado: z.boolean().optional(),
   corte: z.boolean().optional(),
-  // DAYCARE: entrada/salida estimadas; precio = horas × tarifa única. El total
-  // sugerido puede sobrescribirse con totalAmountOverride (walk-in, admin).
+  // DAYCARE: entrada/salida estimadas; precio = horas × tarifa única.
   checkInTime: z.string().optional(),
   checkOutTime: z.string().optional(),
+  // Total pactado manualmente (solo STAFF/ADMIN, cualquier tipo de servicio).
+  // Con varias mascotas es el total del GRUPO: se reparte entre las filas.
+  // El fee de domicilio siempre se suma aparte server-side.
   totalAmountOverride: z.number().nonnegative().optional(),
   // Campos adicionales (creación manual desde admin)
   staffId: z.string().optional(),

@@ -79,7 +79,8 @@ export default function AdminCreateReservation() {
   const [reservationType, setReservationType] = useState<ReservationType>("STAY");
   const [clientSearch, setClientSearch] = useState("");
   const [ownerId, setOwnerId] = useState<string | null>(null);
-  const [petId, setPetId] = useState<string | null>(null);
+  // Multi-perro: se crea UNA reserva por mascota con groupId compartido.
+  const [petIds, setPetIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -98,15 +99,16 @@ export default function AdminCreateReservation() {
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
 
-  // DAYCARE (guardería): día + horas estimadas ("HH:mm") + total editable.
+  // DAYCARE (guardería): día + horas estimadas ("HH:mm").
   const [dcDate, setDcDate] = useState<Date | null>(null);
   const [showDcDatePicker, setShowDcDatePicker] = useState(false);
   const [dcInTime, setDcInTime] = useState("09:00");
   const [dcOutTime, setDcOutTime] = useState("13:00");
   const [showDcInPicker, setShowDcInPicker] = useState(false);
   const [showDcOutPicker, setShowDcOutPicker] = useState(false);
-  // Total sugerido editable (walk-in con precio pactado). Vacío = usar sugerido.
-  const [dcTotalOverride, setDcTotalOverride] = useState("");
+  // Total sugerido editable para cualquier servicio (precio pactado con el
+  // cliente). Vacío = usar el cálculo automático del servidor.
+  const [totalOverride, setTotalOverride] = useState("");
 
   // Baño como complemento de un hospedaje (STAY)
   const [stayBathEnabled, setStayBathEnabled] = useState(false);
@@ -200,14 +202,21 @@ export default function AdminCreateReservation() {
     return owner ? formatFullName(owner.firstName, owner.lastName) : "";
   }, [pets, ownerId]);
 
-  const selectedPet: PetWithOwner | undefined = useMemo(
-    () => (pets ?? []).find((p) => p.id === petId),
-    [pets, petId],
+  const selectedPets: PetWithOwner[] = useMemo(
+    () => petIds.map((id) => (pets ?? []).find((p) => p.id === id)!).filter(Boolean),
+    [pets, petIds],
   );
 
-  const petSize = selectedPet ? sizeFromWeight(selectedPet.weight) : null;
+  // Tamaño MÁS GRANDE del grupo: el cuarto compartido debe admitirlo.
+  const petSize = useMemo(() => {
+    if (selectedPets.length === 0) return null;
+    const order = ["XS", "S", "M", "L", "XL"];
+    return selectedPets
+      .map((p) => sizeFromWeight(p.weight))
+      .reduce((max, s) => (order.indexOf(s) > order.indexOf(max) ? s : max));
+  }, [selectedPets]);
 
-  // Cuartos disponibles para el tamaño de la mascota (solo STAY).
+  // Cuartos disponibles para el tamaño (más grande) del grupo (solo STAY).
   const { data: rooms, isLoading: roomsLoading } = useQuery({
     queryKey: ["admin", "rooms", petSize],
     queryFn: () => getRooms(petSize!),
@@ -233,13 +242,14 @@ export default function AdminCreateReservation() {
   });
   const daycareHourPrice = lodgingPricing?.daycareHourPrice ?? 0;
 
-  // Estimado de guardería: horas (ceil, mín 1) × tarifa única.
+  // Estimado de guardería: horas (ceil, mín 1) × tarifa única × mascotas.
   const daycareEstimate = useMemo(() => {
     if (reservationType !== "DAYCARE") return null;
     const hours = computeDaycareHours(dcInTime, dcOutTime);
-    if (hours <= 0 || daycareHourPrice <= 0) return null;
-    return { hours, total: hours * daycareHourPrice };
-  }, [reservationType, dcInTime, dcOutTime, daycareHourPrice]);
+    if (hours <= 0 || daycareHourPrice <= 0 || selectedPets.length === 0)
+      return null;
+    return { hours, total: hours * daycareHourPrice * selectedPets.length };
+  }, [reservationType, dcInTime, dcOutTime, daycareHourPrice, selectedPets.length]);
 
   // Staff (rol STAFF) para asignación opcional.
   const { data: allUsers } = useQuery({
@@ -270,62 +280,70 @@ export default function AdminCreateReservation() {
 
   // ── Estimados de precio (informativos; el backend recalcula el total) ──
   const stayEstimate = useMemo(() => {
-    if (reservationType !== "STAY" || !checkIn || !checkOut || !selectedPet)
+    if (
+      reservationType !== "STAY" ||
+      !checkIn ||
+      !checkOut ||
+      selectedPets.length === 0
+    )
       return null;
     const days = Math.ceil(
       (checkOut.getTime() - checkIn.getTime()) / 86_400_000,
     );
     if (days <= 0) return null;
-    const perDay = (selectedPet.weight ?? 0) >= 20 ? 450 : 350;
-    return { days, total: perDay * days };
-  }, [reservationType, checkIn, checkOut, selectedPet]);
+    // Suma por mascota (la tarifa por día depende del peso de cada una).
+    const total = selectedPets.reduce(
+      (sum, p) => sum + ((p.weight ?? 0) >= 20 ? 450 : 350) * days,
+      0,
+    );
+    return { days, total };
+  }, [reservationType, checkIn, checkOut, selectedPets]);
+
+  // Suma de la variante de baño de CADA mascota (talla propia); null si a
+  // alguna le falta variante configurada.
+  const sumBathVariants = (dl: boolean, ct: boolean): number | null => {
+    if (!bathVariants || selectedPets.length === 0) return null;
+    let total = 0;
+    for (const p of selectedPets) {
+      const size = sizeFromWeight(p.weight);
+      const variant = bathVariants.find(
+        (v) => v.petSize === size && v.deslanado === dl && v.corte === ct,
+      );
+      if (!variant) return null;
+      total += variant.price;
+    }
+    return total;
+  };
 
   const bathEstimate = useMemo(() => {
-    if (reservationType !== "BATH" || !petSize || !bathVariants) return null;
-    const variant = bathVariants.find(
-      (v) =>
-        v.petSize === petSize && v.deslanado === deslanado && v.corte === corte,
-    );
-    return variant ? variant.price : null;
-  }, [reservationType, petSize, bathVariants, deslanado, corte]);
+    if (reservationType !== "BATH") return null;
+    return sumBathVariants(deslanado, corte);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reservationType, selectedPets, bathVariants, deslanado, corte]);
 
   const stayBathPrice = useMemo(() => {
-    if (!stayBathEnabled || !petSize || !bathVariants) return null;
-    const variant = bathVariants.find(
-      (v) =>
-        v.petSize === petSize &&
-        v.deslanado === stayDeslanado &&
-        v.corte === stayCorte,
-    );
-    return variant ? variant.price : null;
-  }, [stayBathEnabled, petSize, bathVariants, stayDeslanado, stayCorte]);
+    if (!stayBathEnabled) return null;
+    return sumBathVariants(stayDeslanado, stayCorte);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stayBathEnabled, selectedPets, bathVariants, stayDeslanado, stayCorte]);
 
   const deliveryFeeEstimate =
     deliveryEnabled && deliveryQuoteData?.active ? deliveryQuoteData.fee : 0;
 
-  // Total base estimado (informativo; el backend recalcula el total real).
-  const grandTotalEstimate = useMemo(() => {
-    if (!selectedPet) return null;
+  // Sugerido base por tipo de servicio (sin domicilio ni total manual).
+  const suggestedBase = useMemo(() => {
+    if (selectedPets.length === 0) return null;
     if (reservationType === "STAY") {
       if (!stayEstimate) return null;
       const lodging = stayEstimate.total;
       const med = medEnabled ? lodging * 0.1 : 0;
       const bath = stayBathEnabled ? stayBathPrice ?? 0 : 0;
-      return lodging + med + bath + deliveryFeeEstimate;
+      return lodging + med + bath;
     }
-    if (reservationType === "DAYCARE") {
-      const override = Number(dcTotalOverride);
-      const base =
-        dcTotalOverride.trim() && override > 0
-          ? override
-          : daycareEstimate?.total ?? null;
-      if (base == null) return null;
-      return base + deliveryFeeEstimate;
-    }
-    if (bathEstimate == null) return null;
-    return bathEstimate + deliveryFeeEstimate;
+    if (reservationType === "DAYCARE") return daycareEstimate?.total ?? null;
+    return bathEstimate;
   }, [
-    selectedPet,
+    selectedPets.length,
     reservationType,
     stayEstimate,
     medEnabled,
@@ -333,9 +351,18 @@ export default function AdminCreateReservation() {
     stayBathPrice,
     bathEstimate,
     daycareEstimate,
-    dcTotalOverride,
-    deliveryFeeEstimate,
   ]);
+
+  // Total base estimado (informativo; el backend recalcula el total real).
+  // Si el admin capturó un total manual, ese manda.
+  const grandTotalEstimate = useMemo(() => {
+    if (selectedPets.length === 0) return null;
+    const override = Number(totalOverride);
+    const base =
+      totalOverride.trim() && override > 0 ? override : suggestedBase;
+    if (base == null) return null;
+    return base + deliveryFeeEstimate;
+  }, [selectedPets.length, totalOverride, suggestedBase, deliveryFeeEstimate]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -346,20 +373,23 @@ export default function AdminCreateReservation() {
   function selectOwner(id: string, matchedPetId?: string) {
     setOwnerId(id);
     // Si la búsqueda coincidió por mascota, se preselecciona directamente.
-    setPetId(matchedPetId ?? null);
+    setPetIds(matchedPetId ? [matchedPetId] : []);
     setRoomId(null);
     setClientSearch(""); // colapsa la lista tras elegir
   }
 
-  function selectPet(id: string) {
-    setPetId(id);
-    setRoomId(null); // el tamaño cambia → la lista de cuartos cambia
+  // Toggle multi-perro: tocar agrega/quita la mascota de la selección.
+  function togglePet(id: string) {
+    setPetIds((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+    setRoomId(null); // el tamaño del grupo cambia → la lista de cuartos cambia
     setRoomsExpanded(false);
   }
 
   async function handleSubmit() {
-    if (!ownerId || !petId) {
-      Alert.alert("Faltan datos", "Selecciona un cliente y una mascota.");
+    if (!ownerId || petIds.length === 0) {
+      Alert.alert("Faltan datos", "Selecciona un cliente y al menos una mascota.");
       return;
     }
 
@@ -373,12 +403,22 @@ export default function AdminCreateReservation() {
       return;
     }
 
-    // Campos comunes adicionales.
+    // Total manual pactado (opcional, cualquier servicio). Con varias
+    // mascotas es el total del GRUPO; el server lo reparte entre las filas.
+    const override = Number(totalOverride);
+    const overrideFields =
+      totalOverride.trim() && override > 0
+        ? { totalAmountOverride: override }
+        : {};
+
+    // Campos comunes adicionales. Con una mascota se manda petId (forma
+    // clásica); con varias, petIds (el server crea una reserva por mascota).
     const common: Record<string, unknown> = {
       ownerId,
-      petId,
+      ...(petIds.length === 1 ? { petId: petIds[0] } : { petIds }),
       notes: notes.trim() || null,
       legalAccepted: true,
+      ...overrideFields,
       ...(staffId ? { staffId } : {}),
       ...(depositAgreed.trim() ? { depositAgreed: Number(depositAgreed) } : {}),
       ...(deliveryEnabled && deliveryAddress
@@ -437,7 +477,6 @@ export default function AdminCreateReservation() {
         );
         return;
       }
-      const override = Number(dcTotalOverride);
       payload = {
         ...common,
         reservationType: "DAYCARE",
@@ -445,9 +484,6 @@ export default function AdminCreateReservation() {
         appointmentAt: dcDate.toISOString(),
         checkInTime: dcInTime,
         checkOutTime: dcOutTime,
-        ...(dcTotalOverride.trim() && override > 0
-          ? { totalAmountOverride: override }
-          : {}),
       };
     } else {
       if (!appointmentAt) {
@@ -474,13 +510,42 @@ export default function AdminCreateReservation() {
     try {
       const created = await createReservation(payload);
       // Pago manual inicial (opcional): se registra contra la reserva creada.
+      // En grupos multi-perro se reparte proporcional al total de cada fila
+      // (la última absorbe el residuo) para que ninguna quede desbalanceada.
       const amount = Number(payAmount);
       if (payAmount.trim() && amount > 0 && created?.id) {
-        await registerManualPayment({
-          reservationId: created.id,
-          amount,
-          method: payMethod,
-        });
+        const groupRows = (
+          created as unknown as {
+            groupReservations?: { id: string; totalAmount: string | number }[];
+          }
+        ).groupReservations;
+        if (groupRows && groupRows.length > 1) {
+          const totals = groupRows.map((r) => Number(r.totalAmount) || 0);
+          const grand = totals.reduce((a, b) => a + b, 0);
+          let allocated = 0;
+          for (let i = 0; i < groupRows.length; i++) {
+            const isLast = i === groupRows.length - 1;
+            const share = isLast
+              ? Number((amount - allocated).toFixed(2))
+              : grand > 0
+                ? Number(((amount * totals[i]) / grand).toFixed(2))
+                : Number((amount / groupRows.length).toFixed(2));
+            allocated += share;
+            if (share > 0) {
+              await registerManualPayment({
+                reservationId: groupRows[i].id,
+                amount: share,
+                method: payMethod,
+              });
+            }
+          }
+        } else {
+          await registerManualPayment({
+            reservationId: created.id,
+            amount,
+            method: payMethod,
+          });
+        }
       }
       await queryClient.invalidateQueries({ queryKey: ["admin", "reservations"] });
       Alert.alert("Reservación creada", "La reservación se creó correctamente.", [
@@ -609,33 +674,45 @@ export default function AdminCreateReservation() {
         {/* ── Mascota ── */}
         {ownerId && (
           <>
-            <Text style={styles.label}>Mascota</Text>
+            <Text style={styles.label}>
+              Mascotas{petIds.length > 1 ? ` (${petIds.length})` : ""}
+            </Text>
             <View style={styles.listBox}>
               {ownerPets.length === 0 ? (
                 <Text style={styles.emptyText}>Este cliente no tiene mascotas</Text>
               ) : (
-                ownerPets.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={[styles.row, petId === p.id && styles.rowSelected]}
-                    onPress={() => selectPet(p.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.rowText, petId === p.id && styles.rowTextSelected]}>
-                      {formatName(p.name)} ({p.weight ?? 0} kg)
-                    </Text>
-                    {petId === p.id && (
-                      <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
-                    )}
-                  </TouchableOpacity>
-                ))
+                ownerPets.map((p) => {
+                  const isSelected = petIds.includes(p.id);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.row, isSelected && styles.rowSelected]}
+                      onPress={() => togglePet(p.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.rowText, isSelected && styles.rowTextSelected]}>
+                        {formatName(p.name)} ({p.weight ?? 0} kg)
+                      </Text>
+                      <Ionicons
+                        name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                        size={18}
+                        color={isSelected ? COLORS.primary : COLORS.borderLight}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
+            {ownerPets.length > 1 && (
+              <Text style={styles.hint}>
+                Puedes elegir varias: se crea una reserva por mascota, agrupadas.
+              </Text>
+            )}
           </>
         )}
 
         {/* ── STAY: fechas + cuarto ── */}
-        {petId && reservationType === "STAY" && (
+        {petIds.length > 0 && reservationType === "STAY" && (
           <>
             <Text style={styles.label}>Fechas</Text>
             <View style={styles.dateRow}>
@@ -831,7 +908,7 @@ export default function AdminCreateReservation() {
         )}
 
         {/* ── BATH: fecha/hora + opciones ── */}
-        {petId && reservationType === "BATH" && (
+        {petIds.length > 0 && reservationType === "BATH" && (
           <>
             <Text style={styles.label}>Fecha y hora de la cita</Text>
             <View style={styles.dateRow}>
@@ -932,7 +1009,7 @@ export default function AdminCreateReservation() {
         )}
 
         {/* ── DAYCARE: día + horas estimadas + total ── */}
-        {petId && reservationType === "DAYCARE" && (
+        {petIds.length > 0 && reservationType === "DAYCARE" && (
           <>
             <Text style={styles.label}>Día de guardería</Text>
             <TouchableOpacity
@@ -1030,27 +1107,18 @@ export default function AdminCreateReservation() {
               <Text style={styles.estimate}>
                 Sugerido: {daycareEstimate.hours}{" "}
                 {daycareEstimate.hours === 1 ? "hora" : "horas"} ×{" "}
-                {formatCurrency(daycareHourPrice)} ={" "}
-                {formatCurrency(daycareEstimate.total)}
+                {formatCurrency(daycareHourPrice)}
+                {selectedPets.length > 1
+                  ? ` × ${selectedPets.length} mascotas`
+                  : ""}{" "}
+                = {formatCurrency(daycareEstimate.total)}
               </Text>
             ) : null}
-
-            <Text style={styles.label}>Total a cobrar (editable)</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder={
-                daycareEstimate ? String(daycareEstimate.total) : "Total"
-              }
-              placeholderTextColor={COLORS.textDisabled}
-              value={dcTotalOverride}
-              onChangeText={setDcTotalOverride}
-              keyboardType="numeric"
-            />
           </>
         )}
 
         {/* ── Staff (opcional) ── */}
-        {petId && (
+        {petIds.length > 0 && (
           <>
             <Text style={styles.label}>Asignar staff (opcional)</Text>
             <TouchableOpacity
@@ -1118,7 +1186,7 @@ export default function AdminCreateReservation() {
         )}
 
         {/* ── Servicio a domicilio (opcional) ── */}
-        {petId && deliveryServiceActive && (
+        {petIds.length > 0 && deliveryServiceActive && (
           <>
             <LevelSelector
               label="Servicio a domicilio"
@@ -1147,8 +1215,31 @@ export default function AdminCreateReservation() {
           </>
         )}
 
+        {/* ── Total a cobrar (editable, cualquier servicio) ── */}
+        {petIds.length > 0 && (
+          <>
+            <Text style={styles.label}>Total a cobrar (editable)</Text>
+            <TextInput
+              style={styles.amountInput}
+              placeholder={
+                suggestedBase != null ? String(suggestedBase) : "Total pactado"
+              }
+              placeholderTextColor={COLORS.textDisabled}
+              value={totalOverride}
+              onChangeText={setTotalOverride}
+              keyboardType="numeric"
+            />
+            {petIds.length > 1 && (
+              <Text style={styles.hint}>
+                Es el total del grupo: se reparte entre las reservas de cada
+                mascota.
+              </Text>
+            )}
+          </>
+        )}
+
         {/* ── Total base estimado ── */}
-        {petId && grandTotalEstimate != null && (
+        {petIds.length > 0 && grandTotalEstimate != null && (
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total base</Text>
             <Text style={styles.totalValue}>${grandTotalEstimate.toFixed(2)}</Text>
@@ -1156,7 +1247,7 @@ export default function AdminCreateReservation() {
         )}
 
         {/* ── Anticipo / pago (opcional) ── */}
-        {petId && (
+        {petIds.length > 0 && (
           <>
             <Text style={styles.label}>Anticipo acordado (opcional)</Text>
             <TextInput
@@ -1192,7 +1283,7 @@ export default function AdminCreateReservation() {
         )}
 
         {/* ── Notas ── */}
-        {petId && (
+        {petIds.length > 0 && (
           <>
             <Text style={styles.label}>Notas (opcional)</Text>
             <TextInput
