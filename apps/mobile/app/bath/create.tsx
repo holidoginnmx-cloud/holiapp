@@ -70,6 +70,7 @@ function CreateBathScreenContent() {
   );
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
+  const [corteNotas, setCorteNotas] = useState("");
   const [paymentType, setPaymentType] = useState<"DEPOSIT" | "FULL">("DEPOSIT");
   const [date, setDate] = useState<Date>(() => {
     const d = new Date();
@@ -231,6 +232,7 @@ function CreateBathScreenContent() {
     if (!selectedPet || !variant || !selectedSlotIso) return;
     setSubmitting(true);
     try {
+      const corteNotasTrim = corte && corteNotas.trim() ? corteNotas.trim() : undefined;
       const intent = await createBathIntent({
         petId: selectedPet.id,
         deslanado,
@@ -239,6 +241,7 @@ function CreateBathScreenContent() {
         paymentType,
         homeDelivery: homeDeliveryPayload,
         discountCode: appliedDiscount?.code,
+        notes: corteNotasTrim,
       });
 
       if (!intent.coveredByCredit && intent.clientSecret) {
@@ -263,6 +266,7 @@ function CreateBathScreenContent() {
               appointmentAt: selectedSlotIso,
               homeDelivery: homeDeliveryPayload,
               discountCode: appliedDiscount?.code,
+              notes: corteNotasTrim,
             }
           : { paymentIntentId: intent.paymentIntentId! },
       );
@@ -391,7 +395,12 @@ function CreateBathScreenContent() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleRow, corte && styles.toggleRowActive]}
-              onPress={() => setCorte((v) => !v)}
+              onPress={() =>
+                setCorte((v) => {
+                  if (v) setCorteNotas("");
+                  return !v;
+                })
+              }
               testID="bath-corte"
             >
               <Ionicons
@@ -406,6 +415,25 @@ function CreateBathScreenContent() {
                 </Text>
               </View>
             </TouchableOpacity>
+
+            {corte && (
+              <View style={styles.corteNotasWrap}>
+                <Text style={styles.corteNotasLabel}>
+                  ¿Cómo te gustaría que sea el corte? (opcional)
+                </Text>
+                <TextInput
+                  style={styles.corteNotasInput}
+                  value={corteNotas}
+                  onChangeText={setCorteNotas}
+                  placeholder="Ej. patas y cara redondeadas, largo medio en el lomo..."
+                  placeholderTextColor={COLORS.textDisabled}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={500}
+                  testID="bath-corte-notas"
+                />
+              </View>
+            )}
 
             {(deslanado || corte) && (
               <View style={styles.extrasNote}>
@@ -819,6 +847,25 @@ const styles = StyleSheet.create({
   },
   toggleTitle: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
   toggleSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
+  corteNotasWrap: { marginTop: 2, marginBottom: 8 },
+  corteNotasLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+  },
+  corteNotasInput: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    minHeight: 72,
+    textAlignVertical: "top",
+    color: COLORS.textPrimary,
+  },
   extrasNote: {
     flexDirection: "row",
     alignItems: "flex-start",
