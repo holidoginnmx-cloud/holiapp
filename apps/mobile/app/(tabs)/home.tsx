@@ -432,7 +432,7 @@ export default function HomeScreen() {
           <View style={styles.actionIconWrap}>
             <Ionicons name="bed-outline" size={26} color={COLORS.primary} />
           </View>
-          <Text style={styles.actionTitle}>Hotel</Text>
+          <Text style={styles.actionTitle} numberOfLines={1} adjustsFontSizeToFit>Hotel</Text>
           <Text style={styles.actionSub}>Hospedaje</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -444,7 +444,7 @@ export default function HomeScreen() {
           <View style={styles.actionIconWrap}>
             <Ionicons name="water-outline" size={26} color={COLORS.primary} />
           </View>
-          <Text style={styles.actionTitle}>Baño</Text>
+          <Text style={styles.actionTitle} numberOfLines={1} adjustsFontSizeToFit>Baño</Text>
           <Text style={styles.actionSub}>Agenda ya</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -456,7 +456,7 @@ export default function HomeScreen() {
           <View style={styles.actionIconWrap}>
             <Ionicons name="sunny-outline" size={26} color={COLORS.primary} />
           </View>
-          <Text style={styles.actionTitle}>Guardería</Text>
+          <Text style={styles.actionTitle} numberOfLines={1} adjustsFontSizeToFit>Guardería</Text>
           <Text style={styles.actionSub}>Por hora</Text>
         </TouchableOpacity>
       </View>
@@ -752,6 +752,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: COLORS.textPrimary,
+    textAlign: "center",
   },
   actionSub: {
     fontSize: 12,
