@@ -1284,7 +1284,7 @@ export type ReviewCartillaPayload =
   | {
       action: "APPROVE";
       vaccines?: {
-        catalogId: string;
+        catalogId?: string;
         appliedAt: string;
         expiresAt: string;
         vetName?: string;

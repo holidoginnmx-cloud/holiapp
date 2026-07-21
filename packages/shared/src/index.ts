@@ -228,7 +228,8 @@ export const CreatePetSchema = PetSchema.omit({
 export const UpdatePetSchema = CreatePetSchema.partial().omit({ ownerId: true });
 
 export const VaccineEntrySchema = z.object({
-  catalogId: z.string().cuid(),
+  // Opcional: el tipo casi nunca es visible en la cartilla; basta con la fecha.
+  catalogId: z.string().cuid().optional(),
   appliedAt: z.coerce.date(),
   expiresAt: z.coerce.date(),
   vetName: z.string().max(120).optional(),

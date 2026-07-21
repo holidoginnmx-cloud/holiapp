@@ -191,6 +191,8 @@ export default function RenewCartillaScreen() {
           </View>
           <Text style={styles.stepText}>
             Toma fotos claras de la nueva cartilla (anverso, reverso, páginas internas) y súbelas aquí abajo.
+            Recuerda incluir la página de vacunación{" "}
+            <Text style={styles.stepTextStrong}>y desparasitaciones</Text>, no solo las vacunas.
           </Text>
         </View>
         <View style={styles.step}>
@@ -344,6 +346,7 @@ const styles = StyleSheet.create({
   },
   stepNumberText: { color: COLORS.white, fontSize: 12, fontWeight: "800" },
   stepText: { flex: 1, fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
+  stepTextStrong: { fontWeight: "700", color: COLORS.textPrimary },
   uploadLabel: { fontSize: 14, fontWeight: "700", color: COLORS.textSecondary },
   cartillaHelp: {
     fontSize: 13,

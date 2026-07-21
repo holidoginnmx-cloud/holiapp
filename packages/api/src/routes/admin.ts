@@ -1225,9 +1225,16 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         const dewormings = data.dewormings ?? [];
 
         // Validar catalogIds antes de la transacción para fallar rápido con 400.
+        // El tipo es opcional: solo validamos los renglones que sí lo traen.
         let catalogMap = new Map<string, { id: string; displayName: string }>();
-        if (vaccines.length > 0) {
-          const catalogIds = [...new Set(vaccines.map((v) => v.catalogId))];
+        const catalogIds = [
+          ...new Set(
+            vaccines
+              .map((v) => v.catalogId)
+              .filter((id): id is string => Boolean(id))
+          ),
+        ];
+        if (catalogIds.length > 0) {
           const catalogs = await prisma.vaccineCatalog.findMany({
             where: { id: { in: catalogIds }, isActive: true },
             select: { id: true, displayName: true },
@@ -1254,8 +1261,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             prisma.vaccine.create({
               data: {
                 petId: pet.id,
-                catalogId: v.catalogId,
-                name: catalogMap.get(v.catalogId)!.displayName,
+                catalogId: v.catalogId ?? null,
+                name: v.catalogId
+                  ? catalogMap.get(v.catalogId)!.displayName
+                  : "Vacuna (sin especificar)",
                 appliedAt: v.appliedAt,
                 expiresAt: v.expiresAt,
                 vetName: v.vetName ?? null,

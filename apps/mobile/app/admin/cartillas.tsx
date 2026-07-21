@@ -263,16 +263,11 @@ export default function AdminCartillas() {
   const submitApprove = () => {
     if (!selectedPet) return;
 
-    const incompleteVaccine = vaccineRows.find((r) => !r.catalogId);
-    if (incompleteVaccine) {
-      Alert.alert("Datos incompletos", "Selecciona el tipo de vacuna en cada renglón.");
-      return;
-    }
-
     const payload: ReviewCartillaPayload = { action: "APPROVE" };
     if (vaccineRows.length > 0) {
       payload.vaccines = vaccineRows.map((r) => ({
-        catalogId: r.catalogId!,
+        // El tipo es opcional: solo se envía si el equipo lo pudo identificar.
+        catalogId: r.catalogId ?? undefined,
         appliedAt: r.appliedAt.toISOString(),
         expiresAt: r.expiresAt.toISOString(),
       }));

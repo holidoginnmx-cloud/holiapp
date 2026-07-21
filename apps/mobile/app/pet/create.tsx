@@ -607,6 +607,18 @@ export default function CreatePetScreen() {
           internas). Un miembro del equipo HDI las revisará antes de que puedas
           reservar.
         </Text>
+        <View style={styles.cartillaNote}>
+          <Ionicons
+            name="alert-circle"
+            size={16}
+            color={COLORS.warningText}
+          />
+          <Text style={styles.cartillaNoteText}>
+            Recuerda que debe ser la página de vacunación{" "}
+            <Text style={styles.cartillaNoteStrong}>y desparasitaciones</Text>,
+            no solo las vacunas.
+          </Text>
+        </View>
 
         <ScrollView
           horizontal
@@ -1037,6 +1049,24 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     lineHeight: 18,
     marginTop: -8,
+  },
+  cartillaNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+  },
+  cartillaNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.warningText,
+    lineHeight: 18,
+  },
+  cartillaNoteStrong: {
+    fontWeight: "700",
   },
   cartillaPhotosRow: {
     gap: 10,

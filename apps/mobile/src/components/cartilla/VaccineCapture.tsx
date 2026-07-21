@@ -65,9 +65,10 @@ export function VaccineCapture({
     <>
       <Text style={styles.captureTitle}>Capturar vacunas</Text>
       <Text style={styles.captureHint}>
-        Agrega las vacunas visibles en la cartilla. La fecha de vencimiento
-        se calcula automáticamente, pero la puedes editar si la cartilla
-        muestra otra.
+        Agrega las vacunas visibles en la cartilla. Solo la fecha es
+        obligatoria; el tipo es opcional (déjalo "Sin especificar" si no está
+        claro). La fecha de vencimiento se calcula automáticamente, pero la
+        puedes editar si la cartilla muestra otra.
       </Text>
 
       {rows.map((row, idx) => {
@@ -85,7 +86,9 @@ export function VaccineCapture({
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.label}>Tipo</Text>
+            <Text style={styles.label}>
+              Tipo <Text style={styles.labelHint}>· opcional</Text>
+            </Text>
             <TouchableOpacity
               style={styles.selectRow}
               onPress={() => onRequestCatalogPicker(idx)}
@@ -96,7 +99,7 @@ export function VaccineCapture({
                   !cat && { color: COLORS.textDisabled },
                 ]}
               >
-                {cat?.displayName ?? "Selecciona el tipo"}
+                {cat?.displayName ?? "Sin especificar"}
               </Text>
               <Ionicons
                 name="chevron-down"
