@@ -1305,6 +1305,29 @@ export const reviewCartilla = (petId: string, data: ReviewCartillaPayload) =>
     body: JSON.stringify(data),
   });
 
+// OCR de la cartilla con Claude: devuelve sugerencias para prellenar el
+// formulario de aprobación. No persiste nada.
+export type CartillaOcrResult = {
+  vaccines: {
+    name: string;
+    appliedAt: string | null;
+    expiresAt: string | null;
+    vetName: string | null;
+  }[];
+  dewormings: {
+    type: DewormingType;
+    productName: string | null;
+    appliedAt: string | null;
+    expiresAt: string | null;
+    notes: string | null;
+  }[];
+};
+
+export const ocrCartilla = (petId: string) =>
+  apiFetch<CartillaOcrResult>(`/admin/pets/${petId}/cartilla/ocr`, {
+    method: "POST",
+  });
+
 export type UpdateVaccinePayload = {
   catalogId?: string;
   appliedAt?: string;

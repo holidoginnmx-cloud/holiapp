@@ -13,6 +13,7 @@ import {
 } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
+import { extraerCartilla } from "../lib/ocr";
 import {
   getLodgingPricing,
   computeDays,
@@ -1194,6 +1195,45 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         orderBy: { updatedAt: "desc" },
       });
       return pets;
+    }
+  );
+
+  // POST /admin/pets/:id/cartilla/ocr — lee las fotos de la cartilla con Claude
+  // y devuelve SUGERENCIAS de vacunas/desparasitaciones para prellenar el
+  // formulario de aprobación. No persiste nada.
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/pets/:id/cartilla/ocr",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, cartillaPhotos: true, cartillaUrl: true },
+      });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      const photos =
+        pet.cartillaPhotos.length > 0
+          ? pet.cartillaPhotos
+          : pet.cartillaUrl
+            ? [pet.cartillaUrl]
+            : [];
+      if (photos.length === 0) {
+        return reply
+          .status(400)
+          .send({ error: "La mascota no tiene cartilla subida" });
+      }
+
+      try {
+        const suggestions = await extraerCartilla(photos);
+        return suggestions;
+      } catch (err) {
+        request.log.error({ err }, "Fallo el OCR de la cartilla");
+        return reply.status(502).send({
+          error:
+            "No se pudo leer la cartilla automáticamente. Captura las vacunas manualmente.",
+        });
+      }
     }
   );
 

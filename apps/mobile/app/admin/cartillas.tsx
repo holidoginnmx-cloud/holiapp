@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getCartillas,
   reviewCartilla,
+  ocrCartilla,
   getVaccineCatalog,
   updateAdminVaccine,
   deleteAdminVaccine,
@@ -31,6 +32,7 @@ import {
   type VaccineCatalogEntry,
   type ReviewCartillaPayload,
   type CartillaVaccine,
+  type CartillaOcrResult,
 } from "@/lib/api";
 import {
   formatName,
@@ -47,9 +49,48 @@ import {
   endOfToday,
   formatShort,
   DEWORMING_TYPES,
+  DEWORMING_DEFAULT_DAYS,
   type VaccineRow,
   type DewormingRow,
 } from "@/components/cartilla/helpers";
+
+// Convierte una fecha ISO "YYYY-MM-DD" (del OCR) a Date local; null si no es válida.
+function parseOcrDate(iso: string | null): Date | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Mapea las sugerencias del OCR a las filas editables del formulario. Las fechas
+// que el OCR no pudo leer caen a valores por defecto que el admin corrige.
+function ocrToRows(result: CartillaOcrResult): {
+  vaccines: VaccineRow[];
+  dewormings: DewormingRow[];
+} {
+  const today = new Date();
+  const vaccines: VaccineRow[] = result.vaccines.map((v) => {
+    const appliedAt = parseOcrDate(v.appliedAt) ?? today;
+    // Sin catálogo asignado aún, no sabemos la duración: usamos la fecha leída
+    // o un año como placeholder editable.
+    const expiresAt = parseOcrDate(v.expiresAt) ?? addDays(appliedAt, 365);
+    return { catalogId: null, appliedAt, expiresAt };
+  });
+  const dewormings: DewormingRow[] = result.dewormings.map((d) => {
+    const appliedAt = parseOcrDate(d.appliedAt) ?? today;
+    const expiresAt =
+      parseOcrDate(d.expiresAt) ?? addDays(appliedAt, DEWORMING_DEFAULT_DAYS);
+    return {
+      type: d.type,
+      productName: d.productName ?? "",
+      appliedAt,
+      expiresAt,
+      notes: d.notes ?? "",
+    };
+  });
+  return { vaccines, dewormings };
+}
 
 const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "PENDING", label: "Pendientes" },
@@ -137,6 +178,28 @@ export default function AdminCartillas() {
       }
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  // OCR: lee las fotos con Claude y prellena las filas de captura.
+  const ocrMutation = useMutation({
+    mutationFn: (petId: string) => ocrCartilla(petId),
+    onSuccess: (result) => {
+      const { vaccines, dewormings } = ocrToRows(result);
+      setVaccineRows(vaccines);
+      setDewormingRows(dewormings);
+      const total = vaccines.length + dewormings.length;
+      if (total === 0) {
+        Alert.alert(
+          "Sin resultados",
+          "No se detectaron vacunas ni desparasitaciones legibles. Captúralas manualmente."
+        );
+      } else {
+        showSuccess(
+          `Leídas ${vaccines.length} vacuna(s) y ${dewormings.length} desparasitación(es). Revisa y corrige.`
+        );
+      }
+    },
+    onError: (e: Error) => Alert.alert("No se pudo leer", e.message),
   });
 
   const invalidateAfterVaccineChange = () => {
@@ -893,6 +956,34 @@ export default function AdminCartillas() {
                 {/* Modo: capturando vacunas */}
                 {capturing && (
                   <View style={{ marginTop: 14 }}>
+                    {/* Leer la cartilla con IA para prellenar las filas. */}
+                    <TouchableOpacity
+                      style={[
+                        styles.btn,
+                        styles.btnGhost,
+                        { marginBottom: 12 },
+                      ]}
+                      onPress={() =>
+                        selectedPet && ocrMutation.mutate(selectedPet.id)
+                      }
+                      disabled={ocrMutation.isPending}
+                    >
+                      {ocrMutation.isPending ? (
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                      ) : (
+                        <Ionicons
+                          name="sparkles-outline"
+                          size={18}
+                          color={COLORS.primary}
+                        />
+                      )}
+                      <Text style={[styles.btnText, { color: COLORS.primary }]}>
+                        {ocrMutation.isPending
+                          ? "Leyendo cartilla..."
+                          : "Leer con IA"}
+                      </Text>
+                    </TouchableOpacity>
+
                     <VaccineCapture
                       key={`vc-${selectedPet?.id ?? "none"}`}
                       rows={vaccineRows}
