@@ -61,7 +61,9 @@ end $$;
 -- ============================================================================
 -- El admin (apps/admin) consume estas vistas por su nombre original en español
 -- para mantener continuidad del UI. Los ingresos salen de `payments` (filtrando
--- a los efectivamente cobrados, status = 'PAID'); los egresos de `expenses`.
+-- a los efectivamente cobrados: status PAID o PARTIAL — el anticipo de una
+-- reserva hecha desde la app nace PARTIAL y nunca transiciona a PAID; al
+-- liquidar se crea otro Payment RESTANTE/PAID); los egresos de `expenses`.
 -- El servicio/estado se mapean de vuelta a las etiquetas en español que el
 -- dashboard ya conoce (HOTEL/ESTETICA/GUARDERIA, RESERVADA/EN_CURSO/...).
 
@@ -85,7 +87,7 @@ with base as (
     extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
     p.amount
   from payments p
-  where p.status = 'PAID'
+  where p.status in ('PAID', 'PARTIAL')
 )
 select
   anio,
@@ -209,7 +211,7 @@ pagos as (
   left join bano_por_reserva    b  on b.rid  = r.id
   left join deworm_por_reserva  d  on d.rid  = r.id
   left join extra_por_reserva   ex on ex.rid = r.id
-  where p.status = 'PAID'
+  where p.status in ('PAID', 'PARTIAL')
 ),
 atribuido as (
   select
@@ -268,7 +270,7 @@ select
 from payments p
 join reservations r on r.id = p."reservationId"
 join pets pe        on pe.id = r."petId"
-where p.status = 'PAID'
+where p.status in ('PAID', 'PARTIAL')
 group by 1, 2, pe.id, pe.name;
 
 -- --- Ocupación actual del hotel --------------------------------------------
