@@ -624,6 +624,11 @@ model Payment {
   kind                  PaymentKind   @default(FULL)
   reference             String? // Referencia de transferencia o recibo
   stripePaymentIntentId String?       @unique
+  // Comisión que Stripe descuenta del anticipo/pago hecho desde la app (en la
+  // moneda del pago). El neto que realmente cae = amount - stripeFeeAmount. Se
+  // resta del ingreso global (ver packages/db/sql/dashboard_views.sql). NULL =
+  // no aplica (efectivo/transferencia/terminal) o aún no conciliado con Stripe.
+  stripeFeeAmount       Decimal?      @db.Decimal(10, 2)
   paidAt                DateTime?
   notes                 String?
   // Pagos migrados del Excel histórico (web `pagos`).

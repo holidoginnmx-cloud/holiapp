@@ -85,7 +85,10 @@ with base as (
   select
     extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
     extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
-    p.amount
+    -- Neto real: se resta la comisión que absorbe el negocio — Stripe
+    -- (stripeFeeAmount, pagos de la app) y terminal Getnet (cardFeeAmount, cobros
+    -- con tarjeta). En efectivo/transferencia ambas son NULL → 0.
+    (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) as amount
   from payments p
   where p.status in ('PAID', 'PARTIAL')
 )
@@ -183,7 +186,9 @@ pagos as (
     extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
     extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
     r."reservationType" as tipo,
-    p.amount            as monto,
+    -- Neto real: se resta la comisión que absorbe el negocio (Stripe + terminal;
+    -- NULL → 0 en efectivo/transferencia).
+    (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) as monto,
     -- Baño incluido, extra y base del hospedaje (solo aplica a estancias STAY).
     case when r."reservationType" = 'STAY'
          then coalesce(b.bano_base, 0) else 0 end as bano_base,
@@ -200,8 +205,9 @@ pagos as (
               0)
          else coalesce(r."totalAmount", 0) end    as hotel_base,
     -- Suma de pagos previos de la MISMA reserva, en orden cronológico. Define el
-    -- punto del "waterfall" en el que entra este pago.
-    coalesce(sum(p.amount) over (
+    -- punto del "waterfall" en el que entra este pago. También en neto para que
+    -- las bandas del waterfall cuadren con `monto`.
+    coalesce(sum(p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) over (
       partition by p."reservationId"
       order by coalesce(p."paidAt", p."createdAt"), p."createdAt", p.id
       rows between unbounded preceding and 1 preceding
@@ -266,7 +272,8 @@ select
   extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
   pe.id                         as perro_id,
   pe.name                       as perro_nombre,
-  sum(p.amount)::numeric(12, 2) as total
+  -- Neto real (Stripe + terminal), consistente con las demás vistas de ingresos.
+  sum(p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0))::numeric(12, 2) as total
 from payments p
 join reservations r on r.id = p."reservationId"
 join pets pe        on pe.id = r."petId"

@@ -133,6 +133,32 @@ async function handlePaymentIntentSucceeded(
     });
   }
 
+  // Guardar la comisión de Stripe (bruto - neto) para que los ingresos globales
+  // cuenten el neto real que cae a la cuenta, sin tocar `amount` (que sigue
+  // bruto). El balance_transaction puede estar `pending` en pagos con tarjeta
+  // MXN y aún no traer `fee`; el guard por null hace esto idempotente y el
+  // script backfill-stripe-fees.ts recoge los que queden pendientes.
+  if (payment.stripeFeeAmount == null) {
+    try {
+      const full = await stripe.paymentIntents.retrieve(pi.id, {
+        expand: ["latest_charge.balance_transaction"],
+      });
+      const charge = full.latest_charge as Stripe.Charge | null;
+      const bt = charge?.balance_transaction;
+      if (bt && typeof bt !== "string" && bt.fee != null) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { stripeFeeAmount: new Prisma.Decimal(bt.fee / 100) },
+        });
+      }
+    } catch (err) {
+      console.warn(
+        `[webhook] no se pudo obtener la comisión de Stripe del PI ${pi.id}:`,
+        err
+      );
+    }
+  }
+
   // Si el PI es de tipo extension-balance, marcar la change request como pagada.
   if (pi.metadata?.type === "extension-balance" && pi.metadata?.changeRequestId) {
     const cr = await prisma.reservationChangeRequest.findUnique({
