@@ -495,10 +495,10 @@ function ReservationDetailScreenContent() {
               <View style={styles.datePill}>
                 <Text style={styles.datePillLabel}>CHECK-IN</Text>
                 <Text style={styles.datePillDay}>
-                  {formatDayShort(reservation.checkIn)}
+                  {formatDayShort(reservation.checkIn, { timeZone: "UTC" })}
                 </Text>
                 <Text style={styles.datePillSub}>
-                  {formatWeekdayShort(reservation.checkIn)}
+                  {formatWeekdayShort(reservation.checkIn, { timeZone: "UTC" })}
                 </Text>
                 {(canEditCheckInTime || reservation.checkInTime) && (
                   <TouchableOpacity
@@ -547,10 +547,10 @@ function ReservationDetailScreenContent() {
               <View style={styles.datePill}>
                 <Text style={styles.datePillLabel}>CHECK-OUT</Text>
                 <Text style={styles.datePillDay}>
-                  {formatDayShort(reservation.checkOut)}
+                  {formatDayShort(reservation.checkOut, { timeZone: "UTC" })}
                 </Text>
                 <Text style={styles.datePillSub}>
-                  {formatWeekdayShort(reservation.checkOut)}
+                  {formatWeekdayShort(reservation.checkOut, { timeZone: "UTC" })}
                 </Text>
                 {(canEditCheckOutTime || reservation.checkOutTime) && (
                   <TouchableOpacity

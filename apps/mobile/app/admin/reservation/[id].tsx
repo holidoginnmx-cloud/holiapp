@@ -600,10 +600,10 @@ export default function AdminReservationDetail() {
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>ENTRADA</Text>
               <Text style={styles.datePillDay}>
-                {formatDayShort(reservation.checkIn)}
+                {fmtDayShort(reservation.checkIn, { timeZone: "UTC" })}
               </Text>
               <Text style={styles.datePillSub}>
-                {formatWeekday(reservation.checkIn)}
+                {formatWeekdayShort(reservation.checkIn, { timeZone: "UTC" })}
               </Text>
               {reservation.checkInTime && (
                 <Text style={styles.datePillTime}>
@@ -630,10 +630,10 @@ export default function AdminReservationDetail() {
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>SALIDA</Text>
               <Text style={styles.datePillDay}>
-                {formatDayShort(reservation.checkOut)}
+                {fmtDayShort(reservation.checkOut, { timeZone: "UTC" })}
               </Text>
               <Text style={styles.datePillSub}>
-                {formatWeekday(reservation.checkOut)}
+                {formatWeekdayShort(reservation.checkOut, { timeZone: "UTC" })}
               </Text>
               {reservation.checkOutTime && (
                 <Text style={styles.datePillTime}>

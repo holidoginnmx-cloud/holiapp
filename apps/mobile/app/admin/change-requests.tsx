@@ -25,7 +25,9 @@ import { ErrorState } from "@/components/ErrorState";
 import { useSuccessBanner } from "@/components/SuccessBanner";
 
 function formatDate(d: string): string {
-  return formatDayShort(d);
+  // Fechas de estadía (checkIn/checkOut/newCheck*) se guardan a medianoche UTC:
+  // formatear en UTC evita el corrimiento de un día al oeste de UTC.
+  return formatDayShort(d, { timeZone: "UTC" });
 }
 
 function formatMoney(n: number | string): string {

@@ -26,7 +26,9 @@ const SIZE_LABELS: Record<string, string> = {
 };
 
 function formatDate(date: string | Date): string {
-  return formatDayShort(date);
+  // checkIn/checkOut son @db.Date (medianoche UTC): formatear en UTC evita el
+  // corrimiento de un día en zonas al oeste de UTC.
+  return formatDayShort(date, { timeZone: "UTC" });
 }
 
 export default function RoomDetailScreen() {
