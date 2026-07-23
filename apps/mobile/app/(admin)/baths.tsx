@@ -67,11 +67,25 @@ function buildRows(baths: StaffBath[]): Row[] {
   const pending = baths.filter((b) => !isBathDone(b));
   const done = baths.filter((b) => isBathDone(b));
   const out: Row[] = [];
+  const today = todayYMD();
+  const overdue: StaffBath[] = [];
   const byDay = new Map<string, StaffBath[]>();
   for (const b of pending) {
     const ymd = b.appointmentAt ? localYMD(b.appointmentAt) : "—";
+    // Cita con fecha ya pasada y sin completar → sección Atrasados.
+    if (ymd !== "—" && ymd < today) {
+      overdue.push(b);
+      continue;
+    }
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(b);
+  }
+  if (overdue.length > 0) {
+    overdue.sort((a, b) =>
+      localYMD(a.appointmentAt!).localeCompare(localYMD(b.appointmentAt!)),
+    );
+    out.push({ type: "header", title: "Atrasados", count: overdue.length });
+    for (const b of overdue) out.push({ type: "item", bath: b });
   }
   const sortedDays = Array.from(byDay.keys()).sort();
   for (const ymd of sortedDays) {

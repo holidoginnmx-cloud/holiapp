@@ -22,7 +22,15 @@ import { ReservationCard } from "@/components/ReservationCard";
 import { formatName, formatDateLong } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
-type SectionKey = "active" | "stays" | "baths";
+type SectionKey = "active" | "stays" | "baths" | "overdueBaths";
+
+const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
+
+function localYMD(value: string | Date): string {
+  const d = new Date(value);
+  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
+}
 
 export default function AdminDashboard() {
   const firstName = useAuthStore((s) => s.firstName);
@@ -32,6 +40,7 @@ export default function AdminDashboard() {
     active: false,
     stays: false,
     baths: false,
+    overdueBaths: false,
   });
   const toggleSection = (key: SectionKey) =>
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -59,14 +68,26 @@ export default function AdminDashboard() {
     queryFn: () => getReservations({ status: "CONFIRMED" }),
   });
 
-  const { upcomingStays, upcomingBaths } = useMemo(() => {
+  const { upcomingStays, upcomingBaths, overdueBaths } = useMemo(() => {
+    const today = localYMD(new Date());
     const stays = (upcomingReservations ?? []).filter(
       (r) => r.reservationType !== "BATH"
     );
-    const baths = (upcomingReservations ?? []).filter(
+    const allBaths = (upcomingReservations ?? []).filter(
       (r) => r.reservationType === "BATH"
     );
-    return { upcomingStays: stays, upcomingBaths: baths };
+    // Un baño cuya cita ya pasó (appointmentAt < hoy) pero sigue en CONFIRMED
+    // no es un "próximo baño": va a la sección de Atrasados.
+    const overdue = allBaths.filter(
+      (b) => b.appointmentAt && localYMD(b.appointmentAt) < today
+    );
+    const baths = allBaths.filter(
+      (b) => !b.appointmentAt || localYMD(b.appointmentAt) >= today
+    );
+    overdue.sort((a, b) =>
+      localYMD(a.appointmentAt!).localeCompare(localYMD(b.appointmentAt!))
+    );
+    return { upcomingStays: stays, upcomingBaths: baths, overdueBaths: overdue };
   }, [upcomingReservations]);
 
   const { data: pendingChangeRequests } = useQuery({
@@ -407,10 +428,63 @@ export default function AdminDashboard() {
         </View>
       )}
 
+      {/* Overdue Baths */}
+      {overdueBaths.length > 0 && (
+        <View style={styles.section}>
+          <Pressable
+            style={styles.sectionHeaderPressable}
+            onPress={() => toggleSection("overdueBaths")}
+            hitSlop={8}
+            android_ripple={{ color: COLORS.bgSection }}
+          >
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="alert-circle-outline" size={18} color={COLORS.warningText} />
+              <Text style={styles.sectionTitleInline}>Atrasados</Text>
+              <View style={styles.sectionCountBadge}>
+                <Text style={styles.sectionCountText}>{overdueBaths.length}</Text>
+              </View>
+            </View>
+            <Ionicons
+              name={collapsed.overdueBaths ? "chevron-down" : "chevron-up"}
+              size={18}
+              color={COLORS.textTertiary}
+            />
+          </Pressable>
+          {!collapsed.overdueBaths &&
+            overdueBaths.slice(0, 5).map((item) => (
+            <ReservationCard
+              key={item.id}
+              petName={item.pet?.name ?? "—"}
+              roomName={item.room?.name ?? null}
+              status={item.status}
+              checkIn={item.checkIn}
+              checkOut={item.checkOut}
+              reservationType={item.reservationType}
+              appointmentAt={item.appointmentAt}
+              totalAmount={Number(item.totalAmount)}
+              paymentType={item.paymentType}
+              hasBalance={item.hasBalance}
+              hasPendingChangeRequest={item.hasPendingChangeRequest}
+              lastUpdateAt={item.lastUpdateAt}
+              hasReview={item.hasReview}
+              reviewRating={item.reviewRating}
+              adminView
+              hasDeslanado={item.hasDeslanado}
+              hasCorte={item.hasCorte}
+              ownerName={`${item.owner?.firstName ?? ""} ${item.owner?.lastName ?? ""}`.trim() || "Sin dueño"}
+              onPress={() =>
+                router.push(`/admin/reservation/${item.id}` as any)
+              }
+            />
+          ))}
+        </View>
+      )}
+
       {/* Empty state */}
       {!activeReservations?.length &&
         !upcomingStays.length &&
-        !upcomingBaths.length && (
+        !upcomingBaths.length &&
+        !overdueBaths.length && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
               Todo en orden. No hay actividad pendiente.
