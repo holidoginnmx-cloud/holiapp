@@ -550,12 +550,12 @@ const styles = StyleSheet.create({
   },
   segmentText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   segmentTextActive: {
     color: COLORS.textPrimary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   list: {
     padding: 16,
@@ -575,6 +575,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingHorizontal: 32,
@@ -588,11 +589,12 @@ const styles = StyleSheet.create({
   },
   emptyButtonText: {
     color: COLORS.white,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
   },
   errorText: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -604,7 +606,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
   },
 });

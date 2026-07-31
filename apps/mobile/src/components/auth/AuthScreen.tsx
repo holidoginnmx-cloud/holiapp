@@ -67,6 +67,9 @@ const F = {
 
 const HERO_PHOTO = require("../../../assets/login-hero.jpg");
 const HERO_GRADIENT = require("../../../assets/hero-gradient.png");
+/** Alto/ancho de login-hero.jpg y fracción vertical donde está la cabeza. */
+const HERO_PHOTO_AR = 1400 / 788;
+const HERO_FOCUS_Y = 0.64;
 const LOGO_WHITE = require("../../../assets/logo-white.png");
 const LOGO_ASPECT = 900 / 473;
 const MAX_PAWS = 16;
@@ -242,12 +245,24 @@ function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
             },
       ]}
     >
-      {size.h > 0 && (
-        <>
-          <Image source={HERO_PHOTO} style={fill} resizeMode="cover" />
-          <Image source={HERO_GRADIENT} style={fill} resizeMode="stretch" />
-        </>
-      )}
+      {size.h > 0 &&
+        (() => {
+          // En teléfono el héroe es una franja: hacemos el "cover" a mano para
+          // encuadrar la cabeza del perro (HERO_FOCUS_Y) en vez del centro.
+          const imgH = Math.max(size.h, size.w * HERO_PHOTO_AR);
+          const top = isTablet
+            ? 0
+            : Math.min(0, Math.max(size.h - imgH, size.h / 2 - HERO_FOCUS_Y * imgH));
+          const photoStyle = isTablet
+            ? fill
+            : { position: "absolute" as const, left: 0, top, width: size.w, height: imgH };
+          return (
+            <>
+              <Image source={HERO_PHOTO} style={photoStyle} resizeMode="cover" />
+              <Image source={HERO_GRADIENT} style={fill} resizeMode="stretch" />
+            </>
+          );
+        })()}
 
       {/* Rastro de huellas subiendo en diagonal */}
       <View style={size.h > 0 ? fill : StyleSheet.absoluteFill} pointerEvents="none">
@@ -278,7 +293,7 @@ function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
           </View>
         ) : mode === "login" ? (
           <View>
-            <Text style={styles.heroTitle}>Bienvenido al hotel de tu perro.</Text>
+            <Text style={styles.heroTitle}>Bienvenido🐶</Text>
             <Text style={styles.heroSub}>
               Reserva su estancia, mira sus fotos y recógelo feliz.
             </Text>
@@ -833,7 +848,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
         {isTablet && (
           <Animated.View entering={FadeInUp.duration(600)} style={{ marginBottom: 2 }}>
             <Text style={styles.formTitle}>
-              {mode === "login" ? "Bienvenido al hotel de tu perro." : "Únete a la manada."}
+              {mode === "login" ? "Bienvenido" : "Únete a la manada."}
             </Text>
             <Text style={styles.formSub}>
               {mode === "login"

@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   sectionTitle: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     marginTop: 16,
@@ -181,17 +181,18 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
-  hint: { fontSize: 12, color: COLORS.textTertiary, marginTop: 4 },
+  hint: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 4 },
   input: {
     backgroundColor: COLORS.bgSection,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   summaryCard: {
@@ -203,8 +204,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 20,
   },
-  summaryText: { flex: 1, fontSize: 13, color: COLORS.infoText },
-  summaryBold: { fontWeight: "800" },
+  summaryText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.infoText },
+  summaryBold: { fontFamily: "PlusJakartaSans_700Bold" },
   saveBtn: {
     backgroundColor: COLORS.primary,
     padding: 14,
@@ -212,5 +213,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveBtnDisabled: { backgroundColor: COLORS.textDisabled },
-  saveBtnText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+  saveBtnText: { color: COLORS.white, fontSize: 16, fontFamily: "PlusJakartaSans_700Bold" },
 });

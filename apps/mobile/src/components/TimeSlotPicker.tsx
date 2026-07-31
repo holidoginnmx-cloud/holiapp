@@ -152,11 +152,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 12,
     lineHeight: 18,
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   chipTextSelected: {
@@ -195,7 +196,7 @@ const styles = StyleSheet.create({
   },
   chipWarn: {
     fontSize: 9,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
     marginTop: 1,
   },
@@ -209,7 +210,7 @@ const styles = StyleSheet.create({
   },
   clearBtnText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
 });

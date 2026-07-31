@@ -129,12 +129,13 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 12,
   },
@@ -172,11 +173,11 @@ const styles = StyleSheet.create({
   acceptLabel: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   rejectLabel: {
     color: COLORS.textSecondary,
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

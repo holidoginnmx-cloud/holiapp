@@ -786,11 +786,12 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   breed: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 4,
   },
@@ -806,7 +807,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   actionsRow: {
     flexDirection: "row",
@@ -828,7 +829,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   infoGrid: {
@@ -853,11 +854,11 @@ const styles = StyleSheet.create({
     color: COLORS.textDisabled,
     marginTop: 4,
     textTransform: "uppercase",
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   infoValue: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 2,
   },
@@ -881,16 +882,17 @@ const styles = StyleSheet.create({
   },
   infoCardTitle: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   infoCardText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     lineHeight: 20,
   },
   infoCardLabel: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   chipWrap: {
@@ -909,7 +911,7 @@ const styles = StyleSheet.create({
   },
   detailChipText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   contactLabelRow: {
@@ -925,11 +927,12 @@ const styles = StyleSheet.create({
   },
   vet24hText: {
     fontSize: 9,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   contactRelation: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -942,12 +945,13 @@ const styles = StyleSheet.create({
   },
   notesTitle: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.notesText,
     marginBottom: 4,
   },
   notesText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.notesBorder,
     lineHeight: 20,
   },
@@ -981,23 +985,24 @@ const styles = StyleSheet.create({
   contactLabel: {
     fontSize: 11,
     color: COLORS.textDisabled,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     textTransform: "uppercase",
   },
   contactName: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
     marginTop: 1,
   },
   contactPhone: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.primary,
     marginTop: 2,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginHorizontal: 16,
     marginTop: 20,
@@ -1022,7 +1027,7 @@ const styles = StyleSheet.create({
   },
   vaccineName: {
     fontSize: 16,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
     flex: 1,
   },
@@ -1033,7 +1038,7 @@ const styles = StyleSheet.create({
   },
   vaccineBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   vaccineDetails: {
     marginTop: 8,
@@ -1041,17 +1046,20 @@ const styles = StyleSheet.create({
   },
   vaccineDate: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
   vaccineVet: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     marginTop: 4,
     fontStyle: "italic",
   },
   emptyText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     marginTop: 12,
@@ -1077,7 +1085,7 @@ const styles = StyleSheet.create({
   cartillaTitle: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   cartillaBadge: {
@@ -1087,7 +1095,7 @@ const styles = StyleSheet.create({
   },
   cartillaBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   cartillaImage: {
     width: "100%",
@@ -1109,7 +1117,7 @@ const styles = StyleSheet.create({
   },
   cartillaZoomHintText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.white,
   },
   fullSizeOverlay: {
@@ -1140,7 +1148,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     color: COLORS.white,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     backgroundColor: "rgba(0,0,0,0.4)",
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1167,7 +1175,7 @@ const styles = StyleSheet.create({
   },
   cartillaGalleryIndexText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   cartillaEmpty: {
@@ -1180,17 +1188,19 @@ const styles = StyleSheet.create({
   },
   cartillaEmptyText: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
   },
   cartillaEmptyCta: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     marginTop: 2,
   },
   cartillaRejectionText: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.errorText,
     fontStyle: "italic",
   },
@@ -1209,7 +1219,7 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
   },
   toastOverlay: {
@@ -1244,12 +1254,13 @@ const styles = StyleSheet.create({
   },
   toastText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   errorText: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -1261,7 +1272,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
   },
 });

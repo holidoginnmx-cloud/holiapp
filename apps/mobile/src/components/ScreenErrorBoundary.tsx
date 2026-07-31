@@ -53,18 +53,20 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 4,
   },
   message: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 20,
   },
   detail: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     marginTop: 2,
@@ -81,7 +83,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: COLORS.white,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 15,
   },
 });

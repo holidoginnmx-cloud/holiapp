@@ -244,6 +244,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   serviceCard: {
@@ -273,12 +274,12 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   serviceCode: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textDisabled,
     backgroundColor: COLORS.bgSection,
     paddingHorizontal: 6,
@@ -290,7 +291,7 @@ const styles = StyleSheet.create({
   },
   sizeLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     marginBottom: 6,
@@ -307,6 +308,7 @@ const styles = StyleSheet.create({
   },
   variantName: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
   },
   variantInactive: {
@@ -325,7 +327,7 @@ const styles = StyleSheet.create({
   },
   priceText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   modalOverlay: {
@@ -341,18 +343,19 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
   modalLabel: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 6,
   },
@@ -362,7 +365,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   modalButtons: {
@@ -379,7 +382,7 @@ const styles = StyleSheet.create({
   },
   modalBtnCancelText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalBtnConfirm: {
@@ -391,7 +394,7 @@ const styles = StyleSheet.create({
   },
   modalBtnConfirmText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

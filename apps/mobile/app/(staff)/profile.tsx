@@ -287,15 +287,16 @@ const styles = StyleSheet.create({
   avatarText: {
     color: COLORS.white,
     fontSize: 30,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
   },
   name: {
     fontSize: 20,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   email: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 3,
   },
@@ -311,7 +312,7 @@ const styles = StyleSheet.create({
   },
   roleText: {
     color: COLORS.primary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 11,
     letterSpacing: 0.6,
   },
@@ -343,11 +344,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   sectionSubtitle: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -378,13 +380,13 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 20,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginTop: 2,
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 13,
@@ -413,11 +415,12 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   menuSubtitle: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -447,6 +450,6 @@ const styles = StyleSheet.create({
   signOutText: {
     color: COLORS.errorText,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

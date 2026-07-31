@@ -202,6 +202,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },

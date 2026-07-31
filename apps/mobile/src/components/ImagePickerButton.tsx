@@ -121,11 +121,11 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     color: COLORS.textDisabled,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   uploadingText: {
     fontSize: 12,
     color: COLORS.primary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   statusRow: {
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
     letterSpacing: 0.3,
   },
@@ -282,21 +282,22 @@ const styles = StyleSheet.create({
   roomText: {
     fontSize: 11,
     color: COLORS.textTertiary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     flexShrink: 1,
   },
   updateLine: {
     marginTop: 4,
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     lineHeight: 16,
   },
   updateCaption: {
     color: COLORS.textPrimary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   updateTime: {
     color: COLORS.textTertiary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   // Bloque CHECK-IN | progreso | CHECK-OUT
   dateHero: {
@@ -315,19 +316,20 @@ const styles = StyleSheet.create({
   },
   datePillLabel: {
     fontSize: 9,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
     marginBottom: 2,
   },
   datePillDay: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
   datePillSub: {
     fontSize: 10,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textTransform: "capitalize",
     marginTop: 1,
@@ -354,7 +356,7 @@ const styles = StyleSheet.create({
   },
   progressBadgeText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
 });

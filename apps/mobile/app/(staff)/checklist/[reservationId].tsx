@@ -464,11 +464,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
     textTransform: "capitalize",
@@ -487,7 +488,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 14,
   },
@@ -514,15 +515,16 @@ const styles = StyleSheet.create({
   },
   moodEmoji: {
     fontSize: 28,
+    fontFamily: "PlusJakartaSans_400Regular",
   },
   moodLabel: {
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   moodLabelActive: {
     color: COLORS.primary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   switchRow: {
     flexDirection: "row",
@@ -535,7 +537,7 @@ const styles = StyleSheet.create({
   switchLabel: {
     fontSize: 15,
     color: COLORS.textPrimary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   textArea: {
     borderWidth: 1,
@@ -543,6 +545,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     minHeight: 70,
     textAlignVertical: "top",
@@ -559,12 +562,13 @@ const styles = StyleSheet.create({
   },
   photoButtonText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     marginTop: 4,
   },
   photoHint: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   photoPreview: {
@@ -623,7 +627,7 @@ const styles = StyleSheet.create({
   },
   photoChangeText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   submitButton: {
@@ -640,7 +644,7 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   normalDayButton: {
     flexDirection: "row",
@@ -655,7 +659,7 @@ const styles = StyleSheet.create({
   },
   normalDayText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   handoffHeader: {
@@ -701,12 +705,13 @@ const styles = StyleSheet.create({
   },
   successTitle: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
   successSubtitle: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 21,

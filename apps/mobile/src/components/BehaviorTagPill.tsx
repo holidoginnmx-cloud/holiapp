@@ -62,10 +62,11 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   notes: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     fontStyle: "italic",
     marginTop: 4,
     marginLeft: 4,

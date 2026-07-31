@@ -403,14 +403,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.bgPage,
   },
-  heading: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
+  heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
   sub: {
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 16,
     textTransform: "capitalize",
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   // Total hero card
   totalCard: {
@@ -427,13 +427,13 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     letterSpacing: 0.6,
   },
   totalValue: {
     fontSize: 36,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.primary,
     marginTop: 6,
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 4,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   totalSplitRow: {
     flexDirection: "row",
@@ -454,14 +454,15 @@ const styles = StyleSheet.create({
   totalSplitItem: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   totalSplitStrong: {
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   totalSplitDot: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   // Hotel vs Baño card
@@ -496,14 +497,14 @@ const styles = StyleSheet.create({
   },
   categoryLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   categoryAmount: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 2,
   },
@@ -515,7 +516,7 @@ const styles = StyleSheet.create({
   },
   categoryPctText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   barWrap: {
@@ -557,14 +558,14 @@ const styles = StyleSheet.create({
   },
   breakdownTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   breakdownSubtitle: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   // Pagos detalle
   paymentsHeaderRow: {
@@ -576,7 +577,7 @@ const styles = StyleSheet.create({
   },
   paymentsTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   countChip: {
@@ -589,7 +590,7 @@ const styles = StyleSheet.create({
   },
   countChipText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   paymentRow: {
@@ -620,7 +621,7 @@ const styles = StyleSheet.create({
   },
   paymentPet: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     flexShrink: 1,
   },
@@ -631,17 +632,18 @@ const styles = StyleSheet.create({
   },
   catPillText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   paymentOwner: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   paymentMeta: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     marginTop: 2,
   },
@@ -667,11 +669,12 @@ const styles = StyleSheet.create({
   },
   originChipText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   paymentRegistered: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   splitRow: {
@@ -682,16 +685,17 @@ const styles = StyleSheet.create({
   },
   splitItem: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   splitDot: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   paymentAmount: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   paymentAmountRefund: {
@@ -708,7 +712,7 @@ const styles = StyleSheet.create({
   },
   refundPillText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
     color: COLORS.white,
   },
@@ -718,5 +722,5 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 40,
   },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

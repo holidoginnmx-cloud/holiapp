@@ -275,17 +275,18 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   email: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     marginTop: 2,
   },
   sectionTitle: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -311,11 +312,12 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   rowSubtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },

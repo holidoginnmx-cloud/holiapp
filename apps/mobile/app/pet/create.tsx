@@ -907,13 +907,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 20,
   },
   ownerHint: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
     marginTop: -14,
     marginBottom: 20,
@@ -936,7 +936,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 2,
   },
@@ -945,7 +945,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   input: {
@@ -956,6 +956,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   multiline: {
@@ -981,7 +982,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   chipTextSelected: {
@@ -999,7 +1000,7 @@ const styles = StyleSheet.create({
   },
   sizeTagText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   dateButton: {
@@ -1015,6 +1016,7 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   switchRow: {
@@ -1025,7 +1027,7 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   submitButton: {
@@ -1040,12 +1042,13 @@ const styles = StyleSheet.create({
   },
   submitText: {
     fontSize: 17,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   // Cartilla
   cartillaHelp: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     lineHeight: 18,
     marginTop: -8,
@@ -1062,11 +1065,12 @@ const styles = StyleSheet.create({
   cartillaNoteText: {
     flex: 1,
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.warningText,
     lineHeight: 18,
   },
   cartillaNoteStrong: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   cartillaPhotosRow: {
     gap: 10,
@@ -1099,6 +1103,7 @@ const styles = StyleSheet.create({
   },
   cartillaStatusMuted: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     marginTop: 4,
@@ -1113,12 +1118,13 @@ const styles = StyleSheet.create({
   },
   cartillaBadgeText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     flex: 1,
     lineHeight: 18,
   },
   cartillaBadgeSubtext: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     opacity: 0.85,
     marginTop: 2,
   },

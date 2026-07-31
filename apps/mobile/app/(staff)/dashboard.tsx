@@ -834,7 +834,7 @@ const styles = StyleSheet.create({
   },
   sectionLink: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   loadingContainer: {
@@ -849,11 +849,12 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   date: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 4,
     textTransform: "capitalize",
@@ -876,12 +877,13 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
   emptyText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 20,
@@ -932,7 +934,7 @@ const styles = StyleSheet.create({
   stayPetName: {
     flex: 1,
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   statusPill: {
@@ -942,14 +944,14 @@ const styles = StyleSheet.create({
   },
   statusPillText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   stayOwnerName: {
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   stayMeta: {
     flexDirection: "row",
@@ -968,7 +970,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   // Date strip (entrada → salida)
@@ -986,14 +988,14 @@ const styles = StyleSheet.create({
   },
   dateBlockLabel: {
     fontSize: 9,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
     marginBottom: 2,
   },
   dateBlockValue: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
@@ -1020,7 +1022,7 @@ const styles = StyleSheet.create({
   },
   nightsText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   progressRow: {
@@ -1031,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   chevronWrap: {
@@ -1069,7 +1071,7 @@ const styles = StyleSheet.create({
   },
   bathTypePillText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.white,
   },
@@ -1084,7 +1086,7 @@ const styles = StyleSheet.create({
   },
   bathTimeText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     letterSpacing: -0.2,
   },

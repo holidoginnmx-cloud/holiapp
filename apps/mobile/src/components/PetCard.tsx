@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
   },
   photoBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     letterSpacing: 0.3,
   },
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   },
   photoName: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.white,
     letterSpacing: 0.3,
     textShadowColor: "rgba(0,0,0,0.45)",
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255,255,255,0.95)",
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     textShadowColor: "rgba(0,0,0,0.4)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   breed: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     flexShrink: 1,
   },
   chipRow: {
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   actionsRow: {
     flexDirection: "row",
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
   actionPrimaryText: {
     color: COLORS.white,
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   actionSecondary: {
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   actionSecondaryText: {
     color: COLORS.primary,
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   addCartillaBtn: {
@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
   addCartillaText: {
     color: COLORS.warningText,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   addCartillaChevron: {
     marginLeft: "auto",

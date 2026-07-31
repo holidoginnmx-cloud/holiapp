@@ -74,9 +74,9 @@ export default function AdminCheckinsToday() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bgPage, padding: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.bgPage },
-  heading: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
-  sub: { fontSize: 13, color: COLORS.textTertiary, marginTop: 2, marginBottom: 16 },
+  heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
+  sub: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2, marginBottom: 16 },
   list: { gap: 10, paddingBottom: 32 },
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

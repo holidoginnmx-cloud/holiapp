@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   slide: {
@@ -158,13 +158,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 12,
   },
   body: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 22,
@@ -200,6 +201,6 @@ const styles = StyleSheet.create({
   nextButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

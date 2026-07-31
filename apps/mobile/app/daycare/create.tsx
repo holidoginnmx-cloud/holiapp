@@ -706,7 +706,7 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 60, gap: 8 },
   sectionTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 18,
     marginBottom: 8,
@@ -734,8 +734,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  petName: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
-  petMeta: { fontSize: 13, color: COLORS.textTertiary, marginTop: 2 },
+  petName: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  petMeta: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
   emptyCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -744,7 +744,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
   },
-  emptyText: { flex: 1, fontSize: 13, color: COLORS.warningText },
+  emptyText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.warningText },
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -753,7 +753,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
   },
-  dateText: { flex: 1, fontSize: 15, color: COLORS.textPrimary, fontWeight: "600" },
+  dateText: { flex: 1, fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   capacityBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -767,7 +767,7 @@ const styles = StyleSheet.create({
   capacityBannerText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   capacityBannerFull: {
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
   capacityBannerFullText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.errorText,
   },
   timesRow: {
@@ -801,19 +801,19 @@ const styles = StyleSheet.create({
   },
   timeButtonLabel: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
     marginBottom: 3,
   },
   timeButtonValue: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   timeButtonPlaceholder: {
     color: COLORS.textDisabled,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   timeErrorRow: {
     flexDirection: "row",
@@ -825,7 +825,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: COLORS.errorText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   hoursNote: {
     flexDirection: "row",
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: COLORS.infoText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     lineHeight: 17,
   },
   toggleRow: {
@@ -859,9 +859,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primaryLight,
   },
-  toggleTitle: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
-  toggleSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
-  deliveryFeeText: { fontSize: 15, fontWeight: "700", color: COLORS.primary },
+  toggleTitle: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  toggleSub: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
+  deliveryFeeText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   deliveryQuoteRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -874,7 +874,7 @@ const styles = StyleSheet.create({
   deliveryQuoteText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   priceCard: {
@@ -889,9 +889,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontWeight: "600", flexShrink: 1 },
-  priceValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
-  priceLineValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontFamily: "PlusJakartaSans_600SemiBold", flexShrink: 1 },
+  priceValue: { fontSize: 20, fontFamily: "Outfit_600SemiBold", color: COLORS.primary },
+  priceLineValue: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   discountRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
   discountInput: {
     flex: 1,
@@ -901,6 +901,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     backgroundColor: "#fff",
   },
@@ -913,9 +914,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   discountApplyBtnDisabled: { opacity: 0.5 },
-  discountApplyText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  discountApplyText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
   discountAppliedValue: { flexDirection: "row", alignItems: "center", gap: 8 },
-  discountValueText: { fontSize: 15, fontWeight: "700", color: COLORS.successText },
+  discountValueText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.successText },
   priceDivider: {
     height: 1,
     backgroundColor: COLORS.bgSection,
@@ -937,6 +938,6 @@ const styles = StyleSheet.create({
   payButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginTop: 12,
@@ -183,12 +183,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
   hint: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 16,
     fontStyle: "italic",
@@ -209,6 +211,6 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

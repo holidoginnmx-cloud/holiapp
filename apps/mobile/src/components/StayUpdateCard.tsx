@@ -74,11 +74,13 @@ const styles = StyleSheet.create({
   },
   caption: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 20,
   },
   time: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     marginTop: 4,
   },

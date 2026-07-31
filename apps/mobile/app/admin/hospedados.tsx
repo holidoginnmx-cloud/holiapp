@@ -135,9 +135,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.bgPage,
   },
-  heading: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
+  heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
   sub: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 12,
@@ -155,6 +156,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },
@@ -165,5 +167,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

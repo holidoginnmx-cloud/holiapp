@@ -202,6 +202,7 @@ const styles = StyleSheet.create({
   introText: {
     flex: 1,
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 18,
   },
@@ -217,7 +218,7 @@ const styles = StyleSheet.create({
   },
   newClientBtnText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   searchContainer: {
@@ -236,6 +237,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   list: {
@@ -265,7 +267,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   clientInfo: {
     flex: 1,
@@ -273,11 +275,12 @@ const styles = StyleSheet.create({
   },
   clientName: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   clientSub: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -288,6 +291,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingHorizontal: 24,

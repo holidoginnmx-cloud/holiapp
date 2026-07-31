@@ -155,13 +155,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 12,
   },
   subtitle: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 22,
@@ -181,15 +182,16 @@ const styles = StyleSheet.create({
   depositText: {
     flex: 1,
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 18,
   },
   depositAmount: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   depositBold: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   actions: {
@@ -209,7 +211,7 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   secondaryBtn: {
     paddingVertical: 12,
@@ -218,6 +220,6 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: COLORS.textSecondary,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

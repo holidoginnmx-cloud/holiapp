@@ -369,12 +369,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 20,
@@ -393,6 +394,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: COLORS.errorText,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     flex: 1,
   },
   inputGroup: {
@@ -400,7 +402,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   input: {
@@ -411,6 +413,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   button: {
@@ -426,7 +429,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   linkBtn: {
     alignItems: "center",
@@ -435,7 +438,7 @@ const styles = StyleSheet.create({
   linkText: {
     color: COLORS.primary,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   noResult: {
     flexDirection: "row",
@@ -450,6 +453,7 @@ const styles = StyleSheet.create({
   noResultText: {
     flex: 1,
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     lineHeight: 18,
   },
@@ -463,7 +467,7 @@ const styles = StyleSheet.create({
   },
   candidateName: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   petRow: {
@@ -493,7 +497,7 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   confirmButton: {
@@ -505,7 +509,7 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   skipBtn: {
     alignItems: "center",
@@ -515,10 +519,11 @@ const styles = StyleSheet.create({
   skipText: {
     color: COLORS.textTertiary,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   pickHint: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     lineHeight: 18,
     marginTop: -4,
@@ -540,6 +545,7 @@ const styles = StyleSheet.create({
   },
   petMeta: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },

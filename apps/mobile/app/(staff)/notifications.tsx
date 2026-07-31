@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   },
   markAllText: {
     color: COLORS.primary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 14,
   },
   sectionHeader: {
@@ -197,17 +197,19 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   errorText: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -219,7 +221,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
   },
 });

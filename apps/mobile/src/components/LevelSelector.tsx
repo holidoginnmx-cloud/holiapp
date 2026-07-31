@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 8,
   },
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   optionTextSelected: {

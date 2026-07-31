@@ -169,13 +169,14 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
 });

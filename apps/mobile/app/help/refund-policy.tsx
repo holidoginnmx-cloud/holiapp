@@ -161,6 +161,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
   lead: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 21,
     marginBottom: 20,
@@ -188,12 +189,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     flex: 1,
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   sectionBody: { gap: 6 },
   paragraph: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 20,
   },
@@ -205,21 +207,23 @@ const styles = StyleSheet.create({
   bulletDot: {
     fontSize: 14,
     color: COLORS.primary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     lineHeight: 20,
   },
   bulletText: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 20,
   },
   strong: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   footer: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     marginTop: 16,

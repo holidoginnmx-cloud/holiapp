@@ -224,10 +224,11 @@ const styles = StyleSheet.create({
   },
   moodPillEmoji: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
   },
   moodPillLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   checksInline: {
@@ -242,11 +243,12 @@ const styles = StyleSheet.create({
   },
   moodEmojiHero: {
     fontSize: 36,
+    fontFamily: "PlusJakartaSans_400Regular",
     marginBottom: 2,
   },
   moodLabelHero: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   // Fila de checks (3 items distribuidos) — usada por simplified.
@@ -269,11 +271,12 @@ const styles = StyleSheet.create({
   checkLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   // Notas y handoff.
   notes: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     marginTop: 10,
     lineHeight: 17,
@@ -291,7 +294,7 @@ const styles = StyleSheet.create({
   },
   handoffLabel: {
     fontSize: 9,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.infoText,
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -299,6 +302,7 @@ const styles = StyleSheet.create({
   },
   handoffText: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 17,
   },
@@ -321,7 +325,7 @@ const styles = StyleSheet.create({
   evidenceText: {
     fontSize: 11,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   // Compact card (con thumbnail) — sin cambios mayores.
   compactCard: {
@@ -355,7 +359,7 @@ const styles = StyleSheet.create({
   },
   compactDate: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   compactMoodWrap: {
@@ -365,10 +369,11 @@ const styles = StyleSheet.create({
   },
   compactMoodEmoji: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
   },
   compactMoodLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   compactChecks: {
@@ -384,7 +389,7 @@ const styles = StyleSheet.create({
   },
   compactCheckLabel: {
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
 });

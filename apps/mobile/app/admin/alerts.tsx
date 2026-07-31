@@ -463,6 +463,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
   },
@@ -496,11 +497,12 @@ const styles = StyleSheet.create({
   },
   alertType: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   alertDate: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     marginTop: 1,
   },
@@ -518,15 +520,16 @@ const styles = StyleSheet.create({
   resolveBtnFullText: {
     color: COLORS.white,
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   resolvedLabel: {
     fontSize: 11,
     color: COLORS.successText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   alertDescription: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 20,
     marginBottom: 10,
@@ -547,7 +550,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
 });

@@ -73,7 +73,7 @@ export default function PrivacyScreen() {
 }
 
 const styles = StyleSheet.create({
-  h2: { fontSize: 16, fontWeight: "700", color: COLORS.textPrimary, marginTop: 14, marginBottom: 4 },
-  p: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
-  foot: { marginTop: 20, fontSize: 12, color: "#92400E", fontStyle: "italic", fontWeight: "600" },
+  h2: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary, marginTop: 14, marginBottom: 4 },
+  p: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textSecondary, lineHeight: 22 },
+  foot: { marginTop: 20, fontSize: 12, color: "#92400E", fontStyle: "italic", fontFamily: "PlusJakartaSans_600SemiBold" },
 });

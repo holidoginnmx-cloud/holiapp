@@ -18,7 +18,7 @@ export default function ProfileLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
         headerLeft: backButton,
         animation: "slide_from_right",
         animationTypeForReplace: "pop",

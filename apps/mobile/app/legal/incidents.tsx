@@ -161,26 +161,28 @@ export default function IncidentPolicyScreen() {
 const styles = StyleSheet.create({
   h2: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 14,
     marginBottom: 4,
   },
   p: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 22,
     marginBottom: 4,
   },
   li: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 22,
     marginLeft: 8,
     marginBottom: 2,
   },
   b: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   foot: {
@@ -188,6 +190,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#92400E",
     fontStyle: "italic",
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

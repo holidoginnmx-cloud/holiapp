@@ -49,7 +49,7 @@ export default function AdminLayout() {
           paddingBottom: 4,
         },
         headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
       }}
     >
       <Tabs.Screen

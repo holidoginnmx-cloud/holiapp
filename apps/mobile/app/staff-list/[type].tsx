@@ -326,6 +326,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 12,
   },
@@ -352,11 +353,12 @@ const styles = StyleSheet.create({
   stayInfo: { flex: 1, gap: 2 },
   stayPetName: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   stayOwnerName: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   metaRow: {
@@ -377,7 +379,7 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 11,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   empty: {
     alignItems: "center",
@@ -395,13 +397,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 18,

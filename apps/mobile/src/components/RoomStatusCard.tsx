@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     flex: 1,
   },
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   occupantRow: {
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   occupantText: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     flex: 1,
   },
   checkoutPill: {
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   },
   checkoutText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
   },
   metaRow: {
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
 });

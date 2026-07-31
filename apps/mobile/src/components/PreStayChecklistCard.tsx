@@ -183,14 +183,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 1,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   list: {
     gap: 8,
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: COLORS.textPrimary,
-    fontWeight: "500",
+    fontFamily: "PlusJakartaSans_500Medium",
   },
   itemLabelChecked: {
     color: COLORS.textTertiary,

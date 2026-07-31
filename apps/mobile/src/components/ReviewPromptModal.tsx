@@ -171,12 +171,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     marginTop: 4,
@@ -190,14 +191,14 @@ const styles = StyleSheet.create({
   },
   ratingLabel: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     textAlign: "center",
     marginBottom: 20,
   },
   commentLabel: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 8,
   },
@@ -209,6 +210,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     minHeight: 100,
     textAlignVertical: "top",
@@ -225,7 +227,7 @@ const styles = StyleSheet.create({
   },
   submitText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   laterButton: {
@@ -235,7 +237,7 @@ const styles = StyleSheet.create({
   },
   laterText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
 });

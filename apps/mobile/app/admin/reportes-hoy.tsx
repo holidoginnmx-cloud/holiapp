@@ -147,9 +147,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.bgPage,
   },
-  heading: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
+  heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
   sub: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 16,
@@ -168,11 +169,11 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
   },
   summaryLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -200,11 +201,12 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   metaText: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -219,7 +221,7 @@ const styles = StyleSheet.create({
   },
   missingBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   doneBadge: {
@@ -233,7 +235,7 @@ const styles = StyleSheet.create({
   },
   doneBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   emptyWrap: {
@@ -242,5 +244,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

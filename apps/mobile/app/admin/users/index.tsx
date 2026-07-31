@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: 16,
     color: COLORS.primary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   titleRow: {
     flexDirection: "row",
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   newClientBtn: {
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
   },
   newClientBtnText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   filterRow: {
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   },
   filterPillText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.2,
   },
   filterCountBubble: {
@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   },
   filterCountText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   searchWrap: {
     flexDirection: "row",
@@ -443,6 +443,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },
@@ -472,7 +473,7 @@ const styles = StyleSheet.create({
   },
   appBadgeText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   userCard: {
     flexDirection: "row",
@@ -501,11 +502,12 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   userEmail: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   userEmailMuted: {
@@ -524,7 +526,7 @@ const styles = StyleSheet.create({
   },
   roleBadgeText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   inactiveBadge: {
     backgroundColor: COLORS.errorBg,
@@ -534,7 +536,7 @@ const styles = StyleSheet.create({
   },
   inactiveBadgeText: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
   },
   toggleButton: {
@@ -551,6 +553,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     color: COLORS.textDisabled,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

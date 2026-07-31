@@ -286,11 +286,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: COLORS.infoText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   sectionSub: {
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 10,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   fieldGroup: {
     marginBottom: 12,
@@ -311,13 +311,13 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   fieldHint: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   inputWrap: {
     flexDirection: "row",
@@ -330,32 +330,32 @@ const styles = StyleSheet.create({
   },
   currency: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     paddingRight: 4,
   },
   input: {
     flex: 1,
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     paddingVertical: 12,
   },
   unit: {
     fontSize: 13,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     paddingLeft: 6,
   },
   exampleText: {
     marginTop: 8,
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   exampleStrong: {
     color: COLORS.primary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   saveBtn: {
     marginTop: 24,
@@ -370,6 +370,6 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

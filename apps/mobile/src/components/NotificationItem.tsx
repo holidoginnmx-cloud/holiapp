@@ -150,15 +150,16 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   titleUnread: {
     color: COLORS.textPrimary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   bodyText: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     marginTop: 3,
     lineHeight: 18,
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textTertiary,
     marginTop: 6,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   dot: {
     width: 8,

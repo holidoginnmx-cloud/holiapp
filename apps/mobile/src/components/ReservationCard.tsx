@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     flex: 1,
   },
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
   },
   bathTagText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.infoText,
     letterSpacing: 0.3,
   },
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   subtitleRow: {
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
   subtitleText: {
     fontSize: 13,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     flexShrink: 1,
   },
   staffRow: {
@@ -563,13 +563,13 @@ const styles = StyleSheet.create({
   },
   staffText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   staffTextUnassigned: {
     color: COLORS.textDisabled,
     fontStyle: "italic",
-    fontWeight: "500",
+    fontFamily: "PlusJakartaSans_500Medium",
   },
   indicatorsRow: {
     flexDirection: "row",
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
   },
   indicatorText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   // Date hero
@@ -608,19 +608,20 @@ const styles = StyleSheet.create({
   },
   datePillLabel: {
     fontSize: 9,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
     marginBottom: 2,
   },
   datePillDay: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
   datePillSub: {
     fontSize: 10,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textTransform: "capitalize",
     marginTop: 1,
@@ -647,7 +648,7 @@ const styles = StyleSheet.create({
   },
   nightsBadgeText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Bath hero
@@ -671,7 +672,7 @@ const styles = StyleSheet.create({
   },
   bathBadgeText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathInfoRow: {
@@ -681,13 +682,13 @@ const styles = StyleSheet.create({
   },
   bathDay: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
   bathTime: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   bathExtrasRow: {
@@ -707,7 +708,7 @@ const styles = StyleSheet.create({
   },
   bathExtraChipText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathExtraChipWhen: {
@@ -721,7 +722,7 @@ const styles = StyleSheet.create({
   },
   bathExtraChipWhenText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.infoText,
   },
   // Total footer
@@ -736,14 +737,14 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   totalAmount: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
 });

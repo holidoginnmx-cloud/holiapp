@@ -251,15 +251,16 @@ const styles = StyleSheet.create({
   avatarText: {
     color: COLORS.white,
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
   },
   profileName: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   profileEmail: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -276,7 +277,7 @@ const styles = StyleSheet.create({
   },
   roleBadgeText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     letterSpacing: 0.5,
   },
@@ -316,11 +317,12 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   menuSubtitle: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -336,7 +338,7 @@ const styles = StyleSheet.create({
   },
   menuBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

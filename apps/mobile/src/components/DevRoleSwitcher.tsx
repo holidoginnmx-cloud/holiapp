@@ -82,11 +82,11 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
   },
   arrow: {
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

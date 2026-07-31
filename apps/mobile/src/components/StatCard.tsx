@@ -88,11 +88,12 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   label: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -112,7 +113,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

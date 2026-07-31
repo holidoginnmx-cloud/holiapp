@@ -355,21 +355,21 @@ const styles = StyleSheet.create({
   },
   topTitle: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   topSub: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   swipeWrap: { flex: 1, overflow: "hidden" },
   swipeTrack: { flex: 1, flexDirection: "row" },
   listContent: { padding: 16, paddingBottom: 40 },
   sectionHeader: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -399,12 +399,12 @@ const styles = StyleSheet.create({
   callBtnText: {
     color: COLORS.primary,
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   emptyCard: {
     alignItems: "center",
     padding: 24,
     gap: 8,
   },
-  emptyText: { fontSize: 13, color: COLORS.textDisabled },
+  emptyText: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

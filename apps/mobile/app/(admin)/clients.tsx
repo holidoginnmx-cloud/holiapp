@@ -361,10 +361,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   countLabel: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -399,6 +401,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   ownerCard: {
@@ -436,7 +439,7 @@ const styles = StyleSheet.create({
   ownerAvatarText: {
     color: COLORS.white,
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   ownerInfo: {
     flex: 1,
@@ -444,11 +447,12 @@ const styles = StyleSheet.create({
   },
   ownerName: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   ownerEmail: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -473,7 +477,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   expandBtn: {
@@ -516,11 +520,12 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   petBreed: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -531,7 +536,7 @@ const styles = StyleSheet.create({
   },
   cartillaBadgeText: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
 });

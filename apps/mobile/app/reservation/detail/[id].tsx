@@ -47,10 +47,10 @@ import { cloudinaryResized } from "@/lib/cloudinary";
 export function ErrorBoundary({ error }: { error: Error }) {
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 20 }}>
-      <Text style={{ fontSize: 18, fontWeight: "700", color: COLORS.errorText, marginBottom: 8 }}>
+      <Text style={{ fontSize: 18, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.errorText, marginBottom: 8 }}>
         Error en la pantalla
       </Text>
-      <Text style={{ fontSize: 14, color: COLORS.textTertiary, textAlign: "center" }}>
+      <Text style={{ fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, textAlign: "center" }}>
         {error.message}
       </Text>
     </View>

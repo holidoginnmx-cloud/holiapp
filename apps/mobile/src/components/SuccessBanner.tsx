@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   text: {
     flexShrink: 1,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
 });

@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   dropdown: {
@@ -103,5 +104,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.bgSection,
   },
-  rowText: { fontSize: 15, color: COLORS.textPrimary },
+  rowText: { fontSize: 15, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textPrimary },
 });

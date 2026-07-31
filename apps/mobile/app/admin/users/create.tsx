@@ -204,12 +204,13 @@ const styles = StyleSheet.create({
   introText: {
     flex: 1,
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 18,
   },
   label: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginTop: 4,
@@ -220,6 +221,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -230,12 +232,14 @@ const styles = StyleSheet.create({
   },
   fieldError: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.errorText,
     marginTop: -6,
     marginBottom: 12,
   },
   fieldHint: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: -6,
     marginBottom: 12,
@@ -255,7 +259,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

@@ -512,11 +512,12 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   date: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
     textTransform: "capitalize",
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
@@ -560,7 +561,7 @@ const styles = StyleSheet.create({
   },
   sectionTitleInline: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   sectionCountBadge: {
@@ -574,7 +575,7 @@ const styles = StyleSheet.create({
   },
   sectionCountText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   horizontalList: {
@@ -589,6 +590,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   changeRequestsBanner: {
@@ -609,11 +611,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  changeRequestsTitle: { color: COLORS.white, fontWeight: "800", fontSize: 15 },
-  changeRequestsSubtitle: { color: COLORS.white, opacity: 0.85, fontSize: 12, marginTop: 2 },
+  changeRequestsTitle: { color: COLORS.white, fontFamily: "PlusJakartaSans_700Bold", fontSize: 15 },
+  changeRequestsSubtitle: { color: COLORS.white, opacity: 0.85, fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", marginTop: 2 },
   seeAll: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
     textAlign: "center",
     paddingVertical: 8,

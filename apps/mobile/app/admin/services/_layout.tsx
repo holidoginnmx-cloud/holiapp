@@ -19,7 +19,7 @@ export default function ServicesLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
         headerTintColor: COLORS.primary,
         animation: "slide_from_right",
         animationTypeForReplace: "pop",

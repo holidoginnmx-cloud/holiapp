@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     lineHeight: 18,
   },
 });

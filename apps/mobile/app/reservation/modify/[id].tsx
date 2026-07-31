@@ -349,11 +349,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 16,
   },
@@ -366,7 +367,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.infoBg,
     marginBottom: 12,
   },
-  hintText: { flex: 1, fontSize: 13, color: COLORS.infoText },
+  hintText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.infoText },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 12,
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
     marginTop: 4,
   },
@@ -392,14 +393,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgPage,
   },
   dateFieldDisabled: { opacity: 0.5 },
-  dateText: { fontSize: 15, color: COLORS.textPrimary, fontWeight: "600" },
+  dateText: { fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  rowLabel: { fontSize: 14, color: COLORS.textTertiary },
-  rowValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  rowLabel: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },
+  rowValue: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   modeBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
   },
   modeText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   errorBox: {
@@ -420,10 +421,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
-  errorText: { color: COLORS.errorText, fontSize: 13 },
+  errorText: { color: COLORS.errorText, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular" },
   sectionTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
@@ -440,9 +441,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     backgroundColor: COLORS.reviewBg,
   },
-  choiceLabel: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
+  choiceLabel: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   choiceSubtitle: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -453,5 +455,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  submitText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+  submitText: { color: COLORS.white, fontSize: 16, fontFamily: "PlusJakartaSans_700Bold" },
 });

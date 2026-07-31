@@ -625,13 +625,13 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 28,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginBottom: 12,
     marginTop: 8,
@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
   },
   sectionTitleInline: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   heroEmpty: {
@@ -673,13 +673,14 @@ const styles = StyleSheet.create({
   },
   heroEmptyTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 6,
   },
   heroEmptySub: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 20,
@@ -710,12 +711,12 @@ const styles = StyleSheet.create({
   },
   heroEmptyBtnTextPrimary: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   heroEmptyBtnTextSecondary: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   primaryActions: {
@@ -750,13 +751,13 @@ const styles = StyleSheet.create({
   },
   actionTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   actionSub: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginTop: 2,
   },
@@ -799,11 +800,12 @@ const styles = StyleSheet.create({
   },
   alertTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   alertSub: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.warningText,
     marginTop: 1,
     opacity: 0.85,
@@ -830,11 +832,12 @@ const styles = StyleSheet.create({
   },
   creditTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   creditSub: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     marginTop: 2,
   },
@@ -870,12 +873,13 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
   errorText: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -887,7 +891,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
   },
 });

@@ -388,8 +388,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
   },
   tabActive: { borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 13, fontWeight: "600", color: COLORS.textTertiary },
-  tabTextActive: { color: COLORS.primary, fontWeight: "700" },
+  tabText: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
+  tabTextActive: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold" },
   list: { padding: 16, paddingBottom: 32 },
   card: {
     backgroundColor: COLORS.white,
@@ -419,8 +419,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cardType: { fontSize: 14, fontWeight: "800", color: COLORS.textPrimary },
-  cardDate: { fontSize: 11, color: COLORS.textTertiary, marginTop: 1 },
+  cardType: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  cardDate: { fontSize: 11, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 1 },
   resolvedPill: {
     backgroundColor: COLORS.successBg,
     paddingHorizontal: 8,
@@ -429,11 +429,12 @@ const styles = StyleSheet.create({
   },
   resolvedPillText: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   description: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 18,
     marginBottom: 8,
@@ -452,7 +453,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
   },
-  metaText: { fontSize: 11, color: COLORS.textTertiary, fontWeight: "600" },
+  metaText: { fontSize: 11, color: COLORS.textTertiary, fontFamily: "PlusJakartaSans_600SemiBold" },
   resolveBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -466,7 +467,7 @@ const styles = StyleSheet.create({
   resolveBtnText: {
     color: COLORS.white,
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   empty: {
     alignItems: "center",
@@ -484,19 +485,21 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 18,
   },
   errorText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -506,5 +509,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
   },
-  retryText: { color: COLORS.white, fontWeight: "700", fontSize: 14 },
+  retryText: { color: COLORS.white, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
 });

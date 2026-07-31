@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   changesBannerText: {
     flex: 1,
     color: COLORS.white,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 14,
   },
   controlsRow: {
@@ -181,6 +181,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },

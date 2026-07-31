@@ -332,11 +332,11 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: 16,
     color: COLORS.primary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   title: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 20,
   },
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
   },
   roleChipText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   roleChipTextOn: {
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   },
   modeText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modeTextActive: {
@@ -408,6 +408,7 @@ const styles = StyleSheet.create({
   clientSearchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },
@@ -430,17 +431,19 @@ const styles = StyleSheet.create({
   },
   userItemText: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
   },
   userItemTextSelected: {
     color: COLORS.primary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   emptyText: {
     padding: 16,
     textAlign: "center",
     color: COLORS.textDisabled,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
   },
   form: {
     gap: 16,
@@ -450,7 +453,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   input: {
@@ -461,6 +464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   multiline: {
@@ -483,6 +487,6 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   empty: {
@@ -176,6 +176,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
   },
   occupancyCard: {
@@ -205,12 +206,12 @@ const styles = StyleSheet.create({
   },
   occupancyTitle: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   occupancyPct: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
   },
   occupancyBarBg: {
     height: 8,
@@ -224,6 +225,7 @@ const styles = StyleSheet.create({
   },
   occupancyDetail: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },

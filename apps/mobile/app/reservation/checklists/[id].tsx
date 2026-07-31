@@ -324,11 +324,12 @@ const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   headerSubtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -356,13 +357,14 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 2,
     textTransform: "capitalize",
   },
   staffLabel: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   evidenceBlock: {
@@ -371,7 +373,7 @@ const styles = StyleSheet.create({
   },
   evidenceTitle: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginBottom: 8,
   },
@@ -394,11 +396,12 @@ const styles = StyleSheet.create({
   },
   orphanTitle: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   orphanSubtitle: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 1,
   },
@@ -420,18 +423,20 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     lineHeight: 20,
   },
   errorText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -443,7 +448,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 14,
   },
 });

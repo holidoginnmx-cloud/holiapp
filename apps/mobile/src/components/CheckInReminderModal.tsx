@@ -171,18 +171,19 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     lineHeight: 23,
     color: COLORS.textSecondary,
     textAlign: "center",
     marginBottom: 18,
   },
   bold: {
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   timesTitle: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
     marginBottom: 10,
@@ -206,14 +207,14 @@ const styles = StyleSheet.create({
   },
   timeBtnLabel: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.3,
   },
   timeBtnValue: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginTop: 2,
   },
@@ -222,6 +223,7 @@ const styles = StyleSheet.create({
   },
   timesHint: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
     marginTop: 8,
@@ -236,7 +238,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

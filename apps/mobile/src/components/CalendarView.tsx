@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   },
   monthTitle: {
     fontSize: 20,
-    fontWeight: "700",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   // Weekday row
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   },
   weekText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   weekendText: {
@@ -446,6 +446,7 @@ const styles = StyleSheet.create({
   },
   dayText: {
     fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
   },
   todayCircle: {
@@ -454,14 +455,14 @@ const styles = StyleSheet.create({
   },
   todayText: {
     color: COLORS.primary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   selectedCircle: {
     backgroundColor: COLORS.primary,
   },
   selectedText: {
     color: COLORS.white,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   // Dots
   dotsRow: {
@@ -507,6 +508,7 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   // Day list
@@ -515,16 +517,17 @@ const styles = StyleSheet.create({
   },
   dayListTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
   dayListCount: {
-    fontWeight: "400",
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
   emptyDay: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 24,
@@ -537,7 +540,7 @@ const styles = StyleSheet.create({
   },
   groupHeaderText: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     letterSpacing: 0.2,
   },
@@ -552,7 +555,7 @@ const styles = StyleSheet.create({
   },
   groupCountText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
 });

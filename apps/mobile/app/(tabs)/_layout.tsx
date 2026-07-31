@@ -66,7 +66,7 @@ export default function TabsLayout() {
           paddingBottom: 4,
         },
         headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
         headerRight: () => <CreditBalancePill />,
       }}
     >
@@ -123,7 +123,7 @@ export default function TabsLayout() {
           tabBarBadgeStyle: {
             backgroundColor: COLORS.dangerText,
             fontSize: 11,
-            fontWeight: "700",
+            fontFamily: "PlusJakartaSans_700Bold",
           },
         }}
       />

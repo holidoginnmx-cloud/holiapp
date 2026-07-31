@@ -269,11 +269,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 16,
   },
@@ -286,7 +287,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
     marginTop: 4,
   },
@@ -301,14 +302,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderLight,
     backgroundColor: COLORS.bgPage,
   },
-  dateText: { fontSize: 15, color: COLORS.textPrimary, fontWeight: "600" },
+  dateText: { fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  rowLabel: { fontSize: 14, color: COLORS.textTertiary },
-  rowValue: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  rowLabel: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },
+  rowValue: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   hintBox: {
     flexDirection: "row",
     gap: 8,
@@ -318,14 +319,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.infoBg,
     marginBottom: 12,
   },
-  hintText: { flex: 1, fontSize: 13, color: COLORS.infoText },
+  hintText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.infoText },
   errorBox: {
     backgroundColor: COLORS.errorBg,
     padding: 12,
     borderRadius: 10,
     marginBottom: 12,
   },
-  errorText: { color: COLORS.errorText, fontSize: 13 },
+  errorText: { color: COLORS.errorText, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular" },
   submitButton: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,
@@ -333,5 +334,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  submitText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+  submitText: { color: COLORS.white, fontSize: 16, fontFamily: "PlusJakartaSans_700Bold" },
 });

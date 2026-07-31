@@ -156,12 +156,12 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   activeTabText: {
     color: COLORS.textPrimary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   underline: {
     height: 2,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   countBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   countBadgeTextActive: {

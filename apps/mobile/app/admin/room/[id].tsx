@@ -332,11 +332,12 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 24,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   description: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 4,
     lineHeight: 20,
@@ -356,7 +357,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   card: {
     backgroundColor: COLORS.white,
@@ -371,7 +372,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -385,12 +386,13 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     flexShrink: 0,
   },
   rowValue: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginLeft: "auto",
   },
@@ -410,7 +412,7 @@ const styles = StyleSheet.create({
   },
   sizePillText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   divider: {
@@ -420,7 +422,7 @@ const styles = StyleSheet.create({
   },
   groupTitle: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -449,11 +451,12 @@ const styles = StyleSheet.create({
   },
   guestName: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   guestMeta: {
     fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -466,7 +469,7 @@ const styles = StyleSheet.create({
   ownerText: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     flexShrink: 1,
   },
   datesRow: {
@@ -478,7 +481,7 @@ const styles = StyleSheet.create({
   datesText: {
     fontSize: 12,
     color: COLORS.primary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   staffRow: {
     flexDirection: "row",
@@ -488,6 +491,7 @@ const styles = StyleSheet.create({
   },
   staffText: {
     fontSize: 11,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     fontStyle: "italic",
   },
@@ -502,6 +506,7 @@ const styles = StyleSheet.create({
   },
   emptyGuestText: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     textAlign: "center",
   },
@@ -518,7 +523,7 @@ const styles = StyleSheet.create({
   editBtnText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   deleteBtn: {
     flexDirection: "row",
@@ -538,10 +543,11 @@ const styles = StyleSheet.create({
   deleteBtnText: {
     color: COLORS.dangerText,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   errorText: {
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
   },
@@ -553,7 +559,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: COLORS.white,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 14,
   },
 });

@@ -151,14 +151,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.bgPage,
   },
-  heading: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
+  heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
   sub: {
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 16,
     textTransform: "capitalize",
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   sectionCard: {
     backgroundColor: COLORS.white,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   // Por método
@@ -213,18 +213,18 @@ const styles = StyleSheet.create({
   },
   methodName: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   methodPct: {
     fontSize: 11,
     color: COLORS.textTertiary,
     marginTop: 1,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   methodAmount: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   emptyWrap: {
@@ -233,5 +233,5 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 60,
   },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

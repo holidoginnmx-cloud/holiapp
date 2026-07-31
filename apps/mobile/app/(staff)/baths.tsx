@@ -735,11 +735,12 @@ const extrasStyles = StyleSheet.create({
   },
   title: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 16,
   },
@@ -754,13 +755,13 @@ const extrasStyles = StyleSheet.create({
   },
   priceSymbol: {
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textTertiary,
   },
   priceInput: {
     flex: 1,
     fontSize: 26,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   actions: {
@@ -777,7 +778,7 @@ const extrasStyles = StyleSheet.create({
   },
   cancelBtnText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   saveBtn: {
@@ -789,7 +790,7 @@ const extrasStyles = StyleSheet.create({
   },
   saveBtnText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });
@@ -804,14 +805,14 @@ const styles = StyleSheet.create({
   },
   topTitle: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   topSub: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   swipeWrap: { flex: 1, overflow: "hidden" },
   // En iPad centramos y acotamos el área de contenido (el header y las tabs
@@ -822,7 +823,7 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 40 },
   sectionHeader: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -852,7 +853,7 @@ const styles = StyleSheet.create({
   callBtnText: {
     color: COLORS.primary,
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   completeBtn: {
     flex: 1,
@@ -865,7 +866,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   completeBtnDisabled: { opacity: 0.7 },
-  completeText: { color: COLORS.white, fontSize: 14, fontWeight: "700" },
+  completeText: { color: COLORS.white, fontSize: 14, fontFamily: "PlusJakartaSans_700Bold" },
   extrasSetBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -878,7 +879,7 @@ const styles = StyleSheet.create({
   },
   extrasSetBtnText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   extrasStatusPaid: {
@@ -893,7 +894,7 @@ const styles = StyleSheet.create({
   },
   extrasStatusPaidText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   extrasPickupBtn: {
@@ -908,7 +909,7 @@ const styles = StyleSheet.create({
   },
   extrasPickupBtnText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   extraSetChip: {
@@ -923,12 +924,12 @@ const styles = StyleSheet.create({
   extraSetChipLabel: {
     flex: 1,
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   extraSetChipPrice: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   extrasPending: {
@@ -943,7 +944,7 @@ const styles = StyleSheet.create({
   },
   extrasPendingText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.infoText,
   },
   emptyCard: {
@@ -951,5 +952,5 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 8,
   },
-  emptyText: { fontSize: 13, color: COLORS.textDisabled },
+  emptyText: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled },
 });

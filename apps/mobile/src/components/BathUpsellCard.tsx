@@ -230,11 +230,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     lineHeight: 18,
   },
@@ -256,7 +257,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   chipTextSelected: {
@@ -273,7 +274,7 @@ const styles = StyleSheet.create({
   },
   contractButtonText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   // Contracted state
@@ -305,13 +306,13 @@ const styles = StyleSheet.create({
   },
   contractedTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   contractedSubtitle: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     marginTop: 2,
   },
   contractedStatusPill: {
@@ -325,7 +326,7 @@ const styles = StyleSheet.create({
   },
   contractedStatusText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
     letterSpacing: 0.3,
   },
@@ -341,14 +342,14 @@ const styles = StyleSheet.create({
   },
   contractedPriceLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   contractedPrice: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   contractedNoteBox: {
@@ -365,6 +366,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.infoText,
     lineHeight: 17,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

@@ -67,13 +67,14 @@ export default function TosScreen() {
 const styles = StyleSheet.create({
   h2: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 14,
     marginBottom: 4,
   },
   p: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
     lineHeight: 22,
   },
@@ -82,6 +83,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#92400E",
     fontStyle: "italic",
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

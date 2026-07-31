@@ -23,7 +23,7 @@ export default function StaffRootLayout() {
         headerShown: true,
         headerTintColor: COLORS.primary,
         headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontWeight: "700" },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
         animation: "slide_from_right",
         animationTypeForReplace: "pop",
         headerLeft: backButton,

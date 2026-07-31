@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
   heading: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
   },
   sub: {
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginTop: 2,
     marginBottom: 16,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   card: {
     flexDirection: "row",
@@ -112,13 +112,13 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 17,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   cardSubtitle: {
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
 });

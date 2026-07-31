@@ -179,6 +179,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 15,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     padding: 0,
   },
@@ -202,6 +203,7 @@ const styles = StyleSheet.create({
   predictionText: {
     flex: 1,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textSecondary,
   },
   selectedCard: {
@@ -218,7 +220,7 @@ const styles = StyleSheet.create({
   selectedText: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
 });

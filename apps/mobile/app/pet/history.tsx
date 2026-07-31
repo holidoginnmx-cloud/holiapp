@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.bgPage,
   },
-  emptyText: { fontSize: 14, color: COLORS.textDisabled, textAlign: "center" },
+  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textDisabled, textAlign: "center" },
   petHeader: {
     alignItems: "center",
     marginBottom: 20,
@@ -286,8 +286,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: COLORS.bgSection,
   },
-  petName: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
-  petBreed: { fontSize: 14, color: COLORS.textTertiary, marginTop: 2 },
+  petName: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
+  petBreed: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
   statsRow: {
     flexDirection: "row",
     gap: 12,
@@ -305,8 +305,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  statValue: { fontSize: 22, fontWeight: "800", color: COLORS.primary },
-  statLabel: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
+  statValue: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.primary },
+  statLabel: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
   section: { marginBottom: 20 },
   historyFilterRow: {
     flexDirection: "row",
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   },
   historyChipText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   historyChipTextActive: {
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
@@ -381,14 +381,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  timelineDates: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
-  timelineStatus: { fontSize: 12, fontWeight: "600", color: COLORS.textTertiary },
+  timelineDates: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  timelineStatus: { fontSize: 12, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
   timelineInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  timelineInfo: { fontSize: 13, color: COLORS.textTertiary },
+  timelineInfo: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },
   photosScroll: { marginTop: 6 },
   thumbnail: {
     width: 60,
@@ -426,11 +426,12 @@ const styles = StyleSheet.create({
   },
   incidentsTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   incidentsSubtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },

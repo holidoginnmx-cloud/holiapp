@@ -195,13 +195,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginTop: 10,
@@ -212,6 +212,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
     textAlignVertical: "top",
   },
@@ -234,7 +235,7 @@ const styles = StyleSheet.create({
   },
   methodChipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalButtons: {
@@ -251,7 +252,7 @@ const styles = StyleSheet.create({
   },
   modalBtnCancelText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalBtnConfirm: {
@@ -263,7 +264,7 @@ const styles = StyleSheet.create({
   },
   modalBtnConfirmText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

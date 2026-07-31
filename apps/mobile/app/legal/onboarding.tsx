@@ -204,12 +204,13 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
   header: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "Outfit_600SemiBold",
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
   sub: {
     fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginBottom: 20,
     lineHeight: 20,
@@ -238,11 +239,12 @@ const styles = StyleSheet.create({
   iconOptional: { backgroundColor: "#FEF3C7" },
   title: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
   },
@@ -253,7 +255,7 @@ const styles = StyleSheet.create({
   },
   optionalHeader: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     marginBottom: 8,
@@ -269,6 +271,6 @@ const styles = StyleSheet.create({
   continueLabel: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });
