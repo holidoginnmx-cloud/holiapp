@@ -230,6 +230,8 @@ function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
       <Image source={HERO_PHOTO} style={StyleSheet.absoluteFill} resizeMode="cover" />
       <Svg
         style={StyleSheet.absoluteFill}
+        width="100%"
+        height="100%"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         pointerEvents="none"
