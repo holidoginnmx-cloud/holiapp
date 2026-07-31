@@ -13,6 +13,13 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { Baloo2_800ExtraBold } from "@expo-google-fonts/baloo-2";
 import { Pacifico_400Regular } from "@expo-google-fonts/pacifico";
+import { Outfit_600SemiBold } from "@expo-google-fonts/outfit";
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+} from "@expo-google-fonts/plus-jakarta-sans";
 import { useAuthStore } from "@/store/authStore";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { AnimatedSplash } from "@/components/splash";
@@ -278,7 +285,15 @@ export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
   // Fuentes del logotipo. Mientras cargan, seguimos mostrando el splash nativo.
-  const [fontsLoaded] = useFonts({ Baloo2_800ExtraBold, Pacifico_400Regular });
+  const [fontsLoaded] = useFonts({
+    Baloo2_800ExtraBold,
+    Pacifico_400Regular,
+    Outfit_600SemiBold,
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+  });
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});

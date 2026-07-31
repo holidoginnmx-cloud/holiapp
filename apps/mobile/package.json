@@ -14,7 +14,9 @@
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
     "@expo-google-fonts/baloo-2": "^0.4.2",
+    "@expo-google-fonts/outfit": "^0.4.3",
     "@expo-google-fonts/pacifico": "^0.4.1",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@holidoginn/shared": "*",
     "@react-native-community/datetimepicker": "8.4.4",
     "@stripe/stripe-react-native": "^0.64.0",
