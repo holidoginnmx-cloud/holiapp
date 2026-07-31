@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { useCallback, useEffect, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
-import Svg, { Defs, LinearGradient, Stop, Rect, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import Animated, {
   Easing,
   FadeInUp,
@@ -66,6 +66,7 @@ const F = {
 };
 
 const HERO_PHOTO = require("../../../assets/login-hero.jpg");
+const HERO_GRADIENT = require("../../../assets/hero-gradient.png");
 const LOGO_WHITE = require("../../../assets/logo-white.png");
 const LOGO_ASPECT = 900 / 473;
 const MAX_PAWS = 16;
@@ -213,8 +214,22 @@ function GoogleLogo() {
 function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
   const insets = useSafeAreaInsets();
   const logoH = isTablet ? 48 : 40;
+  // Yoga (new arch) no estira hijos absolutos con left/right ni con
+  // porcentajes dentro de este contenedor de altura por contenido, así que
+  // medimos el panel y damos a las capas de fondo su tamaño exacto en px.
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const fill = {
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    width: size.w,
+    height: size.h,
+  };
   return (
     <View
+      onLayout={(e) =>
+        setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+      }
       style={[
         styles.hero,
         isTablet
@@ -227,28 +242,15 @@ function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
             },
       ]}
     >
-      <Image source={HERO_PHOTO} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      <Svg
-        style={StyleSheet.absoluteFill}
-        width="100%"
-        height="100%"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="heroShade" x1="0" y1="0" x2="0.09" y2="1">
-            <Stop offset="0" stopColor={C.ink} stopOpacity={0.82} />
-            <Stop offset="0.4" stopColor={C.ink} stopOpacity={0.36} />
-            <Stop offset="0.78" stopColor={C.ink} stopOpacity={0.76} />
-            <Stop offset="1" stopColor={C.ink} stopOpacity={0.93} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100" height="100" fill="url(#heroShade)" />
-      </Svg>
+      {size.h > 0 && (
+        <>
+          <Image source={HERO_PHOTO} style={fill} resizeMode="cover" />
+          <Image source={HERO_GRADIENT} style={fill} resizeMode="stretch" />
+        </>
+      )}
 
       {/* Rastro de huellas subiendo en diagonal */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={size.h > 0 ? fill : StyleSheet.absoluteFill} pointerEvents="none">
         <TrailPaw left="2%" top="78%" size={30} rotate={-16} delay={0} />
         <TrailPaw left="16%" top="64%" size={26} rotate={-4} delay={350} />
         <TrailPaw left="30%" top="51%" size={28} rotate={-20} delay={700} />
