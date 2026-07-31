@@ -327,6 +327,7 @@ export default function RootLayout() {
             name="review/[reservationId]"
             options={{
               headerShown: true,
+              headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
               title: "Dejar reseña",
               headerTintColor: COLORS.primary,
             }}

@@ -42,6 +42,7 @@ export default function AdminLayout() {
       screenOptions={{
         // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
         // de pestaña. Quitarla = cambio instantáneo, estable.
+        tabBarLabelStyle: { fontFamily: "PlusJakartaSans_600SemiBold" },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

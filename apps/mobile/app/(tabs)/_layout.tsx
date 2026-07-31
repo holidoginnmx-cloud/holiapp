@@ -59,6 +59,7 @@ export default function TabsLayout() {
         // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
         // de pestaña (la tab bar quedaba, el área de contenido vacía). Quitarla
         // = cambio instantáneo, estable.
+        tabBarLabelStyle: { fontFamily: "PlusJakartaSans_600SemiBold" },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textDisabled,
         tabBarStyle: {

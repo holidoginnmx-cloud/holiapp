@@ -274,7 +274,10 @@ function HeroPanel({ isTablet, mode }: { isTablet: boolean; mode: Mode }) {
         <TrailPaw left="75%" top="15%" size={23} rotate={-8} delay={1750} />
       </View>
 
-      <Animated.View entering={FadeInUp.duration(700)}>
+      <Animated.View
+        entering={FadeInUp.duration(700)}
+        style={!isTablet && { alignItems: "flex-end" }}
+      >
         <Image
           source={LOGO_WHITE}
           style={{ height: logoH, width: logoH * LOGO_ASPECT }}

@@ -21,6 +21,7 @@ export default function PetLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
+        headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
         headerTintColor: COLORS.primary,
         animation: "slide_from_right",
         animationTypeForReplace: "pop",

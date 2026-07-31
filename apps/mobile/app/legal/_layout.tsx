@@ -7,7 +7,7 @@ export default function LegalLayout() {
       screenOptions={{
         headerShown: true,
         headerTintColor: COLORS.primary,
-        headerTitleStyle: { color: COLORS.textPrimary },
+        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
         animation: "slide_from_right",
         animationTypeForReplace: "pop",
       }}
