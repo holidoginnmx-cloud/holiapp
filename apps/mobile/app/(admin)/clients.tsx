@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
+import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
 import {
   View,
   Text,
@@ -325,15 +325,14 @@ export default function AdminClients() {
       )}
 
       {/* Alta de mascota (con su dueño, nuevo o existente) */}
-      <TouchableOpacity
+      <LiquidFab
         style={styles.fab}
-        activeOpacity={0.85}
         onPress={() => router.push("/admin/pets/owner" as any)}
         accessibilityLabel="Nueva mascota"
         testID="admin-new-pet-fab"
       >
         <Ionicons name="add" size={30} color={COLORS.white} />
-      </TouchableOpacity>
+      </LiquidFab>
     </View>
   );
 }

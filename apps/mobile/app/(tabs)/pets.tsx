@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
+import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
 import {
   View,
   Text,
@@ -88,14 +88,13 @@ export default function PetsScreen() {
       />
 
       {/* FAB */}
-      <TouchableOpacity
+      <LiquidFab
         style={styles.fab}
         onPress={() => router.push("/pet/create")}
-        activeOpacity={0.8}
         testID="pets-create-fab"
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      </LiquidFab>
     </View>
   );
 }

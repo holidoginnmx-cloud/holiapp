@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
+import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -485,15 +485,14 @@ export default function ReservationsScreen() {
       </Animated.ScrollView>
 
       {/* FAB WhatsApp */}
-      <TouchableOpacity
+      <LiquidFab
         style={styles.fab}
         onPress={() => Linking.openURL(buildWhatsappUrl())}
-        activeOpacity={0.85}
         testID="reservations-whatsapp-button"
         accessibilityLabel="Escríbenos por WhatsApp"
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      </LiquidFab>
     </View>
   );
 }

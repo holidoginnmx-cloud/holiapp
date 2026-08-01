@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { LiquidFab } from "@/components/LiquidTabBar";
 import { useState } from "react";
 import {
   View,
@@ -122,14 +123,13 @@ export default function AdminReservations() {
         onRefresh={refetch}
       />
 
-      <TouchableOpacity
+      <LiquidFab
         style={styles.fab}
         onPress={() => router.push("/admin/reservation/create" as any)}
-        activeOpacity={0.8}
         testID="admin-reservations-create-fab"
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      </LiquidFab>
     </View>
   );
 }

@@ -1,5 +1,10 @@
 import { View, Pressable, Text, StyleSheet } from "react-native";
-import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import type {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleProp,
+  ViewStyle,
+} from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -46,6 +51,50 @@ export function liquidTabBarOnScroll(e: NativeSyntheticEvent<NativeScrollEvent>)
 export function expandLiquidTabBar() {
   lastY = 0;
   minimize.value = withSpring(0, SPRING);
+}
+
+/**
+ * FAB que acompaña la animación del tab bar: al minimizarse la barra, el
+ * botón baja y se encoge con el mismo progreso. Mismo uso que un
+ * TouchableOpacity absoluto (el estilo posiciona; el contenido va centrado).
+ */
+export function LiquidFab({
+  style,
+  onPress,
+  testID,
+  accessibilityLabel,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  onPress: () => void;
+  testID?: string;
+  accessibilityLabel?: string;
+  children: React.ReactNode;
+}) {
+  const anim = useAnimatedStyle(() => {
+    const p = minimize.value;
+    return {
+      opacity: 1 - 0.08 * p,
+      transform: [{ translateY: 26 * p }, { scale: 1 - 0.22 * p }],
+    };
+  });
+  return (
+    <Animated.View style={[style, anim]}>
+      <Pressable
+        onPress={onPress}
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [
+          StyleSheet.absoluteFillObject,
+          { alignItems: "center", justifyContent: "center" },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
 }
 
 export interface LiquidTabItem {

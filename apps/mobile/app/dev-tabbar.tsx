@@ -2,7 +2,11 @@ import { useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { LiquidTabBarView, liquidTabBarOnScroll } from "@/components/LiquidTabBar";
+import {
+  LiquidTabBarView,
+  LiquidFab,
+  liquidTabBarOnScroll,
+} from "@/components/LiquidTabBar";
 import { COLORS } from "@/constants/colors";
 
 // Preview SOLO de desarrollo del tab bar flotante (holidoginn://dev-tabbar).
@@ -29,6 +33,20 @@ export default function DevTabBarPreview() {
           </View>
         ))}
       </ScrollView>
+      <LiquidFab
+        style={{
+          position: "absolute",
+          right: 20,
+          bottom: 104,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: COLORS.primary,
+        }}
+        onPress={() => {}}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </LiquidFab>
       <LiquidTabBarView
         items={[
           {
