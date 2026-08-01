@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { LiquidTabBar } from "@/components/LiquidTabBar";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
@@ -55,6 +56,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <LiquidTabBar {...props} />}
       screenOptions={{
         // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
         // de pestaña (la tab bar quedaba, el área de contenido vacía). Quitarla

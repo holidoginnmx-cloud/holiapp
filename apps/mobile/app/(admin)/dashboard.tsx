@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo, useState } from "react";
 import {
   View,
@@ -150,6 +151,8 @@ export default function AdminDashboard() {
 
   return (
     <ScrollView
+      onScroll={liquidTabBarOnScroll}
+      scrollEventThrottle={16}
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={

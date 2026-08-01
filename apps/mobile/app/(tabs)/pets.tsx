@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import {
   View,
   Text,
@@ -41,6 +42,8 @@ export default function PetsScreen() {
   return (
     <View style={styles.container} testID="pets-screen">
       <FlatList
+        onScroll={liquidTabBarOnScroll}
+        scrollEventThrottle={16}
         testID="pets-list"
         data={pets ?? []}
         keyExtractor={(item) => item.id}

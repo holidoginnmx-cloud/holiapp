@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { BUSINESS, buildWhatsappUrl } from "@/constants/business";
 import {
   View,
@@ -187,6 +188,8 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
     <ScrollView
+      onScroll={liquidTabBarOnScroll}
+      scrollEventThrottle={16}
       style={styles.container}
       contentContainerStyle={styles.content}
       testID="home-screen"

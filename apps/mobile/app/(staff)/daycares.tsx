@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo } from "react";
 import {
   View,
@@ -158,6 +159,8 @@ export default function StaffDaycares() {
         </View>
       ) : (
         <FlatList<Row>
+          onScroll={liquidTabBarOnScroll}
+          scrollEventThrottle={16}
           data={rows}
           keyExtractor={(item, i) =>
             item.type === "item" ? item.daycare.id : `${item.type}-${i}`

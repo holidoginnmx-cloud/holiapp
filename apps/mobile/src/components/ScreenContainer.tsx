@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { COLORS } from "@/constants/colors";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 
 interface ScreenContainerProps {
   children: ReactNode;
@@ -47,13 +48,21 @@ export function ScreenContainer({
   const cappedWidth = isTablet ? maxWidth : undefined;
 
   if (scroll) {
+    // Reporta el scroll al tab bar flotante (minimize-on-scroll) sin pisar un
+    // onScroll externo pasado vía scrollProps.
+    const { onScroll: extOnScroll, ...restScrollProps } = scrollProps ?? {};
     return (
       <View style={[{ flex: 1, alignItems: "center", backgroundColor }, style]}>
         <ScrollView
           style={{ flex: 1, width: "100%", maxWidth: cappedWidth }}
           contentContainerStyle={contentContainerStyle}
           refreshControl={refreshControl}
-          {...scrollProps}
+          scrollEventThrottle={16}
+          {...restScrollProps}
+          onScroll={(e) => {
+            liquidTabBarOnScroll(e);
+            extOnScroll?.(e);
+          }}
         >
           {children}
         </ScrollView>

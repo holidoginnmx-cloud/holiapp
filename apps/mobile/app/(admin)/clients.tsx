@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import {
   View,
   Text,
@@ -303,6 +304,8 @@ export default function AdminClients() {
         </View>
       ) : (
         <FlatList
+          onScroll={liquidTabBarOnScroll}
+          scrollEventThrottle={16}
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}

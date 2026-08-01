@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
@@ -97,6 +98,8 @@ export default function AdminSettings() {
 
   return (
     <ScrollView
+      onScroll={liquidTabBarOnScroll}
+      scrollEventThrottle={16}
       style={styles.screen}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}

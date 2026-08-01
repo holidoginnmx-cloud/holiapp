@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -437,6 +438,8 @@ export default function ReservationsScreen() {
           return (
             <View key={t.key} style={{ width: pageWidth }}>
               <FlatList
+                onScroll={liquidTabBarOnScroll}
+                scrollEventThrottle={16}
                 data={pageData}
                 keyExtractor={(item) => item.groupId ?? item.id}
                 renderItem={renderItem}

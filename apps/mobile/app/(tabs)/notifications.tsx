@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo } from "react";
 import {
   View,
@@ -88,6 +89,8 @@ export default function NotificationsScreen() {
   return (
     <View style={styles.container} testID="notifications-screen">
       <SectionList
+        onScroll={liquidTabBarOnScroll}
+        scrollEventThrottle={16}
         testID="notifications-list"
         sections={sections}
         keyExtractor={(item) => item.id}

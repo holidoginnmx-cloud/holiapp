@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo, useRef, useState } from "react";
 import {
   View,
@@ -533,6 +534,8 @@ export default function StaffBaths() {
           >
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
+                onScroll={liquidTabBarOnScroll}
+                scrollEventThrottle={16}
                 data={rowsLoose}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
@@ -561,6 +564,8 @@ export default function StaffBaths() {
             </View>
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
+                onScroll={liquidTabBarOnScroll}
+                scrollEventThrottle={16}
                 data={rowsStay}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
