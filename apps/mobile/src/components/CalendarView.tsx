@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ReservationCard } from "./ReservationCard";
+import { liquidTabBarOnScroll } from "./LiquidTabBar";
 import { formatDayLong } from "@/lib/format";
 
 // ─── Status → dot color ──────────────────────────────────
@@ -199,6 +200,8 @@ export function CalendarView({
   return (
     <ScrollView
       style={styles.container}
+      onScroll={liquidTabBarOnScroll}
+      scrollEventThrottle={16}
       refreshControl={
         onRefresh ? (
           <RefreshControl

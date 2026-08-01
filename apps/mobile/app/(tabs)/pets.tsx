@@ -179,7 +179,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    bottom: 24,
+    // Despejado del tab bar flotante (64px + margen inferior).
+    bottom: 104,
     right: 24,
     width: 56,
     height: 56,
