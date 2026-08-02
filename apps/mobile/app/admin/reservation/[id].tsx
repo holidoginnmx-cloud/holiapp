@@ -475,7 +475,13 @@ export default function AdminReservationDetail() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <TouchableOpacity
+          style={styles.headerLeft}
+          activeOpacity={0.7}
+          disabled={!reservation.pet?.id}
+          onPress={() => router.push(`/pet/${reservation.pet!.id}` as any)}
+          testID="admin-reservation-pet-link"
+        >
           {reservation.pet?.photoUrl ? (
             <Image
               source={{ uri: reservation.pet.photoUrl }}
@@ -494,7 +500,7 @@ export default function AdminReservationDetail() {
               {formatName(reservation.owner?.firstName ?? "")} {formatName(reservation.owner?.lastName ?? "")}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
         <View style={[styles.badge, { backgroundColor: config.bg }]}>
           <Text style={[styles.badgeText, { color: config.text }]}>
             {config.label}

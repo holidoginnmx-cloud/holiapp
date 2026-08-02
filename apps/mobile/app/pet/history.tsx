@@ -18,6 +18,7 @@ import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatDayShort, formatDayShortYear } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
+import { useAuthStore } from "@/store/authStore";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendiente",
@@ -30,7 +31,15 @@ const STATUS_LABEL: Record<string, string> = {
 export default function PetHistoryScreen() {
   const { petId } = useLocalSearchParams<{ petId: string }>();
   const router = useRouter();
+  const role = useAuthStore((s) => s.role);
   const [historyFilter, setHistoryFilter] = useState<"stays" | "baths">("stays");
+
+  // Mismo mapeo por rol que en pet/incidents: cada quien ve la reserva en su área.
+  const reservationHref = (resId: string) => {
+    if (role === "ADMIN") return `/admin/reservation/${resId}`;
+    if (role === "STAFF") return `/staff/stay/${resId}`;
+    return `/reservation/detail/${resId}`;
+  };
 
   const {
     data,
@@ -198,17 +207,29 @@ export default function PetHistoryScreen() {
               )}
             </View>
 
-            {/* Content */}
-            <View style={styles.timelineCard}>
+            {/* Content — toca la card para abrir el detalle de la reserva */}
+            <TouchableOpacity
+              style={styles.timelineCard}
+              activeOpacity={0.75}
+              onPress={() => router.push(reservationHref(res.id) as any)}
+              testID={`pet-history-reservation-${res.id}`}
+            >
               <View style={styles.timelineHeader}>
                 <Text style={styles.timelineDates}>
                   {res.reservationType === "BATH" && res.appointmentAt
                     ? formatDayShortYear(res.appointmentAt) + " · Baño"
                     : `${res.checkIn ? formatDayShort(res.checkIn) : "—"} - ${res.checkOut ? formatDayShortYear(res.checkOut) : "—"}`}
                 </Text>
-                <Text style={styles.timelineStatus}>
-                  {STATUS_LABEL[res.status] || res.status}
-                </Text>
+                <View style={styles.timelineHeaderRight}>
+                  <Text style={styles.timelineStatus}>
+                    {STATUS_LABEL[res.status] || res.status}
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={COLORS.textDisabled}
+                  />
+                </View>
               </View>
 
               {res.room && (
@@ -257,7 +278,7 @@ export default function PetHistoryScreen() {
                   ))}
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           </View>
         ))
       )}
@@ -380,6 +401,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  timelineHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   timelineDates: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   timelineStatus: { fontSize: 12, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
