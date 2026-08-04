@@ -26,6 +26,10 @@ import { AnimatedSplash } from "@/components/splash";
 import { registerForPushNotifications } from "@/lib/pushNotifications";
 import * as Notifications from "expo-notifications";
 import { getMyLegalStatus } from "@/lib/api";
+import {
+  notificationRoute,
+  type NotificationRouteData,
+} from "@/lib/notificationRoute";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -251,32 +255,85 @@ function SplashGate() {
 }
 
 /**
- * Deep link al tocar una notificación PUSH (app en background o cerrada;
- * expo-notifications re-emite al listener la respuesta que abrió la app).
- * Espejo del tap in-app de (tabs)/notifications.tsx: por defecto,
- * data.reservationId → detalle de la reserva.
+ * Deep link al tocar una notificación PUSH. Espejo exacto del tap in-app de
+ * (tabs)/notifications.tsx: ambos resuelven la pantalla con
+ * lib/notificationRoute (cartilla/vacunas → renovar cartilla, reserva → detalle…).
+ *
+ * Dos cosas que NO hay que simplificar:
+ *
+ * 1. `useLastNotificationResponse` en vez de sólo el listener: cuando la app
+ *    estaba CERRADA, el tap ocurre antes de que este componente monte, así que
+ *    el listener no lo ve. El hook sí devuelve la respuesta que abrió la app.
+ *    Se conserva además el listener para el caso de app en background/foreground.
+ *
+ * 2. La navegación se DIFIERE hasta que la app se estabilizó (sesión cargada,
+ *    rol conocido y ya estamos dentro de (tabs)/(admin)/(staff)). En arranque
+ *    frío la app pasa por index → (auth)/login → replace a home y, si role es
+ *    ADMIN/STAFF, otro replace a su dashboard: cualquier push() lanzado antes
+ *    quedaba borrado por esos replace y el usuario terminaba "sólo en el inicio".
  */
 function PushNavigationHandler() {
   const router = useRouter();
+  const segments = useSegments();
+  const { isSignedIn, isLoaded } = useAuth();
+  const role = useAuthStore((s) => s.role);
+  const lastResponse = Notifications.useLastNotificationResponse();
+
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  // Evita re-navegar a la misma notificación (el hook conserva su valor entre
+  // re-renders y el listener puede emitir la misma respuesta).
+  const handledRef = useRef<string | null>(null);
+
+  const enqueue = useCallback((response: Notifications.NotificationResponse) => {
+    const request = response.notification.request;
+    const key = `${request.identifier}:${response.actionIdentifier}`;
+    if (handledRef.current === key) return;
+    handledRef.current = key;
+    const route = notificationRoute(
+      typeof request.content.data?.type === "string"
+        ? (request.content.data.type as string)
+        : "",
+      (request.content.data ?? null) as NotificationRouteData
+    );
+    if (__DEV__) {
+      console.log(
+        "[push] tap →",
+        route ?? "(sin ruta)",
+        JSON.stringify(request.content.data)
+      );
+    }
+    if (route) setPendingRoute(route);
+    // Limpia la respuesta cacheada para que un relanzamiento normal de la app
+    // (sin tap) no vuelva a navegar a la misma pantalla.
+    try {
+      Notifications.clearLastNotificationResponse();
+    } catch {
+      // no-op: en versiones donde no exista, el handledRef ya evita repetir.
+    }
+  }, []);
 
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data as
-          | Record<string, unknown>
-          | undefined;
-        const reservationId = data?.reservationId;
-        if (typeof reservationId === "string" && reservationId) {
-          // InteractionManager: deja terminar la navegación inicial de auth
-          // antes de empujar el detalle.
-          InteractionManager.runAfterInteractions(() => {
-            router.push(`/reservation/detail/${reservationId}` as any);
-          });
-        }
-      }
-    );
+    if (lastResponse) enqueue(lastResponse);
+  }, [lastResponse, enqueue]);
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(enqueue);
     return () => sub.remove();
-  }, [router]);
+  }, [enqueue]);
+
+  useEffect(() => {
+    if (!pendingRoute) return;
+    if (!isLoaded || !isSignedIn || !role) return;
+    // Aún en el arranque/onboarding: esperamos a caer en el área principal.
+    const root = segments[0];
+    if (root !== "(tabs)" && root !== "(admin)" && root !== "(staff)") return;
+
+    setPendingRoute(null);
+    // Deja terminar la navegación en curso antes de empujar la pantalla.
+    InteractionManager.runAfterInteractions(() => {
+      router.push(pendingRoute as any);
+    });
+  }, [pendingRoute, isLoaded, isSignedIn, role, segments, router]);
 
   return null;
 }

@@ -16,6 +16,10 @@ import type { Notification } from "@holidoginn/shared";
 import { NotificationItem } from "@/components/NotificationItem";
 import { ErrorState } from "@/components/ErrorState";
 import { dayGroupLabel } from "@/lib/format";
+import {
+  notificationRoute,
+  type NotificationRouteData,
+} from "@/lib/notificationRoute";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 
 export default function NotificationsScreen() {
@@ -109,37 +113,13 @@ export default function NotificationsScreen() {
             createdAt={item.createdAt}
             onPress={() => {
               if (!item.isRead) markOneMutation.mutate(item.id);
-              const data = item.data as
-                | { reservationId?: string; action?: string }
-                | null;
-              const reservationId = data?.reservationId;
-
-              // CREDIT_ADDED: lleva al historial de saldo a favor.
-              if (item.type === "CREDIT_ADDED") {
-                router.push("/profile/credit-history" as any);
-                return;
-              }
-
-              // DAILY_REPORT: lleva directo a los reportes diarios.
-              if (item.type === "DAILY_REPORT" && reservationId) {
-                router.push(`/reservation/checklists/${reservationId}` as any);
-                return;
-              }
-
-              // action=CHOOSE_REFUND: abre el detalle con el modal de elegir
-              // entre reembolso a tarjeta vs saldo a favor. Lo dispara tanto el
-              // admin-cancel (type GENERAL) como REFUND_ISSUED.
-              if (data?.action === "CHOOSE_REFUND" && reservationId) {
-                router.push(
-                  `/reservation/detail/${reservationId}?action=choose-refund` as any
-                );
-                return;
-              }
-
-              // Resto: detalle de la reservación si trae id.
-              if (reservationId) {
-                router.push(`/reservation/detail/${reservationId}` as any);
-              }
+              // El mapeo tipo/data → pantalla vive en lib/notificationRoute
+              // (compartido con el deep link de push del _layout raíz).
+              const route = notificationRoute(
+                item.type,
+                item.data as NotificationRouteData
+              );
+              if (route) router.push(route as any);
             }}
           />
         )}
