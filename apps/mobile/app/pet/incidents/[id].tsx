@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getPetAlerts, resolveAdminAlert, type PetAlert } from "@/lib/api";
 import { formatName, formatDayShortYear } from "@/lib/format";
+import { reservationHref } from "@/lib/reservationHref";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
 const ALERT_LABELS: Record<string, string> = {
@@ -158,12 +159,6 @@ export default function PetIncidentsScreen() {
     );
   }
 
-  const reservationHref = (resId: string) => {
-    if (role === "ADMIN") return `/admin/reservation/${resId}`;
-    if (role === "STAFF") return `/staff/stay/${resId}`;
-    return `/reservation/detail/${resId}`;
-  };
-
   const renderItem = ({ item }: { item: PetAlert }) => {
           const sev = SEVERITY[item.type] ?? SEVERITY.INCIDENT;
           return (
@@ -178,7 +173,16 @@ export default function PetIncidentsScreen() {
                 item.isResolved && styles.cardResolved,
               ]}
               activeOpacity={0.85}
-              onPress={() => router.push(reservationHref(item.reservation.id) as any)}
+              onPress={() =>
+                router.push(
+                  reservationHref(
+                    role,
+                    item.reservation.id,
+                    item.reservation.reservationType,
+                    item.reservation.appointmentAt
+                  ) as any
+                )
+              }
             >
               <View style={styles.cardHeader}>
                 <View

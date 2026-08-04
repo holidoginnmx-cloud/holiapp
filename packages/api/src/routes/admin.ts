@@ -1325,13 +1325,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           ),
         ]);
 
-        await notifyUser(prisma, {
-          userId: pet.ownerId,
-          type: "GENERAL",
-          title: `Cartilla aprobada: ${pet.name}`,
-          body: `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`,
-          data: { petId: pet.id, kind: "CARTILLA_REVIEW", action: "APPROVE" },
-        });
+        // Sólo avisamos cuando la aprobación es un cambio de estado real. Este
+        // mismo endpoint se usa para agregar vacunas a una cartilla YA aprobada
+        // (admin/cartillas), y ahí notificar sería spam para el dueño.
+        if (pet.cartillaStatus !== "APPROVED") {
+          await notifyUser(prisma, {
+            userId: pet.ownerId,
+            type: "GENERAL",
+            title: `Cartilla aprobada: ${pet.name}`,
+            body: `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`,
+            data: { petId: pet.id, kind: "CARTILLA_REVIEW", action: "APPROVE" },
+          });
+        }
 
         const updated = await prisma.pet.findUnique({ where: { id: pet.id } });
         return updated;

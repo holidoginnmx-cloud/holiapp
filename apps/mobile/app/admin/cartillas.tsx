@@ -142,6 +142,11 @@ export default function AdminCartillas() {
   });
   const catalogById = new Map((catalog ?? []).map((c) => [c.id, c]));
 
+  // Con la cartilla ya aprobada, capturar no "aprueba" nada: sólo agrega
+  // vacunas/desparasitaciones a las que ya tiene.
+  const yaAprobada = selectedPet?.cartillaStatus === "APPROVED";
+  const sinCapturas = vaccineRows.length === 0 && dewormingRows.length === 0;
+
   const reviewMutation = useMutation({
     mutationFn: ({
       petId,
@@ -1012,9 +1017,18 @@ export default function AdminCartillas() {
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
+                        style={[
+                          styles.btn,
+                          styles.btnPrimary,
+                          { flex: 1 },
+                          yaAprobada && sinCapturas && { opacity: 0.5 },
+                        ]}
                         onPress={submitApprove}
-                        disabled={reviewMutation.isPending}
+                        disabled={
+                          reviewMutation.isPending ||
+                          // Ya aprobada y sin nada capturado: no hay qué guardar.
+                          (yaAprobada && sinCapturas)
+                        }
                       >
                         <Ionicons
                           name="checkmark-circle-outline"
@@ -1024,7 +1038,9 @@ export default function AdminCartillas() {
                         <Text style={[styles.btnText, { color: COLORS.white }]}>
                           {reviewMutation.isPending
                             ? "..."
-                            : vaccineRows.length === 0 && dewormingRows.length === 0
+                            : yaAprobada
+                            ? "Guardar vacunas"
+                            : sinCapturas
                             ? "Aprobar sin capturar"
                             : "Aprobar y guardar"}
                         </Text>
@@ -1078,6 +1094,29 @@ export default function AdminCartillas() {
                     </View>
                   </View>
                 )}
+
+                {/* Cartilla ya revisada: se puede seguir capturando vacunas
+                    (y leerlas con IA). Antes sólo se podía en el momento de
+                    aprobar, así que una cartilla aprobada "en vacío" quedaba
+                    sin forma de agregarle las vacunas. */}
+                {!capturing &&
+                  !rejecting &&
+                  !editingVaccineId &&
+                  selectedPet.cartillaStatus !== "PENDING" && (
+                    <TouchableOpacity
+                      style={[styles.btn, styles.btnPrimary, { marginTop: 12 }]}
+                      onPress={startCapture}
+                    >
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={18}
+                        color={COLORS.white}
+                      />
+                      <Text style={[styles.btnText, { color: COLORS.white }]}>
+                        {yaAprobada ? "Agregar vacunas" : "Capturar y aprobar"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                 {/* Modo: estado inicial (acciones disponibles) */}
                 {!capturing &&

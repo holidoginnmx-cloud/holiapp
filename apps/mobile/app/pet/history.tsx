@@ -19,6 +19,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatDayShort, formatDayShortYear } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { useAuthStore } from "@/store/authStore";
+// Mismo mapeo por rol (y por tipo de servicio) que usa pet/incidents.
+import { reservationHref } from "@/lib/reservationHref";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendiente",
@@ -34,12 +36,6 @@ export default function PetHistoryScreen() {
   const role = useAuthStore((s) => s.role);
   const [historyFilter, setHistoryFilter] = useState<"stays" | "baths">("stays");
 
-  // Mismo mapeo por rol que en pet/incidents: cada quien ve la reserva en su área.
-  const reservationHref = (resId: string) => {
-    if (role === "ADMIN") return `/admin/reservation/${resId}`;
-    if (role === "STAFF") return `/staff/stay/${resId}`;
-    return `/reservation/detail/${resId}`;
-  };
 
   const {
     data,
@@ -211,7 +207,16 @@ export default function PetHistoryScreen() {
             <TouchableOpacity
               style={styles.timelineCard}
               activeOpacity={0.75}
-              onPress={() => router.push(reservationHref(res.id) as any)}
+              onPress={() =>
+                router.push(
+                  reservationHref(
+                    role,
+                    res.id,
+                    res.reservationType,
+                    res.appointmentAt
+                  ) as any
+                )
+              }
               testID={`pet-history-reservation-${res.id}`}
             >
               <View style={styles.timelineHeader}>

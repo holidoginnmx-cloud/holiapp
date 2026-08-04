@@ -101,7 +101,10 @@ function bathOutstandingBalance(bath: StaffBath): {
 }
 
 export default function StaffBathDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `date` (YYYY-MM-DD) es opcional: sin él la lista trae los próximos 30 días,
+  // que es lo que necesita el flujo normal. Lo manda el historial de la mascota
+  // para poder abrir una cita vieja, que de otro modo no vendría en la lista.
+  const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
   const { isTablet } = useResponsive();
   const queryClient = useQueryClient();
   const { banner, showSuccess } = useSuccessBanner();
@@ -115,8 +118,8 @@ export default function StaffBathDetail() {
   );
 
   const { data, isLoading, isError, error, isRefetching, refetch } = useQuery({
-    queryKey: ["staff-baths", "upcoming"],
-    queryFn: () => getStaffBaths(),
+    queryKey: ["staff-baths", date ?? "upcoming"],
+    queryFn: () => getStaffBaths(date),
     refetchInterval: 60_000,
   });
 
@@ -139,7 +142,7 @@ export default function StaffBathDetail() {
     mutationFn: (updateId: string) => deleteStayUpdate(updateId),
     patches: [
       {
-        queryKey: ["staff-baths", "upcoming"],
+        queryKey: ["staff-baths", date ?? "upcoming"],
         updater: (old, updateId) => {
           const d = old as { baths?: StaffBath[] } | undefined;
           if (!d?.baths) return old;
