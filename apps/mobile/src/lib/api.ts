@@ -1310,6 +1310,8 @@ export const reviewCartilla = (petId: string, data: ReviewCartillaPayload) =>
 export type CartillaOcrResult = {
   vaccines: {
     name: string;
+    /** Código del catálogo deducido por la IA (VaccineCatalogEntry.code), o null. */
+    catalogCode: string | null;
     appliedAt: string | null;
     expiresAt: string | null;
     vetName: string | null;

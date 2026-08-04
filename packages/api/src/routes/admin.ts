@@ -1224,8 +1224,16 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .send({ error: "La mascota no tiene cartilla subida" });
       }
 
+      // El catálogo va dentro del prompt: sin él Claude no puede devolver el
+      // TIPO de vacuna y la app sólo prellena fechas.
+      const catalog = await prisma.vaccineCatalog.findMany({
+        where: { isActive: true },
+        select: { code: true, displayName: true },
+        orderBy: { displayName: "asc" },
+      });
+
       try {
-        const suggestions = await extraerCartilla(photos);
+        const suggestions = await extraerCartilla(photos, catalog);
         return suggestions;
       } catch (err) {
         request.log.error({ err }, "Fallo el OCR de la cartilla");

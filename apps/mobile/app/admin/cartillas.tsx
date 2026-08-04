@@ -65,17 +65,58 @@ function parseOcrDate(iso: string | null): Date | null {
 
 // Mapea las sugerencias del OCR a las filas editables del formulario. Las fechas
 // que el OCR no pudo leer caen a valores por defecto que el admin corrige.
-function ocrToRows(result: CartillaOcrResult): {
+/**
+ * Red de seguridad por si la IA no devolvió `catalogCode`: intenta amarrar el
+ * texto leído del renglón a una entrada del catálogo. Es un respaldo, no el
+ * camino principal — la deducción buena la hace el prompt del servidor.
+ */
+function catalogoPorNombre(
+  texto: string,
+  catalog: VaccineCatalogEntry[]
+): VaccineCatalogEntry | null {
+  const t = texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const buscar = (code: string) => catalog.find((c) => c.code === code) ?? null;
+
+  if (/\b(rab|rabia|antirrabica|defensor|rabisin)/.test(t)) {
+    return buscar(/3\s*(a|años|years)/.test(t) ? "RABIES_3Y" : "RABIES_1Y");
+  }
+  if (/(dhpp|dapp|da2pp|sextuple|quintuple|octuple|multiple|puppy)/.test(t)) {
+    return buscar("DHPP_1Y");
+  }
+  if (/(lepto|\brl\b|\bl4\b)/.test(t)) return buscar("LEPTOSPIROSIS");
+  if (/(bordetella|\bkc\b|\bbb\b|bronchicine|perrera)/.test(t)) {
+    return buscar(/oral|intranasal|\bkc\b/.test(t) ? "BORDETELLA_ORAL" : "BORDETELLA_INJ");
+  }
+  if (/(influenza|gripe|h3n)/.test(t)) return buscar("INFLUENZA");
+  if (/parvo/.test(t)) return buscar("PARVOVIRUS");
+  return null;
+}
+
+function ocrToRows(
+  result: CartillaOcrResult,
+  catalog: VaccineCatalogEntry[]
+): {
   vaccines: VaccineRow[];
   dewormings: DewormingRow[];
 } {
   const today = new Date();
+  const porCode = new Map(catalog.map((c) => [c.code, c]));
   const vaccines: VaccineRow[] = result.vaccines.map((v) => {
     const appliedAt = parseOcrDate(v.appliedAt) ?? today;
-    // Sin catálogo asignado aún, no sabemos la duración: usamos la fecha leída
-    // o un año como placeholder editable.
-    const expiresAt = parseOcrDate(v.expiresAt) ?? addDays(appliedAt, 365);
-    return { catalogId: null, appliedAt, expiresAt };
+    // El tipo que dedujo la IA (o, en su defecto, lo que se pueda inferir del
+    // texto). Antes esto se descartaba y TODAS las filas quedaban sin tipo.
+    const entrada =
+      (v.catalogCode ? porCode.get(v.catalogCode) ?? null : null) ??
+      catalogoPorNombre(v.name, catalog);
+    // Con el tipo ya conocido, la vigencia sale de su duración oficial; si no,
+    // un año como placeholder editable.
+    const expiresAt =
+      parseOcrDate(v.expiresAt) ??
+      addDays(appliedAt, entrada?.defaultDurationDays ?? 365);
+    return { catalogId: entrada?.id ?? null, appliedAt, expiresAt };
   });
   const dewormings: DewormingRow[] = result.dewormings.map((d) => {
     const appliedAt = parseOcrDate(d.appliedAt) ?? today;
@@ -189,7 +230,7 @@ export default function AdminCartillas() {
   const ocrMutation = useMutation({
     mutationFn: (petId: string) => ocrCartilla(petId),
     onSuccess: (result) => {
-      const { vaccines, dewormings } = ocrToRows(result);
+      const { vaccines, dewormings } = ocrToRows(result, catalog ?? []);
       setVaccineRows(vaccines);
       setDewormingRows(dewormings);
       const total = vaccines.length + dewormings.length;
@@ -199,8 +240,13 @@ export default function AdminCartillas() {
           "No se detectaron vacunas ni desparasitaciones legibles. Captúralas manualmente."
         );
       } else {
+        // Avisamos cuántas quedaron sin tipo para que el admin sepa qué revisar.
+        const sinTipo = vaccines.filter((v) => !v.catalogId).length;
         showSuccess(
-          `Leídas ${vaccines.length} vacuna(s) y ${dewormings.length} desparasitación(es). Revisa y corrige.`
+          `Leídas ${vaccines.length} vacuna(s) y ${dewormings.length} desparasitación(es).` +
+            (sinTipo > 0
+              ? ` ${sinTipo} sin tipo identificado: elígelo tú.`
+              : " Revisa y corrige.")
         );
       }
     },
