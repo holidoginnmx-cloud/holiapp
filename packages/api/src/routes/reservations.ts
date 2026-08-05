@@ -43,6 +43,29 @@ function splitGroupTotal(total: number, n: number): number[] {
   return [first, ...Array<number>(n - 1).fill(share)];
 }
 
+// Reparte un monto entre las filas del grupo EN PROPORCIÓN a lo que cuesta
+// cada una (la última absorbe el residuo). Se usa para el anticipo: es del
+// grupo, pero cada reserva necesita su parte para que el saldo por mascota
+// cuadre — colgarlo entero de la primera dejaba a las demás con su total
+// íntegro pendiente. Con pesos en cero cae a partes iguales.
+function splitProportional(amount: number, weights: number[]): number[] {
+  const n = weights.length;
+  if (n <= 1) return [Number(amount.toFixed(2))];
+  const sum = weights.reduce((a, w) => a + w, 0);
+  const parts: number[] = [];
+  let allocated = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const part =
+      sum > 0
+        ? Number(((amount * (weights[i] ?? 0)) / sum).toFixed(2))
+        : Math.floor((amount / n) * 100) / 100;
+    parts.push(part);
+    allocated += part;
+  }
+  parts.push(Number((amount - allocated).toFixed(2)));
+  return parts;
+}
+
 export default async function reservationsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
@@ -277,21 +300,25 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       : {};
 
     // Campos comunes adicionales: staff y medicamento aplican a TODAS las
-    // filas del grupo; el anticipo acordado y el domicilio se registran una
-    // sola vez (en la primera fila, igual que en /reservations/multi).
+    // filas del grupo; el domicilio se registra una sola vez (un viaje por
+    // grupo) y el anticipo se REPARTE entre las filas en proporción a lo que
+    // cuesta cada mascota (ver splitProportional).
     const sharedData = {
       ...(staffId ? { staffId } : {}),
       ...(trimmedMedication ? { medicationNotes: trimmedMedication } : {}),
     };
-    const firstOnlyData = {
-      ...(depositAgreed != null
-        ? { depositAgreed: new Prisma.Decimal(depositAgreed) }
-        : {}),
-      ...deliveryData,
-    };
-    const rowExtraData = (isFirst: boolean) => ({
+    // Partes del anticipo, calculadas por cada rama con los totales de sus
+    // filas (el fee de domicilio de la primera incluido).
+    const splitDeposit = (rowTotals: number[]): number[] | null =>
+      depositAgreed != null && depositAgreed > 0
+        ? splitProportional(depositAgreed, rowTotals)
+        : null;
+    const rowExtraData = (isFirst: boolean, depositShare?: number | null) => ({
       ...sharedData,
-      ...(isFirst ? firstOnlyData : {}),
+      ...(depositShare != null && depositShare > 0
+        ? { depositAgreed: new Prisma.Decimal(depositShare) }
+        : {}),
+      ...(isFirst ? deliveryData : {}),
     });
 
     // Respuesta: la primera reserva (misma forma que siempre, compatible con
@@ -356,6 +383,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         totalAmountOverride != null
           ? splitGroupTotal(totalAmountOverride, groupPets.length)
           : bathVariants.map((v) => v.price);
+      const deposits = splitDeposit(
+        amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
+      );
 
       // Sin pago en creación manual: el total queda como saldo pendiente,
       // el admin registra el cobro después desde el detalle de la reserva.
@@ -376,7 +406,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               groupId,
               ownerId,
               petId: groupPets[i].id,
-              ...rowExtraData(isFirst),
+              ...rowExtraData(isFirst, deposits?.[i]),
             },
             include: { pet: true, room: true },
           });
@@ -437,6 +467,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         totalAmountOverride != null
           ? splitGroupTotal(totalAmountOverride, groupPets.length)
           : groupPets.map(() => hours * pricingConfig.daycareHourPrice);
+      const deposits = splitDeposit(
+        amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
+      );
 
       // Sin pago en creación manual: el total queda como saldo pendiente y el
       // admin registra el cobro después (igual que la rama BATH).
@@ -459,7 +492,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               groupId,
               ownerId,
               petId: groupPets[i].id,
-              ...rowExtraData(isFirst),
+              ...rowExtraData(isFirst, deposits?.[i]),
             },
             include: { pet: true, room: true },
           });
@@ -549,6 +582,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             const bathPrice = stayBathVariants?.[i]?.price ?? 0;
             return lodging + medicationSurcharge + bathPrice;
           });
+    const deposits = splitDeposit(
+      amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
+    );
 
     const reservations = await prisma.$transaction(async (tx) => {
       const created: CreatedReservation[] = [];
@@ -569,7 +605,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             ownerId,
             petId: groupPets[i].id,
             roomId,
-            ...rowExtraData(isFirst),
+            ...rowExtraData(isFirst, deposits?.[i]),
           },
           include: { pet: true, room: true },
         });
