@@ -46,12 +46,16 @@ export default function CreatePetScreen() {
       ownerName?: string;
     }>();
   const userId = useAuthStore((s) => s.userId);
+  const role = useAuthStore((s) => s.role);
   const syncUser = useAuthStore((s) => s.syncUser);
   const queryClient = useQueryClient();
   const isEditing = !!editId;
   // Alta hecha por un admin para otro dueño (paso 2 del "+" de Mascotas). El
   // backend solo respeta un ownerId ajeno si el rol es ADMIN.
   const isAdminCreate = !isEditing && !!ownerIdParam;
+  // Cuando captura el equipo, la cartilla no pasa por revisión: el backend la
+  // aprueba en el acto (ver POST/PATCH /pets). La UI debe decir lo mismo.
+  const capturaEquipo = role === "ADMIN" || role === "STAFF";
 
   const scrollRef = useRef<ScrollView>(null);
   const cartillaYRef = useRef<number | null>(null);
@@ -281,7 +285,9 @@ export default function CreatePetScreen() {
         | undefined;
       const changed = JSON.stringify(photos) !== JSON.stringify(existing ?? []);
       if (changed) {
-        setCartillaStatus(photos.length > 0 ? "PENDING" : null);
+        setCartillaStatus(
+          photos.length > 0 ? (capturaEquipo ? "APPROVED" : "PENDING") : null
+        );
         setCartillaRejectionReason(null);
       }
       return previous;
@@ -603,9 +609,9 @@ export default function CreatePetScreen() {
       >
         <Text style={styles.sectionTitle}>Cartilla de vacunación</Text>
         <Text style={styles.cartillaHelp}>
-          Sube una o varias fotos de la cartilla (anverso, reverso, páginas
-          internas). Un miembro del equipo HDI las revisará antes de que puedas
-          reservar.
+          {capturaEquipo
+            ? "Sube una o varias fotos de la cartilla (anverso, reverso, páginas internas). Como la estás capturando tú, queda aprobada al guardar — no pasa por revisión."
+            : "Sube una o varias fotos de la cartilla (anverso, reverso, páginas internas). Un miembro del equipo HDI las revisará antes de que puedas reservar."}
         </Text>
         <View style={styles.cartillaNote}>
           <Ionicons
@@ -654,7 +660,7 @@ export default function CreatePetScreen() {
                 cartillaMutation.mutate(next);
               } else {
                 setCartillaPhotos(next);
-                setCartillaStatus("PENDING");
+                setCartillaStatus(capturaEquipo ? "APPROVED" : "PENDING");
                 setCartillaRejectionReason(null);
               }
             }}
@@ -688,7 +694,9 @@ export default function CreatePetScreen() {
           <View style={[styles.cartillaBadge, { backgroundColor: COLORS.successBg }]}>
             <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.successText} />
             <Text style={[styles.cartillaBadgeText, { color: COLORS.successText }]}>
-              Cartilla aprobada.
+              {capturaEquipo
+                ? "Cartilla aprobada. Captura las vacunas desde Cartillas → Aprobadas."
+                : "Cartilla aprobada."}
             </Text>
           </View>
         )}

@@ -6,7 +6,7 @@ import {
   CreateDewormingSchema,
 } from "@holidoginn/shared";
 import { createAuthMiddleware } from "../middleware/auth";
-import { notifyUsers } from "../lib/notify";
+import { notifyUser, notifyUsers } from "../lib/notify";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -183,7 +183,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // Si el owner subió cartilla en el create (uno o más fotos), marcar PENDING.
+      // Si se subió cartilla en el create (uno o más fotos), marcar PENDING.
       // Soportamos tanto `cartillaUrl` (legacy, single) como `cartillaPhotos`
       // (nuevo, array). Si llega `cartillaUrl` y no `cartillaPhotos`, lo
       // promovemos al array para que el flujo nuevo lo encuentre.
@@ -194,7 +194,16 @@ export default async function petsRoutes(fastify: FastifyInstance) {
             ? [parsed.data.cartillaUrl]
             : [];
       const hasCartilla = photos.length > 0;
-      const cartillaStatus = hasCartilla ? "PENDING" as const : null;
+      // La revisión existe para validar lo que sube el CLIENTE. Si quien captura
+      // al perro es del equipo (admin o staff), la cartilla ya la está leyendo
+      // esa persona al registrarla: se aprueba en el acto y se le acredita la
+      // revisión, en vez de mandarse un ticket a sí misma.
+      const registradaPorEquipo = isStaffOrAdmin(request.userRole);
+      const cartillaStatus = hasCartilla
+        ? registradaPorEquipo
+          ? ("APPROVED" as const)
+          : ("PENDING" as const)
+        : null;
       const pet = await prisma.pet.create({
         data: {
           ...parsed.data,
@@ -202,6 +211,9 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           cartillaPhotos: photos,
           cartillaUrl: parsed.data.cartillaUrl ?? photos[0] ?? null,
           cartillaStatus,
+          cartillaReviewedAt: cartillaStatus === "APPROVED" ? new Date() : null,
+          cartillaReviewedById:
+            cartillaStatus === "APPROVED" ? request.userId : null,
         },
       });
 
@@ -260,9 +272,18 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           data.cartillaUrl = incomingPhotos[0] ?? null;
         }
         if (photosChanged) {
-          data.cartillaStatus = incomingPhotos.length > 0 ? "PENDING" : null;
-          data.cartillaReviewedAt = null;
-          data.cartillaReviewedById = null;
+          // Misma regla que en el create: si la cartilla la sube el equipo, no
+          // necesita revisión (ver POST /pets).
+          const autoAprobada =
+            incomingPhotos.length > 0 && isStaffOrAdmin(request.userRole);
+          data.cartillaStatus =
+            incomingPhotos.length > 0
+              ? autoAprobada
+                ? "APPROVED"
+                : "PENDING"
+              : null;
+          data.cartillaReviewedAt = autoAprobada ? new Date() : null;
+          data.cartillaReviewedById = autoAprobada ? request.userId : null;
           data.cartillaRejectionReason = null;
         }
       } else if (incomingUrl !== undefined && incomingUrl !== pet.cartillaUrl) {
@@ -289,6 +310,22 @@ export default async function petsRoutes(fastify: FastifyInstance) {
             `${ownerRecord.firstName} ${ownerRecord.lastName}`
           );
         }
+      }
+
+      // El equipo subió la cartilla de un perro que aún no la tenía aprobada:
+      // avisamos al dueño igual que lo hace la revisión manual del admin. Si ya
+      // estaba aprobada (p. ej. sólo se agregó una foto más), no molestamos.
+      if (
+        data.cartillaStatus === "APPROVED" &&
+        pet.cartillaStatus !== "APPROVED"
+      ) {
+        await notifyUser(prisma, {
+          userId: pet.ownerId,
+          type: "GENERAL",
+          title: `Cartilla aprobada: ${updated.name}`,
+          body: `La cartilla de ${updated.name} fue aprobada. Ya puedes reservar estancias.`,
+          data: { petId: updated.id, kind: "CARTILLA_REVIEW", action: "APPROVE" },
+        });
       }
 
       return updated;

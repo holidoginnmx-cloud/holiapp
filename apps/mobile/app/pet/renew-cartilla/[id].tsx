@@ -17,11 +17,15 @@ import { getPetById, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatDayShortYear } from "@/lib/format";
+import { useAuthStore } from "@/store/authStore";
 
 export default function RenewCartillaScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
+  const role = useAuthStore((s) => s.role);
+  // Si la sube el equipo, el backend la aprueba sin revisión (ver PATCH /pets).
+  const capturaEquipo = role === "ADMIN" || role === "STAFF";
 
   const { data: pet, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["pet", id],
@@ -200,7 +204,9 @@ export default function RenewCartillaScreen() {
             <Text style={styles.stepNumberText}>3</Text>
           </View>
           <Text style={styles.stepText}>
-            El equipo HDI revisará la cartilla y registrará las nuevas vacunas. Te avisaremos cuando esté lista.
+            {capturaEquipo
+              ? "Al subirla queda aprobada (la estás capturando tú). Registra las nuevas vacunas desde Cartillas → Aprobadas."
+              : "El equipo HDI revisará la cartilla y registrará las nuevas vacunas. Te avisaremos cuando esté lista."}
           </Text>
         </View>
       </View>
