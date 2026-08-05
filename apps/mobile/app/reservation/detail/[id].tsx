@@ -237,10 +237,6 @@ function ReservationDetailScreenContent() {
     remainingBalance > 0.01 &&
     reservation?.status !== "CANCELLED" &&
     reservation?.status !== "CHECKED_OUT";
-  const deadlinePassed =
-    isDeposit && reservation?.depositDeadline
-      ? new Date(reservation.depositDeadline) < new Date()
-      : false;
 
   useEffect(() => {
     if (
@@ -684,7 +680,9 @@ function ReservationDetailScreenContent() {
         </View>
       )}
 
-      {hasBalance && !deadlinePassed && (
+      {/* El saldo del anticipo se liquida en la app o al entregar al perro; no
+          hay fecha límite ni cancelación automática (ver auto-actions.ts). */}
+      {hasBalance && (
         <View style={styles.balanceBanner}>
           <View style={styles.balanceBannerHeader}>
             <Ionicons name="warning-outline" size={20} color={COLORS.warningText} />
@@ -720,15 +718,6 @@ function ReservationDetailScreenContent() {
               </>
             )}
           </TouchableOpacity>
-        </View>
-      )}
-
-      {hasBalance && deadlinePassed && (
-        <View style={[styles.balanceBanner, { backgroundColor: COLORS.errorBg, borderColor: COLORS.errorText }]}>
-          <Ionicons name="close-circle-outline" size={20} color={COLORS.errorText} />
-          <Text style={[styles.balanceBannerTitle, { color: COLORS.errorText }]}>
-            Reservación cancelada por falta de pago
-          </Text>
         </View>
       )}
 

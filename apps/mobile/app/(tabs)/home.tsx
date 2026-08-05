@@ -88,7 +88,10 @@ export default function HomeScreen() {
     [upcomingReservations]
   );
 
-  // Alertas inteligentes
+  // Alertas inteligentes.
+  // El aviso de saldo aparece desde 72 h antes del check-in y NO desaparece al
+  // llegar la fecha: el saldo se liquida al entregar al perro (no hay fecha
+  // límite ni cancelación automática).
   const balanceUrgent = useMemo(() => {
     const now = Date.now();
     return (
@@ -96,7 +99,6 @@ export default function HomeScreen() {
         (r) =>
           r.hasBalance &&
           r.depositDeadline &&
-          new Date(r.depositDeadline).getTime() > now &&
           new Date(r.depositDeadline).getTime() - now < URGENT_BALANCE_WINDOW_MS
       ) ?? []
     );

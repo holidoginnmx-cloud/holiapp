@@ -165,34 +165,13 @@ export async function autoCheckoutOverdueStays(
   }
 }
 
-// Auto-cancela reservaciones con anticipo (DEPOSIT) vencido.
-// Las reservas DEPOSIT viven en CONFIRMED con saldo pendiente. Si el deadline
-// (check-in) ya pasó y el saldo nunca se completó, la reserva queda colgada — la
-// cancelamos. Se cancela en lote con un solo updateMany.
-export async function cancelOverdueDeposits(prisma: PrismaClient): Promise<void> {
-  const overdue = await prisma.reservation.findMany({
-    where: {
-      paymentType: "DEPOSIT",
-      depositDeadline: { lt: new Date() },
-      status: "CONFIRMED",
-    },
-    include: {
-      payments: {
-        where: { status: { in: ["PAID", "PARTIAL"] } },
-        select: { amount: true },
-      },
-    },
-  });
-  const toCancel = overdue
-    .filter((res) => {
-      const totalPaid = res.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      return totalPaid < Number(res.totalAmount);
-    })
-    .map((res) => res.id);
-  if (toCancel.length > 0) {
-    await prisma.reservation.updateMany({
-      where: { id: { in: toCancel } },
-      data: { status: "CANCELLED" },
-    });
-  }
-}
+// NOTA: aquí vivía `cancelOverdueDeposits`, que cancelaba automáticamente las
+// reservas con anticipo (DEPOSIT) cuyo saldo no estuviera liquidado al llegar el
+// `depositDeadline` (= la hora del check-in). Se eliminó el 2026-08-05: en la
+// operación real el saldo se cobra AL ENTREGAR al perro, así que la regla
+// cancelaba reservas legítimas justo cuando el cliente iba llegando (caso Bailey,
+// 5 ago: $360 de anticipo pagados y cancelada a los 9 minutos del check-in).
+// Las reservas abandonadas (sin ningún pago) se cancelan a mano desde el admin.
+//
+// `depositDeadline` se sigue guardando: es informativo y alimenta el aviso de
+// "saldo pendiente" en la app del cliente.

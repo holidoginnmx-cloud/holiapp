@@ -1,12 +1,11 @@
 import type { PrismaClient } from "@holidoginn/db";
 import {
   autoCheckoutOverdueStays,
-  cancelOverdueDeposits,
   notifyExpiringVaccines,
 } from "./auto-actions";
 
-// Tareas de mantenimiento periódicas: auto-checkout de estancias vencidas,
-// cancelación de anticipos vencidos y recordatorios de vacunas por vencer.
+// Tareas de mantenimiento periódicas: auto-checkout de estancias vencidas y
+// recordatorios de vacunas por vencer.
 //
 // Antes corrían de forma síncrona en cada GET /reservations, /admin/stats y
 // /staff/stays, añadiendo varios escaneos de tabla por request (la causa
@@ -38,11 +37,6 @@ export function triggerMaintenance(prisma: PrismaClient): void {
 
 /** Ejecuta todas las tareas de mantenimiento. Cada una aísla su error. */
 export async function runMaintenance(prisma: PrismaClient): Promise<void> {
-  try {
-    await cancelOverdueDeposits(prisma);
-  } catch (err) {
-    console.error("[maintenance] cancelOverdueDeposits falló:", err);
-  }
   try {
     await autoCheckoutOverdueStays(prisma);
   } catch (err) {
