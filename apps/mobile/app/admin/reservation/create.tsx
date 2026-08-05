@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -89,8 +89,11 @@ export default function AdminCreateReservation() {
   const [checkOut, setCheckOut] = useState<Date | null>(null);
   const [showCheckInPicker, setShowCheckInPicker] = useState(false);
   const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [roomsExpanded, setRoomsExpanded] = useState(false);
+  // Cuarto elegido por mascota (petId → roomId) y qué selector está abierto.
+  // Cada perro del grupo puede ir a un cuarto distinto: no siempre caben
+  // juntos ni comparten talla.
+  const [roomByPet, setRoomByPet] = useState<Record<string, string>>({});
+  const [roomPickerFor, setRoomPickerFor] = useState<string | null>(null);
 
   // BATH
   const [appointmentAt, setAppointmentAt] = useState<Date | null>(null);
@@ -210,25 +213,22 @@ export default function AdminCreateReservation() {
     [pets, petIds],
   );
 
-  // Tamaño MÁS GRANDE del grupo: el cuarto compartido debe admitirlo.
-  const petSize = useMemo(() => {
-    if (selectedPets.length === 0) return null;
-    const order = ["XS", "S", "M", "L", "XL"];
-    return selectedPets
-      .map((p) => sizeFromWeight(p.weight))
-      .reduce((max, s) => (order.indexOf(s) > order.indexOf(max) ? s : max));
-  }, [selectedPets]);
-
-  // Cuartos disponibles para el tamaño (más grande) del grupo (solo STAY).
+  // Todos los cuartos activos: cada mascota elige el suyo, filtrado por SU
+  // talla (sizeAllowed). Antes se pedían filtrados por el tamaño más grande
+  // del grupo porque todas compartían cuarto.
   const { data: rooms, isLoading: roomsLoading } = useQuery({
-    queryKey: ["admin", "rooms", petSize],
-    queryFn: () => getRooms(petSize!),
-    enabled: reservationType === "STAY" && !!petSize,
+    queryKey: ["admin", "rooms"],
+    queryFn: () => getRooms(),
+    enabled: reservationType === "STAY",
   });
 
-  const selectedRoom = useMemo(
-    () => (rooms ?? []).find((r) => r.id === roomId),
-    [rooms, roomId],
+  // Cuartos que admiten la talla de una mascota.
+  const roomsForPet = useCallback(
+    (pet: PetWithOwner) => {
+      const size = sizeFromWeight(pet.weight);
+      return (rooms ?? []).filter((r) => r.sizeAllowed.includes(size));
+    },
+    [rooms],
   );
 
   const { data: bathVariants } = useQuery({
@@ -377,17 +377,25 @@ export default function AdminCreateReservation() {
     setOwnerId(id);
     // Si la búsqueda coincidió por mascota, se preselecciona directamente.
     setPetIds(matchedPetId ? [matchedPetId] : []);
-    setRoomId(null);
+    setRoomByPet({});
+    setRoomPickerFor(null);
     setClientSearch(""); // colapsa la lista tras elegir
   }
 
-  // Toggle multi-perro: tocar agrega/quita la mascota de la selección.
+  // Toggle multi-perro: tocar agrega/quita la mascota de la selección. El
+  // cuarto de las demás se conserva (cada mascota tiene el suyo); al quitar
+  // una se olvida el suyo.
   function togglePet(id: string) {
     setPetIds((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
     );
-    setRoomId(null); // el tamaño del grupo cambia → la lista de cuartos cambia
-    setRoomsExpanded(false);
+    setRoomByPet((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setRoomPickerFor(null);
   }
 
   async function handleSubmit() {
@@ -446,8 +454,15 @@ export default function AdminCreateReservation() {
         Alert.alert("Fechas inválidas", "La salida debe ser posterior a la entrada.");
         return;
       }
-      if (!roomId) {
-        Alert.alert("Faltan datos", "Selecciona un cuarto.");
+      // Un cuarto por mascota, en el mismo orden que petIds.
+      const sinCuarto = selectedPets.filter((p) => !roomByPet[p.id]);
+      if (sinCuarto.length > 0) {
+        Alert.alert(
+          "Faltan datos",
+          selectedPets.length > 1
+            ? `Selecciona el cuarto de ${sinCuarto.map((p) => p.name).join(", ")}.`
+            : "Selecciona un cuarto.",
+        );
         return;
       }
       if (stayBathEnabled && stayBathPrice == null) {
@@ -457,12 +472,14 @@ export default function AdminCreateReservation() {
         );
         return;
       }
+      const roomIds = petIds.map((id) => roomByPet[id]);
       payload = {
         ...common,
         reservationType: "STAY",
         checkIn: checkIn.toISOString(),
         checkOut: checkOut.toISOString(),
-        roomId,
+        // Con una mascota se manda roomId (forma clásica); con varias, roomIds.
+        ...(roomIds.length === 1 ? { roomId: roomIds[0] } : { roomIds }),
         ...(medEnabled ? { medicationNotes: medNotes.trim() } : {}),
         ...(stayBathEnabled
           ? { bath: { deslanado: stayDeslanado, corte: stayCorte } }
@@ -589,7 +606,8 @@ export default function AdminCreateReservation() {
           selected={reservationType}
           onSelect={(k) => {
             setReservationType(k as ReservationType);
-            setRoomId(null);
+            setRoomByPet({});
+            setRoomPickerFor(null);
           }}
         />
 
@@ -774,70 +792,91 @@ export default function AdminCreateReservation() {
               </View>
             </View>
 
-            <Text style={styles.label}>Cuarto</Text>
+            <Text style={styles.label}>
+              {selectedPets.length > 1 ? "Cuarto de cada mascota" : "Cuarto"}
+            </Text>
             {roomsLoading ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
             ) : (
-              <>
-                <TouchableOpacity
-                  style={styles.collapseHeader}
-                  onPress={() => setRoomsExpanded((v) => !v)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.collapseHeaderText,
-                      selectedRoom && styles.rowTextSelected,
-                    ]}
-                  >
-                    {selectedRoom
-                      ? `${selectedRoom.name} · cap. ${selectedRoom.capacity}`
-                      : "Seleccionar cuarto"}
-                  </Text>
-                  <Ionicons
-                    name={roomsExpanded ? "chevron-up" : "chevron-down"}
-                    size={18}
-                    color={COLORS.textTertiary}
-                  />
-                </TouchableOpacity>
-                {roomsExpanded && (
-                  <View style={styles.listBox}>
-                    {(rooms ?? []).length === 0 ? (
-                      <Text style={styles.emptyText}>
-                        No hay cuartos para el tamaño de esta mascota
+              selectedPets.map((pet) => {
+                const disponibles = roomsForPet(pet);
+                const elegido = disponibles.find((r) => r.id === roomByPet[pet.id]);
+                const abierto = roomPickerFor === pet.id;
+                return (
+                  <View key={pet.id}>
+                    {selectedPets.length > 1 && (
+                      <Text style={styles.petRoomName}>{pet.name}</Text>
+                    )}
+                    <TouchableOpacity
+                      style={styles.collapseHeader}
+                      onPress={() => setRoomPickerFor(abierto ? null : pet.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.collapseHeaderText,
+                          elegido && styles.rowTextSelected,
+                        ]}
+                      >
+                        {elegido
+                          ? `${elegido.name} · cap. ${elegido.capacity}`
+                          : "Seleccionar cuarto"}
                       </Text>
-                    ) : (
-                      (rooms ?? []).map((r) => (
-                        <TouchableOpacity
-                          key={r.id}
-                          style={[styles.row, roomId === r.id && styles.rowSelected]}
-                          onPress={() => {
-                            setRoomId(r.id);
-                            setRoomsExpanded(false);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.rowText,
-                              roomId === r.id && styles.rowTextSelected,
-                            ]}
-                          >
-                            {r.name} · cap. {r.capacity}
+                      <Ionicons
+                        name={abierto ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color={COLORS.textTertiary}
+                      />
+                    </TouchableOpacity>
+                    {abierto && (
+                      <View style={styles.listBox}>
+                        {disponibles.length === 0 ? (
+                          <Text style={styles.emptyText}>
+                            No hay cuartos para el tamaño de {pet.name}
                           </Text>
-                          {roomId === r.id && (
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={18}
-                              color={COLORS.primary}
-                            />
-                          )}
-                        </TouchableOpacity>
-                      ))
+                        ) : (
+                          disponibles.map((r) => {
+                            const seleccionado = roomByPet[pet.id] === r.id;
+                            // Cuántos otros perros del grupo ya van a este cuarto
+                            // (comparten cuarto: es válido, sólo se avisa).
+                            const compañeros = selectedPets.filter(
+                              (p) => p.id !== pet.id && roomByPet[p.id] === r.id,
+                            ).length;
+                            return (
+                              <TouchableOpacity
+                                key={r.id}
+                                style={[styles.row, seleccionado && styles.rowSelected]}
+                                onPress={() => {
+                                  setRoomByPet((prev) => ({ ...prev, [pet.id]: r.id }));
+                                  setRoomPickerFor(null);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.rowText,
+                                    seleccionado && styles.rowTextSelected,
+                                  ]}
+                                >
+                                  {r.name} · cap. {r.capacity}
+                                  {compañeros > 0 ? ` · ya con ${compañeros} del grupo` : ""}
+                                </Text>
+                                {seleccionado && (
+                                  <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={COLORS.primary}
+                                  />
+                                )}
+                              </TouchableOpacity>
+                            );
+                          })
+                        )}
+                      </View>
                     )}
                   </View>
-                )}
-              </>
+                );
+              })
             )}
 
             {/* Baño como complemento */}
@@ -872,7 +911,7 @@ export default function AdminCreateReservation() {
                 />
                 {stayBathPrice != null ? (
                   <Text style={styles.estimate}>Baño: ${stayBathPrice}</Text>
-                ) : petSize ? (
+                ) : selectedPets.length > 0 ? (
                   <Text style={styles.estimateWarn}>
                     No hay variante de baño para esta combinación
                   </Text>
@@ -1003,7 +1042,7 @@ export default function AdminCreateReservation() {
 
             {bathEstimate != null ? (
               <Text style={styles.estimate}>Precio: ${bathEstimate}</Text>
-            ) : petSize ? (
+            ) : selectedPets.length > 0 ? (
               <Text style={styles.estimateWarn}>
                 No hay variante configurada para esta combinación
               </Text>
@@ -1379,6 +1418,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   collapseHeaderText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textPrimary },
+  // Nombre de la mascota sobre su selector de cuarto (solo en multi-perro).
+  petRoomName: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_500Medium",
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
   listBox: {
     backgroundColor: COLORS.white,
     borderRadius: 10,

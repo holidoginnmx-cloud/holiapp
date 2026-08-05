@@ -196,6 +196,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       petId,
       petIds,
       roomId,
+      roomIds,
       notes,
       legalAccepted,
       appointmentAt,
@@ -515,23 +516,45 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         .send({ error: "checkOut debe ser posterior a checkIn" });
     }
 
-    // Verify room exists
-    const room = await prisma.room.findUnique({ where: { id: roomId } });
-    if (!room) {
-      return reply.status(404).send({ error: "Cuarto no encontrado" });
+    // Cuarto por mascota: `roomIds` (uno por fila, en el orden de petIds) o el
+    // `roomId` único para todo el grupo. Los perros de un grupo no siempre
+    // caben juntos ni comparten talla, así que cada uno puede ir a su cuarto.
+    if (roomIds && roomIds.length !== groupPets.length) {
+      return reply.status(400).send({
+        error: "Indica un cuarto por mascota (roomIds debe tener el mismo largo que petIds)",
+      });
     }
-    if (!room.isActive) {
-      return reply.status(400).send({ error: "El cuarto no está activo" });
+    const roomIdByPet = roomIds ?? groupPets.map(() => roomId);
+    if (roomIdByPet.some((id) => !id)) {
+      return reply.status(400).send({ error: "roomId es requerido para una estancia" });
     }
 
-    // Capacity guard: el cuarto no debe rebasar su capacidad en las fechas
-    // pedidas (el grupo completo comparte el mismo cuarto).
-    const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
-    if (taken + groupPets.length > room.capacity) {
-      return reply.status(409).send({
-        error: `El cuarto ${room.name} no tiene capacidad disponible en esas fechas (${taken}/${room.capacity} ocupado).`,
-        code: "ROOM_AT_CAPACITY",
-      });
+    // Verify rooms exist (una consulta para los cuartos distintos del grupo)
+    const uniqueRoomIds = Array.from(new Set(roomIdByPet as string[]));
+    const rooms = await prisma.room.findMany({ where: { id: { in: uniqueRoomIds } } });
+    const roomById = new Map(rooms.map((r) => [r.id, r]));
+    for (const id of uniqueRoomIds) {
+      const room = roomById.get(id);
+      if (!room) {
+        return reply.status(404).send({ error: "Cuarto no encontrado" });
+      }
+      if (!room.isActive) {
+        return reply.status(400).send({ error: `El cuarto ${room.name} no está activo` });
+      }
+    }
+
+    // Capacity guard por cuarto: se cuenta cuántas mascotas del grupo entran a
+    // cada uno (varias pueden compartir) más lo ya ocupado en esas fechas.
+    for (const id of uniqueRoomIds) {
+      const room = roomById.get(id)!;
+      const delGrupo = roomIdByPet.filter((r) => r === id).length;
+      const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
+      if (taken + delGrupo > room.capacity) {
+        return reply.status(409).send({
+          error: `El cuarto ${room.name} no tiene capacidad disponible en esas fechas (${taken}/${room.capacity} ocupado).`,
+          code: "ROOM_AT_CAPACITY",
+        });
+      }
     }
 
     // Hospedaje: precio por día según peso × noches, POR mascota.
@@ -604,7 +627,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             groupId,
             ownerId,
             petId: groupPets[i].id,
-            roomId,
+            roomId: roomIdByPet[i],
             ...rowExtraData(isFirst, deposits?.[i]),
           },
           include: { pet: true, room: true },

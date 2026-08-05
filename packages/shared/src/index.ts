@@ -446,6 +446,10 @@ export const CreateReservationSchema = z.object({
   checkIn: z.coerce.date().optional(),
   checkOut: z.coerce.date().optional(),
   roomId: z.string().optional(),
+  // Multi-perro: un cuarto por mascota, en el MISMO orden que petIds (los
+  // perros de un grupo no siempre caben juntos ni comparten talla). Si se
+  // omite, todas las filas van al `roomId` único de arriba.
+  roomIds: z.array(z.string()).min(1).optional(),
   // Baño como complemento de un hospedaje (STAY). En BATH se usan los campos
   // deslanado/corte de nivel superior.
   bath: BathSelectionSchema.optional(),
