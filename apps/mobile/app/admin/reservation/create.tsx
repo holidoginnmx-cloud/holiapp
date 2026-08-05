@@ -127,9 +127,12 @@ export default function AdminCreateReservation() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
 
-  // Anticipo / pago
+  // Anticipo ya cobrado al crear la reserva. Un solo monto: se guarda como
+  // anticipo acordado de la reserva Y se registra como pago real (lo normal es
+  // que el cliente ya lo haya pagado al apartar). Antes eran dos campos y el
+  // "anticipo acordado" no generaba ningún pago: el dinero no aparecía en el
+  // admin web, que cuenta lo pagado como la suma de los pagos.
   const [depositAgreed, setDepositAgreed] = useState("");
-  const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
 
   const {
@@ -509,11 +512,11 @@ export default function AdminCreateReservation() {
     setSubmitting(true);
     try {
       const created = await createReservation(payload);
-      // Pago manual inicial (opcional): se registra contra la reserva creada.
+      // El anticipo se registra como pago real contra la reserva creada.
       // En grupos multi-perro se reparte proporcional al total de cada fila
       // (la última absorbe el residuo) para que ninguna quede desbalanceada.
-      const amount = Number(payAmount);
-      if (payAmount.trim() && amount > 0 && created?.id) {
+      const amount = Number(depositAgreed);
+      if (depositAgreed.trim() && amount > 0 && created?.id) {
         const groupRows = (
           created as unknown as {
             groupReservations?: { id: string; totalAmount: string | number }[];
@@ -1246,10 +1249,10 @@ export default function AdminCreateReservation() {
           </View>
         )}
 
-        {/* ── Anticipo / pago (opcional) ── */}
+        {/* ── Anticipo ya pagado (opcional) ── */}
         {petIds.length > 0 && (
           <>
-            <Text style={styles.label}>Anticipo acordado (opcional)</Text>
+            <Text style={styles.label}>Anticipo pagado (opcional)</Text>
             <TextInput
               style={styles.amountInput}
               placeholder="0"
@@ -1258,17 +1261,11 @@ export default function AdminCreateReservation() {
               onChangeText={setDepositAgreed}
               keyboardType="numeric"
             />
-
-            <Text style={styles.label}>Registrar pago ahora (opcional)</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="Monto pagado"
-              placeholderTextColor={COLORS.textDisabled}
-              value={payAmount}
-              onChangeText={setPayAmount}
-              keyboardType="numeric"
-            />
-            {payAmount.trim().length > 0 && (
+            <Text style={styles.hint}>
+              Monto que el cliente YA pagó al apartar. Se registra como pago de
+              la reserva y baja el saldo pendiente.
+            </Text>
+            {depositAgreed.trim().length > 0 && (
               <LevelSelector
                 label="Método de pago"
                 options={[
@@ -1279,6 +1276,16 @@ export default function AdminCreateReservation() {
                 onSelect={(k) => setPayMethod(k as "CASH" | "TRANSFER")}
               />
             )}
+            {depositAgreed.trim().length > 0 &&
+              grandTotalEstimate != null &&
+              Number(depositAgreed) > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Saldo pendiente</Text>
+                  <Text style={styles.totalValue}>
+                    ${Math.max(0, grandTotalEstimate - Number(depositAgreed)).toFixed(2)}
+                  </Text>
+                </View>
+              )}
           </>
         )}
 

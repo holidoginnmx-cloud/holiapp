@@ -556,11 +556,23 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
 
+      // Tipo del pago dentro del ledger (misma regla que el admin web, ver
+      // lib/reservacion.ts → inferirTipoPago): RESTANTE si liquida el saldo,
+      // ANTICIPO si es el primer pago parcial, ABONO en los demás casos. Sin
+      // esto todo pago manual nacía FULL (el default de Prisma) y el admin web
+      // lo etiquetaba mal aunque solo cubriera una parte.
+      const total = Number(reservation.totalAmount);
+      const pagado = reservation.payments.reduce((acc, p) => acc + Number(p.amount), 0);
+      const saldo = Math.round((total - pagado) * 100) / 100;
+      const kind =
+        total <= 0 ? "ABONO" : amount >= saldo ? "RESTANTE" : pagado === 0 ? "ANTICIPO" : "ABONO";
+
       const payment = await prisma.payment.create({
         data: {
           amount,
           method,
           status: "PAID",
+          kind,
           paidAt: new Date(),
           reservationId,
           userId: reservation.ownerId,

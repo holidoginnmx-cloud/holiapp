@@ -282,6 +282,9 @@ export async function createReservationGroup(
         amount: paidAmount,
         method: creditOnly ? "CREDIT" : "STRIPE",
         status: isDeposit ? "PARTIAL" : "PAID",
+        // Sin esto el anticipo del 20% nacía con el default FULL y el admin
+        // web lo mostraba como pago completo.
+        kind: isDeposit ? "ANTICIPO" : "FULL",
         stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
         paidAt: new Date(),
         notes: isDeposit
