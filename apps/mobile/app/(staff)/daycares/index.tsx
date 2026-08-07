@@ -1,5 +1,4 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo } from "react";
 import {
   View,
@@ -159,8 +158,7 @@ export default function StaffDaycares() {
         </View>
       ) : (
         <FlatList<Row>
-          onScroll={liquidTabBarOnScroll}
-          scrollEventThrottle={16}
+          contentInsetAdjustmentBehavior="automatic"
           data={rows}
           keyExtractor={(item, i) =>
             item.type === "item" ? item.daycare.id : `${item.type}-${i}`
@@ -200,7 +198,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: "PlusJakartaSans_600SemiBold",
   },
-  listContent: { padding: 16, paddingBottom: 40 },
+  listContent: { padding: 16, paddingBottom: 24 },
   sectionHeader: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_700Bold",

@@ -1,9 +1,13 @@
 import { COLORS } from "@/constants/colors";
-import { LiquidTabBar } from "@/components/LiquidTabBar";
-import { Tabs, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import {
+  NativeTabs,
+  Icon,
+  Label,
+  VectorIcon,
+} from "expo-router/unstable-native-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
-import { TouchableOpacity } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 
 import { useAuthStore } from "@/store/authStore";
@@ -39,80 +43,39 @@ export default function AdminLayout() {
   if (!isLoaded || !isSignedIn) return null;
 
   return (
-    <Tabs
-      tabBar={(props) => <LiquidTabBar {...props} />}
-      screenOptions={{
-        // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
-        // de pestaña. Quitarla = cambio instantáneo, estable.
-        tabBarLabelStyle: { fontFamily: "PlusJakartaSans_600SemiBold" },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textDisabled,
-        tabBarStyle: {
-          borderTopColor: COLORS.bgSection,
-          paddingBottom: 4,
-        },
-        headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
-      }}
+    // Tab bar NATIVO (UITabBar real). El header de cada pestaña vive ahora en el
+    // Stack de cada tab (ver src/components/TabStack.tsx), porque NativeTabs no
+    // dibuja headers.
+    <NativeTabs
+      tintColor={COLORS.primary}
+      iconColor={COLORS.textDisabled}
+      backgroundColor={COLORS.white}
+      minimizeBehavior="onScrollDown"
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Panel",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
-          ),
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push("/admin/account" as any)}
-              style={{ marginRight: 16 }}
-              testID="admin-account-button"
-            >
-              <Ionicons
-                name="person-circle-outline"
-                size={28}
-                color={COLORS.primary}
-              />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reservations"
-        options={{
-          title: "Reservaciones",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="clients"
-        options={{
-          title: "Mascotas",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="paw-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="baths"
-        options={{
-          title: "Baños",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="water-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Ajustes",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+      <NativeTabs.Trigger name="dashboard">
+        <Icon src={<VectorIcon family={Ionicons} name="grid-outline" />} />
+        <Label>Panel</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="reservations">
+        <Icon src={<VectorIcon family={Ionicons} name="calendar-outline" />} />
+        <Label>Reservaciones</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="clients">
+        <Icon src={<VectorIcon family={Ionicons} name="paw-outline" />} />
+        <Label>Mascotas</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="baths">
+        <Icon src={<VectorIcon family={Ionicons} name="water-outline" />} />
+        <Label>Baños</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="settings">
+        <Icon src={<VectorIcon family={Ionicons} name="settings-outline" />} />
+        <Label>Ajustes</Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

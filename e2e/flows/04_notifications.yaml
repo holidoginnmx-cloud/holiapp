@@ -7,8 +7,9 @@ name: Notifications tab renders (list or empty state)
 - runFlow:
     file: 01_auth_signin.yaml
 
-- tapOn:
-    id: "tabbar-notifications"
+# El tab bar es nativo (UITabBar): no admite testID, así que se tapea por la
+# etiqueta, que UIKit expone como accessibility label del UITabBarItem.
+- tapOn: "Notificaciones"
 
 - assertVisible:
     id: "notifications-screen"

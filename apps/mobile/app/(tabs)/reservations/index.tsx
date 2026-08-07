@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
+import { TabFab } from "@/components/TabFab";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -438,8 +438,7 @@ export default function ReservationsScreen() {
           return (
             <View key={t.key} style={{ width: pageWidth }}>
               <FlatList
-                onScroll={liquidTabBarOnScroll}
-                scrollEventThrottle={16}
+                contentInsetAdjustmentBehavior="automatic"
                 data={pageData}
                 keyExtractor={(item) => item.groupId ?? item.id}
                 renderItem={renderItem}
@@ -485,14 +484,14 @@ export default function ReservationsScreen() {
       </Animated.ScrollView>
 
       {/* FAB WhatsApp */}
-      <LiquidFab
+      <TabFab
         style={styles.fab}
         onPress={() => Linking.openURL(buildWhatsappUrl())}
         testID="reservations-whatsapp-button"
         accessibilityLabel="Escríbenos por WhatsApp"
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
-      </LiquidFab>
+      </TabFab>
     </View>
   );
 }
@@ -505,8 +504,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    // Despejado del tab bar flotante (64px + margen inferior).
-    bottom: 104,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -562,7 +559,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    paddingBottom: 96,
+    paddingBottom: 88,
   },
   center: {
     flex: 1,

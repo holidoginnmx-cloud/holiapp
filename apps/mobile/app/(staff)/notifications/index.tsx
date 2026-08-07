@@ -1,5 +1,4 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo } from "react";
 import {
   View,
@@ -132,8 +131,7 @@ export default function StaffNotificationsScreen() {
       )}
 
       <SectionList
-        onScroll={liquidTabBarOnScroll}
-        scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
         sections={sections}
         keyExtractor={(item) => item.id}
         stickySectionHeadersEnabled={false}

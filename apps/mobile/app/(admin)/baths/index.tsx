@@ -1,5 +1,4 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo, useRef, useState } from "react";
 import {
   View,
@@ -285,8 +284,7 @@ export default function AdminBaths() {
           >
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
-                onScroll={liquidTabBarOnScroll}
-                scrollEventThrottle={16}
+                contentInsetAdjustmentBehavior="automatic"
                 data={rowsLoose}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
@@ -315,8 +313,7 @@ export default function AdminBaths() {
             </View>
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
-                onScroll={liquidTabBarOnScroll}
-                scrollEventThrottle={16}
+                contentInsetAdjustmentBehavior="automatic"
                 data={rowsStay}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
@@ -371,7 +368,7 @@ const styles = StyleSheet.create({
   },
   swipeWrap: { flex: 1, overflow: "hidden" },
   swipeTrack: { flex: 1, flexDirection: "row" },
-  listContent: { padding: 16, paddingBottom: 40 },
+  listContent: { padding: 16, paddingBottom: 24 },
   sectionHeader: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_700Bold",

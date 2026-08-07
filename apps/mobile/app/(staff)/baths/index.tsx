@@ -1,5 +1,4 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll } from "@/components/LiquidTabBar";
 import { useMemo, useRef, useState } from "react";
 import {
   View,
@@ -534,8 +533,7 @@ export default function StaffBaths() {
           >
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
-                onScroll={liquidTabBarOnScroll}
-                scrollEventThrottle={16}
+                contentInsetAdjustmentBehavior="automatic"
                 data={rowsLoose}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
@@ -564,8 +562,7 @@ export default function StaffBaths() {
             </View>
             <View style={{ width: contentWidth }}>
               <FlatList<Row>
-                onScroll={liquidTabBarOnScroll}
-                scrollEventThrottle={16}
+                contentInsetAdjustmentBehavior="automatic"
                 data={rowsStay}
                 keyExtractor={(item, i) =>
                   item.type === "item" ? item.bath.id : `${item.type}-${i}`
@@ -825,7 +822,7 @@ const styles = StyleSheet.create({
   // la mecánica de deslizamiento sigue siendo consistente.
   swipeWrapTablet: { alignSelf: "center", width: "100%", maxWidth: CONTENT_MAX_WIDTH },
   swipeTrack: { flex: 1, flexDirection: "row" },
-  listContent: { padding: 16, paddingBottom: 40 },
+  listContent: { padding: 16, paddingBottom: 24 },
   sectionHeader: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_700Bold",

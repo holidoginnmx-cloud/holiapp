@@ -1055,7 +1055,7 @@ export default function StayDetail() {
             <TouchableOpacity
               style={[styles.actionButtonSmall, { backgroundColor: COLORS.primary }]}
               onPress={() =>
-                router.push(`/(staff)/checklist/${stay.id}` as any)
+                router.push(`/staff/checklist/${stay.id}` as any)
               }
             >
               <Ionicons name="document-text-outline" size={18} color={COLORS.white} />

@@ -202,7 +202,7 @@ export default function StaffListScreen() {
               text={`${formatName(stay.pet?.name ?? "—")} — Falta reporte diario`}
               severity="warning"
               onPress={() =>
-                router.push(`/(staff)/checklist/${stay.id}` as any)
+                router.push(`/staff/checklist/${stay.id}` as any)
               }
             />
           ))}

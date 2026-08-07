@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { LiquidFab } from "@/components/LiquidTabBar";
+import { TabFab } from "@/components/TabFab";
 import { useState } from "react";
 import {
   View,
@@ -123,13 +123,13 @@ export default function AdminReservations() {
         onRefresh={refetch}
       />
 
-      <LiquidFab
+      <TabFab
         style={styles.fab}
         onPress={() => router.push("/admin/reservation/create" as any)}
         testID="admin-reservations-create-fab"
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
-      </LiquidFab>
+      </TabFab>
     </View>
   );
 }
@@ -187,8 +187,6 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    // Despejado del tab bar flotante (64px + margen inferior).
-    bottom: 104,
     right: 24,
     width: 56,
     height: 56,

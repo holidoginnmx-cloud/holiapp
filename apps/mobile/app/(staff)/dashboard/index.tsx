@@ -528,7 +528,7 @@ function StayCard({
             source={
               stay.pet?.photoUrl
                 ? { uri: stay.pet.photoUrl }
-                : require("../../assets/pet-placeholder.png")
+                : require("../../../assets/pet-placeholder.png")
             }
             style={styles.petPhoto}
           />
@@ -718,7 +718,7 @@ function BathCard({
               source={
                 bath.pet?.photoUrl
                   ? { uri: bath.pet.photoUrl }
-                  : require("../../assets/pet-placeholder.png")
+                  : require("../../../assets/pet-placeholder.png")
               }
               style={styles.petPhoto}
             />

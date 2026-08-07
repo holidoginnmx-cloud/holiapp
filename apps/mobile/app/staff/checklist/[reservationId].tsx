@@ -15,6 +15,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -38,6 +39,7 @@ const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
 export default function ChecklistForm() {
   const { reservationId } = useLocalSearchParams<{ reservationId: string }>();
   const { isTablet } = useResponsive();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -223,10 +225,19 @@ export default function ChecklistForm() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={
-        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" }
-      }
+      contentContainerStyle={[
+        // Colchón inferior real: safe area + respiro. Antes era un spacer de 40pt
+        // al final del contenido, que no alcanzaba para librar la barra inferior
+        // y dejaba el botón de guardar fuera de alcance.
+        { paddingBottom: insets.bottom + 32 },
+        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" },
+      ]}
       keyboardShouldPersistTaps="handled"
+      // Los dos TextInput multiline (notas del día / handoff) quedaban tapados
+      // por el teclado. En iOS el propio ScrollView se insetea; en Android el
+      // adjustResize por defecto de Expo ya redimensiona la ventana.
+      automaticallyAdjustKeyboardInsets
+      keyboardDismissMode="interactive"
     >
       {/* Header */}
       <View style={styles.header}>
@@ -389,8 +400,6 @@ export default function ChecklistForm() {
           </>
         )}
       </TouchableOpacity>
-
-      <View style={{ height: 40 }} />
 
       <Modal
         visible={showSuccess}

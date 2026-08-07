@@ -33,6 +33,7 @@ export default function StaffRootLayout() {
       <Stack.Screen name="bath" options={{ headerShown: false }} />
       <Stack.Screen name="stay" options={{ headerShown: false }} />
       <Stack.Screen name="daycare" options={{ headerShown: false }} />
+      <Stack.Screen name="checklist" options={{ headerShown: false }} />
     </Stack>
   );
 }

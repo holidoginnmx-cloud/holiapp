@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
+import { TabFab } from "@/components/TabFab";
 import {
   View,
   Text,
@@ -304,8 +304,7 @@ export default function AdminClients() {
         </View>
       ) : (
         <FlatList
-          onScroll={liquidTabBarOnScroll}
-          scrollEventThrottle={16}
+          contentInsetAdjustmentBehavior="automatic"
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
@@ -325,14 +324,14 @@ export default function AdminClients() {
       )}
 
       {/* Alta de mascota (con su dueño, nuevo o existente) */}
-      <LiquidFab
+      <TabFab
         style={styles.fab}
         onPress={() => router.push("/admin/pets/owner" as any)}
         accessibilityLabel="Nueva mascota"
         testID="admin-new-pet-fab"
       >
         <Ionicons name="add" size={30} color={COLORS.white} />
-      </LiquidFab>
+      </TabFab>
     </View>
   );
 }
@@ -378,13 +377,11 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 8,
     // Espacio extra para que el FAB no tape la última tarjeta.
-    paddingBottom: 96,
+    paddingBottom: 88,
   },
   fab: {
     position: "absolute",
     right: 20,
-    // Despejado del tab bar flotante (64px + margen inferior).
-    bottom: 104,
     width: 56,
     height: 56,
     borderRadius: 28,

@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { liquidTabBarOnScroll, LiquidFab } from "@/components/LiquidTabBar";
+import { TabFab } from "@/components/TabFab";
 import {
   View,
   Text,
@@ -42,8 +42,7 @@ export default function PetsScreen() {
   return (
     <View style={styles.container} testID="pets-screen">
       <FlatList
-        onScroll={liquidTabBarOnScroll}
-        scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
         testID="pets-list"
         data={pets ?? []}
         keyExtractor={(item) => item.id}
@@ -88,13 +87,13 @@ export default function PetsScreen() {
       />
 
       {/* FAB */}
-      <LiquidFab
+      <TabFab
         style={styles.fab}
         onPress={() => router.push("/pet/create")}
         testID="pets-create-fab"
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
-      </LiquidFab>
+      </TabFab>
     </View>
   );
 }
@@ -107,7 +106,7 @@ const styles = StyleSheet.create({
   list: {
     padding: 20,
     paddingTop: 16,
-    paddingBottom: 80,
+    paddingBottom: 88,
   },
   center: {
     flex: 1,
@@ -178,8 +177,6 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    // Despejado del tab bar flotante (64px + margen inferior).
-    bottom: 104,
     right: 24,
     width: 56,
     height: 56,

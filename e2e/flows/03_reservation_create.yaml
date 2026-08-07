@@ -7,8 +7,9 @@ name: Create a reservation end-to-end (pet → dates → room → confirm)
     file: 01_auth_signin.yaml
 
 # Navigate: Reservations tab → New reservation.
-- tapOn:
-    id: "tabbar-reservations"
+# El tab bar es nativo (UITabBar): no admite testID, así que se tapea por la
+# etiqueta, que UIKit expone como accessibility label del UITabBarItem.
+- tapOn: "Reservaciones"
 - assertVisible:
     id: "reservations-screen"
 

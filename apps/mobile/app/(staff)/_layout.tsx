@@ -1,9 +1,14 @@
 import { COLORS } from "@/constants/colors";
-import { LiquidTabBar } from "@/components/LiquidTabBar";
-import { Tabs, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import {
+  NativeTabs,
+  Icon,
+  Label,
+  Badge,
+  VectorIcon,
+} from "expo-router/unstable-native-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
-import { TouchableOpacity } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
@@ -48,97 +53,54 @@ export default function StaffLayout() {
   if (!isLoaded || !isSignedIn) return null;
 
   return (
-    <Tabs
-      tabBar={(props) => <LiquidTabBar {...props} />}
-      screenOptions={{
-        // `animation: "shift"` dejaba el contenido del tab en blanco al cambiar
-        // de pestaña. Quitarla = cambio instantáneo, estable.
-        tabBarLabelStyle: { fontFamily: "PlusJakartaSans_600SemiBold" },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textDisabled,
-        tabBarStyle: {
-          borderTopColor: COLORS.bgSection,
-          paddingBottom: 4,
-        },
-        headerStyle: { backgroundColor: COLORS.white },
-        headerTitleStyle: { color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_700Bold" },
-      }}
+    // Tab bar NATIVO (UITabBar real). El header de cada pestaña ya no vive aquí:
+    // NativeTabs no dibuja headers, así que cada tab monta su propio Stack
+    // (ver src/components/TabStack.tsx).
+    <NativeTabs
+      tintColor={COLORS.primary}
+      iconColor={COLORS.textDisabled}
+      backgroundColor={COLORS.white}
+      badgeBackgroundColor={COLORS.dangerText}
+      // iOS 26: minimize-on-scroll nativo. Sustituye al que antes se hacía a
+      // mano en JS reportando el onScroll de cada lista.
+      minimizeBehavior="onScrollDown"
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Panel",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
-          ),
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push("/(staff)/profile")}
-              style={{ marginRight: 16 }}
-              testID="staff-account-button"
-            >
-              <Ionicons
-                name="person-circle-outline"
-                size={28}
-                color={COLORS.primary}
-              />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="stays"
-        options={{
-          title: "Estancias",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="paw-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="baths"
-        options={{
-          title: "Baños",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="water-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="daycares"
-        options={{
-          title: "Guardería",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sunny-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
+      <NativeTabs.Trigger name="dashboard">
+        <Icon src={<VectorIcon family={Ionicons} name="grid-outline" />} />
+        <Label>Panel</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="stays">
+        <Icon src={<VectorIcon family={Ionicons} name="paw-outline" />} />
+        <Label>Estancias</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="baths">
+        <Icon src={<VectorIcon family={Ionicons} name="water-outline" />} />
+        <Label>Baños</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="daycares">
+        <Icon src={<VectorIcon family={Ionicons} name="sunny-outline" />} />
+        <Label>Guardería</Label>
+      </NativeTabs.Trigger>
+
+      {/* El badge va por `options` y no como <Badge> condicional: setOptions
+          mergea, así que una clave que desaparece deja el badge pegado. */}
+      <NativeTabs.Trigger
         name="notifications"
         options={{
-          title: "Avisos",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
-          ),
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: COLORS.dangerText,
-            fontSize: 11,
-            fontFamily: "PlusJakartaSans_700Bold",
-          },
+          badgeValue: unreadCount > 0 ? String(Math.min(unreadCount, 99)) : undefined,
         }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Perfil",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      {/* Hide detail screens from tab bar — headers handled by nested Stack layouts */}
-      <Tabs.Screen name="checklist" options={{ href: null, headerShown: false }} />
-    </Tabs>
+      >
+        <Icon src={<VectorIcon family={Ionicons} name="notifications-outline" />} />
+        <Label>Avisos</Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="profile">
+        <Icon src={<VectorIcon family={Ionicons} name="person-outline" />} />
+        <Label>Perfil</Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

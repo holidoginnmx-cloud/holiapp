@@ -90,9 +90,14 @@ grep -r "appId:" e2e/
 
 ## Selector conventions
 
-Flows use `testID` selectors exclusively (no text matchers) so Spanish copy
-changes do not break tests. Naming convention: `screen-element-action`, e.g.
-`pets-create-fab`, `reservation-create-submit-button`, `tabbar-reservations`.
+Flows use `testID` selectors so Spanish copy changes do not break tests.
+Naming convention: `screen-element-action`, e.g. `pets-create-fab`,
+`reservation-create-submit-button`.
+
+The one exception is the bottom tab bar: it is a native `UITabBar` (via
+`expo-router/unstable-native-tabs`), which has no `testID` equivalent. Tab
+switches are tapped by their visible label instead — `Mis Mascotas`,
+`Reservaciones`, `Notificaciones`. Renaming a tab means updating its flow.
 
 When adding a new interactive element that will be covered by a flow, add a
 matching `testID` prop at the same time.

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Holidog Inn",
     "slug": "holidoginn",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "scheme": "holidoginn",
     "platforms": [
@@ -23,12 +23,10 @@
       "bundleIdentifier": "com.holidoginn.app",
       "icon": "./assets/icon.png",
       "buildNumber": "24",
-      "deploymentTarget": "13.4",
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "requireFullScreen": true,
       "infoPlist": {
-        "LSMinimumSystemVersion": "13.4",
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
