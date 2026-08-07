@@ -24,6 +24,7 @@ import { HomeSkeleton } from "@/components/Skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
+import { TabFab } from "@/components/TabFab";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -592,17 +593,16 @@ export default function HomeScreen() {
     </ScrollView>
 
       {/* FAB WhatsApp */}
-      <TouchableOpacity
+      <TabFab
         style={styles.fab}
         onPress={() =>
           Linking.openURL(buildWhatsappUrl(BUSINESS.whatsappOwnerInfoMessage))
         }
-        activeOpacity={0.85}
         testID="home-whatsapp-button"
         accessibilityLabel="Escríbenos por WhatsApp"
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      </TabFab>
     </View>
   );
 }
@@ -767,7 +767,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 24,
     width: 56,
     height: 56,
     borderRadius: 28,
