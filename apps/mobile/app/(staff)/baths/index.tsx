@@ -30,7 +30,13 @@ import {
   type StaffBath,
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { formatName, formatCurrency, formatWeekdayDayShort } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatWeekdayDayShort,
+  formatTime,
+  hotelYMD,
+} from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
@@ -38,16 +44,9 @@ import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
 type BathTypeFilter = "loose" | "stay";
 
-const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
-
-function localYMD(value: string | Date): string {
-  const d = new Date(value);
-  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
-}
 
 function todayYMD(): string {
-  return localYMD(new Date());
+  return hotelYMD(new Date());
 }
 
 function formatDayHeader(ymd: string): string {
@@ -66,6 +65,43 @@ function formatDayHeader(ymd: string): string {
 
 function getBathAddon(bath: StaffBath) {
   return bath.addons.find((a) => a.variant?.serviceType?.code === "BATH");
+}
+
+function formatDurationMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+/**
+ * Ids de las citas que se pisan con otra del mismo día.
+ *
+ * Es lo que antes no se veía: con todos los baños contados como si duraran lo
+ * mismo, dos citas separadas por una hora parecían caber aunque la primera se
+ * llevara dos.
+ */
+function findOverlaps(baths: StaffBath[]): Set<string> {
+  const conHora = baths
+    .filter((b) => b.appointmentAt && b.durationMinutes)
+    .map((b) => ({
+      id: b.id,
+      start: new Date(b.appointmentAt!).getTime(),
+      end: new Date(b.appointmentAt!).getTime() + b.durationMinutes! * 60000,
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  const out = new Set<string>();
+  for (let i = 0; i < conHora.length - 1; i++) {
+    const a = conHora[i];
+    const b = conHora[i + 1];
+    if (b.start < a.end) {
+      out.add(a.id);
+      out.add(b.id);
+    }
+  }
+  return out;
 }
 
 // Físicamente terminado (foto subida). No equivale a "concluido" — baños
@@ -92,7 +128,7 @@ function buildRows(baths: StaffBath[]): Row[] {
   const out: Row[] = [];
   const byDay = new Map<string, StaffBath[]>();
   for (const b of pending) {
-    const ymd = b.appointmentAt ? localYMD(b.appointmentAt) : "—";
+    const ymd = b.appointmentAt ? hotelYMD(b.appointmentAt) : "—";
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(b);
   }
@@ -208,6 +244,9 @@ export default function StaffBaths() {
 
   const allBaths = data?.baths ?? [];
 
+  // Citas que se pisan entre sí: hay que poder verlas antes de que pase.
+  const overlapIds = useMemo(() => findOverlaps(allBaths), [allBaths]);
+
   const counts = useMemo(() => {
     return {
       loose: allBaths.filter((b) => b.reservationType === "BATH").length,
@@ -297,9 +336,30 @@ export default function StaffBaths() {
     const bathAddon = getBathAddon(item);
     const hasDeslanado = bathAddon?.variant?.deslanado ?? false;
     const hasCorte = bathAddon?.variant?.corte ?? false;
+    const seEncima = overlapIds.has(item.id);
+    const sinHorario = item.groomingScheduled === false;
 
     return (
       <View testID={`bath-card-${item.id}`} style={styles.bathBlock}>
+        {item.appointmentAt && item.durationMinutes != null && !concluded && (
+          <View style={[styles.schedulePill, seEncima && styles.schedulePillWarn]}>
+            <Ionicons
+              name={seEncima ? "alert-circle-outline" : "time-outline"}
+              size={13}
+              color={seEncima ? COLORS.errorText : COLORS.textTertiary}
+            />
+            <Text style={[styles.scheduleText, seEncima && styles.scheduleTextWarn]}>
+              {formatTime(new Date(item.appointmentAt))}
+              {item.appointmentEndAt
+                ? ` – ${formatTime(new Date(item.appointmentEndAt))}`
+                : ""}
+              {" · "}
+              {formatDurationMin(item.durationMinutes)}
+              {seEncima ? " · se encima" : ""}
+              {sinHorario ? " · hora estimada (sale)" : ""}
+            </Text>
+          </View>
+        )}
         <ReservationCard
           petName={item.pet?.name ?? "—"}
           roomName={null}
@@ -798,6 +858,24 @@ const extrasStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  schedulePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.bgSection,
+    marginBottom: 6,
+  },
+  schedulePillWarn: { backgroundColor: COLORS.errorBg },
+  scheduleText: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  scheduleTextWarn: { color: COLORS.errorText },
   container: { flex: 1, backgroundColor: COLORS.bgPage },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   topBar: {

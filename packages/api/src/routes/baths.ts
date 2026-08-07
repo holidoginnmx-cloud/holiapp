@@ -11,13 +11,37 @@ import { notifyUser, notifyUsers } from "../lib/notify";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
+import {
+  TZ_HOTEL,
+  TZ_OFFSET_HOURS,
+  isValidDateYMD,
+  buildStartCandidates,
+  evaluateStart,
+  conflictsWith,
+  localYMD,
+  endOf,
+  dayRangeUtc,
+  type BathScheduleCfg,
+} from "../lib/bathAvailability";
+import {
+  ensureConfig,
+  toScheduleCfg,
+  resolveBathDuration,
+  loadBusyIntervals,
+  buildSlotsPayload,
+  type BathConfigRow,
+} from "../lib/bathAvailabilityDb";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
 });
 
-// Hermosillo (Sonora) no observa horario de verano → UTC-7 fijo.
-export const TZ_OFFSET_HOURS = 7;
+// Re-exportados para no romper a quien ya los importaba desde aquí
+// (routes/daycare.ts, routes/guestBaths.ts). La implementación vive en
+// lib/bathAvailability* desde que la agenda razona por intervalos.
+export { TZ_OFFSET_HOURS, isValidDateYMD, ensureConfig };
+export type { BathConfigRow };
+
 const BATH_CONFIG_ID = "singleton";
 
 // Fixed deposit collected via Stripe at booking time. The remaining balance
@@ -34,63 +58,17 @@ export function describeBath(deslanado: boolean, corte: boolean): string {
   return extras.length > 0 ? `Baño + ${extras.join(" + ")}` : "Baño";
 }
 
-export type BathConfigRow = {
-  id: string;
-  openHour: number;
-  closeHour: number;
-  slotMinutes: number;
-  maxConcurrentBaths: number;
-  isActive: boolean;
-  updatedAt: Date;
-};
-
+/**
+ * DEPRECADA — quedaba de cuando todos los baños duraban lo mismo. Sigue viva
+ * porque `/staff/baths` la usa solo para acotar el rango del día; cualquier
+ * cálculo de disponibilidad debe usar `buildStartCandidates` con la duración
+ * real del servicio.
+ */
 export function buildSlotsForDay(
   dateYMD: string,
-  cfg: Pick<BathConfigRow, "openHour" | "closeHour" | "slotMinutes">
+  cfg: BathScheduleCfg
 ): Date[] {
-  const [y, m, d] = dateYMD.split("-").map(Number);
-  if (!y || !m || !d) return [];
-  const startMin = cfg.openHour * 60;
-  const endMin = cfg.closeHour * 60;
-  const slots: Date[] = [];
-  for (let min = startMin; min + cfg.slotMinutes <= endMin; min += cfg.slotMinutes) {
-    const hh = Math.floor(min / 60);
-    const mm = min % 60;
-    // Local (Hermosillo) → UTC: sumamos el offset
-    slots.push(new Date(Date.UTC(y, m - 1, d, hh + TZ_OFFSET_HOURS, mm)));
-  }
-  return slots;
-}
-
-export function isValidDateYMD(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
-
-function sameYMDLocal(a: Date, b: Date): boolean {
-  // Comparar "mismo día" en hora local (Hermosillo)
-  const shift = TZ_OFFSET_HOURS * 3600 * 1000;
-  const aL = new Date(a.getTime() - shift);
-  const bL = new Date(b.getTime() - shift);
-  return (
-    aL.getUTCFullYear() === bL.getUTCFullYear() &&
-    aL.getUTCMonth() === bL.getUTCMonth() &&
-    aL.getUTCDate() === bL.getUTCDate()
-  );
-}
-
-export async function ensureConfig(prisma: FastifyInstance["prisma"]): Promise<BathConfigRow> {
-  const existing = await prisma.bathConfig.findUnique({ where: { id: BATH_CONFIG_ID } });
-  if (existing) return existing;
-  return prisma.bathConfig.create({
-    data: {
-      id: BATH_CONFIG_ID,
-      openHour: 9,
-      closeHour: 18,
-      slotMinutes: 60,
-      maxConcurrentBaths: 1,
-      isActive: true,
-    },
-  });
+  return buildStartCandidates(dateYMD, cfg, cfg.defaultBathDurationMinutes);
 }
 
 export async function notifyBathBooked(
@@ -111,7 +89,7 @@ export async function notifyBathBooked(
   if (admins.length === 0) return;
 
   const when = params.appointmentAt.toLocaleString("es-MX", {
-    timeZone: "America/Hermosillo",
+    timeZone: TZ_HOTEL,
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -235,10 +213,19 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           .status(400)
           .send({ error: "closeHour debe ser mayor que openHour" });
       }
-      if ((next.closeHour - next.openHour) * 60 < next.slotMinutes) {
-        return reply
-          .status(400)
-          .send({ error: "La ventana horaria no alcanza para un slot" });
+      const ventanaMin = (next.closeHour - next.openHour) * 60;
+      if (ventanaMin < next.defaultBathDurationMinutes) {
+        return reply.status(400).send({
+          error: "El horario de atención no alcanza para un baño completo",
+        });
+      }
+      if (
+        next.lastStartHour != null &&
+        (next.lastStartHour < next.openHour || next.lastStartHour >= next.closeHour)
+      ) {
+        return reply.status(400).send({
+          error: "La hora de la última cita debe estar dentro del horario de atención",
+        });
       }
       const updated = await prisma.bathConfig.update({
         where: { id: BATH_CONFIG_ID },
@@ -249,59 +236,41 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   );
 
   // ────────────────────────────────────────────────────────────
-  //  GET /baths/slots?date=YYYY-MM-DD — slots disponibles del día
+  //  GET /baths/slots?date=YYYY-MM-DD — horarios disponibles del día
+  //
+  //  Los parámetros del servicio (petId | variantId | petSize+corte+deslanado)
+  //  son OPCIONALES: sin ellos se usa la duración de respaldo y el resultado es
+  //  el mismo que daba la agenda anterior, para no romper builds móviles que
+  //  todavía no conocen las duraciones.
   // ────────────────────────────────────────────────────────────
-  fastify.get<{ Querystring: { date?: string } }>(
+  fastify.get<{
+    Querystring: {
+      date?: string;
+      petId?: string;
+      variantId?: string;
+      petSize?: PetSize;
+      deslanado?: string;
+      corte?: string;
+      excludeReservationId?: string;
+    };
+  }>(
     "/baths/slots",
     { preHandler: [authMiddleware] },
     async (request, reply) => {
-      const date = request.query.date;
+      const { date, petId, variantId, petSize, deslanado, corte, excludeReservationId } =
+        request.query;
       if (!date || !isValidDateYMD(date)) {
         return reply.status(400).send({ error: "Parámetro date=YYYY-MM-DD requerido" });
       }
-      const cfg = await ensureConfig(prisma);
-      if (!cfg.isActive) {
-        return { config: cfg, slots: [] };
-      }
-
-      const allSlots = buildSlotsForDay(date, cfg);
-      if (allSlots.length === 0) return { config: cfg, slots: [] };
-
-      const dayStart = allSlots[0];
-      const dayEnd = new Date(
-        allSlots[allSlots.length - 1].getTime() + cfg.slotMinutes * 60000
-      );
-
-      const existing = await prisma.reservation.findMany({
-        where: {
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: { gte: dayStart, lt: dayEnd },
-        },
-        select: { appointmentAt: true },
+      return buildSlotsPayload(prisma, date, {
+        petId,
+        variantId,
+        petSize,
+        deslanado: deslanado === "true",
+        corte: corte === "true",
+        // Al reagendar una cita, no debe estorbarse a sí misma.
+        excludeReservationIds: excludeReservationId ? [excludeReservationId] : undefined,
       });
-
-      const countByIso = new Map<string, number>();
-      for (const r of existing) {
-        if (!r.appointmentAt) continue;
-        const key = r.appointmentAt.toISOString();
-        countByIso.set(key, (countByIso.get(key) ?? 0) + 1);
-      }
-
-      const now = Date.now();
-      const slots = allSlots.map((start) => {
-        const taken = countByIso.get(start.toISOString()) ?? 0;
-        const remaining = Math.max(0, cfg.maxConcurrentBaths - taken);
-        const inPast = start.getTime() <= now;
-        return {
-          startUtc: start.toISOString(),
-          available: !inPast && remaining > 0,
-          remaining,
-          inPast,
-        };
-      });
-
-      return { config: cfg, slots };
     }
   );
 
@@ -351,42 +320,17 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (Number.isNaN(appointmentDate.getTime())) {
         return reply.status(400).send({ error: "appointmentAt inválido" });
       }
-      if (appointmentDate.getTime() <= Date.now()) {
-        return reply.status(400).send({ error: "El slot ya pasó" });
-      }
-
-      // Validar que appointmentAt sea exactamente un slot configurado
-      const ymdLocal = new Date(
-        appointmentDate.getTime() - TZ_OFFSET_HOURS * 3600 * 1000
-      );
-      const dateYMD = `${ymdLocal.getUTCFullYear()}-${String(
-        ymdLocal.getUTCMonth() + 1
-      ).padStart(2, "0")}-${String(ymdLocal.getUTCDate()).padStart(2, "0")}`;
-      const validSlots = buildSlotsForDay(dateYMD, cfg);
-      const isValidSlot = validSlots.some(
-        (s) => s.getTime() === appointmentDate.getTime()
-      );
-      if (!isValidSlot) {
-        return reply.status(400).send({ error: "Horario fuera de los slots configurados" });
-      }
 
       if (!bath) return reply.status(500).send({ error: "Servicio de baño no configurado" });
 
-      const dayStart = validSlots[0];
-      const dayEnd = new Date(
-        validSlots[validSlots.length - 1].getTime() + cfg.slotMinutes * 60000
-      );
+      const schedule = toScheduleCfg(cfg);
+      const dateYMD = localYMD(appointmentDate);
+      const { start: dayStart, end: dayEnd } = dayRangeUtc(dateYMD);
       const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
 
-      // Capacidad + regla misma-mascota + variante + dueño, en paralelo.
-      const [taken, sameDay, variant, owner] = await Promise.all([
-        prisma.reservation.count({
-          where: {
-            reservationType: "BATH",
-            status: { not: "CANCELLED" },
-            appointmentAt: appointmentDate,
-          },
-        }),
+      // Ocupación del día + regla misma-mascota + variante + dueño, en paralelo.
+      const [busy, sameDay, variant, owner] = await Promise.all([
+        loadBusyIntervals(prisma, dateYMD, schedule),
         prisma.reservation.findFirst({
           where: {
             petId,
@@ -412,16 +356,25 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         }),
       ]);
 
-      if (taken >= cfg.maxConcurrentBaths) {
-        return reply.status(409).send({ error: "Slot sin disponibilidad" });
+      if (!variant || !variant.isActive) {
+        return reply.status(404).send({ error: "Variante de baño no encontrada" });
       }
+
+      // La duración depende del servicio contratado (talla × corte × deslanado):
+      // un baño+corte de perro chico no cabe donde cabía un baño simple. El
+      // cliente NO la manda — se resuelve aquí, igual que el precio.
+      const durationMinutes = variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+      const verdict = evaluateStart(appointmentDate, durationMinutes, schedule, busy);
+      if (!verdict.ok) {
+        return reply
+          .status(verdict.reason === "CAPACITY" ? 409 : 400)
+          .send({ error: verdict.message, code: verdict.reason });
+      }
+
       if (sameDay) {
         return reply
           .status(409)
           .send({ error: "Ya existe una cita de baño para esta mascota ese día" });
-      }
-      if (!variant || !variant.isActive) {
-        return reply.status(404).send({ error: "Variante de baño no encontrada" });
       }
 
       const ownerCredit = Number(owner?.creditBalance ?? 0);
@@ -492,6 +445,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           type: "bath_appointment",
           variantId: variant.id,
           appointmentAt: appointmentDate.toISOString(),
+          // Snapshot: si alguien reconfigura las duraciones entre el intent y
+          // la confirmación, la cita conserva la que se le prometió al cliente.
+          durationMinutes: String(durationMinutes),
           creditApplied: String(creditApplied),
           depositAmount: String(chargeBase),
           paymentType,
@@ -562,14 +518,13 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         dayStartLocal.getTime() + RANGE_DAYS * 24 * 3600 * 1000,
       );
 
-      // Para vista de un solo día, restringimos las citas BATH al rango de
-      // slots configurados. Para vista multi-día, permitimos todo el rango.
-      const slots = buildSlotsForDay(dateYMD, cfg);
-      const dayStart = dateQuery && slots[0] ? slots[0] : dayStartLocal;
-      const dayEnd =
-        dateQuery && slots.length > 0
-          ? new Date(slots[slots.length - 1].getTime() + cfg.slotMinutes * 60000)
-          : rangeEndLocal;
+      // Para vista de un solo día se acota al día local completo; para vista
+      // multi-día, a todo el rango. Antes se recortaba a la rejilla de slots,
+      // lo que escondía cualquier cita agendada fuera de ella.
+      const dayStart = dateQuery ? dayStartLocal : dayStartLocal;
+      const dayEnd = dateQuery
+        ? new Date(dayStartLocal.getTime() + 24 * 3600 * 1000)
+        : rangeEndLocal;
 
       const includeOpts = {
         pet: {
@@ -634,20 +589,54 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         }),
       ]);
 
-      // Para que el mobile pueda usar el mismo render, exponemos appointmentAt
-      // = checkOut en los stays con baño (el baño se hace antes del check-out).
-      const stayBaths = staysWithBath.map((r) => ({
-        ...r,
-        appointmentAt: r.checkOut,
-      }));
+      const schedule = toScheduleCfg(cfg);
 
-      const baths = [...standalone, ...stayBaths].sort((a, b) => {
-        const ta = a.appointmentAt ? a.appointmentAt.getTime() : 0;
-        const tb = b.appointmentAt ? b.appointmentAt.getTime() : 0;
-        return ta - tb;
+      /** Duración efectiva de un baño: snapshot → variante contratada → respaldo. */
+      const durationOf = (
+        snapshot: number | null,
+        addons: { durationMinutes: number | null; variant: { durationMinutes: number | null; serviceType: { code: string } } }[],
+      ): number => {
+        const bathAddon = addons.find((a) => a.variant.serviceType.code === "BATH");
+        return (
+          snapshot ??
+          bathAddon?.durationMinutes ??
+          bathAddon?.variant.durationMinutes ??
+          schedule.defaultBathDurationMinutes
+        );
+      };
+
+      // Para que el mobile use el mismo render, los baños de hospedaje exponen
+      // appointmentAt. Si el equipo ya les asignó hora de estética se usa esa;
+      // si no, se cae al check-out como antes (el baño se hace antes de salir),
+      // que es una aproximación, no una hora agendada.
+      const stayBaths = staysWithBath.map((r) => {
+        const bathAddon = r.addons.find((a) => a.variant.serviceType.code === "BATH");
+        return {
+          ...r,
+          appointmentAt: bathAddon?.scheduledAt ?? r.checkOut,
+          /** false = la hora es el check-out, nadie la agendó todavía. */
+          groomingScheduled: bathAddon?.scheduledAt != null,
+        };
       });
 
-      return { date: dateYMD, baths };
+      const baths = [...standalone, ...stayBaths]
+        .sort((a, b) => {
+          const ta = a.appointmentAt ? a.appointmentAt.getTime() : 0;
+          const tb = b.appointmentAt ? b.appointmentAt.getTime() : 0;
+          return ta - tb;
+        })
+        .map((r) => {
+          const durationMinutes = durationOf(r.durationMinutes, r.addons);
+          return {
+            ...r,
+            durationMinutes,
+            appointmentEndAt: r.appointmentAt
+              ? endOf(r.appointmentAt, durationMinutes).toISOString()
+              : null,
+          };
+        });
+
+      return { date: dateYMD, baths, config: cfg };
     },
   );
 
@@ -940,7 +929,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (alreadyReminded) continue;
 
       const when = res.appointmentAt.toLocaleString("es-MX", {
-        timeZone: "America/Hermosillo",
+        timeZone: TZ_HOTEL,
         day: "numeric",
         month: "short",
         hour: "2-digit",
@@ -970,7 +959,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (alreadyReminded) continue;
 
       const day = res.appointmentAt.toLocaleString("es-MX", {
-        timeZone: "America/Hermosillo",
+        timeZone: TZ_HOTEL,
         day: "numeric",
         month: "short",
       });
@@ -1045,7 +1034,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       if (!target) continue;
 
       const when = target.toLocaleString("es-MX", {
-        timeZone: "America/Hermosillo",
+        timeZone: TZ_HOTEL,
         hour: "2-digit",
         minute: "2-digit",
       });
@@ -1199,6 +1188,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let notes: string | undefined;
       let creditApplied = 0;
       let stripeAmount = 0;
+      // Duración prometida al crear el intent. 0 = flujo sin PI (crédito), se
+      // resuelve más abajo desde la variante.
+      let durationFromIntent = 0;
       // Descuento: en Stripe se lee del metadata del PI; en credit-only se
       // re-valida contra el precio de la variante (más abajo).
       let discountTotal = 0;
@@ -1227,6 +1219,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         petId = String(pi.metadata.petId);
         variantId = String(pi.metadata.variantId);
         appointmentAtIso = String(pi.metadata.appointmentAt);
+        durationFromIntent = Number(pi.metadata.durationMinutes || 0);
         notes = typeof pi.metadata.notes === "string" ? pi.metadata.notes : undefined;
         creditApplied = Number(pi.metadata.creditApplied || 0);
         discountTotal = Number(pi.metadata.discountTotal || 0);
@@ -1297,22 +1290,26 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       // Acotar defensivamente al precio de la variante.
       discountTotal = Math.min(Math.max(0, discountTotal), Number(variant.price));
 
+      const schedule = toScheduleCfg(cfg);
+      const durationMinutes =
+        durationFromIntent > 0
+          ? durationFromIntent
+          : variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+      const dateYMD = localYMD(appointmentAt);
+
       try {
         const result = await prisma.$transaction(async (tx) => {
-          // Lock transaccional por slot: serializa confirmaciones concurrentes
-          // del MISMO horario para que el count-then-create sea atómico (con
-          // READ COMMITTED dos confirmaciones verían ambas taken=0 y crearían
-          // dos baños en un slot de capacidad 1). El lock se libera al cerrar la
-          // transacción. Namespace 42 = slots de baño.
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
-          const taken = await tx.reservation.count({
-            where: {
-              reservationType: "BATH",
-              status: { not: "CANCELLED" },
-              appointmentAt,
-            },
-          });
-          if (taken >= cfg.maxConcurrentBaths) {
+          // Lock transaccional por DÍA: serializa las confirmaciones que compiten
+          // por la agenda de la misma jornada. Antes el lock era por timestamp
+          // exacto, lo cual bastaba mientras todas las citas duraban lo mismo;
+          // con duraciones distintas, dos confirmaciones de horas DIFERENTES
+          // pueden traslaparse y tomarían locks distintos, viendo ambas la
+          // agenda libre. El lock se libera al cerrar la transacción.
+          // Namespace 42 = agenda de estética.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${dateYMD}))`;
+          const busy = await loadBusyIntervals(tx, dateYMD, schedule);
+          const verdict = evaluateStart(appointmentAt, durationMinutes, schedule, busy);
+          if (!verdict.ok) {
             throw new Error("SLOT_TAKEN");
           }
 
@@ -1329,6 +1326,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             data: {
               reservationType: "BATH",
               appointmentAt,
+              durationMinutes,
               status: "CONFIRMED",
               totalAmount: new Prisma.Decimal(total),
               ...(discountCodeId

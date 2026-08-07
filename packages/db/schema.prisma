@@ -426,6 +426,16 @@ model Reservation {
   checkOutTime           String?
   paymentType            String? // "FULL" o "DEPOSIT"
   depositDeadline        DateTime? // 48h antes del checkIn, solo para anticipos
+  // BATH: minutos que toma el servicio. Snapshot al agendar (mismo criterio que
+  // ReservationAddon.unitPrice) para que reconfigurar las duraciones NO mueva
+  // citas ya agendadas; el equipo puede alargarlo si un perro viene enredado.
+  // NULL en STAY/DAYCARE y en citas anteriores a la agenda por intervalos: el
+  // motor cae a bath_config.defaultBathDurationMinutes.
+  durationMinutes        Int?
+  // La cita se guardó pese a encimarse o a terminar después del cierre. La
+  // operación real tiene excepciones, pero deben verse distinto en la agenda.
+  scheduleOverridden     Boolean           @default(false)
+  scheduleOverrideReason String?
   // Reservaciones migradas del Excel histórico (web `origen_legacy`).
   originLegacy           Boolean           @default(false)
   // Servicio a domicilio: dirección + distancia + tarifa calculada al reservar.
@@ -713,6 +723,12 @@ model ServiceVariant {
   deslanado Boolean
   corte     Boolean
   price     Decimal  @db.Decimal(10, 2)
+  // Minutos que toma el servicio. Es la pieza que permite agendar sin encimar:
+  // un baño+corte de perro chico toma hora y media y un deslanado de perro
+  // grande dos horas o más, no los 60 min que asumía la agenda vieja.
+  // NULL en DEWORMING y EXTRA_HOURS (comparten tabla, no se agendan por hora):
+  // el motor cae a bath_config.defaultBathDurationMinutes.
+  durationMinutes Int?
   isActive  Boolean  @default(true)
   updatedAt DateTime @updatedAt
 
@@ -739,6 +755,13 @@ model ReservationAddon {
   completedAt DateTime? // Fecha en que el staff completó el servicio
   createdAt   DateTime           @default(now())
 
+  // Agenda del baño de un perro HOSPEDADO (addon BATH colgado de un STAY).
+  // Antes la agenda lo colgaba de la hora de checkout, que no es cuando se
+  // baña: ocupaba tiempo real de la estilista sin aparecer en la agenda.
+  // Las citas SUELTAS no usan esto; su horario vive en Reservation.appointmentAt.
+  scheduledAt     DateTime?
+  durationMinutes Int? // snapshot, mismo criterio que unitPrice
+
   // Precio adicional definido por staff DESPUÉS del servicio.
   // Aplica para deslanado/corte: el owner no paga al reservar, el staff
   // evalúa el estado del pelaje al terminar y define cuánto cuesta.
@@ -764,6 +787,7 @@ model ReservationAddon {
   paymentId String?
   payment   Payment? @relation(fields: [paymentId], references: [id])
 
+  @@index([scheduledAt]) // agenda del día: baños de perros hospedados
   @@map("reservation_addons")
 }
 
@@ -884,10 +908,26 @@ model StripeEvent {
 model BathConfig {
   id                 String   @id @default("singleton")
   openHour           Int      @default(9) // 0–23, hora de apertura inclusive
-  closeHour          Int      @default(18) // 0–23, hora de cierre exclusive
+  closeHour          Int      @default(18) // 0–23, hora a la que sale la estilista (exclusive)
+  // DEPRECADA: era la duración ÚNICA de todo baño. La duración real vive por
+  // variante en service_variants.durationMinutes. Se conserva porque builds
+  // móviles viejos aún la leen del payload de configuración.
   slotMinutes        Int      @default(60)
   maxConcurrentBaths Int      @default(1)
   isActive           Boolean  @default(true)
+  // Cada cuánto se ofrece un inicio de cita. Independiente de la duración: con
+  // paso de 30 min, un baño de 2 h puede empezar a las 9:30 y terminar a las
+  // 11:30. Antes el paso ERA la duración, que es lo que encimaba las citas.
+  slotStepMinutes    Int      @default(30)
+  // Respaldo cuando no se puede resolver la variante (cita legacy, mascota sin
+  // peso registrado).
+  defaultBathDurationMinutes Int @default(60)
+  // Tope duro opcional del último inicio del día. NULL = se deriva solo de
+  // "inicio + duración + buffer <= closeHour", que ya garantiza que la cita
+  // termine antes de que salga la estilista.
+  lastStartHour      Int?
+  // Limpieza/preparación entre perro y perro.
+  bufferMinutes      Int      @default(0)
   updatedAt          DateTime @updatedAt
 
   @@map("bath_config")

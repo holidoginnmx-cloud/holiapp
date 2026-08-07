@@ -47,6 +47,14 @@ function toYMD(d: Date): string {
   return local.toISOString().slice(0, 10);
 }
 
+function formatDurationMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return h === 1 ? "1 hora" : `${h} horas`;
+  return `${h} h ${m} min`;
+}
+
 export default function CreateBathScreen() {
   return (
     <StripeProvider
@@ -159,9 +167,16 @@ function CreateBathScreenContent() {
 
   const dateYMD = useMemo(() => toYMD(date), [date]);
 
+  // Los horarios dependen del servicio elegido: un baño con corte tarda más y
+  // por eso cabe en menos huecos (y el último del día es más temprano).
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
-    queryKey: ["bath-slots", dateYMD],
-    queryFn: () => getBathSlots(dateYMD),
+    queryKey: ["bath-slots", dateYMD, selectedPetId, deslanado, corte],
+    queryFn: () =>
+      getBathSlots(dateYMD, {
+        petId: selectedPetId ?? undefined,
+        deslanado,
+        corte,
+      }),
   });
 
   const selectedPet = useMemo(
@@ -226,6 +241,8 @@ function CreateBathScreenContent() {
   // quedar desactualizado; se limpia para que el usuario lo vuelva a aplicar.
   useEffect(() => {
     setAppliedDiscount(null);
+    // El horario elegido puede haber dejado de caber al cambiar el servicio.
+    setSelectedSlotIso(null);
   }, [selectedPetId, deslanado, corte]);
 
   async function handleSubmit() {
@@ -711,6 +728,11 @@ function CreateBathScreenContent() {
         {selectedPet && variant && (
           <>
             <Text style={styles.sectionTitle}>4. Horario</Text>
+            {slotsData?.durationMinutes != null && (
+              <Text style={styles.slotDurationText}>
+                Este servicio toma unas {formatDurationMin(slotsData.durationMinutes)}.
+              </Text>
+            )}
             {slotsLoading ? (
               <ActivityIndicator color={COLORS.primary} />
             ) : !slotsData || slotsData.slots.length === 0 ? (
@@ -1010,6 +1032,12 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     fontStyle: "italic",
     padding: 10,
+  },
+  slotDurationText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginBottom: 8,
   },
   slotsGrid: {
     flexDirection: "row",

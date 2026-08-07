@@ -12,21 +12,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { getStaffDaycares, type StaffDaycare } from "@/lib/api";
-import { formatCurrency, formatWeekdayDayShort } from "@/lib/format";
+import { formatCurrency, formatWeekdayDayShort, hotelYMD } from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { ErrorState } from "@/components/ErrorState";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
-const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
-
-function localYMD(value: string | Date): string {
-  const d = new Date(value);
-  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
-}
 
 function todayYMD(): string {
-  return localYMD(new Date());
+  return hotelYMD(new Date());
 }
 
 function formatDayHeader(ymd: string): string {
@@ -64,7 +57,7 @@ function buildRows(daycares: StaffDaycare[]): Row[] {
   const out: Row[] = [];
   const byDay = new Map<string, StaffDaycare[]>();
   for (const d of pending) {
-    const ymd = d.appointmentAt ? localYMD(d.appointmentAt) : "—";
+    const ymd = d.appointmentAt ? hotelYMD(d.appointmentAt) : "—";
     if (!byDay.has(ymd)) byDay.set(ymd, []);
     byDay.get(ymd)!.push(d);
   }

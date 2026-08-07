@@ -9,6 +9,8 @@
  * omisión trae los próximos 30 días. Para una cita vieja (historial) hay que
  * pasarle el día con `?date=YYYY-MM-DD`, si no la pantalla no la encuentra.
  */
+import { hotelYMD } from "@/lib/format";
+
 export function reservationHref(
   role: string | null,
   reservationId: string,
@@ -30,16 +32,13 @@ export function reservationHref(
 }
 
 /**
- * Día (YYYY-MM-DD) de una cita en hora Hermosillo (UTC-7), que es la zona con
- * la que el backend arma los slots. Usar la fecha local del dispositivo daría
- * el día equivocado para citas de la madrugada si el teléfono está en otra TZ.
+ * Día (YYYY-MM-DD) de una cita en hora del hotel, que es la zona con la que el
+ * backend arma los horarios. Usar la fecha local del dispositivo daría el día
+ * equivocado para citas de la madrugada si el teléfono está en otra TZ.
  */
 function ymdHermosillo(iso?: string | Date | null): string | null {
   if (!iso) return null;
   const d = iso instanceof Date ? iso : new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const local = new Date(d.getTime() - 7 * 3600 * 1000);
-  const mm = String(local.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(local.getUTCDate()).padStart(2, "0");
-  return `${local.getUTCFullYear()}-${mm}-${dd}`;
+  return hotelYMD(d);
 }

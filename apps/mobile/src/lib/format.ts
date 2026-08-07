@@ -206,7 +206,29 @@ export function dayGroupLabel(date: string | Date): string {
 // =============================================================
 
 const MX_LOCALE = "es-MX";
-const HMO_TZ = "America/Hermosillo";
+
+/**
+ * Zona del negocio. Hermosillo es el único estado de México que nunca observó
+ * horario de verano, así que es UTC-7 fijo todo el año.
+ */
+export const HMO_TZ = "America/Hermosillo";
+
+/**
+ * Offset del hotel en horas. Debe coincidir con TZ_OFFSET_HOURS de la API
+ * (packages/api/src/lib/bathAvailability) y con TZ_OFFSET_HOTEL_HORAS del admin
+ * web: si divergen, una cita se muestra a otra hora según desde dónde se mire.
+ *
+ * Estaba repetido a mano en cada pantalla que agrupaba por día; vive aquí para
+ * que no vuelvan a separarse.
+ */
+export const TZ_OFFSET_HOURS = 7;
+
+/** "YYYY-MM-DD" del día del hotel al que pertenece un instante. */
+export function hotelYMD(value: string | Date): string {
+  const d = new Date(value);
+  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
+}
 
 type DateFmtOpts = { timeZone?: string };
 

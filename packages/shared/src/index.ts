@@ -432,6 +432,11 @@ export const HomeDeliveryInputSchema = z.object({
 });
 export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
 
+// Hora local del hotel en formato 24h "HH:mm" (p.ej. "09:30", "17:00").
+export const TimeHHmmSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora inválida (formato HH:mm)");
+
 export const CreateReservationSchema = z.object({
   reservationType: z.enum(["STAY", "BATH", "DAYCARE"]).default("STAY"),
   notes: z.string().nullable().default(null),
@@ -458,24 +463,24 @@ export const CreateReservationSchema = z.object({
   appointmentAt: z.coerce.date().optional(),
   deslanado: z.boolean().optional(),
   corte: z.boolean().optional(),
-  // DAYCARE: entrada/salida estimadas; precio = horas × tarifa única.
-  checkInTime: z.string().optional(),
-  checkOutTime: z.string().optional(),
+  // Entrada/salida estimadas. En DAYCARE son obligatorias y definen el precio
+  // (horas × tarifa única); en STAY son opcionales, sólo informativas.
+  checkInTime: TimeHHmmSchema.optional(),
+  checkOutTime: TimeHHmmSchema.optional(),
   // Total pactado manualmente (solo STAFF/ADMIN, cualquier tipo de servicio).
   // Con varias mascotas es el total del GRUPO: se reparte entre las filas.
   // El fee de domicilio siempre se suma aparte server-side.
   totalAmountOverride: z.number().nonnegative().optional(),
+  // "Agendar de todos modos" (solo STAFF/ADMIN, solo BATH): guarda la cita
+  // aunque se encime o termine después de que sale la estilista. Queda marcada
+  // en la reserva para poder distinguirla en la agenda.
+  scheduleOverride: z.boolean().optional(),
   // Campos adicionales (creación manual desde admin)
   staffId: z.string().optional(),
   medicationNotes: z.string().nullable().optional(),
   depositAgreed: z.number().nonnegative().optional(),
   homeDelivery: HomeDeliveryInputSchema.optional(),
 });
-
-// Hora local del hotel en formato 24h "HH:mm" (p.ej. "09:30", "17:00").
-export const TimeHHmmSchema = z
-  .string()
-  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora inválida (formato HH:mm)");
 
 export const CreateMultiReservationSchema = z.object({
   checkIn: z.coerce.date(),
@@ -861,10 +866,22 @@ export type ReservationTypeValue = z.infer<typeof ReservationTypeEnum>;
 export const BathConfigSchema = z.object({
   id: z.string(),
   openHour: z.number().int().min(0).max(23),
+  // Hora a la que sale la estilista. La agenda garantiza que ninguna cita
+  // termine después de esta hora.
   closeHour: z.number().int().min(1).max(24),
+  // DEPRECADA: era la duración única de todo baño. La real vive por variante
+  // en service_variants.durationMinutes. Se sigue enviando por compatibilidad.
   slotMinutes: z.number().int().min(15).max(240),
   maxConcurrentBaths: z.number().int().min(1),
   isActive: z.boolean(),
+  // Cada cuánto se ofrece un inicio de cita (ya no es igual a la duración).
+  slotStepMinutes: z.number().int().min(5).max(120),
+  // Respaldo cuando no se puede resolver la variante del servicio.
+  defaultBathDurationMinutes: z.number().int().min(15).max(480),
+  // Tope duro opcional del último inicio del día.
+  lastStartHour: z.number().int().min(0).max(23).nullable(),
+  // Limpieza entre perro y perro.
+  bufferMinutes: z.number().int().min(0).max(60),
   updatedAt: z.coerce.date(),
 });
 export type BathConfig = z.infer<typeof BathConfigSchema>;
@@ -875,6 +892,10 @@ export const UpdateBathConfigSchema = z.object({
   slotMinutes: z.number().int().min(15).max(240).optional(),
   maxConcurrentBaths: z.number().int().min(1).optional(),
   isActive: z.boolean().optional(),
+  slotStepMinutes: z.number().int().min(5).max(120).optional(),
+  defaultBathDurationMinutes: z.number().int().min(15).max(480).optional(),
+  lastStartHour: z.number().int().min(0).max(23).nullable().optional(),
+  bufferMinutes: z.number().int().min(0).max(60).optional(),
 });
 export type UpdateBathConfig = z.infer<typeof UpdateBathConfigSchema>;
 

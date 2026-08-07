@@ -514,18 +514,48 @@ export const confirmBathAddonPayment = (reservationId: string, paymentIntentId: 
 export type BathConfig = {
   id: string;
   openHour: number;
+  /** Hora a la que sale la estilista: ninguna cita puede terminar después. */
   closeHour: number;
+  /** DEPRECADA: era la duración única de todo baño (hoy vive por variante). */
   slotMinutes: number;
   maxConcurrentBaths: number;
   isActive: boolean;
+  /** Cada cuánto se ofrece un inicio de cita. */
+  slotStepMinutes: number;
+  /** Duración de respaldo cuando no se resuelve la variante. */
+  defaultBathDurationMinutes: number;
+  /** Tope duro opcional del último inicio del día. */
+  lastStartHour: number | null;
+  /** Limpieza entre perro y perro. */
+  bufferMinutes: number;
   updatedAt: string;
 };
 
+export type BathSlotReason =
+  | "PAST"
+  | "CAPACITY"
+  | "CLOSES_TOO_LATE"
+  | "AFTER_LAST_START"
+  | "OUT_OF_WINDOW";
+
 export type BathSlot = {
   startUtc: string;
+  /** A qué hora terminaría el servicio. */
+  endUtc?: string;
   available: boolean;
   remaining: number;
   inPast: boolean;
+  /** Por qué no se puede tomar, cuando no está disponible. */
+  reason?: BathSlotReason;
+};
+
+export type BathSlotsResponse = {
+  config: BathConfig;
+  /** Minutos que toma el servicio consultado. */
+  durationMinutes: number;
+  /** false = la API usó su duración de respaldo. */
+  durationResolved: boolean;
+  slots: BathSlot[];
 };
 
 export const getBathConfig = () =>
@@ -537,10 +567,25 @@ export const updateBathConfig = (data: Partial<Omit<BathConfig, "id" | "updatedA
     body: JSON.stringify(data),
   });
 
-export const getBathSlots = (date: string) =>
-  apiFetch<{ config: BathConfig; slots: BathSlot[] }>(
-    `${ENDPOINTS.baths}/slots?date=${encodeURIComponent(date)}`,
-  );
+// Los horarios dependen del servicio: un baño con corte tarda más y por tanto
+// cabe en menos huecos. Sin `opts` la API responde con su duración de respaldo.
+export const getBathSlots = (
+  date: string,
+  opts?: {
+    petId?: string;
+    deslanado?: boolean;
+    corte?: boolean;
+    excludeReservationId?: string;
+  },
+) => {
+  const params = new URLSearchParams({ date });
+  if (opts?.petId) params.set("petId", opts.petId);
+  if (opts?.deslanado != null) params.set("deslanado", String(opts.deslanado));
+  if (opts?.corte != null) params.set("corte", String(opts.corte));
+  if (opts?.excludeReservationId)
+    params.set("excludeReservationId", opts.excludeReservationId);
+  return apiFetch<BathSlotsResponse>(`${ENDPOINTS.baths}/slots?${params}`);
+};
 
 export const BATH_DEPOSIT_AMOUNT = 150;
 export const BATH_LATE_TOLERANCE_MIN = 15;
@@ -695,6 +740,15 @@ export type StaffBath = Reservation & {
     method: "CASH" | "CARD" | "TRANSFER" | "STRIPE" | "CREDIT";
     paidAt: string | null;
   }[];
+  /** Minutos que toma el servicio (por talla y extras). */
+  durationMinutes?: number;
+  /** Hora a la que termina, ya calculada por la API. */
+  appointmentEndAt?: string | null;
+  /**
+   * Solo en baños de perros hospedados: false = la hora mostrada es el
+   * check-out, nadie le asignó horario de estética todavía.
+   */
+  groomingScheduled?: boolean;
 };
 
 export const getStaffBaths = (date?: string) =>

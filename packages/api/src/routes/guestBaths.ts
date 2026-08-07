@@ -13,13 +13,22 @@ import { quoteDelivery } from "../lib/delivery";
 import { notifyUsers } from "../lib/notify";
 import {
   BATH_DEPOSIT_AMOUNT,
-  TZ_OFFSET_HOURS,
-  buildSlotsForDay,
-  isValidDateYMD,
-  ensureConfig,
   describeBath,
   notifyBathBooked,
 } from "./baths";
+import {
+  TZ_OFFSET_HOURS,
+  isValidDateYMD,
+  evaluateStart,
+  localYMD,
+  dayRangeUtc,
+} from "../lib/bathAvailability";
+import {
+  ensureConfig,
+  toScheduleCfg,
+  loadBusyIntervals,
+  buildSlotsPayload,
+} from "../lib/bathAvailabilityDb";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -55,43 +64,34 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
   }
 
   // ── GET /guest/baths/slots — disponibilidad pública (sin auth) ──────────
-  fastify.get<{ Querystring: { date?: string } }>(
+  // Los parámetros del servicio son opcionales; sin ellos se usa la duración de
+  // respaldo. El sitio los manda para que un baño+corte no ofrezca horarios en
+  // los que no cabría. `excludeReservationId` sirve al admin web para editar una
+  // cita sin que se estorbe a sí misma.
+  fastify.get<{
+    Querystring: {
+      date?: string;
+      petSize?: SizeKey;
+      deslanado?: string;
+      corte?: string;
+      variantId?: string;
+      excludeReservationId?: string;
+    };
+  }>(
     "/guest/baths/slots",
     async (request, reply) => {
-      const date = request.query.date;
+      const { date, petSize, deslanado, corte, variantId, excludeReservationId } =
+        request.query;
       if (!date || !isValidDateYMD(date)) {
         return reply.status(400).send({ error: "Parámetro date=YYYY-MM-DD requerido" });
       }
-      const cfg = await ensureConfig(prisma);
-      if (!cfg.isActive) return { config: cfg, slots: [] };
-
-      const allSlots = buildSlotsForDay(date, cfg);
-      if (allSlots.length === 0) return { config: cfg, slots: [] };
-
-      const dayStart = allSlots[0];
-      const dayEnd = new Date(allSlots[allSlots.length - 1].getTime() + cfg.slotMinutes * 60000);
-      const existing = await prisma.reservation.findMany({
-        where: {
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: { gte: dayStart, lt: dayEnd },
-        },
-        select: { appointmentAt: true },
+      return buildSlotsPayload(prisma, date, {
+        petSize: petSize as never,
+        variantId,
+        deslanado: deslanado === "true",
+        corte: corte === "true",
+        excludeReservationIds: excludeReservationId ? [excludeReservationId] : undefined,
       });
-      const countByIso = new Map<string, number>();
-      for (const r of existing) {
-        if (!r.appointmentAt) continue;
-        const key = r.appointmentAt.toISOString();
-        countByIso.set(key, (countByIso.get(key) ?? 0) + 1);
-      }
-      const now = Date.now();
-      const slots = allSlots.map((start) => {
-        const taken = countByIso.get(start.toISOString()) ?? 0;
-        const remaining = Math.max(0, cfg.maxConcurrentBaths - taken);
-        const inPast = start.getTime() <= now;
-        return { startUtc: start.toISOString(), available: !inPast && remaining > 0, remaining, inPast };
-      });
-      return { config: cfg, slots };
     }
   );
 
@@ -169,23 +169,6 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       if (Number.isNaN(appointmentDate.getTime())) {
         return reply.status(400).send({ error: "appointmentAt inválido" });
       }
-      if (appointmentDate.getTime() <= Date.now()) {
-        return reply.status(400).send({ error: "El slot ya pasó" });
-      }
-
-      const ymdLocal = new Date(appointmentDate.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-      const dateYMD = `${ymdLocal.getUTCFullYear()}-${String(ymdLocal.getUTCMonth() + 1).padStart(2, "0")}-${String(ymdLocal.getUTCDate()).padStart(2, "0")}`;
-      const validSlots = buildSlotsForDay(dateYMD, cfg);
-      if (!validSlots.some((s) => s.getTime() === appointmentDate.getTime())) {
-        return reply.status(400).send({ error: "Horario fuera de los slots configurados" });
-      }
-
-      const taken = await prisma.reservation.count({
-        where: { reservationType: "BATH", status: { not: "CANCELLED" }, appointmentAt: appointmentDate },
-      });
-      if (taken >= cfg.maxConcurrentBaths) {
-        return reply.status(409).send({ error: "Slot sin disponibilidad" });
-      }
 
       const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
       const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
@@ -202,6 +185,21 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       });
       if (!variant || !variant.isActive) {
         return reply.status(404).send({ error: "Variante de baño no encontrada" });
+      }
+
+      // El horario debe caber con la duración REAL del servicio: un baño+corte
+      // no entra donde entraba un baño simple, y la cita tiene que terminar
+      // antes de que salga la estilista.
+      const schedule = toScheduleCfg(cfg);
+      const dateYMD = localYMD(appointmentDate);
+      const durationMinutes =
+        variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+      const busy = await loadBusyIntervals(prisma, dateYMD, schedule);
+      const verdict = evaluateStart(appointmentDate, durationMinutes, schedule, busy);
+      if (!verdict.ok) {
+        return reply
+          .status(verdict.reason === "CAPACITY" ? 409 : 400)
+          .send({ error: verdict.message, code: verdict.reason });
       }
 
       const price = Number(variant.price);
@@ -241,6 +239,8 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
           type: "bath_appointment",
           variantId: variant.id,
           appointmentAt: appointmentDate.toISOString(),
+          // Snapshot de la duración prometida al reservar.
+          durationMinutes: String(durationMinutes),
           creditApplied: "0",
           depositAmount: String(chargeBase),
           paymentType: body.paymentType,
@@ -344,16 +344,24 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       const variant = await prisma.serviceVariant.findUnique({ where: { id: variantId } });
       if (!variant) return reply.status(404).send({ error: "Variante no encontrada" });
 
+      const schedule = toScheduleCfg(cfg);
+      const durationFromIntent = Number(pi.metadata.durationMinutes || 0);
+      const durationMinutes =
+        durationFromIntent > 0
+          ? durationFromIntent
+          : variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+      const dateYMD = localYMD(appointmentAt);
+
       try {
         const result = await prisma.$transaction(async (tx) => {
-          // Lock transaccional por slot (mismo namespace 42 que /baths/confirm):
-          // serializa confirmaciones concurrentes del mismo horario para que el
-          // count-then-create sea atómico y no se sobre-reserve el slot.
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${appointmentAt.toISOString()}))`;
-          const taken = await tx.reservation.count({
-            where: { reservationType: "BATH", status: { not: "CANCELLED" }, appointmentAt },
-          });
-          if (taken >= cfg.maxConcurrentBaths) throw new Error("SLOT_TAKEN");
+          // Lock transaccional por DÍA (mismo namespace 42 que /baths/confirm):
+          // con duraciones distintas, dos confirmaciones de horas diferentes
+          // pueden traslaparse, así que un lock por timestamp exacto ya no las
+          // serializaría y ambas verían la agenda libre.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${dateYMD}))`;
+          const busy = await loadBusyIntervals(tx, dateYMD, schedule);
+          const verdict = evaluateStart(appointmentAt, durationMinutes, schedule, busy);
+          if (!verdict.ok) throw new Error("SLOT_TAKEN");
 
           const price = Number(variant.price);
           const total = price + deliveryFee;
@@ -364,6 +372,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             data: {
               reservationType: "BATH",
               appointmentAt,
+              durationMinutes,
               status: "CONFIRMED",
               totalAmount: new Prisma.Decimal(total),
               notes,

@@ -9,13 +9,15 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Platform,
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { DateTimeField } from "@/components/DateTimeField";
+import { SelectField } from "@/components/SelectField";
+import { SwitchRow } from "@/components/SwitchRow";
 import { LevelSelector } from "@/components/LevelSelector";
 import { ErrorState } from "@/components/ErrorState";
 import {
@@ -32,6 +34,7 @@ import {
   getDeliveryStatus,
   deliveryQuote,
   getAdminLodgingPricing,
+  getBathSlots,
   type PetWithOwner,
 } from "@/lib/api";
 import {
@@ -39,6 +42,7 @@ import {
   formatFullName,
   formatWeekdayDayShort,
   formatTime,
+  formatTimeHHmm,
   formatCurrency,
 } from "@/lib/format";
 import {
@@ -52,14 +56,38 @@ export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBo
 
 type ReservationType = "STAY" | "BATH" | "DAYCARE";
 
+// Clave de la opción "sin staff" en el selector (staffId real es null).
+const SIN_STAFF = "__sin_staff__";
+
 // Date → "HH:mm" (hora local del dispositivo, que corre en hora del hotel).
 function toHHmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+// "HH:mm" → Date sobre un día base, para alimentar al reloj nativo.
+function fromHHmm(hhmm: string, base: Date): Date {
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date(base);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
 function formatDate(d: Date | null): string {
   if (!d) return "Seleccionar";
   return formatWeekdayDayShort(d);
+}
+
+// Date → "YYYY-MM-DD" del día local (el dispositivo corre en hora del hotel).
+function utcDayKeyLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDurationMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return h === 1 ? "1 hora" : `${h} horas`;
+  return `${h} h ${m} min`;
 }
 
 function formatDateTime(d: Date): string {
@@ -74,6 +102,7 @@ function formatDateTime(d: Date): string {
 
 export default function AdminCreateReservation() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const [reservationType, setReservationType] = useState<ReservationType>("STAY");
@@ -87,28 +116,27 @@ export default function AdminCreateReservation() {
   // STAY
   const [checkIn, setCheckIn] = useState<Date | null>(null);
   const [checkOut, setCheckOut] = useState<Date | null>(null);
-  const [showCheckInPicker, setShowCheckInPicker] = useState(false);
-  const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
-  // Cuarto elegido por mascota (petId → roomId) y qué selector está abierto.
-  // Cada perro del grupo puede ir a un cuarto distinto: no siempre caben
-  // juntos ni comparten talla.
+  // Hora estimada de llegada/recogida ("HH:mm"). Opcional: a diferencia de la
+  // guardería arrancan en null y la reserva se puede guardar sin ellas.
+  const [stayInTime, setStayInTime] = useState<string | null>(null);
+  const [stayOutTime, setStayOutTime] = useState<string | null>(null);
+  // Cuarto elegido por mascota (petId → roomId). Cada perro del grupo puede ir
+  // a un cuarto distinto: no siempre caben juntos ni comparten talla.
   const [roomByPet, setRoomByPet] = useState<Record<string, string>>({});
-  const [roomPickerFor, setRoomPickerFor] = useState<string | null>(null);
 
   // BATH
   const [appointmentAt, setAppointmentAt] = useState<Date | null>(null);
-  const [showBathDatePicker, setShowBathDatePicker] = useState(false);
-  const [showBathTimePicker, setShowBathTimePicker] = useState(false);
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
+  // "Agendar de todos modos": permite guardar una cita que se encima o que
+  // termina después de que sale la estilista. La operación real tiene
+  // excepciones, pero quedan marcadas para verlas distinto en la agenda.
+  const [forceSchedule, setForceSchedule] = useState(false);
 
   // DAYCARE (guardería): día + horas estimadas ("HH:mm").
   const [dcDate, setDcDate] = useState<Date | null>(null);
-  const [showDcDatePicker, setShowDcDatePicker] = useState(false);
   const [dcInTime, setDcInTime] = useState("09:00");
   const [dcOutTime, setDcOutTime] = useState("13:00");
-  const [showDcInPicker, setShowDcInPicker] = useState(false);
-  const [showDcOutPicker, setShowDcOutPicker] = useState(false);
   // Total sugerido editable para cualquier servicio (precio pactado con el
   // cliente). Vacío = usar el cálculo automático del servidor.
   const [totalOverride, setTotalOverride] = useState("");
@@ -124,7 +152,6 @@ export default function AdminCreateReservation() {
 
   // Asignar staff
   const [staffId, setStaffId] = useState<string | null>(null);
-  const [staffExpanded, setStaffExpanded] = useState(false);
 
   // Servicio a domicilio
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
@@ -222,11 +249,17 @@ export default function AdminCreateReservation() {
     enabled: reservationType === "STAY",
   });
 
-  // Cuartos que admiten la talla de una mascota.
+  // TODOS los cuartos activos, marcando cuáles no admiten la talla de la
+  // mascota. Antes se filtraban y desaparecían de la lista sin explicación: el
+  // dueño veía "12 cuartos" teniendo 18 y no había forma de saber por qué.
   const roomsForPet = useCallback(
     (pet: PetWithOwner) => {
       const size = sizeFromWeight(pet.weight);
-      return (rooms ?? []).filter((r) => r.sizeAllowed.includes(size));
+      return (rooms ?? []).map((r) => ({
+        room: r,
+        admiteTalla: r.sizeAllowed.includes(size),
+        size,
+      }));
     },
     [rooms],
   );
@@ -236,6 +269,51 @@ export default function AdminCreateReservation() {
     queryFn: getBathVariants,
     enabled: reservationType === "BATH" || stayBathEnabled,
   });
+
+  // Disponibilidad de la agenda de estética para el día elegido. La duración
+  // depende del servicio (talla × corte × deslanado), así que se recalcula al
+  // cambiar la mascota o los extras.
+  const bathDateYMD = useMemo(
+    () => (appointmentAt ? utcDayKeyLocal(appointmentAt) : null),
+    [appointmentAt],
+  );
+  const { data: bathSlots } = useQuery({
+    queryKey: ["admin", "bath-slots", bathDateYMD, petIds[0], deslanado, corte],
+    queryFn: () =>
+      getBathSlots(bathDateYMD!, { petId: petIds[0], deslanado, corte }),
+    enabled: reservationType === "BATH" && !!bathDateYMD && petIds.length > 0,
+  });
+
+  // ¿La hora elegida cabe? Se compara contra el horario exacto; si el operador
+  // eligió una fuera de la rejilla, se revisa el traslape con los ocupados.
+  const bathConflict = useMemo(() => {
+    if (!bathSlots || !appointmentAt) return null;
+    const t = appointmentAt.getTime();
+    const exact = bathSlots.slots.find((s) => new Date(s.startUtc).getTime() === t);
+    if (exact) {
+      if (exact.available) return null;
+      return exact.reason === "CAPACITY"
+        ? "Se encima con otra cita."
+        : exact.reason === "CLOSES_TOO_LATE"
+          ? "No alcanza a terminar antes de que salga la estilista."
+          : "Ese horario no está disponible.";
+    }
+    const end = t + bathSlots.durationMinutes * 60000;
+    const choca = bathSlots.slots.some(
+      (s) =>
+        !s.available &&
+        s.reason === "CAPACITY" &&
+        s.endUtc != null &&
+        t < new Date(s.endUtc).getTime() &&
+        new Date(s.startUtc).getTime() < end,
+    );
+    if (choca) return "Se encima con otra cita.";
+    const ultimo = [...bathSlots.slots].reverse().find((s) => s.available);
+    if (ultimo && t > new Date(ultimo.startUtc).getTime()) {
+      return "No alcanza a terminar antes de que salga la estilista.";
+    }
+    return null;
+  }, [bathSlots, appointmentAt]);
 
   // Tarifa por hora de guardería (para sugerir el total). Se recalcula server-side.
   const { data: lodgingPricing } = useQuery({
@@ -262,10 +340,6 @@ export default function AdminCreateReservation() {
   const staffList = useMemo(
     () => (allUsers ?? []).filter((u) => u.role === "STAFF"),
     [allUsers],
-  );
-  const selectedStaff = useMemo(
-    () => (allUsers ?? []).find((u) => u.id === staffId),
-    [allUsers, staffId],
   );
 
   // Servicio a domicilio: gate por config + cotización server-side.
@@ -378,7 +452,6 @@ export default function AdminCreateReservation() {
     // Si la búsqueda coincidió por mascota, se preselecciona directamente.
     setPetIds(matchedPetId ? [matchedPetId] : []);
     setRoomByPet({});
-    setRoomPickerFor(null);
     setClientSearch(""); // colapsa la lista tras elegir
   }
 
@@ -395,7 +468,6 @@ export default function AdminCreateReservation() {
       delete next[id];
       return next;
     });
-    setRoomPickerFor(null);
   }
 
   async function handleSubmit() {
@@ -478,6 +550,8 @@ export default function AdminCreateReservation() {
         reservationType: "STAY",
         checkIn: checkIn.toISOString(),
         checkOut: checkOut.toISOString(),
+        ...(stayInTime ? { checkInTime: stayInTime } : {}),
+        ...(stayOutTime ? { checkOutTime: stayOutTime } : {}),
         // Con una mascota se manda roomId (forma clásica); con varias, roomIds.
         ...(roomIds.length === 1 ? { roomId: roomIds[0] } : { roomIds }),
         ...(medEnabled ? { medicationNotes: medNotes.trim() } : {}),
@@ -523,6 +597,7 @@ export default function AdminCreateReservation() {
         appointmentAt: appointmentAt.toISOString(),
         deslanado,
         corte,
+        ...(forceSchedule ? { scheduleOverride: true } : {}),
       };
     }
 
@@ -607,7 +682,6 @@ export default function AdminCreateReservation() {
           onSelect={(k) => {
             setReservationType(k as ReservationType);
             setRoomByPet({});
-            setRoomPickerFor(null);
           }}
         />
 
@@ -738,59 +812,67 @@ export default function AdminCreateReservation() {
             <Text style={styles.label}>Fechas</Text>
             <View style={styles.dateRow}>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowCheckInPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Entrada</Text>
-                  <Text style={styles.dateBtnValue}>{formatDate(checkIn)}</Text>
-                </TouchableOpacity>
-                {showCheckInPicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={checkIn ?? today}
-                      mode="date"
-                      minimumDate={today}
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowCheckInPicker(Platform.OS === "ios");
-                        if (date) {
-                          setCheckIn(date);
-                          if (checkOut && date >= checkOut) setCheckOut(null);
-                        }
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Entrada"
+                  title="Fecha de entrada"
+                  text={formatDate(checkIn)}
+                  empty={!checkIn}
+                  mode="date"
+                  pickerValue={checkIn ?? today}
+                  minimumDate={today}
+                  onChange={(date) => {
+                    setCheckIn(date);
+                    if (checkOut && date >= checkOut) setCheckOut(null);
+                  }}
+                />
               </View>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowCheckOutPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Salida</Text>
-                  <Text style={styles.dateBtnValue}>{formatDate(checkOut)}</Text>
-                </TouchableOpacity>
-                {showCheckOutPicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={checkOut ?? (checkIn ?? today)}
-                      mode="date"
-                      minimumDate={checkIn ?? today}
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowCheckOutPicker(Platform.OS === "ios");
-                        if (date) setCheckOut(date);
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Salida"
+                  title="Fecha de salida"
+                  text={formatDate(checkOut)}
+                  empty={!checkOut}
+                  mode="date"
+                  pickerValue={checkOut ?? checkIn ?? today}
+                  minimumDate={checkIn ?? today}
+                  onChange={setCheckOut}
+                />
               </View>
             </View>
+
+            <Text style={styles.label}>Horario estimado (opcional)</Text>
+            <View style={styles.dateRow}>
+              <View style={styles.dateCol}>
+                <DateTimeField
+                  label="Llegada"
+                  title="Hora de llegada"
+                  testID="admin-create-stay-in-time"
+                  text={stayInTime ? formatTimeHHmm(stayInTime) : "Sin definir"}
+                  empty={!stayInTime}
+                  mode="time"
+                  pickerValue={fromHHmm(stayInTime ?? "09:00", today)}
+                  onChange={(date) => setStayInTime(toHHmm(date))}
+                  onClear={() => setStayInTime(null)}
+                />
+              </View>
+              <View style={styles.dateCol}>
+                <DateTimeField
+                  label="Recogida"
+                  title="Hora de recogida"
+                  testID="admin-create-stay-out-time"
+                  text={stayOutTime ? formatTimeHHmm(stayOutTime) : "Sin definir"}
+                  empty={!stayOutTime}
+                  mode="time"
+                  pickerValue={fromHHmm(stayOutTime ?? "13:00", today)}
+                  onChange={(date) => setStayOutTime(toHHmm(date))}
+                  onClear={() => setStayOutTime(null)}
+                />
+              </View>
+            </View>
+            <Text style={styles.hint}>
+              Check-in de 9:00 am a 6:00 pm y check-out de 9:00 am a 1:00 pm.
+              Después de la 1:00 pm se considera guardería.
+            </Text>
 
             <Text style={styles.label}>
               {selectedPets.length > 1 ? "Cuarto de cada mascota" : "Cuarto"}
@@ -798,116 +880,65 @@ export default function AdminCreateReservation() {
             {roomsLoading ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
             ) : (
-              selectedPets.map((pet) => {
-                const disponibles = roomsForPet(pet);
-                const elegido = disponibles.find((r) => r.id === roomByPet[pet.id]);
-                const abierto = roomPickerFor === pet.id;
-                return (
-                  <View key={pet.id}>
-                    {selectedPets.length > 1 && (
-                      <Text style={styles.petRoomName}>{pet.name}</Text>
-                    )}
-                    <TouchableOpacity
-                      style={styles.collapseHeader}
-                      onPress={() => setRoomPickerFor(abierto ? null : pet.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.collapseHeaderText,
-                          elegido && styles.rowTextSelected,
-                        ]}
-                      >
-                        {elegido
-                          ? `${elegido.name} · cap. ${elegido.capacity}`
-                          : "Seleccionar cuarto"}
-                      </Text>
-                      <Ionicons
-                        name={abierto ? "chevron-up" : "chevron-down"}
-                        size={18}
-                        color={COLORS.textTertiary}
-                      />
-                    </TouchableOpacity>
-                    {abierto && (
-                      <View style={styles.listBox}>
-                        {disponibles.length === 0 ? (
-                          <Text style={styles.emptyText}>
-                            No hay cuartos para el tamaño de {pet.name}
-                          </Text>
-                        ) : (
-                          disponibles.map((r) => {
-                            const seleccionado = roomByPet[pet.id] === r.id;
-                            // Cuántos otros perros del grupo ya van a este cuarto
-                            // (comparten cuarto: es válido, sólo se avisa).
-                            const compañeros = selectedPets.filter(
-                              (p) => p.id !== pet.id && roomByPet[p.id] === r.id,
-                            ).length;
-                            return (
-                              <TouchableOpacity
-                                key={r.id}
-                                style={[styles.row, seleccionado && styles.rowSelected]}
-                                onPress={() => {
-                                  setRoomByPet((prev) => ({ ...prev, [pet.id]: r.id }));
-                                  setRoomPickerFor(null);
-                                }}
-                                activeOpacity={0.7}
-                              >
-                                <Text
-                                  style={[
-                                    styles.rowText,
-                                    seleccionado && styles.rowTextSelected,
-                                  ]}
-                                >
-                                  {r.name} · cap. {r.capacity}
-                                  {compañeros > 0 ? ` · ya con ${compañeros} del grupo` : ""}
-                                </Text>
-                                {seleccionado && (
-                                  <Ionicons
-                                    name="checkmark-circle"
-                                    size={18}
-                                    color={COLORS.primary}
-                                  />
-                                )}
-                              </TouchableOpacity>
-                            );
-                          })
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })
+              selectedPets.map((pet) => (
+                <View key={pet.id}>
+                  {selectedPets.length > 1 && (
+                    <Text style={styles.petRoomName}>{pet.name}</Text>
+                  )}
+                  <SelectField
+                    title={
+                      selectedPets.length > 1
+                        ? `Cuarto de ${pet.name}`
+                        : "Elegir cuarto"
+                    }
+                    placeholder="Seleccionar cuarto"
+                    emptyText={`No hay cuartos para el tamaño de ${pet.name}`}
+                    showCount
+                    selectedKey={roomByPet[pet.id] ?? null}
+                    options={roomsForPet(pet).map(({ room, admiteTalla, size }) => {
+                      // Cuántos otros perros del grupo ya van a este cuarto
+                      // (comparten cuarto: es válido, sólo se avisa).
+                      const compañeros = selectedPets.filter(
+                        (p) => p.id !== pet.id && roomByPet[p.id] === room.id,
+                      ).length;
+                      return {
+                        key: room.id,
+                        label: `${room.name} · cap. ${room.capacity}`,
+                        disabled: !admiteTalla,
+                        hint: !admiteTalla
+                          ? `No configurado para talla ${size}`
+                          : compañeros > 0
+                            ? `Ya con ${compañeros} del grupo`
+                            : undefined,
+                      };
+                    })}
+                    onSelect={(roomId) =>
+                      setRoomByPet((prev) => ({ ...prev, [pet.id]: roomId }))
+                    }
+                  />
+                </View>
+              ))
             )}
 
             {/* Baño como complemento */}
-            <LevelSelector
+            <SwitchRow
               label="Incluir baño"
-              options={[
-                { key: "no", label: "No" },
-                { key: "si", label: "Sí" },
-              ]}
-              selected={stayBathEnabled ? "si" : "no"}
-              onSelect={(k) => setStayBathEnabled(k === "si")}
+              value={stayBathEnabled}
+              onValueChange={setStayBathEnabled}
             />
             {stayBathEnabled && (
               <>
-                <LevelSelector
+                <SwitchRow
                   label="Deslanado"
-                  options={[
-                    { key: "no", label: "No" },
-                    { key: "si", label: "Sí" },
-                  ]}
-                  selected={stayDeslanado ? "si" : "no"}
-                  onSelect={(k) => setStayDeslanado(k === "si")}
+                  value={stayDeslanado}
+                  onValueChange={setStayDeslanado}
+                  nested
                 />
-                <LevelSelector
+                <SwitchRow
                   label="Corte"
-                  options={[
-                    { key: "no", label: "No" },
-                    { key: "si", label: "Sí" },
-                  ]}
-                  selected={stayCorte ? "si" : "no"}
-                  onSelect={(k) => setStayCorte(k === "si")}
+                  value={stayCorte}
+                  onValueChange={setStayCorte}
+                  nested
                 />
                 {stayBathPrice != null ? (
                   <Text style={styles.estimate}>Baño: ${stayBathPrice}</Text>
@@ -920,14 +951,11 @@ export default function AdminCreateReservation() {
             )}
 
             {/* Medicamento */}
-            <LevelSelector
-              label="Medicamento (+10%)"
-              options={[
-                { key: "no", label: "No" },
-                { key: "si", label: "Sí" },
-              ]}
-              selected={medEnabled ? "si" : "no"}
-              onSelect={(k) => setMedEnabled(k === "si")}
+            <SwitchRow
+              label="Medicamento"
+              hint="Suma 10% al hospedaje"
+              value={medEnabled}
+              onValueChange={setMedEnabled}
             />
             {medEnabled && (
               <TextInput
@@ -955,90 +983,70 @@ export default function AdminCreateReservation() {
             <Text style={styles.label}>Fecha y hora de la cita</Text>
             <View style={styles.dateRow}>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowBathDatePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Fecha</Text>
-                  <Text style={styles.dateBtnValue}>
-                    {appointmentAt ? formatDate(appointmentAt) : "Seleccionar"}
-                  </Text>
-                </TouchableOpacity>
-                {showBathDatePicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={appointmentAt ?? today}
-                      mode="date"
-                      minimumDate={today}
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowBathDatePicker(Platform.OS === "ios");
-                        if (date) {
-                          const base = appointmentAt ?? new Date(today);
-                          const next = new Date(date);
-                          next.setHours(base.getHours(), base.getMinutes(), 0, 0);
-                          setAppointmentAt(next);
-                        }
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Fecha"
+                  title="Fecha de la cita"
+                  text={appointmentAt ? formatDate(appointmentAt) : "Seleccionar"}
+                  empty={!appointmentAt}
+                  mode="date"
+                  pickerValue={appointmentAt ?? today}
+                  minimumDate={today}
+                  onChange={(date) => {
+                    const base = appointmentAt ?? new Date(today);
+                    const next = new Date(date);
+                    next.setHours(base.getHours(), base.getMinutes(), 0, 0);
+                    setAppointmentAt(next);
+                  }}
+                />
               </View>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowBathTimePicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Hora</Text>
-                  <Text style={styles.dateBtnValue}>
-                    {appointmentAt
-                      ? formatTime(appointmentAt)
-                      : "Seleccionar"}
-                  </Text>
-                </TouchableOpacity>
-                {showBathTimePicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={appointmentAt ?? today}
-                      mode="time"
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowBathTimePicker(Platform.OS === "ios");
-                        if (date) {
-                          const base = appointmentAt ?? new Date(today);
-                          const next = new Date(base);
-                          next.setHours(date.getHours(), date.getMinutes(), 0, 0);
-                          setAppointmentAt(next);
-                        }
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Hora"
+                  title="Hora de la cita"
+                  text={appointmentAt ? formatTime(appointmentAt) : "Seleccionar"}
+                  empty={!appointmentAt}
+                  mode="time"
+                  pickerValue={appointmentAt ?? today}
+                  onChange={(date) => {
+                    const base = appointmentAt ?? new Date(today);
+                    const next = new Date(base);
+                    next.setHours(date.getHours(), date.getMinutes(), 0, 0);
+                    setAppointmentAt(next);
+                  }}
+                />
               </View>
             </View>
 
-            <LevelSelector
+            <SwitchRow
               label="Deslanado"
-              options={[
-                { key: "no", label: "No" },
-                { key: "si", label: "Sí" },
-              ]}
-              selected={deslanado ? "si" : "no"}
-              onSelect={(k) => setDeslanado(k === "si")}
+              value={deslanado}
+              onValueChange={setDeslanado}
             />
-            <LevelSelector
-              label="Corte"
-              options={[
-                { key: "no", label: "No" },
-                { key: "si", label: "Sí" },
-              ]}
-              selected={corte ? "si" : "no"}
-              onSelect={(k) => setCorte(k === "si")}
-            />
+            <SwitchRow label="Corte" value={corte} onValueChange={setCorte} />
+
+            {bathSlots?.durationMinutes != null && (
+              <Text style={styles.estimate}>
+                Toma {formatDurationMin(bathSlots.durationMinutes)}
+                {appointmentAt
+                  ? ` · termina ${formatTime(
+                      new Date(
+                        appointmentAt.getTime() + bathSlots.durationMinutes * 60000,
+                      ),
+                    )}`
+                  : ""}
+              </Text>
+            )}
+
+            {bathConflict && (
+              <>
+                <Text style={styles.estimateWarn}>{bathConflict}</Text>
+                <SwitchRow
+                  label="Agendar de todos modos"
+                  value={forceSchedule}
+                  onValueChange={setForceSchedule}
+                />
+              </>
+            )}
 
             {bathEstimate != null ? (
               <Text style={styles.estimate}>Precio: ${bathEstimate}</Text>
@@ -1054,91 +1062,38 @@ export default function AdminCreateReservation() {
         {petIds.length > 0 && reservationType === "DAYCARE" && (
           <>
             <Text style={styles.label}>Día de guardería</Text>
-            <TouchableOpacity
-              style={styles.dateBtn}
-              onPress={() => setShowDcDatePicker(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.dateBtnLabel}>Fecha</Text>
-              <Text style={styles.dateBtnValue}>
-                {dcDate ? formatDate(dcDate) : "Seleccionar"}
-              </Text>
-            </TouchableOpacity>
-            {showDcDatePicker && (
-              <View style={styles.pickerWrap}>
-                <DateTimePicker
-                  value={dcDate ?? today}
-                  mode="date"
-                  minimumDate={today}
-                  themeVariant="light"
-                  textColor={COLORS.textPrimary}
-                  onChange={(_, date) => {
-                    setShowDcDatePicker(Platform.OS === "ios");
-                    if (date) setDcDate(date);
-                  }}
-                />
-              </View>
-            )}
+            <DateTimeField
+              label="Fecha"
+              title="Día de guardería"
+              text={dcDate ? formatDate(dcDate) : "Seleccionar"}
+              empty={!dcDate}
+              mode="date"
+              pickerValue={dcDate ?? today}
+              minimumDate={today}
+              onChange={setDcDate}
+            />
 
             <Text style={styles.label}>Horario estimado</Text>
             <View style={styles.dateRow}>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowDcInPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Entrada</Text>
-                  <Text style={styles.dateBtnValue}>{dcInTime}</Text>
-                </TouchableOpacity>
-                {showDcInPicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={(() => {
-                        const [h, m] = dcInTime.split(":").map(Number);
-                        const d = new Date(today);
-                        d.setHours(h, m, 0, 0);
-                        return d;
-                      })()}
-                      mode="time"
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowDcInPicker(Platform.OS === "ios");
-                        if (date) setDcInTime(toHHmm(date));
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Entrada"
+                  title="Hora de entrada"
+                  text={formatTimeHHmm(dcInTime)}
+                  mode="time"
+                  pickerValue={fromHHmm(dcInTime, today)}
+                  onChange={(date) => setDcInTime(toHHmm(date))}
+                />
               </View>
               <View style={styles.dateCol}>
-                <TouchableOpacity
-                  style={styles.dateBtn}
-                  onPress={() => setShowDcOutPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.dateBtnLabel}>Salida</Text>
-                  <Text style={styles.dateBtnValue}>{dcOutTime}</Text>
-                </TouchableOpacity>
-                {showDcOutPicker && (
-                  <View style={styles.pickerWrap}>
-                    <DateTimePicker
-                      value={(() => {
-                        const [h, m] = dcOutTime.split(":").map(Number);
-                        const d = new Date(today);
-                        d.setHours(h, m, 0, 0);
-                        return d;
-                      })()}
-                      mode="time"
-                      themeVariant="light"
-                      textColor={COLORS.textPrimary}
-                      onChange={(_, date) => {
-                        setShowDcOutPicker(Platform.OS === "ios");
-                        if (date) setDcOutTime(toHHmm(date));
-                      }}
-                    />
-                  </View>
-                )}
+                <DateTimeField
+                  label="Salida"
+                  title="Hora de salida"
+                  text={formatTimeHHmm(dcOutTime)}
+                  mode="time"
+                  pickerValue={fromHHmm(dcOutTime, today)}
+                  onChange={(date) => setDcOutTime(toHHmm(date))}
+                />
               </View>
             </View>
             <Text style={styles.hint}>
@@ -1163,81 +1118,34 @@ export default function AdminCreateReservation() {
         {petIds.length > 0 && (
           <>
             <Text style={styles.label}>Asignar staff (opcional)</Text>
-            <TouchableOpacity
-              style={styles.collapseHeader}
-              onPress={() => setStaffExpanded((v) => !v)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.collapseHeaderText,
-                  selectedStaff && styles.rowTextSelected,
-                ]}
-              >
-                {selectedStaff
-                  ? formatFullName(selectedStaff.firstName, selectedStaff.lastName)
-                  : "Sin asignar"}
-              </Text>
-              <Ionicons
-                name={staffExpanded ? "chevron-up" : "chevron-down"}
-                size={18}
-                color={COLORS.textTertiary}
-              />
-            </TouchableOpacity>
-            {staffExpanded && (
-              <View style={styles.listBox}>
-                <TouchableOpacity
-                  style={[styles.row, !staffId && styles.rowSelected]}
-                  onPress={() => {
-                    setStaffId(null);
-                    setStaffExpanded(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.rowText, !staffId && styles.rowTextSelected]}>
-                    Sin asignar
-                  </Text>
-                </TouchableOpacity>
-                {staffList.length === 0 ? (
-                  <Text style={styles.emptyText}>No hay staff registrado</Text>
-                ) : (
-                  staffList.map((s) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={[styles.row, staffId === s.id && styles.rowSelected]}
-                      onPress={() => {
-                        setStaffId(s.id);
-                        setStaffExpanded(false);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[styles.rowText, staffId === s.id && styles.rowTextSelected]}
-                      >
-                        {formatFullName(s.firstName, s.lastName)}
-                      </Text>
-                      {staffId === s.id && (
-                        <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
-                      )}
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
+            <SelectField
+              title="Asignar staff"
+              placeholder="Sin asignar"
+              emptyText="No hay staff registrado"
+              selectedKey={staffId ?? SIN_STAFF}
+              options={
+                staffList.length === 0
+                  ? []
+                  : [
+                      { key: SIN_STAFF, label: "Sin asignar" },
+                      ...staffList.map((s) => ({
+                        key: s.id,
+                        label: formatFullName(s.firstName, s.lastName),
+                      })),
+                    ]
+              }
+              onSelect={(k) => setStaffId(k === SIN_STAFF ? null : k)}
+            />
           </>
         )}
 
         {/* ── Servicio a domicilio (opcional) ── */}
         {petIds.length > 0 && deliveryServiceActive && (
           <>
-            <LevelSelector
+            <SwitchRow
               label="Servicio a domicilio"
-              options={[
-                { key: "no", label: "No" },
-                { key: "si", label: "Sí" },
-              ]}
-              selected={deliveryEnabled ? "si" : "no"}
-              onSelect={(k) => setDeliveryEnabled(k === "si")}
+              value={deliveryEnabled}
+              onValueChange={setDeliveryEnabled}
             />
             {deliveryEnabled && (
               <>
@@ -1344,7 +1252,10 @@ export default function AdminCreateReservation() {
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
+      {/* En iPhone con home indicator esto da 46pt; el piso de 20 es para los
+          modelos sin él (iPhone SE, insets.bottom = 0), donde 12pt dejarían el
+          botón pegado al borde. */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
         <TouchableOpacity
           style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
           onPress={handleSubmit}
@@ -1405,19 +1316,6 @@ const styles = StyleSheet.create({
   },
   selectedText: { flex: 1, fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   changeText: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.primary },
-  collapseHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 6,
-  },
-  collapseHeaderText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textPrimary },
   // Nombre de la mascota sobre su selector de cuarto (solo en multi-perro).
   petRoomName: {
     fontSize: 13,
@@ -1471,21 +1369,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   dateCol: { flex: 1 },
-  dateBtn: {
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  pickerWrap: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  dateBtnLabel: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginBottom: 2 },
-  dateBtnValue: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textPrimary },
   estimate: {
     fontSize: 14,
     fontFamily: "PlusJakartaSans_700Bold",
@@ -1533,14 +1416,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   footer: {
-    padding: 16,
+    // Barra fija: el botón va inset y despegado del borde inferior (el
+    // paddingBottom real lo pone el safe area, inline).
+    paddingHorizontal: 24,
+    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.borderLight,
     backgroundColor: COLORS.bgPage,
   },
   submitBtn: {
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
   },

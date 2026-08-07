@@ -34,6 +34,8 @@ export default function AdminBathConfig() {
   const [closeHour, setCloseHour] = useState("18");
   const [slotMinutes, setSlotMinutes] = useState("60");
   const [maxConcurrent, setMaxConcurrent] = useState("1");
+  const [slotStep, setSlotStep] = useState("30");
+  const [buffer, setBuffer] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -41,8 +43,10 @@ export default function AdminBathConfig() {
     if (data) {
       setOpenHour(String(data.openHour));
       setCloseHour(String(data.closeHour));
-      setSlotMinutes(String(data.slotMinutes));
+      setSlotMinutes(String(data.defaultBathDurationMinutes ?? data.slotMinutes));
       setMaxConcurrent(String(data.maxConcurrentBaths));
+      setSlotStep(String(data.slotStepMinutes ?? 30));
+      setBuffer(String(data.bufferMinutes ?? 0));
       setIsActive(data.isActive);
     }
   }, [data]);
@@ -75,7 +79,9 @@ export default function AdminBathConfig() {
       await updateBathConfig({
         openHour: openNum,
         closeHour: closeNum,
-        slotMinutes: slotNum,
+        defaultBathDurationMinutes: slotNum,
+        slotStepMinutes: Number(slotStep) || 30,
+        bufferMinutes: Number(buffer) || 0,
         maxConcurrentBaths: maxNum,
         isActive,
       });
@@ -100,14 +106,6 @@ export default function AdminBathConfig() {
       </View>
     );
   }
-
-  const slotsPerDay = (() => {
-    const open = Number(openHour);
-    const close = Number(closeHour);
-    const slot = Number(slotMinutes);
-    if (!slot || close <= open) return 0;
-    return Math.floor(((close - open) * 60) / slot);
-  })();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -152,9 +150,33 @@ export default function AdminBathConfig() {
         <Text style={styles.preview}>{hoursLabel(Number(closeHour) || 0)}</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Slot</Text>
+      <Text style={styles.sectionTitle}>Horarios</Text>
       <View style={styles.card}>
-        <Text style={styles.label}>Duración (minutos)</Text>
+        <Text style={styles.label}>Horarios cada (minutos)</Text>
+        <TextInput
+          style={styles.input}
+          value={slotStep}
+          onChangeText={setSlotStep}
+          keyboardType="number-pad"
+          placeholder="30"
+        />
+        <Text style={styles.hint}>
+          Cada cuánto se ofrece un inicio de cita: 9:00, 9:30, 10:00…
+        </Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.label}>Limpieza entre perros (minutos)</Text>
+        <TextInput
+          style={styles.input}
+          value={buffer}
+          onChangeText={setBuffer}
+          keyboardType="number-pad"
+          placeholder="0"
+        />
+        <Text style={styles.hint}>Tiempo libre que se deja entre una cita y la siguiente.</Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.label}>Duración de respaldo (minutos)</Text>
         <TextInput
           style={styles.input}
           value={slotMinutes}
@@ -162,7 +184,10 @@ export default function AdminBathConfig() {
           keyboardType="number-pad"
           placeholder="60"
         />
-        <Text style={styles.hint}>Cuánto dura cada cita de baño.</Text>
+        <Text style={styles.hint}>
+          Cuánto dura cada servicio se configura por talla y extras en el admin web. Esto solo se
+          usa cuando no se puede saber el tipo de baño.
+        </Text>
       </View>
 
       <Text style={styles.sectionTitle}>Capacidad</Text>
@@ -183,10 +208,14 @@ export default function AdminBathConfig() {
       <View style={styles.summaryCard}>
         <Ionicons name="information-circle-outline" size={18} color={COLORS.infoText} />
         <Text style={styles.summaryText}>
-          Con estos valores tendrás{" "}
-          <Text style={styles.summaryBold}>{slotsPerDay} slots por día</Text>{" "}
-          de {slotMinutes} min, de {hoursLabel(Number(openHour) || 0)} a{" "}
-          {hoursLabel(Number(closeHour) || 0)}.
+          De {hoursLabel(Number(openHour) || 0)} a {hoursLabel(Number(closeHour) || 0)}. Un baño de{" "}
+          {slotMinutes} min se puede agendar hasta{" "}
+          <Text style={styles.summaryBold}>
+            {hoursLabel(
+              Math.floor((Number(closeHour) * 60 - Number(slotMinutes) - Number(buffer)) / 60),
+            )}
+          </Text>
+          : la agenda solo ofrece horarios donde el servicio alcanza a terminar.
         </Text>
       </View>
 

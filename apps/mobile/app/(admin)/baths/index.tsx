@@ -17,23 +17,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStaffBaths, type StaffBath } from "@/lib/api";
-import { formatName, formatCurrency, formatWeekdayDayShort } from "@/lib/format";
+import {
+  formatName,
+  formatCurrency,
+  formatWeekdayDayShort,
+  formatTime,
+  hotelYMD,
+} from "@/lib/format";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
 
 type BathTypeFilter = "loose" | "stay";
 
-const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
-
-function localYMD(value: string | Date): string {
-  const d = new Date(value);
-  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
-}
 
 function todayYMD(): string {
-  return localYMD(new Date());
+  return hotelYMD(new Date());
 }
 
 function formatDayHeader(ymd: string): string {
@@ -48,6 +47,37 @@ function formatDayHeader(ymd: string): string {
   if (diffDays === 0) return `Hoy · ${label}`;
   if (diffDays === 1) return `Mañana · ${label}`;
   return label;
+}
+
+function formatDurationMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+/** Citas que se pisan con otra: el encime que antes solo se descubría al vivirlo. */
+function findOverlaps(baths: StaffBath[]): Set<string> {
+  const conHora = baths
+    .filter((b) => b.appointmentAt && b.durationMinutes)
+    .map((b) => ({
+      id: b.id,
+      start: new Date(b.appointmentAt!).getTime(),
+      end: new Date(b.appointmentAt!).getTime() + b.durationMinutes! * 60000,
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  const out = new Set<string>();
+  for (let i = 0; i < conHora.length - 1; i++) {
+    const a = conHora[i];
+    const b = conHora[i + 1];
+    if (b.start < a.end) {
+      out.add(a.id);
+      out.add(b.id);
+    }
+  }
+  return out;
 }
 
 function getBathAddon(bath: StaffBath) {
@@ -71,7 +101,7 @@ function buildRows(baths: StaffBath[]): Row[] {
   const overdue: StaffBath[] = [];
   const byDay = new Map<string, StaffBath[]>();
   for (const b of pending) {
-    const ymd = b.appointmentAt ? localYMD(b.appointmentAt) : "—";
+    const ymd = b.appointmentAt ? hotelYMD(b.appointmentAt) : "—";
     // Cita con fecha ya pasada y sin completar → sección Atrasados.
     if (ymd !== "—" && ymd < today) {
       overdue.push(b);
@@ -82,7 +112,7 @@ function buildRows(baths: StaffBath[]): Row[] {
   }
   if (overdue.length > 0) {
     overdue.sort((a, b) =>
-      localYMD(a.appointmentAt!).localeCompare(localYMD(b.appointmentAt!)),
+      hotelYMD(a.appointmentAt!).localeCompare(hotelYMD(b.appointmentAt!)),
     );
     out.push({ type: "header", title: "Atrasados", count: overdue.length });
     for (const b of overdue) out.push({ type: "item", bath: b });
@@ -169,6 +199,8 @@ export default function AdminBaths() {
 
   const allBaths = data?.baths ?? [];
 
+  const overlapIds = useMemo(() => findOverlaps(allBaths), [allBaths]);
+
   const counts = useMemo(() => {
     return {
       loose: allBaths.filter((b) => b.reservationType === "BATH").length,
@@ -203,8 +235,30 @@ export default function AdminBaths() {
     const hasDeslanado = bathAddon?.variant?.deslanado ?? false;
     const hasCorte = bathAddon?.variant?.corte ?? false;
 
+    const seEncima = overlapIds.has(item.id);
+    const sinHorario = item.groomingScheduled === false;
+
     return (
       <View testID={`admin-bath-${item.id}`} style={styles.bathBlock}>
+        {item.appointmentAt && item.durationMinutes != null && (
+          <View style={[styles.schedulePill, seEncima && styles.schedulePillWarn]}>
+            <Ionicons
+              name={seEncima ? "alert-circle-outline" : "time-outline"}
+              size={13}
+              color={seEncima ? COLORS.errorText : COLORS.textTertiary}
+            />
+            <Text style={[styles.scheduleText, seEncima && styles.scheduleTextWarn]}>
+              {formatTime(new Date(item.appointmentAt))}
+              {item.appointmentEndAt
+                ? ` – ${formatTime(new Date(item.appointmentEndAt))}`
+                : ""}
+              {" · "}
+              {formatDurationMin(item.durationMinutes)}
+              {seEncima ? " · se encima" : ""}
+              {sinHorario ? " · hora estimada (sale)" : ""}
+            </Text>
+          </View>
+        )}
         <ReservationCard
           petName={item.pet.name}
           roomName={null}
@@ -348,6 +402,24 @@ export default function AdminBaths() {
 }
 
 const styles = StyleSheet.create({
+  schedulePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.bgSection,
+    marginBottom: 6,
+  },
+  schedulePillWarn: { backgroundColor: COLORS.errorBg },
+  scheduleText: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  scheduleTextWarn: { color: COLORS.errorText },
   container: { flex: 1, backgroundColor: COLORS.bgPage },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   topBar: {

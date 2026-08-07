@@ -24,15 +24,27 @@ async function seedServices() {
     XL: [BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL, BATH_BASE_PRICE.XL],
   };
 
+  // Minutos que toma cada variante. A diferencia del precio, aquí SÍ cambia con
+  // el corte y el deslanado: es lo que evita que las citas se encimen y que la
+  // última del día termine después de que sale la estilista.
+  // Orden: [baño, +deslanado, +corte, +ambos] — el mismo de `variants` abajo.
+  const bathDurations: Record<"S" | "M" | "L" | "XL", [number, number, number, number]> = {
+    S:  [ 60,  90,  90, 120],
+    M:  [ 60, 120,  90, 150],
+    L:  [ 90, 150, 120, 180],
+    XL: [120, 180, 150, 210],
+  };
+
   let created = 0;
   for (const [size, [noNo, siNo, noSi, siSi]] of Object.entries(bathPrices) as Array<
     ["S" | "M" | "L" | "XL", [number, number, number, number]]
   >) {
+    const [dNoNo, dSiNo, dNoSi, dSiSi] = bathDurations[size];
     const variants = [
-      { deslanado: false, corte: false, price: noNo },
-      { deslanado: true,  corte: false, price: siNo },
-      { deslanado: false, corte: true,  price: noSi },
-      { deslanado: true,  corte: true,  price: siSi },
+      { deslanado: false, corte: false, price: noNo, duration: dNoNo },
+      { deslanado: true,  corte: false, price: siNo, duration: dSiNo },
+      { deslanado: false, corte: true,  price: noSi, duration: dNoSi },
+      { deslanado: true,  corte: true,  price: siSi, duration: dSiSi },
     ];
     for (const v of variants) {
       await prisma.serviceVariant.upsert({
@@ -44,13 +56,18 @@ async function seedServices() {
             corte: v.corte,
           },
         },
-        update: { price: new Prisma.Decimal(v.price), isActive: true },
+        update: {
+          price: new Prisma.Decimal(v.price),
+          durationMinutes: v.duration,
+          isActive: true,
+        },
         create: {
           serviceTypeId: bathService.id,
           petSize: size,
           deslanado: v.deslanado,
           corte: v.corte,
           price: new Prisma.Decimal(v.price),
+          durationMinutes: v.duration,
           isActive: true,
         },
       });

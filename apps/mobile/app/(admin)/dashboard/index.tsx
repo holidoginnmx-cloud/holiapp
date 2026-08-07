@@ -19,18 +19,11 @@ import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
-import { formatName, formatDateLong } from "@/lib/format";
+import { formatName, formatDateLong, hotelYMD } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 type SectionKey = "active" | "stays" | "baths" | "overdueBaths";
 
-const TZ_OFFSET_HOURS = 7; // Hermosillo UTC-7
-
-function localYMD(value: string | Date): string {
-  const d = new Date(value);
-  const local = new Date(d.getTime() - TZ_OFFSET_HOURS * 3600 * 1000);
-  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
-}
 
 export default function AdminDashboard() {
   const firstName = useAuthStore((s) => s.firstName);
@@ -69,7 +62,7 @@ export default function AdminDashboard() {
   });
 
   const { upcomingStays, upcomingBaths, overdueBaths } = useMemo(() => {
-    const today = localYMD(new Date());
+    const today = hotelYMD(new Date());
     const stays = (upcomingReservations ?? []).filter(
       (r) => r.reservationType !== "BATH"
     );
@@ -79,13 +72,13 @@ export default function AdminDashboard() {
     // Un baño cuya cita ya pasó (appointmentAt < hoy) pero sigue en CONFIRMED
     // no es un "próximo baño": va a la sección de Atrasados.
     const overdue = allBaths.filter(
-      (b) => b.appointmentAt && localYMD(b.appointmentAt) < today
+      (b) => b.appointmentAt && hotelYMD(b.appointmentAt) < today
     );
     const baths = allBaths.filter(
-      (b) => !b.appointmentAt || localYMD(b.appointmentAt) >= today
+      (b) => !b.appointmentAt || hotelYMD(b.appointmentAt) >= today
     );
     overdue.sort((a, b) =>
-      localYMD(a.appointmentAt!).localeCompare(localYMD(b.appointmentAt!))
+      hotelYMD(a.appointmentAt!).localeCompare(hotelYMD(b.appointmentAt!))
     );
     return { upcomingStays: stays, upcomingBaths: baths, overdueBaths: overdue };
   }, [upcomingReservations]);

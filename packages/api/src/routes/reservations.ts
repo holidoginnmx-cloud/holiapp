@@ -28,6 +28,8 @@ import {
   sizeFromWeight,
   computeDaycareHours,
 } from "../lib/pricing";
+import { chainStarts, evaluateStart, localYMD } from "../lib/bathAvailability";
+import { loadScheduleCfg, loadBusyIntervals } from "../lib/bathAvailabilityDb";
 import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -192,6 +194,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       reservationType,
       checkIn,
       checkOut,
+      // STAY: hora estimada de llegada/recogida (opcional). En DAYCARE la rama
+      // correspondiente las lee aparte de parsed.data porque ahí son requeridas.
+      checkInTime,
+      checkOutTime,
       ownerId,
       petId,
       petIds,
@@ -208,6 +214,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       depositAgreed,
       homeDelivery,
       totalAmountOverride,
+      scheduleOverride,
     } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo; STAFF/ADMIN pueden reservar en nombre de cualquiera.
@@ -249,6 +256,13 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (totalAmountOverride != null && !isStaffOrAdmin) {
       return reply.status(403).send({
         error: "Solo staff/admin puede fijar un total manual",
+      });
+    }
+    // Saltarse la agenda ("agendar de todos modos") también es exclusivo de
+    // staff/admin: el cliente nunca debe poder reservar un horario imposible.
+    if (scheduleOverride && !isStaffOrAdmin) {
+      return reply.status(403).send({
+        error: "Solo staff/admin puede agendar fuera de la disponibilidad",
       });
     }
 
@@ -357,7 +371,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
 
       // Variante por mascota (la talla puede diferir dentro del grupo).
-      const bathVariants: { id: string; price: number }[] = [];
+      const bathVariants: { id: string; price: number; durationMinutes: number | null }[] = [];
       for (const p of groupPets) {
         const size = sizeFromWeight(p.weight ?? 0);
         const variant = await prisma.serviceVariant.findUnique({
@@ -375,7 +389,52 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             .status(400)
             .send({ error: `Variante de baño no disponible para ${p.name}` });
         }
-        bathVariants.push({ id: variant.id, price: Number(variant.price) });
+        bathVariants.push({
+          id: variant.id,
+          price: Number(variant.price),
+          durationMinutes: variant.durationMinutes,
+        });
+      }
+
+      // ── Agenda: cada mascota ocupa su propio bloque de tiempo ──────────────
+      // Antes todas las filas de un grupo se guardaban con la MISMA hora, que
+      // es justamente el encime que se reportó. Ahora se encadenan: el segundo
+      // perro empieza cuando termina el primero.
+      const schedule = await loadScheduleCfg(prisma);
+      const bathDurations = bathVariants.map(
+        (v) => v.durationMinutes ?? schedule.defaultBathDurationMinutes,
+      );
+      const bathStarts = chainStarts(appointmentAt, bathDurations, schedule.bufferMinutes);
+      const dateYMD = localYMD(appointmentAt);
+
+      const agendaWarnings: string[] = [];
+      {
+        const busy = await loadBusyIntervals(prisma, dateYMD, schedule);
+        for (let i = 0; i < bathStarts.length; i++) {
+          const verdict = evaluateStart(bathStarts[i], bathDurations[i], schedule, busy);
+          if (!verdict.ok) {
+            agendaWarnings.push(`${groupPets[i].name}: ${verdict.message}`);
+          }
+          // La cita entra a la ocupación aunque haya avisado, para que el
+          // siguiente perro de la cadena se evalúe contra la agenda real.
+          busy.push({
+            startMs: bathStarts[i].getTime(),
+            endMs: bathStarts[i].getTime() + bathDurations[i] * 60_000,
+            id: `pending-${i}`,
+            label: groupPets[i].name,
+          });
+        }
+      }
+
+      // Sin override, el conflicto bloquea. El equipo puede forzar desde el
+      // admin: la operación real tiene excepciones (favores, urgencias) y
+      // quedan marcadas para verlas distinto en la agenda.
+      if (agendaWarnings.length > 0 && !scheduleOverride) {
+        return reply.status(409).send({
+          error: agendaWarnings.join(" "),
+          code: "AGENDA_CONFLICT",
+          warnings: agendaWarnings,
+        });
       }
 
       // Monto por fila: total manual repartido, o la variante de cada mascota.
@@ -397,7 +456,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           const res = await tx.reservation.create({
             data: {
               reservationType: "BATH",
-              appointmentAt,
+              appointmentAt: bathStarts[i],
+              durationMinutes: bathDurations[i],
+              ...(agendaWarnings.length > 0
+                ? {
+                    scheduleOverridden: true,
+                    scheduleOverrideReason: agendaWarnings.join(" "),
+                  }
+                : {}),
               totalAmount: new Prisma.Decimal(amounts[i]).add(
                 isFirst ? deliveryFee : 0,
               ),
@@ -617,6 +683,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           data: {
             checkIn,
             checkOut,
+            checkInTime: checkInTime ?? null,
+            checkOutTime: checkOutTime ?? null,
             totalDays,
             totalAmount: new Prisma.Decimal(amounts[i]).add(
               isFirst ? deliveryFee : 0,
