@@ -268,8 +268,8 @@ export default function AdminClients() {
     );
   };
 
-  return (
-    <View style={styles.screen}>
+  const listHeader = (
+    <>
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={18} color={COLORS.textDisabled} />
         <TextInput
@@ -295,19 +295,38 @@ export default function AdminClients() {
         {" · "}
         {filtered.reduce((sum, o) => sum + o.pets.length, 0)} mascotas
       </Text>
+    </>
+  );
 
+  return (
+    // La lista es la RAÍZ de la pantalla (iOS 26 solo encoge el tab bar con el
+    // scroll que es primera subvista del view controller): buscador y contador
+    // pasan a ser su cabecera y el FAB queda de hermano absoluto.
+    <>
       {petsError ? (
-        <ErrorState error={petsErrorObj} onRetry={refetchPets} />
+        <View style={styles.screen}>
+          {listHeader}
+          <ErrorState error={petsErrorObj} onRetry={refetchPets} />
+        </View>
       ) : loadingPets ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={styles.screen}>
+          {listHeader}
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
         </View>
       ) : (
         <FlatList
+          style={styles.screen}
           contentInsetAdjustmentBehavior="automatic"
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          // El wrap cancela el padding del contentContainer: el buscador
+          // conserva exactamente el margen que tenía fuera de la lista.
+          ListHeaderComponent={
+            <View style={styles.listHeaderWrap}>{listHeader}</View>
+          }
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={refetchPets} />
           }
@@ -332,7 +351,7 @@ export default function AdminClients() {
       >
         <Ionicons name="add" size={30} color={COLORS.white} />
       </TabFab>
-    </View>
+    </>
   );
 }
 
@@ -372,6 +391,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
+  },
+  listHeaderWrap: {
+    marginHorizontal: -16,
+    marginTop: -8,
   },
   list: {
     padding: 16,

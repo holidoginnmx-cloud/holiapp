@@ -1,8 +1,6 @@
-import { TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { COLORS } from "@/constants/colors";
 import { TabStack } from "@/components/TabStack";
+import { HeaderProfileButton } from "@/components/HeaderProfileButton";
 
 export default function StaffDashboardTabLayout() {
   const router = useRouter();
@@ -11,13 +9,10 @@ export default function StaffDashboardTabLayout() {
     <TabStack
       title="Panel"
       headerRight={() => (
-        <TouchableOpacity
-          onPress={() => router.push("/(staff)/profile")}
-          style={{ marginRight: 16 }}
+        <HeaderProfileButton
+          onPress={() => router.push("/(staff)/more/profile" as any)}
           testID="staff-account-button"
-        >
-          <Ionicons name="person-circle-outline" size={28} color={COLORS.primary} />
-        </TouchableOpacity>
+        />
       )}
     />
   );

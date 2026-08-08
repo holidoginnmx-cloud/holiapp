@@ -21,6 +21,7 @@ import {
   PlusJakartaSans_700Bold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { useAuthStore } from "@/store/authStore";
+import { clearSessionState } from "@/lib/session";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { AnimatedSplash } from "@/components/splash";
 import { registerForPushNotifications } from "@/lib/pushNotifications";
@@ -74,7 +75,6 @@ function ClerkTokenSync() {
   const setTokenResolver = useAuthStore((s) => s.setTokenResolver);
   const setClerkUserId = useAuthStore((s) => s.setClerkUserId);
   const syncUser = useAuthStore((s) => s.syncUser);
-  const logout = useAuthStore((s) => s.logout);
   const pushRegisteredRef = useRef(false);
 
   useEffect(() => {
@@ -191,10 +191,12 @@ function ClerkTokenSync() {
     });
   }, [isSignedIn, dbUserId, role, segments, router]);
 
-  // Clear store on sign-out so the next user starts with a clean slate
+  // Clear store on sign-out so the next user starts with a clean slate.
+  // Incluye la caché de react-query: con staleTime de 5 min y refetchOnMount
+  // en false, la cuenta siguiente abría con los datos de la anterior.
   useEffect(() => {
     if (isSignedIn === false) {
-      logout();
+      clearSessionState();
       pushRegisteredRef.current = false;
     }
   }, [isSignedIn]);

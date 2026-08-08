@@ -19,8 +19,7 @@ import {
   type CalendarReservation,
 } from "@/components/CalendarView";
 import { ErrorState } from "@/components/ErrorState";
-import { ScreenContainer } from "@/components/ScreenContainer";
-import { WIDE_MAX_WIDTH } from "@/lib/responsive";
+import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
 // Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
@@ -60,6 +59,7 @@ function bathToCalendarReservation(b: StaffBath): CalendarReservation {
 
 export default function StaffStays() {
   const router = useRouter();
+  const { isTablet } = useResponsive();
   const [search, setSearch] = useState("");
 
   const {
@@ -131,46 +131,49 @@ export default function StaffStays() {
   }
 
   return (
-    <ScreenContainer maxWidth={WIDE_MAX_WIDTH}>
-      {/* Search bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={18} color={COLORS.textDisabled} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar por mascota, dueño o cuarto..."
-          placeholderTextColor={COLORS.textDisabled}
-          value={search}
-          onChangeText={setSearch}
-          autoCorrect={false}
-        />
-        {search.length > 0 && (
-          <Ionicons
-            name="close-circle"
-            size={18}
-            color={COLORS.textDisabled}
-            onPress={() => setSearch("")}
+    // El calendario (que por dentro es un ScrollView) es la RAÍZ de la pantalla:
+    // iOS 26 solo engancha el minimize del tab bar al scroll que es primera
+    // subvista del view controller. Por eso el buscador viaja como `header`
+    // dentro de su scroll y el tope de iPad va en su contentContainer.
+    <CalendarView
+      header={
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={COLORS.textDisabled} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar por mascota, dueño o cuarto..."
+            placeholderTextColor={COLORS.textDisabled}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
           />
-        )}
-      </View>
-
-      <CalendarView
-        reservations={filtered}
-        onPressReservation={(id) => {
-          const target = filtered.find((r) => r.id === id);
-          if (target?.reservationType === "BATH") {
-            router.push(`/staff/bath/${id}` as any);
-          } else {
-            router.push(`/staff/stay/${id}` as any);
-          }
-        }}
-        showOwnerName
-        refreshing={isRefetching || isRefetchingBaths}
-        onRefresh={() => {
-          refetch();
-          refetchBaths();
-        }}
-      />
-    </ScreenContainer>
+          {search.length > 0 && (
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={COLORS.textDisabled}
+              onPress={() => setSearch("")}
+            />
+          )}
+        </View>
+      }
+      maxWidth={isTablet ? WIDE_MAX_WIDTH : undefined}
+      reservations={filtered}
+      onPressReservation={(id) => {
+        const target = filtered.find((r) => r.id === id);
+        if (target?.reservationType === "BATH") {
+          router.push(`/staff/bath/${id}` as any);
+        } else {
+          router.push(`/staff/stay/${id}` as any);
+        }
+      }}
+      showOwnerName
+      refreshing={isRefetching || isRefetchingBaths}
+      onRefresh={() => {
+        refetch();
+        refetchBaths();
+      }}
+    />
   );
 }
 

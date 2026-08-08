@@ -188,7 +188,11 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    // El ScrollView va como RAÍZ de la pantalla (sin View envolviéndolo): iOS 26
+    // solo engancha el minimize del tab bar al scroll que es primera subvista del
+    // view controller. El FAB queda de hermano —posición absoluta— dentro del
+    // fragmento, así sigue flotando encima sin robarle la raíz al scroll.
+    <>
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={styles.container}
@@ -603,15 +607,11 @@ export default function HomeScreen() {
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
       </TabFab>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.bgPage,
-  },
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPage,

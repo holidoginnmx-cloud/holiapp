@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -62,6 +62,14 @@ interface Props {
   adminView?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /**
+   * Contenido fijo que se pinta ARRIBA del calendario, dentro de su scroll
+   * (buscador, banners…). Va aquí y no en la pantalla porque el ScrollView
+   * tiene que ser la raíz para que iOS 26 encoja el tab bar al scrollear.
+   */
+  header?: ReactNode;
+  /** Ancho máximo del contenido en iPad. Sin valor = ancho completo. */
+  maxWidth?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -85,6 +93,8 @@ export function CalendarView({
   adminView = false,
   refreshing = false,
   onRefresh,
+  header,
+  maxWidth,
 }: Props) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -199,6 +209,9 @@ export function CalendarView({
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={
+        maxWidth ? { width: "100%", maxWidth, alignSelf: "center" } : undefined
+      }
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={
         onRefresh ? (
@@ -210,6 +223,8 @@ export function CalendarView({
         ) : undefined
       }
     >
+      {header}
+
       {/* ── Month Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={goBack} hitSlop={12}>

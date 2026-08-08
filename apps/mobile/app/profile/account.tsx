@@ -15,12 +15,12 @@ import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { useAuthStore } from "@/store/authStore";
 import { deleteMyAccount, exportMyData } from "@/lib/api";
+import { clearSessionState } from "@/lib/session";
 import { formatName } from "@/lib/format";
 
 export default function AccountScreen() {
   const router = useRouter();
   const { signOut } = useClerk();
-  const logout = useAuthStore((s) => s.logout);
   const email = useAuthStore((s) => s.email);
   const firstName = useAuthStore((s) => s.firstName);
   const lastName = useAuthStore((s) => s.lastName);
@@ -44,7 +44,9 @@ export default function AccountScreen() {
     try {
       setSigningOut(true);
       await signOut();
-      logout();
+      // Limpia store + caché: el rol y los datos de la cuenta anterior no
+      // deben sobrevivir al cambio de sesión.
+      clearSessionState();
       router.replace("/(auth)/login");
     } catch (err) {
       setSigningOut(false);
@@ -94,7 +96,9 @@ export default function AccountScreen() {
       setDeleting(true);
       await deleteMyAccount();
       await signOut();
-      logout();
+      // Limpia store + caché: el rol y los datos de la cuenta anterior no
+      // deben sobrevivir al cambio de sesión.
+      clearSessionState();
       router.replace("/(auth)/login");
     } catch (err) {
       setDeleting(false);

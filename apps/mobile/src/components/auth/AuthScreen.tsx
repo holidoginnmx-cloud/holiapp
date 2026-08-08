@@ -14,7 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
-import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
+import { useAuth, useClerk, useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { useCallback, useEffect, useState } from "react";
 import * as WebBrowser from "expo-web-browser";
 import Svg, { Path } from "react-native-svg";
@@ -33,6 +33,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import { formatName } from "@/lib/format";
+import { clearSessionState } from "@/lib/session";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -320,6 +321,8 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
   const { signIn, setActive: setActiveSignIn, isLoaded: signInLoaded } = useSignIn();
   const { signUp, setActive: setActiveSignUp, isLoaded: signUpLoaded } = useSignUp();
   const { startSSOFlow } = useSSO();
+  const { signOut } = useClerk();
+  const { isSignedIn } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
@@ -389,6 +392,29 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
     return !e && !p;
   };
 
+  // ── Arrancar siempre desde cero ────────────────────────────────
+  // Cambiar de cuenta (owner → staff → admin) sin pasar por "Cerrar sesión"
+  // dejaba viva la sesión de Clerk. Consecuencias: (1) el siguiente intento se
+  // rechazaba con `session_exists`, un error SIN longMessage que caía en el
+  // "No se pudo iniciar sesión" genérico, y (2) el rol de la cuenta anterior
+  // seguía en el store, así que el guard de (staff)/_layout te devolvía al área
+  // de owner al volver de cualquier pantalla. Por eso cerramos y limpiamos
+  // ANTES de cada intento, no solo desde las pantallas de perfil/cuenta.
+  // `force` es para cuando Clerk ya nos dijo que hay sesión viva aunque
+  // `isSignedIn` diga que no (pasa si el cliente aún no terminó de cargar).
+  const resetPreviousSession = useCallback(
+    async (force = false) => {
+      try {
+        if (force || isSignedIn) await signOut();
+      } catch {
+        // Sin red no se puede cerrar contra Clerk: seguimos igual y que el
+        // intento diga qué pasó. Lo local sí queda limpio.
+      }
+      clearSessionState();
+    },
+    [isSignedIn, signOut]
+  );
+
   const handleClerkError = (err: any) => {
     const clerkError = err?.errors?.[0];
     if (!clerkError) {
@@ -396,6 +422,14 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
       return;
     }
     switch (clerkError.code) {
+      case "session_exists":
+      case "identifier_already_signed_in":
+        // La cerramos aquí (a la fuerza) para que el reintento entre limpio.
+        void resetPreviousSession(true);
+        setError(
+          "Ya había una sesión abierta en este teléfono. La cerramos: vuelve a intentarlo."
+        );
+        break;
       case "form_password_incorrect":
         setErrPass("Contraseña incorrecta.");
         setShakeP((v) => v + 1);
@@ -442,6 +476,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
     setLoading(true);
     clearFieldErrors();
     try {
+      await resetPreviousSession();
       const result = await signIn.create({
         identifier: email.trim().toLowerCase(),
         strategy: "password",
@@ -541,6 +576,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
     const cleanFirstName = formatName(firstName);
     const cleanLastName = formatName(lastName);
     try {
+      await resetPreviousSession();
       const createResult = await signUp.create({
         firstName: cleanFirstName,
         lastName: cleanLastName,
@@ -617,6 +653,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
     setLoading(true);
     clearFieldErrors();
     try {
+      await resetPreviousSession();
       await signIn.create({
         strategy: "reset_password_email_code",
         identifier: mail.toLowerCase(),
@@ -668,6 +705,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
       setLoading(true);
       setError(null);
       try {
+        await resetPreviousSession();
         const { createdSessionId, setActive: setActiveSession } = await startSSOFlow({
           strategy,
         });
@@ -682,13 +720,16 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
           );
         }
       } catch (err: any) {
-        const msg = err?.errors?.[0]?.longMessage;
-        setError(msg ?? "No se pudo iniciar sesión. Intenta de nuevo.");
+        // Pasa por el mapeo común: así `session_exists` (que no trae
+        // longMessage) deja de caer en el mensaje genérico de siempre.
+        handleClerkError(err);
       } finally {
         setLoading(false);
       }
     },
-    [startSSOFlow, router]
+    // handleClerkError se recrea en cada render y solo usa setters de estado:
+    // meterlo aquí anularía el memo sin aportar nada.
+    [startSSOFlow, router, resetPreviousSession]
   );
 
   const submit = mode === "login" ? handleLogin : handleRegister;

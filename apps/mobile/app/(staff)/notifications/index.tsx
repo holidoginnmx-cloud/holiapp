@@ -18,13 +18,14 @@ import {
 } from "@/lib/api";
 import type { Notification } from "@holidoginn/shared";
 import { NotificationItem } from "@/components/NotificationItem";
-import { ScreenContainer } from "@/components/ScreenContainer";
+import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { dayGroupLabel } from "@/lib/format";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 
 export default function StaffNotificationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
+  const { isTablet } = useResponsive();
 
   const { data: notifications, isLoading, error, refetch } = useQuery({
     queryKey: ["notifications", userId],
@@ -114,55 +115,64 @@ export default function StaffNotificationsScreen() {
   }
 
   return (
-    <ScreenContainer backgroundColor={COLORS.white}>
-      {unreadCount > 0 && (
-        <TouchableOpacity
-          style={styles.markAllButton}
-          onPress={() => markAllMutation.mutate()}
-          disabled={markAllMutation.isPending}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.markAllText}>
-            {markAllMutation.isPending
-              ? "Marcando..."
-              : `Marcar todas como leídas (${unreadCount})`}
-          </Text>
-        </TouchableOpacity>
+    // La lista es la RAÍZ de la pantalla (nada de ScreenContainer envolviéndola):
+    // iOS 26 solo engancha el minimize del tab bar al scroll que es primera
+    // subvista del view controller. "Marcar todas" pasa a ser cabecera de la
+    // lista y el ancho máximo de iPad se aplica en el contentContainer.
+    <SectionList
+      style={styles.container}
+      contentContainerStyle={
+        isTablet
+          ? { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" }
+          : undefined
+      }
+      ListHeaderComponent={
+        unreadCount > 0 ? (
+          <TouchableOpacity
+            style={styles.markAllButton}
+            onPress={() => markAllMutation.mutate()}
+            disabled={markAllMutation.isPending}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.markAllText}>
+              {markAllMutation.isPending
+                ? "Marcando..."
+                : `Marcar todas como leídas (${unreadCount})`}
+            </Text>
+          </TouchableOpacity>
+        ) : null
+      }
+      contentInsetAdjustmentBehavior="automatic"
+      sections={sections}
+      keyExtractor={(item) => item.id}
+      stickySectionHeadersEnabled={false}
+      renderSectionHeader={({ section: { title } }) => (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionHeaderText}>{title}</Text>
+        </View>
       )}
-
-      <SectionList
-        contentInsetAdjustmentBehavior="automatic"
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section: { title } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{title}</Text>
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <NotificationItem
-            type={item.type}
-            title={item.title}
-            body={item.body}
-            isRead={item.isRead}
-            createdAt={item.createdAt}
-            onPress={() => {
-              if (!item.isRead) markOneMutation.mutate(item.id);
-              const reservationId = (item.data as { reservationId?: string } | null)?.reservationId;
-              if (reservationId) {
-                router.push(`/staff/stay/${reservationId}` as any);
-              }
-            }}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.center}>
-            <Text style={styles.emptyText}>No tienes notificaciones</Text>
-          </View>
-        }
-      />
-    </ScreenContainer>
+      renderItem={({ item }) => (
+        <NotificationItem
+          type={item.type}
+          title={item.title}
+          body={item.body}
+          isRead={item.isRead}
+          createdAt={item.createdAt}
+          onPress={() => {
+            if (!item.isRead) markOneMutation.mutate(item.id);
+            const reservationId = (item.data as { reservationId?: string } | null)?.reservationId;
+            if (reservationId) {
+              router.push(`/staff/stay/${reservationId}` as any);
+            }
+          }}
+        />
+      )}
+      ListEmptyComponent={
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>No tienes notificaciones</Text>
+        </View>
+      }
+    />
   );
 }
 

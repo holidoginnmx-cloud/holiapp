@@ -132,47 +132,66 @@ export default function StaffDaycares() {
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.topBar}>
-        <Text style={styles.topTitle}>Guardería</Text>
-        <Text style={styles.topSub}>
-          {pending.length} pendiente{pending.length === 1 ? "" : "s"}
-          {" · "}
-          {formatCurrency(revenue)} en total
-        </Text>
-      </View>
+  // El título ya lo pone el header del Stack de "Más": aquí solo el resumen.
+  const topBar = (
+    <View style={styles.topBar}>
+      <Text style={styles.topSub}>
+        {pending.length} pendiente{pending.length === 1 ? "" : "s"}
+        {" · "}
+        {formatCurrency(revenue)} en total
+      </Text>
+    </View>
+  );
 
-      {isError ? (
+  if (isError) {
+    return (
+      <View style={styles.container}>
+        {topBar}
         <ErrorState error={error} onRetry={refetch} />
-      ) : isLoading ? (
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        {topBar}
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} />
         </View>
-      ) : (
-        <FlatList<Row>
-          contentInsetAdjustmentBehavior="automatic"
-          data={rows}
-          keyExtractor={(item, i) =>
-            item.type === "item" ? item.daycare.id : `${item.type}-${i}`
-          }
-          renderItem={renderItem}
-          contentContainerStyle={[
-            styles.listContent,
-            isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" },
-          ]}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyCard}>
-              <Ionicons name="sunny-outline" size={32} color={COLORS.border} />
-              <Text style={styles.emptyText}>No hay guarderías próximas</Text>
-            </View>
-          }
-        />
-      )}
-    </View>
+      </View>
+    );
+  }
+
+  return (
+    // La lista es la RAÍZ de la pantalla: iOS 26 solo engancha el minimize del
+    // tab bar al scroll que es primera subvista del view controller, así que la
+    // barra de título pasa a ser cabecera de la lista.
+    <FlatList<Row>
+      style={styles.container}
+      contentInsetAdjustmentBehavior="automatic"
+      data={rows}
+      keyExtractor={(item, i) =>
+        item.type === "item" ? item.daycare.id : `${item.type}-${i}`
+      }
+      renderItem={renderItem}
+      ListHeaderComponent={
+        <View style={styles.listHeaderWrap}>{topBar}</View>
+      }
+      contentContainerStyle={[
+        styles.listContent,
+        isTablet && { maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", width: "100%" },
+      ]}
+      refreshControl={
+        <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+      }
+      ListEmptyComponent={
+        <View style={styles.emptyCard}>
+          <Ionicons name="sunny-outline" size={32} color={COLORS.border} />
+          <Text style={styles.emptyText}>No hay guarderías próximas</Text>
+        </View>
+      }
+    />
   );
 }
 
@@ -184,13 +203,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  topTitle: { fontSize: 17, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   topSub: {
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
     fontFamily: "PlusJakartaSans_600SemiBold",
   },
+  // Cancela el padding del contentContainer: la barra de título conserva el
+  // borde a borde que tenía cuando iba fuera de la lista.
+  listHeaderWrap: { marginHorizontal: -16, marginTop: -16, marginBottom: 16 },
   listContent: { padding: 16, paddingBottom: 24 },
   sectionHeader: {
     fontSize: 12,

@@ -11,8 +11,10 @@ name: Notifications tab renders (list or empty state)
 # etiqueta, que UIKit expone como accessibility label del UITabBarItem.
 - tapOn: "Notificaciones"
 
+# La lista ES la pantalla: ya no hay View envolviéndola (el scroll tiene que ser
+# la raíz para que iOS 26 encoja el tab bar).
 - assertVisible:
-    id: "notifications-screen"
+    id: "notifications-list"
 
 - runFlow:
     when:

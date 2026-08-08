@@ -90,44 +90,45 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <View style={styles.container} testID="notifications-screen">
-      <SectionList
-        contentInsetAdjustmentBehavior="automatic"
-        testID="notifications-list"
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section: { title } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{title}</Text>
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <NotificationItem
-            type={item.type}
-            title={item.title}
-            body={item.body}
-            isRead={item.isRead}
-            createdAt={item.createdAt}
-            onPress={() => {
-              if (!item.isRead) markOneMutation.mutate(item.id);
-              // El mapeo tipo/data → pantalla vive en lib/notificationRoute
-              // (compartido con el deep link de push del _layout raíz).
-              const route = notificationRoute(
-                item.type,
-                item.data as NotificationRouteData
-              );
-              if (route) router.push(route as any);
-            }}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.center} testID="notifications-empty-state">
-            <Text style={styles.emptyText}>No tienes notificaciones</Text>
-          </View>
-        }
-      />
-    </View>
+    // La lista es la RAÍZ de la pantalla: iOS 26 solo engancha el minimize del
+    // tab bar al scroll que es primera subvista del view controller.
+    <SectionList
+      style={styles.container}
+      contentInsetAdjustmentBehavior="automatic"
+      testID="notifications-list"
+      sections={sections}
+      keyExtractor={(item) => item.id}
+      stickySectionHeadersEnabled={false}
+      renderSectionHeader={({ section: { title } }) => (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionHeaderText}>{title}</Text>
+        </View>
+      )}
+      renderItem={({ item }) => (
+        <NotificationItem
+          type={item.type}
+          title={item.title}
+          body={item.body}
+          isRead={item.isRead}
+          createdAt={item.createdAt}
+          onPress={() => {
+            if (!item.isRead) markOneMutation.mutate(item.id);
+            // El mapeo tipo/data → pantalla vive en lib/notificationRoute
+            // (compartido con el deep link de push del _layout raíz).
+            const route = notificationRoute(
+              item.type,
+              item.data as NotificationRouteData
+            );
+            if (route) router.push(route as any);
+          }}
+        />
+      )}
+      ListEmptyComponent={
+        <View style={styles.center} testID="notifications-empty-state">
+          <Text style={styles.emptyText}>No tienes notificaciones</Text>
+        </View>
+      }
+    />
   );
 }
 

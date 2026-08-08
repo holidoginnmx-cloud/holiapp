@@ -17,7 +17,7 @@ interface ScreenContainerProps {
   maxWidth?: number;
   /** Color de fondo de la página (y de los márgenes laterales en tablet). */
   backgroundColor?: string;
-  /** Estilo del contenedor externo (a pantalla completa). */
+  /** Estilo del elemento raíz: el ScrollView en modo scroll, el View si no. */
   style?: StyleProp<ViewStyle>;
   /** contentContainerStyle del ScrollView interno (solo en modo scroll). */
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -32,6 +32,12 @@ interface ScreenContainerProps {
  * en teléfono (donde `isTablet` es false → maxWidth undefined = ancho completo).
  * Mantiene intacto el markup interno de cada pantalla: solo reemplaza el
  * `<ScrollView>`/`<View flex:1>` de nivel superior.
+ *
+ * En modo `scroll` el ScrollView es la RAÍZ de la pantalla, sin ningún View
+ * envolviéndolo: iOS 26 solo engancha el minimize del tab bar
+ * (`minimizeBehavior`) al scroll que encuentra como primera subvista del view
+ * controller. El centrado de iPad se hace por eso en el contentContainer
+ * (maxWidth + alignSelf) y no con un contenedor extra.
  */
 export function ScreenContainer({
   children,
@@ -48,19 +54,20 @@ export function ScreenContainer({
 
   if (scroll) {
     return (
-      <View style={[{ flex: 1, alignItems: "center", backgroundColor }, style]}>
-        <ScrollView
-          style={{ flex: 1, width: "100%", maxWidth: cappedWidth }}
-          contentContainerStyle={contentContainerStyle}
-          refreshControl={refreshControl}
-          // El tab bar nativo entra en el safeArea del view controller y el
-          // UIScrollView lo absorbe solo: ya no hacen falta colchones a mano.
-          contentInsetAdjustmentBehavior="automatic"
-          {...scrollProps}
-        >
-          {children}
-        </ScrollView>
-      </View>
+      <ScrollView
+        style={[{ flex: 1, backgroundColor }, style]}
+        contentContainerStyle={[
+          isTablet && { width: "100%", maxWidth: cappedWidth, alignSelf: "center" },
+          contentContainerStyle,
+        ]}
+        refreshControl={refreshControl}
+        // El tab bar nativo entra en el safeArea del view controller y el
+        // UIScrollView lo absorbe solo: ya no hacen falta colchones a mano.
+        contentInsetAdjustmentBehavior="automatic"
+        {...scrollProps}
+      >
+        {children}
+      </ScrollView>
     );
   }
 

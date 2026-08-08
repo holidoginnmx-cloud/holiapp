@@ -74,44 +74,51 @@ export default function AdminReservations() {
   }
 
   return (
-    <View style={styles.screen}>
-      {pendingCount > 0 && (
-        <TouchableOpacity
-          style={styles.changesBanner}
-          onPress={() => router.push("/admin/change-requests" as any)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="swap-horizontal" size={18} color={COLORS.white} />
-          <Text style={styles.changesBannerText}>
-            {pendingCount} solicitud{pendingCount === 1 ? "" : "es"} de cambio pendiente{pendingCount === 1 ? "" : "s"}
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={COLORS.white} />
-        </TouchableOpacity>
-      )}
-
-      <View style={styles.controlsRow}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={16} color={COLORS.textDisabled} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar mascota, cuarto, staff..."
-            placeholderTextColor={COLORS.textDisabled}
-            value={search}
-            onChangeText={setSearch}
-            autoCorrect={false}
-          />
-          {search.length > 0 && (
-            <Ionicons
-              name="close-circle"
-              size={16}
-              color={COLORS.textDisabled}
-              onPress={() => setSearch("")}
-            />
-          )}
-        </View>
-      </View>
-
+    // El calendario (ScrollView por dentro) es la RAÍZ de la pantalla: iOS 26
+    // solo engancha el minimize del tab bar al scroll que es primera subvista del
+    // view controller. Banner y buscador viajan como `header` dentro de su
+    // scroll; el FAB queda de hermano absoluto en el fragmento.
+    <>
       <CalendarView
+        header={
+          <>
+            {pendingCount > 0 && (
+              <TouchableOpacity
+                style={styles.changesBanner}
+                onPress={() => router.push("/admin/change-requests" as any)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="swap-horizontal" size={18} color={COLORS.white} />
+                <Text style={styles.changesBannerText}>
+                  {pendingCount} solicitud{pendingCount === 1 ? "" : "es"} de cambio pendiente{pendingCount === 1 ? "" : "s"}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.white} />
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.controlsRow}>
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={16} color={COLORS.textDisabled} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Buscar mascota, cuarto, staff..."
+                  placeholderTextColor={COLORS.textDisabled}
+                  value={search}
+                  onChangeText={setSearch}
+                  autoCorrect={false}
+                />
+                {search.length > 0 && (
+                  <Ionicons
+                    name="close-circle"
+                    size={16}
+                    color={COLORS.textDisabled}
+                    onPress={() => setSearch("")}
+                  />
+                )}
+              </View>
+            </View>
+          </>
+        }
         reservations={calendarReservations}
         onPressReservation={(id) =>
           router.push(`/admin/reservation/${id}` as any)
@@ -130,7 +137,7 @@ export default function AdminReservations() {
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
       </TabFab>
-    </View>
+    </>
   );
 }
 

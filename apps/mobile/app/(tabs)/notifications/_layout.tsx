@@ -1,8 +1,8 @@
 import { TabStack } from "@/components/TabStack";
-import { CreditBalancePill } from "@/components/CreditBalancePill";
+import { OwnerHeaderRight } from "@/components/HeaderProfileButton";
 
 export default function NotificationsTabLayout() {
-  return <TabStack title="Notificaciones" headerRight={() => <CreditBalancePill />} />;
+  return <TabStack title="Notificaciones" headerRight={() => <OwnerHeaderRight />} />;
 }
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";

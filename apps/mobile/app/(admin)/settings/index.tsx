@@ -5,6 +5,7 @@ import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
+import { clearSessionState } from "@/lib/session";
 import { getPendingCartillasCount } from "@/lib/api";
 import { formatName } from "@/lib/format";
 
@@ -87,8 +88,11 @@ export default function AdminSettings() {
       {
         text: "Cerrar sesion",
         style: "destructive",
-        onPress: () => {
-          signOut();
+        onPress: async () => {
+          await signOut();
+          // Limpia store + caché: si el rol sobrevive, la cuenta siguiente
+          // entra al área equivocada.
+          clearSessionState();
           router.replace("/(auth)/login");
         },
       },

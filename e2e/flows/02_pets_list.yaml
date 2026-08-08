@@ -11,8 +11,11 @@ name: Pets tab renders the list (or empty state)
 # etiqueta, que UIKit expone como accessibility label del UITabBarItem.
 - tapOn: "Mis Mascotas"
 
+# La lista ES la pantalla: ya no hay View envolviéndola (el scroll tiene que ser
+# la raíz para que iOS 26 encoja el tab bar), así que "pets-screen" solo existe
+# mientras carga el esqueleto.
 - assertVisible:
-    id: "pets-screen"
+    id: "pets-list"
 
 # Either the list is populated or the empty state with the CTA is shown.
 - runFlow:

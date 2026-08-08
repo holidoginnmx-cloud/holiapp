@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
+import { clearSessionState } from "@/lib/session";
 import { formatName } from "@/lib/format";
 
 export default function AdminAccount() {
@@ -22,7 +23,9 @@ export default function AdminAccount() {
 
   const handleSignOut = async () => {
     await signOut();
-    useAuthStore.getState().logout();
+    // Limpia store + caché: el rol es lo que hacía que la cuenta siguiente
+    // saltara al área equivocada.
+    clearSessionState();
     router.replace("/(auth)/login");
   };
 
