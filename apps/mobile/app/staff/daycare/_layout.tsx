@@ -9,7 +9,7 @@ export default function DaycareLayout() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(staff)/more/daycares" as any);
+      router.replace("/(staff)/daycares" as any);
     }
   };
 

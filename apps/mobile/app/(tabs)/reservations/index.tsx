@@ -6,15 +6,11 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
   Linking,
-  ScrollView,
-  useWindowDimensions,
   Animated,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
+  Easing,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -261,41 +257,35 @@ const filterByTab = (list: GroupedReservation[], tabKey: string) =>
 export default function ReservationsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
-  const { width: pageWidth } = useWindowDimensions();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState(tab ?? "CHECKED_IN");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("STAY");
-  const pagerRef = useRef<ScrollView>(null);
-  // Sigue al pager scroll para que el underline siga al dedo en tiempo real.
-  const scrollX = useRef(new Animated.Value(0)).current;
-
-  // Progreso del underline derivado en el árbol de Animated (0..tabs-1) —
-  // antes un listener JS corría en CADA frame de scroll haciendo setValue.
-  const tabProgress = useMemo(
-    () => Animated.divide(scrollX, new Animated.Value(Math.max(1, pageWidth))),
-    [scrollX, pageWidth]
+  const activeIndex = Math.max(
+    0,
+    TABS.findIndex((t) => t.key === activeTab)
   );
+
+  // Alto real de los filtros flotantes: el contenido de la lista se despeja
+  // con este padding en vez de un número mágico.
+  const [filtersHeight, setFiltersHeight] = useState(0);
+
+  // El underline ya no sigue al dedo (no hay pager que seguir): se anima al
+  // cambiar de pestaña.
+  const tabProgress = useRef(new Animated.Value(activeIndex)).current;
+  useEffect(() => {
+    Animated.timing(tabProgress, {
+      toValue: activeIndex,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, tabProgress]);
 
   useFocusEffect(
     useCallback(() => {
       if (tab && tab !== activeTab) setActiveTab(tab);
     }, [tab])
   );
-
-  // Sincroniza el pager cuando cambia activeTab (tap en pestaña o param de URL).
-  useEffect(() => {
-    const idx = TABS.findIndex((t) => t.key === activeTab);
-    if (idx >= 0) {
-      pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: true });
-    }
-  }, [activeTab, pageWidth]);
-
-  const onPagerMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (pageWidth <= 0) return;
-    const idx = Math.round(e.nativeEvent.contentOffset.x / pageWidth);
-    const next = TABS[idx]?.key;
-    if (next && next !== activeTab) setActiveTab(next);
-  };
 
   const {
     data: reservations,
@@ -371,117 +361,101 @@ export default function ReservationsScreen() {
         ? EMPTY_STATES_DAYCARE[tabKey]
         : EMPTY_STATES[tabKey];
 
+  const empty = emptyStateFor(activeTab);
+
   return (
-    <View style={styles.container} testID="reservations-screen">
-      {/* Type filter (segmented control) */}
-      <View style={styles.segmentedControl}>
-        {TYPE_FILTERS.map((opt) => {
-          const active = typeFilter === opt.key;
-          return (
-            <TouchableOpacity
-              key={opt.key}
-              style={[styles.segment, active && styles.segmentActive]}
-              onPress={() => setTypeFilter(opt.key)}
-              activeOpacity={0.7}
-            >
-              {opt.icon && (
-                <Ionicons
-                  name={opt.icon}
-                  size={14}
-                  color={active ? COLORS.primary : COLORS.textTertiary}
-                />
-              )}
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Status filter (underline tabs) */}
-      <View style={styles.underlineFilterWrap}>
-        <FilterTabsUnderline
-          tabs={tabsWithCounts}
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-          justified
-          progress={tabProgress}
-        />
-      </View>
-
-      {/* Pager con swipe horizontal entre los 3 tabs */}
-      <Animated.ScrollView
-        ref={pagerRef as any}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onPagerMomentumEnd}
-        // Captura el offset horizontal en scrollX; un listener mapea a
-        // tabProgress (0..tabs.length-1) para el underline.
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: false },
-        )}
-        scrollEventThrottle={16}
-        // Arrancar en la página del tab activo sin animar.
-        contentOffset={{
-          x:
-            Math.max(0, TABS.findIndex((t) => t.key === activeTab)) * pageWidth,
-          y: 0,
-        }}
+    // La lista es la RAÍZ de la pantalla: iOS 26 solo engancha el minimize del
+    // tab bar al scroll que es primera subvista del view controller. Por eso ya
+    // no hay pager horizontal (sus listas quedaban anidadas dos niveles): se
+    // pinta solo la pestaña activa y los filtros flotan encima en absoluto,
+    // igual que el FAB. Se cambia de pestaña tocando, no deslizando.
+    <>
+      <FlatList
+        style={styles.container}
+        testID="reservations-screen"
+        contentInsetAdjustmentBehavior="automatic"
+        data={pages[activeIndex]}
+        keyExtractor={(item) => item.groupId ?? item.id}
+        renderItem={renderItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        contentContainerStyle={[styles.list, { paddingTop: filtersHeight + 12 }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            // Sin esto la ruedita gira DETRÁS de los filtros flotantes.
+            progressViewOffset={filtersHeight}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons
+              name={empty?.icon ?? "calendar-outline"}
+              size={48}
+              color={COLORS.border}
+            />
+            <Text style={styles.emptyText}>
+              {empty?.message ?? "No tienes reservaciones en esta categoría"}
+            </Text>
+            {empty?.cta && (
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() =>
+                  router.push((empty.ctaHref ?? "/reservation/create") as any)
+                }
+              >
+                <Text style={styles.emptyButtonText}>{empty.cta}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
+      />
+
+      {/* Filtros: fijos sobre la lista, fuera de su scroll */}
+      <View
+        style={styles.filtersFloating}
+        onLayout={(e) => setFiltersHeight(e.nativeEvent.layout.height)}
       >
-        {TABS.map((t, idx) => {
-          const pageData = pages[idx];
-          const empty = emptyStateFor(t.key);
-          return (
-            <View key={t.key} style={{ width: pageWidth }}>
-              <FlatList
-                contentInsetAdjustmentBehavior="automatic"
-                data={pageData}
-                keyExtractor={(item) => item.groupId ?? item.id}
-                renderItem={renderItem}
-                initialNumToRender={6}
-                maxToRenderPerBatch={8}
-                windowSize={5}
-                contentContainerStyle={styles.list}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={isRefetching}
-                    onRefresh={refetch}
+        {/* Type filter (segmented control) */}
+        <View style={styles.segmentedControl}>
+          {TYPE_FILTERS.map((opt) => {
+            const active = typeFilter === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.segment, active && styles.segmentActive]}
+                onPress={() => setTypeFilter(opt.key)}
+                activeOpacity={0.7}
+              >
+                {opt.icon && (
+                  <Ionicons
+                    name={opt.icon}
+                    size={14}
+                    color={active ? COLORS.primary : COLORS.textTertiary}
                   />
-                }
-                ListEmptyComponent={
-                  <View style={styles.emptyContainer}>
-                    <Ionicons
-                      name={empty?.icon ?? "calendar-outline"}
-                      size={48}
-                      color={COLORS.border}
-                    />
-                    <Text style={styles.emptyText}>
-                      {empty?.message ??
-                        "No tienes reservaciones en esta categoría"}
-                    </Text>
-                    {empty?.cta && (
-                      <TouchableOpacity
-                        style={styles.emptyButton}
-                        onPress={() =>
-                          router.push(
-                            (empty.ctaHref ?? "/reservation/create") as any
-                          )
-                        }
-                      >
-                        <Text style={styles.emptyButtonText}>{empty.cta}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                }
-              />
-            </View>
-          );
-        })}
-      </Animated.ScrollView>
+                )}
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Status filter (underline tabs) */}
+        <View style={styles.underlineFilterWrap}>
+          <FilterTabsUnderline
+            tabs={tabsWithCounts}
+            activeTab={activeTab}
+            onSelect={setActiveTab}
+            justified
+            progress={tabProgress}
+          />
+        </View>
+      </View>
 
       {/* FAB WhatsApp */}
       <TabFab
@@ -492,13 +466,22 @@ export default function ReservationsScreen() {
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
       </TabFab>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: COLORS.bgPage,
+  },
+  // Los filtros van absolutos encima de la lista (fuera de su scroll) para que
+  // el scroll pueda ser la raíz de la pantalla y iOS 26 encoja el tab bar.
+  filtersFloating: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     backgroundColor: COLORS.bgPage,
   },
   fab: {

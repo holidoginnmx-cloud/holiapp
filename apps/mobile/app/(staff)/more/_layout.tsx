@@ -25,7 +25,7 @@ export default function StaffMoreLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "Más" }} />
-      <Stack.Screen name="daycares" options={{ title: "Guardería" }} />
+      <Stack.Screen name="notifications" options={{ title: "Avisos" }} />
       <Stack.Screen name="profile" options={{ title: "Perfil" }} />
     </Stack>
   );

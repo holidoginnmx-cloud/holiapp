@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { getStaffStays } from "@/lib/api";
+import { getStaffStays, getNotifications } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
@@ -12,7 +12,7 @@ import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 // Con 6 pestañas visibles el tab bar de Apple mostraba 5 y generaba él solo una
 // pantalla "More" de UIKit (lista gris, sin nuestra tipografía ni colores) que
 // no se puede rediseñar. Aquí dejamos 4 pestañas reales + esta, que sí
-// controlamos: Guardería y Perfil viven en su Stack (ver _layout) y las listas
+// controlamos: Avisos y Perfil viven en su Stack (ver _layout) y las listas
 // del día se empujan a /staff-list.
 
 interface MenuItemProps {
@@ -22,6 +22,8 @@ interface MenuItemProps {
   onPress: () => void;
   iconTint?: string;
   badge?: number;
+  /** Pinta el badge en rojo (sin leer) en vez del gris de conteo neutro. */
+  badgeAlert?: boolean;
   isLast?: boolean;
 }
 
@@ -32,6 +34,7 @@ function MenuItem({
   onPress,
   iconTint = COLORS.primary,
   badge,
+  badgeAlert,
   isLast,
 }: MenuItemProps) {
   return (
@@ -48,8 +51,12 @@ function MenuItem({
         {subtitle && <Text style={styles.menuSubtitle}>{subtitle}</Text>}
       </View>
       {badge !== undefined && badge > 0 && (
-        <View style={styles.menuBadge}>
-          <Text style={styles.menuBadgeText}>{badge > 99 ? "99+" : badge}</Text>
+        <View style={[styles.menuBadge, badgeAlert && styles.menuBadgeAlert]}>
+          <Text
+            style={[styles.menuBadgeText, badgeAlert && styles.menuBadgeTextAlert]}
+          >
+            {badge > 99 ? "99+" : badge}
+          </Text>
         </View>
       )}
       <Ionicons name="chevron-forward" size={18} color={COLORS.border} />
@@ -71,6 +78,7 @@ function isSameLocalDay(date: Date | string | null | undefined): boolean {
 export default function StaffMore() {
   const router = useRouter();
   const { isTablet } = useResponsive();
+  const userId = useAuthStore((s) => s.userId);
   const firstName = useAuthStore((s) => s.firstName);
   const lastName = useAuthStore((s) => s.lastName);
   const email = useAuthStore((s) => s.email);
@@ -85,6 +93,16 @@ export default function StaffMore() {
     queryKey: ["staff", "stays", "CONFIRMED"],
     queryFn: () => getStaffStays("CONFIRMED"),
   });
+
+  // Misma key que el layout de tabs: el badge de "Más" y este contador salen
+  // del mismo dato.
+  const { data: notifications } = useQuery({
+    queryKey: ["notifications", userId],
+    queryFn: () => getNotifications(userId!),
+    enabled: !!userId,
+    refetchInterval: 30_000,
+  });
+  const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
 
   // Los baños comparten status con las estancias pero son citas: fuera.
   const active = (activeStays ?? []).filter((s) => s.reservationType !== "BATH");
@@ -138,14 +156,19 @@ export default function StaffMore() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.border} />
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Servicios</Text>
+      <Text style={styles.sectionTitle}>Avisos</Text>
       <View style={styles.menuSection}>
         <MenuItem
-          icon="sunny-outline"
-          iconTint={COLORS.warningText}
-          label="Guardería"
-          subtitle="Guarderías próximas y cobros por hora"
-          onPress={() => router.push("/(staff)/more/daycares" as any)}
+          icon="notifications-outline"
+          label="Notificaciones"
+          subtitle={
+            unreadCount > 0
+              ? `${unreadCount} sin leer`
+              : "Al día: no tienes avisos pendientes"
+          }
+          badge={unreadCount}
+          badgeAlert
+          onPress={() => router.push("/(staff)/more/notifications" as any)}
           isLast
         />
       </View>
@@ -340,9 +363,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  menuBadgeAlert: { backgroundColor: COLORS.dangerText },
   menuBadgeText: {
     fontSize: 11,
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
+  menuBadgeTextAlert: { color: COLORS.white },
 });

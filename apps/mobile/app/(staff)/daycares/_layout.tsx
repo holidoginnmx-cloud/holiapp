@@ -1,7 +1,7 @@
 import { TabStack } from "@/components/TabStack";
 
-export default function StaffNotifsTabLayout() {
-  return <TabStack title="Avisos" />;
+export default function StaffDaycaresTabLayout() {
+  return <TabStack title="Guardería" />;
 }
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
