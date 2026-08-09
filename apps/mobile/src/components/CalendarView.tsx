@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -36,6 +36,9 @@ export interface CalendarReservation {
   totalAmount: number | string;
   reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
+  /** Horas de entrada/salida — en guardería son EL dato (definen el precio). */
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   paymentType?: string | null;
   hasBalance?: boolean;
   hasPendingChangeRequest?: boolean;
@@ -62,6 +65,14 @@ interface Props {
   adminView?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /**
+   * Contenido fijo que se pinta ARRIBA del calendario, dentro de su scroll
+   * (buscador, banners…). Va aquí y no en la pantalla porque el ScrollView
+   * tiene que ser la raíz para que iOS 26 encoja el tab bar al scrollear.
+   */
+  header?: ReactNode;
+  /** Ancho máximo del contenido en iPad. Sin valor = ancho completo. */
+  maxWidth?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -85,11 +96,15 @@ export function CalendarView({
   adminView = false,
   refreshing = false,
   onRefresh,
+  header,
+  maxWidth,
 }: Props) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today));
+  /** "ALL" | "STAY" | "BATH" | "DAYCARE" — filtro de la lista del día. */
+  const [dayFilter, setDayFilter] = useState<string>("ALL");
 
   // Navigate months
   const goBack = () => {
@@ -114,8 +129,11 @@ export function CalendarView({
     // Map: dateKey → reservations on that day
     const map: Record<string, CalendarReservation[]> = {};
     for (const r of reservations) {
-      // Baño: aparece sólo en el día de la cita.
-      if (r.reservationType === "BATH") {
+      // Baño y guardería: son de un solo día y no tienen checkIn/checkOut —
+      // se ubican por `appointmentAt`. La guardería estaba cayendo en la rama
+      // de hospedaje y, al no tener fechas, se descartaba: la reservación
+      // existía pero NO aparecía en el calendario.
+      if (r.reservationType === "BATH" || r.reservationType === "DAYCARE") {
         if (!r.appointmentAt) continue;
         const apt = new Date(r.appointmentAt);
         if (apt.getFullYear() === year && apt.getMonth() === month) {
@@ -147,15 +165,44 @@ export function CalendarView({
     return { cells: grid, dayMap: map };
   }, [year, month, reservations]);
 
-  // Reservations for selected day
+  // Reservations for selected day, agrupadas por servicio. Los grupos vacíos
+  // se caen solos; si solo queda uno, la lista va sin encabezados.
   const selectedReservations = dayMap[selectedDate] ?? [];
-  const selectedStays = selectedReservations.filter(
-    (r) => r.reservationType !== "BATH"
-  );
-  const selectedBaths = selectedReservations.filter(
-    (r) => r.reservationType === "BATH"
-  );
-  const hasBothTypes = selectedStays.length > 0 && selectedBaths.length > 0;
+  const dayGroups = (
+    [
+      {
+        key: "STAY",
+        label: "Hospedajes",
+        icon: "bed-outline" as const,
+        items: selectedReservations.filter(
+          (r) => r.reservationType !== "BATH" && r.reservationType !== "DAYCARE"
+        ),
+      },
+      {
+        key: "BATH",
+        label: "Baños",
+        icon: "water-outline" as const,
+        items: selectedReservations.filter((r) => r.reservationType === "BATH"),
+      },
+      {
+        key: "DAYCARE",
+        label: "Guardería",
+        icon: "sunny-outline" as const,
+        items: selectedReservations.filter(
+          (r) => r.reservationType === "DAYCARE"
+        ),
+      },
+    ] as const
+  ).filter((g) => g.items.length > 0);
+
+  // Filtro por servicio del día. Con muchos hospedajes, el bloque de guardería
+  // (el más chico y el último) quedaba a un scroll largo de distancia: estas
+  // píldoras dicen de un vistazo qué hay ese día y lo aíslan de un toque.
+  // Si el tipo elegido no existe en el día seleccionado, se cae solo a "Todos"
+  // — así cambiar de día nunca deja la lista vacía por un filtro viejo.
+  const activeGroup = dayGroups.find((g) => g.key === dayFilter);
+  const visibleGroups = activeGroup ? [activeGroup] : dayGroups;
+  const showDayFilter = dayGroups.length > 1;
 
   const renderCard = (r: CalendarReservation) => (
     <ReservationCard
@@ -167,6 +214,8 @@ export function CalendarView({
       checkOut={r.checkOut}
       reservationType={r.reservationType}
       appointmentAt={r.appointmentAt}
+      checkInTime={r.checkInTime}
+      checkOutTime={r.checkOutTime}
       hasBath={r.hasBath}
       totalAmount={Number(r.totalAmount)}
       paymentType={r.paymentType}
@@ -199,6 +248,9 @@ export function CalendarView({
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={
+        maxWidth ? { width: "100%", maxWidth, alignSelf: "center" } : undefined
+      }
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={
         onRefresh ? (
@@ -210,6 +262,8 @@ export function CalendarView({
         ) : undefined
       }
     >
+      {header}
+
       {/* ── Month Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={goBack} hitSlop={12}>
@@ -248,11 +302,16 @@ export function CalendarView({
           const isSelected = key === selectedDate;
           const dayReservations = dayMap[key] ?? [];
 
-          // Dots: tipo + status (color). Hospedaje = relleno, baño = anillo.
+          // Dots: tipo + status (color). Hospedaje = relleno, baño y guardería
+          // (los dos servicios de un día) = anillo.
           const stayDots = [
             ...new Set(
               dayReservations
-                .filter((r) => r.reservationType !== "BATH")
+                .filter(
+                  (r) =>
+                    r.reservationType !== "BATH" &&
+                    r.reservationType !== "DAYCARE"
+                )
                 .map((r) => STATUS_DOT[r.status])
                 .filter(Boolean)
             ),
@@ -260,7 +319,11 @@ export function CalendarView({
           const bathDots = [
             ...new Set(
               dayReservations
-                .filter((r) => r.reservationType === "BATH")
+                .filter(
+                  (r) =>
+                    r.reservationType === "BATH" ||
+                    r.reservationType === "DAYCARE"
+                )
                 .map((r) => STATUS_DOT[r.status])
                 .filter(Boolean)
             ),
@@ -340,7 +403,7 @@ export function CalendarView({
               { borderColor: COLORS.textTertiary },
             ]}
           />
-          <Text style={styles.legendText}>Baño</Text>
+          <Text style={styles.legendText}>Baño o guardería</Text>
         </View>
       </View>
 
@@ -356,33 +419,100 @@ export function CalendarView({
           </Text>
         </Text>
 
+        {showDayFilter && (
+          <View style={styles.dayFilterRow}>
+            <DayFilterPill
+              label="Todos"
+              count={selectedReservations.length}
+              active={!activeGroup}
+              onPress={() => setDayFilter("ALL")}
+            />
+            {dayGroups.map((g) => (
+              <DayFilterPill
+                key={g.key}
+                label={g.label}
+                icon={g.icon}
+                count={g.items.length}
+                active={activeGroup?.key === g.key}
+                onPress={() => setDayFilter(g.key)}
+              />
+            ))}
+          </View>
+        )}
+
         {selectedReservations.length === 0 ? (
           <Text style={styles.emptyDay}>Sin reservaciones este día</Text>
-        ) : hasBothTypes ? (
-          <>
-            <View style={styles.groupHeader}>
-              <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.groupHeaderText}>Hospedajes</Text>
-              <View style={styles.groupCountBadge}>
-                <Text style={styles.groupCountText}>{selectedStays.length}</Text>
+        ) : visibleGroups.length > 1 ? (
+          visibleGroups.map((g, gi) => (
+            <View key={g.key}>
+              <View style={[styles.groupHeader, gi > 0 && { marginTop: 12 }]}>
+                <Ionicons name={g.icon} size={16} color={COLORS.primary} />
+                <Text style={styles.groupHeaderText}>{g.label}</Text>
+                <View style={styles.groupCountBadge}>
+                  <Text style={styles.groupCountText}>{g.items.length}</Text>
+                </View>
               </View>
+              {g.items.map(renderCard)}
             </View>
-            {selectedStays.map(renderCard)}
-
-            <View style={[styles.groupHeader, { marginTop: 12 }]}>
-              <Ionicons name="water-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.groupHeaderText}>Baños</Text>
-              <View style={styles.groupCountBadge}>
-                <Text style={styles.groupCountText}>{selectedBaths.length}</Text>
-              </View>
-            </View>
-            {selectedBaths.map(renderCard)}
-          </>
+          ))
         ) : (
-          selectedReservations.map(renderCard)
+          (visibleGroups[0]?.items ?? selectedReservations).map(renderCard)
         )}
       </View>
     </ScrollView>
+  );
+}
+
+// Píldora del filtro por servicio del día (Todos / Hospedajes / Baños / Guardería).
+function DayFilterPill({
+  label,
+  count,
+  active,
+  onPress,
+  icon,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onPress: () => void;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.dayFilterPill, active && styles.dayFilterPillActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      {icon && (
+        <Ionicons
+          name={icon}
+          size={13}
+          color={active ? COLORS.primary : COLORS.textTertiary}
+        />
+      )}
+      <Text
+        style={[styles.dayFilterText, active && styles.dayFilterTextActive]}
+      >
+        {label}
+      </Text>
+      <View
+        style={[
+          styles.dayFilterCount,
+          active && styles.dayFilterCountActive,
+        ]}
+      >
+        <Text
+          style={[
+            styles.dayFilterCountText,
+            active && styles.dayFilterCountTextActive,
+          ]}
+        >
+          {count}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -532,6 +662,56 @@ const styles = StyleSheet.create({
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 24,
+  },
+  // Filtro por servicio del día
+  dayFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  dayFilterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
+  },
+  dayFilterPillActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  dayFilterText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  dayFilterTextActive: {
+    color: COLORS.primary,
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
+  dayFilterCount: {
+    minWidth: 20,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: COLORS.bgSection,
+    alignItems: "center",
+  },
+  dayFilterCountActive: {
+    backgroundColor: COLORS.primary,
+  },
+  dayFilterCountText: {
+    fontSize: 11,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textSecondary,
+  },
+  dayFilterCountTextActive: {
+    color: COLORS.white,
   },
   groupHeader: {
     flexDirection: "row",

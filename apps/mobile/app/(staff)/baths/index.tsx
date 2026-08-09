@@ -14,9 +14,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  PanResponder,
   Animated,
-  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -155,26 +153,27 @@ export default function StaffBaths() {
   const { isTablet } = useResponsive();
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<BathTypeFilter>("loose");
-  // Ref espejo del filtro para que el PanResponder lea el valor actual sin
-  // recrearse en cada render (cierre estable).
+  // Ref espejo del filtro: selectTab lo lee sin depender del render en curso.
   const typeFilterRef = useRef<BathTypeFilter>(typeFilter);
   typeFilterRef.current = typeFilter;
 
-  // Animated.Value que controla la posición del underline y del contenido
-  // (0..1). 0 = Suelto, 1 = Hospedaje. Lo actualiza el PanResponder en tiempo
-  // real para que tanto la línea como el contenido sigan al dedo.
+  // Animated.Value que controla la posición del underline (0..1).
+  // 0 = Suelto, 1 = Hospedaje.
+  //
+  // Ya no hay swipe horizontal ni track deslizante: las dos listas vivían
+  // anidadas dentro de él y, con el scroll a esa profundidad, iOS 26 no engancha
+  // el minimize del tab bar (solo lo hace con el scroll que es primera subvista
+  // del view controller). Se pinta solo la lista activa y se cambia tocando.
   const tabProgress = useRef(new Animated.Value(0)).current;
 
-  // Ancho del contenido (= screen width). Lo medimos via onLayout para precisión.
-  const [contentWidth, setContentWidth] = useState(
-    Dimensions.get("window").width,
-  );
-  const contentWidthRef = useRef(contentWidth);
-  contentWidthRef.current = contentWidth;
+  // Alto real de la cabecera flotante (título + pestañas), para despejar el
+  // contenido de la lista sin números mágicos.
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   function snapToTab(target: BathTypeFilter) {
     Animated.spring(tabProgress, {
       toValue: target === "loose" ? 0 : 1,
+      // El underline solo anima translateX → sí va por el driver nativo.
       useNativeDriver: true,
       speed: 30,
       bounciness: 0,
@@ -185,40 +184,6 @@ export default function StaffBaths() {
     if (target !== typeFilterRef.current) setTypeFilter(target);
     snapToTab(target);
   }
-
-  // PanResponder: detecta swipe horizontal en el contenido para cambiar de
-  // tab (Suelto ↔ Hospedaje). Mueve el underline pixel a pixel con el dedo,
-  // y al soltar hace snap al tab más cercano.
-  const swipePan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => {
-        return Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5;
-      },
-      onPanResponderMove: (_e, g) => {
-        const w = contentWidthRef.current;
-        if (w <= 0) return;
-        const base = typeFilterRef.current === "loose" ? 0 : 1;
-        // Swipe izquierda (dx negativo) → progress aumenta hacia 1.
-        // Normalizamos por el ancho COMPLETO del contenido, no por tabWidth,
-        // para que el contenido se mueva 1:1 con el dedo.
-        const next = Math.max(0, Math.min(1, base + -g.dx / w));
-        tabProgress.setValue(next);
-      },
-      onPanResponderRelease: (_e, g) => {
-        const threshold = 50;
-        let target = typeFilterRef.current;
-        if (g.dx <= -threshold && typeFilterRef.current === "loose") {
-          target = "stay";
-        } else if (g.dx >= threshold && typeFilterRef.current === "stay") {
-          target = "loose";
-        }
-        selectTab(target);
-      },
-      onPanResponderTerminate: () => {
-        snapToTab(typeFilterRef.current);
-      },
-    }),
-  ).current;
   // Modal de cotización abierto para un extra específico (deslanado/corte).
   const [extrasAddon, setExtrasAddon] = useState<{
     addonId: string;
@@ -254,8 +219,7 @@ export default function StaffBaths() {
     };
   }, [allBaths]);
 
-  // Computamos baños por tipo. Renderizamos AMBAS listas a la vez para
-  // animar el swipe horizontal entre tabs.
+  // Baños por tipo: solo se pinta el del filtro activo.
   const looseBaths = useMemo(
     () => allBaths.filter((b) => b.reservationType === "BATH"),
     [allBaths],
@@ -540,8 +504,13 @@ export default function StaffBaths() {
   const rowsLoose = useMemo(() => buildRows(looseBaths), [looseBaths]);
   const rowsStay = useMemo(() => buildRows(stayBaths), [stayBaths]);
 
-  return (
-    <View style={styles.container}>
+  // Cabecera fija: va absoluta ENCIMA de la lista (fuera de su scroll) para que
+  // el scroll pueda ser la raíz de la pantalla y iOS 26 encoja el tab bar.
+  const floatingHeader = (
+    <View
+      style={styles.floatingHeader}
+      onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+    >
       <View style={styles.topBar}>
         <Text style={styles.topTitle}>Próximos baños</Text>
         <Text style={styles.topSub}>
@@ -561,97 +530,71 @@ export default function StaffBaths() {
         justified
         progress={tabProgress}
       />
+    </View>
+  );
 
-      {isError ? (
-        <ErrorState error={error} onRetry={refetch} />
-      ) : isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={COLORS.primary} />
-        </View>
-      ) : (
-        <View
-          style={[styles.swipeWrap, isTablet && styles.swipeWrapTablet]}
-          onLayout={(e) => setContentWidth(e.nativeEvent.layout.width)}
-          {...swipePan.panHandlers}
-        >
-          <Animated.View
-            style={[
-              styles.swipeTrack,
-              {
-                width: contentWidth * 2,
-                transform: [
-                  {
-                    translateX: tabProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, -contentWidth],
-                      extrapolate: "clamp",
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={{ width: contentWidth }}>
-              <FlatList<Row>
-                contentInsetAdjustmentBehavior="automatic"
-                data={rowsLoose}
-                keyExtractor={(item, i) =>
-                  item.type === "item" ? item.bath.id : `${item.type}-${i}`
-                }
-                renderItem={({ item }) => {
-                  if (item.type === "header") {
-                    return (
-                      <Text style={styles.sectionHeader}>
-                        {item.title} · {item.count}
-                      </Text>
-                    );
-                  }
-                  return renderBath({ item: item.bath });
-                }}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                  <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-                }
-                ListEmptyComponent={
-                  <View style={styles.emptyCard}>
-                    <Ionicons name="water-outline" size={32} color={COLORS.border} />
-                    <Text style={styles.emptyText}>No hay baños sueltos</Text>
-                  </View>
-                }
-              />
+  if (isError || isLoading) {
+    return (
+      <View style={styles.container}>
+        {floatingHeader}
+        <View style={{ marginTop: headerHeight }}>
+          {isError ? (
+            <ErrorState error={error} onRetry={refetch} />
+          ) : (
+            <View style={styles.center}>
+              <ActivityIndicator color={COLORS.primary} />
             </View>
-            <View style={{ width: contentWidth }}>
-              <FlatList<Row>
-                contentInsetAdjustmentBehavior="automatic"
-                data={rowsStay}
-                keyExtractor={(item, i) =>
-                  item.type === "item" ? item.bath.id : `${item.type}-${i}`
-                }
-                renderItem={({ item }) => {
-                  if (item.type === "header") {
-                    return (
-                      <Text style={styles.sectionHeader}>
-                        {item.title} · {item.count}
-                      </Text>
-                    );
-                  }
-                  return renderBath({ item: item.bath });
-                }}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                  <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-                }
-                ListEmptyComponent={
-                  <View style={styles.emptyCard}>
-                    <Ionicons name="water-outline" size={32} color={COLORS.border} />
-                    <Text style={styles.emptyText}>No hay baños de hospedaje</Text>
-                  </View>
-                }
-              />
-            </View>
-          </Animated.View>
+          )}
         </View>
-      )}
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <FlatList<Row>
+        style={styles.container}
+        contentInsetAdjustmentBehavior="automatic"
+        data={typeFilter === "loose" ? rowsLoose : rowsStay}
+        keyExtractor={(item, i) =>
+          item.type === "item" ? item.bath.id : `${item.type}-${i}`
+        }
+        renderItem={({ item }) => {
+          if (item.type === "header") {
+            return (
+              <Text style={styles.sectionHeader}>
+                {item.title} · {item.count}
+              </Text>
+            );
+          }
+          return renderBath({ item: item.bath });
+        }}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: headerHeight + 12 },
+          isTablet && styles.listContentTablet,
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            // Sin esto la ruedita gira DETRÁS de la cabecera flotante.
+            progressViewOffset={headerHeight}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyCard}>
+            <Ionicons name="water-outline" size={32} color={COLORS.border} />
+            <Text style={styles.emptyText}>
+              {typeFilter === "loose"
+                ? "No hay baños sueltos"
+                : "No hay baños de hospedaje"}
+            </Text>
+          </View>
+        }
+      />
+
+      {floatingHeader}
 
       {extrasAddon && (
         <ExtrasPriceModal
@@ -666,7 +609,7 @@ export default function StaffBaths() {
           }}
         />
       )}
-    </View>
+    </>
   );
 }
 
@@ -894,13 +837,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: "PlusJakartaSans_600SemiBold",
   },
-  swipeWrap: { flex: 1, overflow: "hidden" },
-  // En iPad centramos y acotamos el área de contenido (el header y las tabs
-  // siguen a ancho completo). El swipe mide este ancho vía onLayout, así que
-  // la mecánica de deslizamiento sigue siendo consistente.
-  swipeWrapTablet: { alignSelf: "center", width: "100%", maxWidth: CONTENT_MAX_WIDTH },
-  swipeTrack: { flex: 1, flexDirection: "row" },
+  // Cabecera fija sobre la lista: la lista tiene que ser la raíz del screen
+  // para que iOS 26 enganche el minimize del tab bar.
+  floatingHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.bgPage,
+  },
   listContent: { padding: 16, paddingBottom: 24 },
+  // En iPad se acota y centra el contenido (la cabecera sigue a ancho completo).
+  listContentTablet: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
   sectionHeader: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_700Bold",

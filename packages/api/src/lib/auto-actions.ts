@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@holidoginn/db";
 import { notifyUser } from "./notify";
+import { dayRangeUtc, localYMD } from "./bathAvailability";
 
 // Recordatorios automáticos de vacunas por vencer.
 // Se dispara una sola notificación por (vacuna, ventana). Las ventanas son:
@@ -163,6 +164,81 @@ export async function autoCheckoutOverdueStays(
       data: { reservationId: res.id },
     });
   }
+}
+
+// Cierra lo que quedó atrás: citas de baño/guardería de un día YA PASADO y
+// estancias cuyo checkOut pasó pero a las que nunca se les hizo check-in.
+// Sin esto, cada cita olvidada se quedaba "Agendada" para siempre y ensuciaba
+// las listas del día (el auto-checkout de arriba solo cubre las estancias que sí
+// llegaron a check-in).
+//
+// Dos reglas deliberadas:
+//
+//  1. Solo se cierran las que NO tienen saldo pendiente. Una cita que aún debe
+//     dinero tiene que seguir a la vista para poder cobrarla — cerrarla la saca
+//     de las pantallas de cobro y el dinero se pierde de rastro. De paso, eso
+//     protege el caso de la reserva abandonada: sin ningún pago, tiene saldo
+//     completo, así que no se toca y se cancela a mano desde el admin (misma
+//     política que dejó el incidente de los anticipos, ver nota de abajo).
+//
+//  2. En silencio, sin notificar. El auto-checkout de estancias avisa al cliente
+//     ("ya salió" + reseña) porque ocurre el mismo día; esto barre rezago, y
+//     mandar push por un baño de hace tres semanas sería absurdo.
+//
+// El corte es la medianoche local del hotel: "atrasada" = de un día anterior.
+// Nunca cierra algo de hoy, que podría estar en curso.
+export async function autoCompleteOverdueAppointments(
+  prisma: PrismaClient
+): Promise<number> {
+  const startOfToday = dayRangeUtc(localYMD(new Date())).start;
+
+  const candidates = await prisma.reservation.findMany({
+    where: {
+      status: { in: ["CONFIRMED", "CHECKED_IN"] },
+      OR: [
+        // Baño y guardería: son de un día y viven en `appointmentAt`.
+        {
+          reservationType: { in: ["BATH", "DAYCARE"] },
+          appointmentAt: { lt: startOfToday },
+        },
+        // Estancia que nunca llegó a check-in (las CHECKED_IN ya las cierra
+        // `autoCheckoutOverdueStays`, que además sí notifica).
+        {
+          reservationType: "STAY",
+          status: "CONFIRMED",
+          checkOut: { lt: startOfToday },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      totalAmount: true,
+      payments: {
+        where: { status: { in: ["PAID", "PARTIAL"] } },
+        select: { amount: true },
+      },
+    },
+  });
+
+  // Mismo criterio de saldo que usa GET /reservations para `hasBalance`.
+  const liquidadas = candidates.filter((r) => {
+    const pagado = r.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    return Number(r.totalAmount) - pagado <= 0.01;
+  });
+  if (liquidadas.length === 0) return 0;
+
+  const ids = liquidadas.map((r) => r.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.reservation.updateMany({
+      where: { id: { in: ids } },
+      data: { status: "CHECKED_OUT" },
+    });
+    await tx.reservationChangeRequest.updateMany({
+      where: { reservationId: { in: ids }, status: "PENDING" },
+      data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
+    });
+  });
+  return ids.length;
 }
 
 // NOTA: aquí vivía `cancelOverdueDeposits`, que cancelaba automáticamente las

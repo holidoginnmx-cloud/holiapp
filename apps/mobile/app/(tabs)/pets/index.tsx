@@ -40,8 +40,12 @@ export default function PetsScreen() {
   }
 
   return (
-    <View style={styles.container} testID="pets-screen">
+    // La lista es la RAÍZ de la pantalla (sin View envolviéndola): iOS 26 solo
+    // engancha el minimize del tab bar al scroll que es primera subvista del
+    // view controller. El FAB va de hermano, en absoluto, dentro del fragmento.
+    <>
       <FlatList
+        style={styles.container}
         contentInsetAdjustmentBehavior="automatic"
         testID="pets-list"
         data={pets ?? []}
@@ -94,7 +98,7 @@ export default function PetsScreen() {
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
       </TabFab>
-    </View>
+    </>
   );
 }
 

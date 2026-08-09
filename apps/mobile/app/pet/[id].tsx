@@ -23,6 +23,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
+import { PetPhotoViewer } from "@/components/PetPhotoViewer";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -84,6 +85,7 @@ export default function PetDetailScreen() {
   const [cartillaFullSizeIdx, setCartillaFullSizeIdx] = useState<number | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
 
   const { data: pet, isLoading, error, refetch } = useQuery({
     queryKey: ["pet", id],
@@ -194,13 +196,20 @@ export default function PetDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header con foto — tocar la foto permite cambiarla */}
+      {/* Header con foto — la foto abre el visor; el badge de cámara la cambia.
+          Sin foto todavía, tocarla lleva directo a elegir una. */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.photoWrap}
-          onPress={changePhoto}
+          onPress={pet.photoUrl ? () => setPhotoViewerOpen(true) : changePhoto}
           disabled={photoUploading || photoMutation.isPending}
           activeOpacity={0.8}
+          accessibilityLabel={
+            pet.photoUrl
+              ? `Ver la foto de ${formatName(pet.name)}`
+              : `Agregar una foto de ${formatName(pet.name)}`
+          }
+          testID="pet-photo"
         >
           <Image
             source={
@@ -216,9 +225,16 @@ export default function PetDetailScreen() {
               <ActivityIndicator color={COLORS.white} />
             </View>
           ) : (
-            <View style={styles.photoCameraBadge}>
+            <TouchableOpacity
+              style={styles.photoCameraBadge}
+              onPress={changePhoto}
+              hitSlop={10}
+              activeOpacity={0.8}
+              accessibilityLabel="Cambiar la foto"
+              testID="pet-photo-change"
+            >
               <Ionicons name="camera" size={15} color={COLORS.white} />
-            </View>
+            </TouchableOpacity>
           )}
         </TouchableOpacity>
         <Text style={styles.name}>{formatName(pet.name)}</Text>
@@ -726,6 +742,20 @@ export default function PetDetailScreen() {
           })()}
         </Pressable>
       </Modal>
+
+      <PetPhotoViewer
+        visible={photoViewerOpen}
+        photoUrl={pet.photoUrl}
+        petName={pet.name}
+        breed={pet.breed}
+        onClose={() => setPhotoViewerOpen(false)}
+        onChangePhoto={() => {
+          // Cerrar antes de abrir el picker: si no, el selector de fotos sale
+          // encima del visor y al volver te deja en la foto vieja.
+          setPhotoViewerOpen(false);
+          changePhoto();
+        }}
+      />
     </ScrollView>
   );
 }

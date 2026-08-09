@@ -85,21 +85,23 @@ export default function StaffLayout() {
         <Label>Guardería</Label>
       </NativeTabs.Trigger>
 
-      {/* El badge va por `options` y no como <Badge> condicional: setOptions
-          mergea, así que una clave que desaparece deja el badge pegado. */}
+      {/* Quinto y último trigger: Avisos y Perfil viven DENTRO de él (ver
+          (staff)/more/_layout.tsx). Con seis pestañas visibles el tab bar de
+          Apple solo pintaba cinco y generaba él mismo una pantalla "More" de
+          UIKit imposible de rediseñar. No añadas un sexto trigger visible.
+
+          El badge de no leídos se hereda aquí para no perder el aviso al haber
+          sacado Avisos del tab bar. Va por `options` y no como <Badge>
+          condicional: setOptions mergea, así que una clave que desaparece
+          dejaría el badge pegado. */}
       <NativeTabs.Trigger
-        name="notifications"
+        name="more"
         options={{
           badgeValue: unreadCount > 0 ? String(Math.min(unreadCount, 99)) : undefined,
         }}
       >
-        <Icon src={<VectorIcon family={Ionicons} name="notifications-outline" />} />
-        <Label>Avisos</Label>
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="profile">
-        <Icon src={<VectorIcon family={Ionicons} name="person-outline" />} />
-        <Label>Perfil</Label>
+        <Icon src={<VectorIcon family={Ionicons} name="ellipsis-horizontal" />} />
+        <Label>Más</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

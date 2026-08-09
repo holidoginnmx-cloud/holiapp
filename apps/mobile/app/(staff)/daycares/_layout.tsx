@@ -1,6 +1,6 @@
 import { TabStack } from "@/components/TabStack";
 
-export default function DaycaresTabLayout() {
+export default function StaffDaycaresTabLayout() {
   return <TabStack title="Guardería" />;
 }
 

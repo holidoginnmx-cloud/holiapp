@@ -15,6 +15,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatName, formatMonthYear } from "@/lib/format";
 import { getStaffStats } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
+import { clearSessionState } from "@/lib/session";
 import { ScreenContainer } from "@/components/ScreenContainer";
 
 export default function StaffProfile() {
@@ -37,7 +38,9 @@ export default function StaffProfile() {
 
   const handleSignOut = async () => {
     await signOut();
-    useAuthStore.getState().logout();
+    // Limpia store + caché: el rol es lo que hacía que la cuenta siguiente
+    // saltara al área equivocada.
+    clearSessionState();
     router.replace("/(auth)/login");
   };
 

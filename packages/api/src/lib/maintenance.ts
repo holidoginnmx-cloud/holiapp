@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@holidoginn/db";
 import {
   autoCheckoutOverdueStays,
+  autoCompleteOverdueAppointments,
   notifyExpiringVaccines,
 } from "./auto-actions";
 
@@ -41,6 +42,16 @@ export async function runMaintenance(prisma: PrismaClient): Promise<void> {
     await autoCheckoutOverdueStays(prisma);
   } catch (err) {
     console.error("[maintenance] autoCheckoutOverdueStays falló:", err);
+  }
+  try {
+    const cerradas = await autoCompleteOverdueAppointments(prisma);
+    if (cerradas > 0) {
+      console.log(
+        `[maintenance] ${cerradas} reservación(es) atrasada(s) marcadas como finalizadas`
+      );
+    }
+  } catch (err) {
+    console.error("[maintenance] autoCompleteOverdueAppointments falló:", err);
   }
   try {
     await notifyExpiringVaccines(prisma);
