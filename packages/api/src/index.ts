@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import compress from "@fastify/compress";
@@ -86,6 +86,20 @@ app.register(rawBody, {
   global: false,
   encoding: "utf8",
   runFirst: true,
+});
+
+// Manejador global: cualquier throw no capturado se loguea completo pero al
+// cliente solo le llega un mensaje genérico (nunca err.message crudo, que puede
+// filtrar SQL, rutas de archivo o detalles de Stripe). Los errores con
+// statusCode < 500 (validación de zod vía fastify, rate-limit 429, CORS) sí
+// conservan su mensaje: son respuestas pensadas para el cliente.
+app.setErrorHandler((err: FastifyError, request, reply) => {
+  const statusCode = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+  if (statusCode >= 500) {
+    request.log.error({ err, url: request.url, method: request.method });
+    return reply.status(statusCode).send({ error: "Error interno del servidor" });
+  }
+  return reply.status(statusCode).send({ error: err.message });
 });
 
 app.register(clerkPlugin);

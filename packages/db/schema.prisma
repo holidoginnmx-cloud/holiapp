@@ -205,11 +205,12 @@ model User {
   updatedAt         DateTime  @updatedAt
 
   // Relaciones
-  pets          Pet[]
-  reservations  Reservation[]
-  payments      Payment[]
-  notifications Notification[]
-  pushTokens    PushToken[]
+  pets            Pet[]
+  reservations    Reservation[]
+  payments        Payment[]
+  notifications   Notification[]
+  pushTokens      PushToken[]
+  terminalCharges TerminalCharge[]
 
   reviews Review[]
 
@@ -277,7 +278,7 @@ model Pet {
   // con pelo enredado. Cuando este campo tiene valor manda sobre la tabla al
   // calcular la agenda, y los extras siguen sumando lo que dice la tabla.
   // NULL = este perro sigue la regla general.
-  groomingMinutes          Int?
+  groomingMinutes Int?
 
   // Cartilla de vacunación (documento oficial del vet)
   // `cartillaUrl` (legacy) se mantiene por compatibilidad; el flujo nuevo
@@ -475,13 +476,14 @@ model Reservation {
   staffId String?
   staff   User?   @relation("StaffAssignments", fields: [staffId], references: [id])
 
-  payments       Payment[]
-  updates        StayUpdate[]
-  checklists     DailyChecklist[]
-  alerts         StaffAlert[]
-  review         Review?
-  addons         ReservationAddon[]
-  changeRequests ReservationChangeRequest[]
+  payments        Payment[]
+  updates         StayUpdate[]
+  checklists      DailyChecklist[]
+  alerts          StaffAlert[]
+  review          Review?
+  addons          ReservationAddon[]
+  changeRequests  ReservationChangeRequest[]
+  terminalCharges TerminalCharge[]
 
   // Índices para evitar full table scans en las consultas más frecuentes.
   @@index([ownerId, status]) // GET /reservations (inicio, tab reservas)
@@ -647,6 +649,12 @@ model Payment {
   // resta del ingreso global (ver packages/db/sql/dashboard_views.sql). NULL =
   // no aplica (efectivo/transferencia/terminal) o aún no conciliado con Stripe.
   stripeFeeAmount       Decimal?      @db.Decimal(10, 2)
+  // Recargo por pago con tarjeta en la terminal física (Getnet). Snapshot de la
+  // tasa aplicada al momento del cobro; las escribe el admin web (Config →
+  // Tarifas define las tasas vigentes en LodgingPricing.cardFee*).
+  cardBrand             String?
+  cardFeePct            Decimal?      @db.Decimal
+  cardFeeAmount         Decimal?      @db.Decimal
   paidAt                DateTime?
   notes                 String?
   // Pagos migrados del Excel histórico (web `pagos`).
@@ -663,6 +671,8 @@ model Payment {
   user   User?   @relation(fields: [userId], references: [id])
 
   addons ReservationAddon[]
+
+  terminalCharges TerminalCharge[]
 
   @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
   @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
@@ -726,19 +736,19 @@ model ServiceType {
 // =============================================================
 
 model ServiceVariant {
-  id        String   @id @default(cuid())
-  petSize   PetSize
-  deslanado Boolean
-  corte     Boolean
-  price     Decimal  @db.Decimal(10, 2)
+  id              String   @id @default(cuid())
+  petSize         PetSize
+  deslanado       Boolean
+  corte           Boolean
+  price           Decimal  @db.Decimal(10, 2)
   // Minutos que toma el servicio. Es la pieza que permite agendar sin encimar:
   // un baño+corte de perro chico toma hora y media y un deslanado de perro
   // grande dos horas o más, no los 60 min que asumía la agenda vieja.
   // NULL en DEWORMING y EXTRA_HOURS (comparten tabla, no se agendan por hora):
   // el motor cae a bath_config.defaultBathDurationMinutes.
   durationMinutes Int?
-  isActive  Boolean  @default(true)
-  updatedAt DateTime @updatedAt
+  isActive        Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
 
   serviceTypeId String
   serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id])
@@ -914,29 +924,29 @@ model StripeEvent {
 // =============================================================
 
 model BathConfig {
-  id                 String   @id @default("singleton")
-  openHour           Int      @default(9) // 0–23, hora de apertura inclusive
-  closeHour          Int      @default(18) // 0–23, hora a la que sale la estilista (exclusive)
+  id                         String   @id @default("singleton")
+  openHour                   Int      @default(9) // 0–23, hora de apertura inclusive
+  closeHour                  Int      @default(18) // 0–23, hora a la que sale la estilista (exclusive)
   // DEPRECADA: era la duración ÚNICA de todo baño. La duración real vive por
   // variante en service_variants.durationMinutes. Se conserva porque builds
   // móviles viejos aún la leen del payload de configuración.
-  slotMinutes        Int      @default(60)
-  maxConcurrentBaths Int      @default(1)
-  isActive           Boolean  @default(true)
+  slotMinutes                Int      @default(60)
+  maxConcurrentBaths         Int      @default(1)
+  isActive                   Boolean  @default(true)
   // Cada cuánto se ofrece un inicio de cita. Independiente de la duración: con
   // paso de 30 min, un baño de 2 h puede empezar a las 9:30 y terminar a las
   // 11:30. Antes el paso ERA la duración, que es lo que encimaba las citas.
-  slotStepMinutes    Int      @default(30)
+  slotStepMinutes            Int      @default(30)
   // Respaldo cuando no se puede resolver la variante (cita legacy, mascota sin
   // peso registrado).
-  defaultBathDurationMinutes Int @default(60)
+  defaultBathDurationMinutes Int      @default(60)
   // Tope duro opcional del último inicio del día. NULL = se deriva solo de
   // "inicio + duración + buffer <= closeHour", que ya garantiza que la cita
   // termine antes de que salga la estilista.
-  lastStartHour      Int?
+  lastStartHour              Int?
   // Limpieza/preparación entre perro y perro.
-  bufferMinutes      Int      @default(0)
-  updatedAt          DateTime @updatedAt
+  bufferMinutes              Int      @default(0)
+  updatedAt                  DateTime @updatedAt
 
   @@map("bath_config")
 }
@@ -954,14 +964,19 @@ model LodgingPricing {
   // Si el negocio deja de ofrecer ProBarf, basta con ignorarlas en el cálculo.
   priceProbarfSmall      Decimal  @default(300) @db.Decimal(10, 2)
   priceProbarfLarge      Decimal  @default(400) @db.Decimal(10, 2)
-  // DEPRECADA: la guardería se cobra por hora (daycareExtraHourPrice), no por
-  // día. Se conserva la columna para no romper la DB compartida; ninguna UI la
-  // expone ya.
-  daycarePricePerDay     Decimal  @default(250) @db.Decimal(10, 2)
   // Tarifa ÚNICA por hora de guardería. La usan tanto el servicio GUARDERIA
   // (horas estimadas × tarifa) como el add-on EXTRA_HOURS (exceder check-out).
   // Editable en Ajustes (móvil) y Config → Tarifas (web).
-  daycareExtraHourPrice  Decimal  @default(25) @db.Decimal(10, 2)
+  // Sin precisión y default 0 para coincidir con la columna creada por SQL
+  // desde el admin web (migración 0019 de HolidogInn-web_app).
+  daycareExtraHourPrice  Decimal  @default(0) @db.Decimal
+  // Tasas de recargo por pago con tarjeta en terminal física (Getnet), editables
+  // en Config → Tarifas del admin web (migración 0021). Snapshot al cobrar en
+  // payments.cardFeePct/cardFeeAmount.
+  cardFeeDebitPct        Decimal  @default(0.0186) @db.Decimal
+  cardFeeCreditPct       Decimal  @default(0.0227) @db.Decimal
+  cardFeeAmexPct         Decimal  @default(0.029) @db.Decimal
+  cardFeeIvaIncluded     Boolean  @default(true)
   largeWeightKg          Float    @default(20)
   medicationSurchargePct Float    @default(0.10) // 0.10 = 10%
   updatedAt              DateTime @updatedAt
@@ -990,11 +1005,11 @@ model HotelConfig {
 // =============================================================
 
 model DeliveryConfig {
-  id         String   @id @default("singleton")
+  id                  String   @id @default("singleton")
   // Tarifa base fija del servicio a domicilio.
-  baseFee    Decimal  @default(0) @db.Decimal(10, 2)
+  baseFee             Decimal  @default(0) @db.Decimal(10, 2)
   // Precio por kilómetro (se aplica a la distancia redonda ida+vuelta).
-  pricePerKm Decimal  @default(0) @db.Decimal(10, 2)
+  pricePerKm          Decimal  @default(0) @db.Decimal(10, 2)
   // Permite apagar el servicio sin perder la configuración de precios.
   isActive            Boolean  @default(false)
   // Tarifa plana del envío nacional (NATIONAL_SHIPPING). Nullable: si es null la
@@ -1043,7 +1058,8 @@ model ExpenseCategory {
   name      String   @unique
   costType  CostType
   keywords  String[] @default([])
-  createdAt DateTime @default(now())
+  // Timestamptz para coincidir con la columna creada por SQL desde el admin web.
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   @@map("expense_categories")
 }
@@ -1297,19 +1313,19 @@ model OrderItem {
 
 // CÓDIGO DE DESCUENTO — p. ej. WEB10 (10% primera compra).
 model DiscountCode {
-  id             String        @id @default(cuid())
-  code           String        @unique
+  id             String       @id @default(cuid())
+  code           String       @unique
   type           DiscountType
-  value          Decimal       @db.Decimal(10, 2)
-  minSubtotal    Decimal?      @db.Decimal(10, 2)
-  firstOrderOnly Boolean       @default(false)
+  value          Decimal      @db.Decimal(10, 2)
+  minSubtotal    Decimal?     @db.Decimal(10, 2)
+  firstOrderOnly Boolean      @default(false)
   maxUses        Int?
-  usesCount      Int           @default(0)
+  usesCount      Int          @default(0)
   startsAt       DateTime?
   endsAt         DateTime?
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   orders       Order[]
   reservations Reservation[]
@@ -1327,6 +1343,69 @@ model PendingDeliveryAddress {
   lat             Float?
   lng             Float?
   createdAt       DateTime @default(now())
+}
+
+// =============================================================
+//  APP_ACCESS — Control de acceso del admin web (HolidogInn-web_app).
+//  Clerk autentica; autorizar = fila con status 'approved'. Creada por SQL
+//  (migración 0020 del admin web); portada aquí para que Prisma no la borre.
+//  La API móvil NO la usa — la administra el admin web vía supabase-js.
+// =============================================================
+
+model AppAccess {
+  id          String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  email       String    @unique
+  name        String?
+  status      String    @default("pending") // pending | approved | rejected
+  clerkUserId String?
+  requestedAt DateTime  @default(now()) @db.Timestamptz(6)
+  decidedAt   DateTime? @db.Timestamptz(6)
+  decidedBy   String?
+
+  @@map("app_access")
+}
+
+// =============================================================
+//  TERMINAL_CHARGE — Cobros enviados a la terminal física Getnet desde el
+//  admin web (feature detrás de GETNET_ENABLED). Creada por SQL (migraciones
+//  0022/0027 del admin web); portada aquí para que Prisma no la borre.
+//  Al confirmarse el cobro se materializa en `payments` (paymentId).
+// =============================================================
+
+model TerminalCharge {
+  id                String      @id
+  reference         String      @unique
+  amount            Decimal     @db.Decimal
+  cardFeeAmount     Decimal     @default(0) @db.Decimal
+  cardFeePct        Decimal?    @db.Decimal
+  cardBrand         String
+  kind              PaymentKind @default(ABONO)
+  notes             String?
+  // Respuesta de la terminal (webhook Getnet).
+  trxAmount         Decimal     @db.Decimal
+  status            String      @default("PENDING") // PENDING | APPROVED | REJECTED
+  trxAuth           String?
+  trxCardBrand      String?
+  trxCardInstrument String?
+  trxOriginalNumber String?
+  trxResultCode     String?
+  trxDescription    String?
+  rawResponse       Json?
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  resolvedAt        DateTime?   @db.Timestamptz(6)
+
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([reference], map: "terminal_charges_reference_idx")
+  @@index([reservationId], map: "terminal_charges_reservation_idx")
+  @@map("terminal_charges")
 }
 
 // RESEÑA DE PRODUCTO — distinta de `Review` (que es post-estancia de hotel).

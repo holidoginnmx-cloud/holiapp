@@ -1,8 +1,25 @@
 {
-  "extends": "../../tsconfig.json",
+  // Autónomo a propósito: el tsconfig raíz hereda de expo/tsconfig.base
+  // (noEmit, module esnext, customConditions de Metro), pensado para la app
+  // móvil. Este paquete corre en Node: emite CJS real a dist/ para que
+  // `node dist/index.js` del API lo cargue en producción.
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"]
 }

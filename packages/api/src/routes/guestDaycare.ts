@@ -72,7 +72,11 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
   // ── POST /guest/daycare/create-intent ────────────────────────────────────
   fastify.post(
     "/guest/daycare/create-intent",
-    { preHandler: [optionalAuth] },
+    // Sin cuenta no hay más freno que la IP (ver guestReservations).
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const parsed = GuestDaycareIntentSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -234,7 +238,10 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
   // ── POST /guest/daycare/confirm ──────────────────────────────────────────
   fastify.post(
     "/guest/daycare/confirm",
-    { preHandler: [optionalAuth] },
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const parsed = GuestDaycareConfirmSchema.safeParse(request.body);
       if (!parsed.success) {

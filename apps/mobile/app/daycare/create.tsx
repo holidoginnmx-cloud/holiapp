@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useMemo, useState, useEffect } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,6 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
-  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -18,30 +17,19 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { useAuthStore } from "@/store/authStore";
-import {
-  getPetsByOwner,
-  getDaycareAvailability,
-  createDaycareIntent,
-  confirmDaycare,
-  validateReservationDiscount,
-  getDeliveryStatus,
-  getDeliveryAddress,
-  saveDeliveryAddress,
-  deliveryQuote,
-} from "@/lib/api";
-import {
-  DeliveryAddressPicker,
-  type SelectedAddress,
-} from "@/components/DeliveryAddressPicker";
+import { getDaycareAvailability, createDaycareIntent, confirmDaycare } from "@/lib/api";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { ErrorState } from "@/components/ErrorState";
+import { PetPickerStep } from "@/components/wizard/PetPickerStep";
+import { HomeDeliverySection } from "@/components/wizard/HomeDeliverySection";
+import { DiscountCodeRow } from "@/components/wizard/DiscountCodeRow";
+import { usePetSelection } from "@/hooks/usePetSelection";
+import { useDaySelection } from "@/hooks/useDaySelection";
+import { useHomeDelivery } from "@/hooks/useHomeDelivery";
+import { useDiscountCode } from "@/hooks/useDiscountCode";
+import { wizardStyles } from "@/styles/wizardStyles";
 
-import {
-  formatName,
-  formatCurrency,
-  formatDateLong,
-  formatTimeHHmm,
-} from "@/lib/format";
+import { formatCurrency, formatDateLong, formatTimeHHmm } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import {
   computeDaycareHours,
@@ -63,11 +51,6 @@ const DAYCARE_TIME_SLOTS: string[] = (() => {
   return slots;
 })();
 
-function toYMD(d: Date): string {
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
-
 export default function CreateDaycareScreen() {
   return (
     <StripeProvider
@@ -86,86 +69,46 @@ function CreateDaycareScreenContent() {
   const userId = useAuthStore((s) => s.userId);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
-  const [selectedPetIds, setSelectedPetIds] = useState<string[]>(
-    params.petId ? [params.petId] : [],
-  );
-  const [date, setDate] = useState<Date>(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+  // La guardería no exige cartilla aprobada (como el baño): se listan todas.
+  const {
+    pets: selectablePets,
+    petsLoading,
+    petsError,
+    petsErrorObj,
+    refetchPets,
+    selectedPetIds,
+    selectedPets,
+    togglePet,
+  } = usePetSelection({
+    userId,
+    initialPetIds: params.petId ? [params.petId] : [],
+    maxPets: MAX_PETS,
+    limitAlert: {
+      title: "Límite de mascotas",
+      message: `Puedes reservar guardería para hasta ${MAX_PETS} mascotas por día.`,
+    },
   });
-  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const {
+    date,
+    setDate,
+    showDatePicker,
+    setShowDatePicker,
+    dateYMD,
+    minDate,
+    maxDate,
+    pickerValue,
+  } = useDaySelection();
+
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [timePickerFor, setTimePickerFor] = useState<"in" | "out" | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Servicio a domicilio ──
-  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
-  const [discountCodeInput, setDiscountCodeInput] = useState("");
-  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
-  const [applyingDiscount, setApplyingDiscount] = useState(false);
-
-  const { data: deliveryStatus } = useQuery({
-    queryKey: ["delivery-status"],
-    queryFn: getDeliveryStatus,
-    staleTime: 1000 * 60 * 10,
-  });
-  const deliveryServiceActive = deliveryStatus?.active === true;
-
-  const { data: savedAddress } = useQuery({
-    queryKey: ["delivery-address"],
-    queryFn: getDeliveryAddress,
-    enabled: deliveryServiceActive,
-  });
-  useEffect(() => {
-    if (
-      !deliveryAddress &&
-      savedAddress?.address &&
-      savedAddress.addressLat != null &&
-      savedAddress.addressLng != null
-    ) {
-      setDeliveryAddress({
-        address: savedAddress.address,
-        lat: savedAddress.addressLat,
-        lng: savedAddress.addressLng,
-        placeId: savedAddress.addressPlaceId ?? undefined,
-      });
-    }
-  }, [savedAddress, deliveryAddress]);
-
-  const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
-    enabled: homeDeliveryEnabled && !!deliveryAddress,
-  });
-  const deliveryActive =
-    homeDeliveryEnabled && !!deliveryAddress && deliveryQuoteData?.active === true;
-  const deliveryFee = deliveryActive ? deliveryQuoteData!.fee : 0;
-  const homeDeliveryPayload =
-    deliveryActive && deliveryAddress
-      ? {
-          address: deliveryAddress.address,
-          lat: deliveryAddress.lat,
-          lng: deliveryAddress.lng,
-          placeId: deliveryAddress.placeId,
-        }
-      : undefined;
-
-  const {
-    data: pets,
-    isLoading: petsLoading,
-    isError: petsError,
-    error: petsErrorObj,
-    refetch: refetchPets,
-  } = useQuery({
-    queryKey: ["pets", userId],
-    queryFn: () => getPetsByOwner(userId!),
-    enabled: !!userId,
-  });
-
-  const dateYMD = useMemo(() => toYMD(date), [date]);
+  const delivery = useHomeDelivery();
+  const { deliveryActive, deliveryFee, homeDeliveryPayload, deliveryIncomplete } =
+    delivery;
 
   // Cupo y tarifa del día seleccionado.
   const {
@@ -178,27 +121,6 @@ function CreateDaycareScreenContent() {
     queryKey: ["daycare-availability", dateYMD],
     queryFn: () => getDaycareAvailability(dateYMD),
   });
-
-  // La guardería no exige cartilla aprobada (como el baño): se listan todas.
-  const selectablePets = useMemo(() => pets ?? [], [pets]);
-  const selectedPets = useMemo(
-    () => selectablePets.filter((p) => selectedPetIds.includes(p.id)),
-    [selectablePets, selectedPetIds],
-  );
-
-  const togglePet = (petId: string) => {
-    setSelectedPetIds((prev) => {
-      if (prev.includes(petId)) return prev.filter((id) => id !== petId);
-      if (prev.length >= MAX_PETS) {
-        Alert.alert(
-          "Límite de mascotas",
-          `Puedes reservar guardería para hasta ${MAX_PETS} mascotas por día.`,
-        );
-        return prev;
-      }
-      return [...prev, petId];
-    });
-  };
 
   // Estimado en vivo: MISMO helper que usa el backend al cotizar → el estimado
   // coincide exactamente con el monto del PaymentIntent.
@@ -213,7 +135,8 @@ function CreateDaycareScreenContent() {
 
   const hourPrice = availability?.hourPrice ?? 0;
   const subtotal = hours * hourPrice * selectedPets.length;
-  const discountTotal = appliedDiscount?.discountTotal ?? 0;
+  const discount = useDiscountCode(subtotal);
+  const { appliedDiscount, discountTotal } = discount;
   const total = Math.max(0, subtotal - discountTotal) + deliveryFee;
 
   const noCapacity =
@@ -221,8 +144,6 @@ function CreateDaycareScreenContent() {
     selectedPets.length > 0 &&
     availability.remaining < selectedPets.length;
 
-  // Si activó domicilio, exige una dirección con cotización válida antes de pagar.
-  const deliveryIncomplete = homeDeliveryEnabled && !deliveryActive;
   const canSubmit =
     selectedPets.length > 0 &&
     !!checkInTime &&
@@ -233,39 +154,6 @@ function CreateDaycareScreenContent() {
     !!availability &&
     !deliveryIncomplete &&
     !submitting;
-
-  async function applyDiscount() {
-    const code = discountCodeInput.trim();
-    if (!code || subtotal <= 0) return;
-    setApplyingDiscount(true);
-    try {
-      const res = await validateReservationDiscount({ code, subtotal });
-      if (res.valid) {
-        setAppliedDiscount({ code: code.toUpperCase(), discountTotal: res.discountTotal });
-      } else {
-        setAppliedDiscount(null);
-        Alert.alert("Código de descuento", res.message);
-      }
-    } catch (err) {
-      Alert.alert(
-        "Código de descuento",
-        err instanceof Error ? err.message : "No se pudo validar el código"
-      );
-    } finally {
-      setApplyingDiscount(false);
-    }
-  }
-
-  function removeDiscount() {
-    setAppliedDiscount(null);
-    setDiscountCodeInput("");
-  }
-
-  // Si cambia el subtotal (mascotas u horas), el descuento previo puede quedar
-  // desactualizado; se limpia para que el usuario lo vuelva a aplicar.
-  useEffect(() => {
-    setAppliedDiscount(null);
-  }, [subtotal]);
 
   async function handleSubmit() {
     if (!canSubmit || !checkInTime || !checkOutTime) return;
@@ -302,14 +190,7 @@ function CreateDaycareScreenContent() {
       );
 
       // Guarda la dirección para precargarla en futuras reservas (best-effort).
-      if (homeDeliveryPayload && deliveryAddress) {
-        saveDeliveryAddress({
-          address: deliveryAddress.address,
-          lat: deliveryAddress.lat,
-          lng: deliveryAddress.lng,
-          placeId: deliveryAddress.placeId,
-        }).catch(() => {});
-      }
+      delivery.persistAddress();
 
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       queryClient.invalidateQueries({ queryKey: ["daycare-availability", dateYMD] });
@@ -326,84 +207,41 @@ function CreateDaycareScreenContent() {
     }
   }
 
-  const { minDate, maxDate } = useMemo(() => {
-    const min = new Date();
-    min.setHours(0, 0, 0, 0);
-    const max = new Date();
-    max.setDate(max.getDate() + 30);
-    max.setHours(23, 59, 59, 999);
-    return { minDate: min, maxDate: max };
-  }, []);
-
-  const pickerValue =
-    date < minDate ? minDate : date > maxDate ? maxDate : date;
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        style={wizardStyles.container}
+        contentContainerStyle={wizardStyles.content}
         testID="daycare-create-screen"
       >
         {/* Paso 1: mascotas (multi-select) */}
-        <Text style={styles.sectionTitle}>1. ¿Para quién?</Text>
-        {petsError ? (
-          <ErrorState error={petsErrorObj} onRetry={refetchPets} compact />
-        ) : petsLoading ? (
-          <ActivityIndicator color={COLORS.primary} />
-        ) : selectablePets.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="paw-outline" size={28} color={COLORS.primary} />
-            <Text style={styles.emptyText}>
-              Necesitas registrar una mascota para agendar guardería.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.petList}>
-            {selectablePets.map((p) => {
-              const selected = selectedPetIds.includes(p.id);
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.petCard, selected && styles.petCardSelected]}
-                  onPress={() => togglePet(p.id)}
-                  testID={`daycare-pet-${p.id}`}
-                >
-                  <Ionicons
-                    name={selected ? "checkbox" : "square-outline"}
-                    size={22}
-                    color={selected ? COLORS.primary : COLORS.textTertiary}
-                  />
-                  <View style={styles.petAvatar}>
-                    <Ionicons name="paw" size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.petName}>{formatName(p.name)}</Text>
-                    <Text style={styles.petMeta}>
-                      {p.weight ? `${p.weight} kg · ` : ""}
-                      {p.breed || "Sin raza"}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
+        <Text style={wizardStyles.sectionTitle}>1. ¿Para quién?</Text>
+        <PetPickerStep
+          pets={selectablePets}
+          isLoading={petsLoading}
+          isError={petsError}
+          error={petsErrorObj}
+          onRetry={refetchPets}
+          selectedPetIds={selectedPetIds}
+          onToggle={togglePet}
+          emptyText="Necesitas registrar una mascota para agendar guardería."
+          testIDPrefix="daycare-pet"
+        />
 
         {selectedPets.length > 0 && (
           <>
             {/* Paso 2: fecha */}
-            <Text style={styles.sectionTitle}>2. Día de guardería</Text>
+            <Text style={wizardStyles.sectionTitle}>2. Día de guardería</Text>
             <TouchableOpacity
-              style={styles.dateRow}
+              style={wizardStyles.dateRow}
               onPress={() => setShowDatePicker(true)}
               testID="daycare-date-picker-button"
             >
               <Ionicons name="calendar-outline" size={22} color={COLORS.primary} />
-              <Text style={styles.dateText}>{formatDateLong(date)}</Text>
+              <Text style={wizardStyles.dateText}>{formatDateLong(date)}</Text>
               <Ionicons name="chevron-down" size={20} color={COLORS.textTertiary} />
             </TouchableOpacity>
             {showDatePicker && (
@@ -462,7 +300,7 @@ function CreateDaycareScreenContent() {
             )}
 
             {/* Paso 3: horario estimado */}
-            <Text style={styles.sectionTitle}>3. Horario estimado</Text>
+            <Text style={wizardStyles.sectionTitle}>3. Horario estimado</Text>
             <View style={styles.timesRow}>
               <TouchableOpacity
                 style={styles.timeButton}
@@ -529,129 +367,38 @@ function CreateDaycareScreenContent() {
             )}
 
             {/* Servicio a domicilio */}
-            {deliveryServiceActive && (
-              <>
-                <Text style={styles.sectionTitle}>Servicio a domicilio</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleRow,
-                    homeDeliveryEnabled && styles.toggleRowActive,
-                  ]}
-                  onPress={() => setHomeDeliveryEnabled((v) => !v)}
-                  testID="daycare-delivery-toggle"
-                >
-                  <Ionicons
-                    name={homeDeliveryEnabled ? "checkbox" : "square-outline"}
-                    size={22}
-                    color={homeDeliveryEnabled ? COLORS.primary : COLORS.textTertiary}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.toggleTitle}>
-                      Recoger y entregar a domicilio
-                    </Text>
-                    <Text style={styles.toggleSub}>
-                      Vamos por tu mascota y la regresamos a tu casa
-                    </Text>
-                  </View>
-                  {deliveryActive && (
-                    <Text style={styles.deliveryFeeText}>
-                      {formatCurrency(deliveryFee)}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                {homeDeliveryEnabled && (
-                  <View style={{ gap: 8, marginBottom: 8 }}>
-                    <DeliveryAddressPicker
-                      value={deliveryAddress}
-                      onChange={setDeliveryAddress}
-                    />
-                    {deliveryAddress && deliveryQuoteLoading && (
-                      <Text style={styles.toggleSub}>Calculando distancia…</Text>
-                    )}
-                    {deliveryActive && (
-                      <View style={styles.deliveryQuoteRow}>
-                        <Ionicons name="navigate" size={14} color={COLORS.primary} />
-                        <Text style={styles.deliveryQuoteText}>
-                          {deliveryQuoteData!.distanceKm} km ·{" "}
-                          {formatCurrency(deliveryFee)} (ida y vuelta)
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
+            <HomeDeliverySection delivery={delivery} testID="daycare-delivery-toggle" />
 
             {/* Resumen */}
             {hours > 0 && hourPrice > 0 && (
-              <View style={styles.priceCard}>
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>
+              <View style={wizardStyles.priceCard}>
+                <View style={wizardStyles.priceRow}>
+                  <Text style={wizardStyles.priceLabel}>
                     {selectedPets.length}{" "}
                     {selectedPets.length === 1 ? "mascota" : "mascotas"} × {hours}{" "}
                     {hours === 1 ? "hora" : "horas"} ×{" "}
                     {formatCurrency(hourPrice)}
                   </Text>
-                  <Text style={styles.priceLineValue}>
+                  <Text style={wizardStyles.priceLineValue}>
                     {formatCurrency(subtotal)}
                   </Text>
                 </View>
                 {deliveryActive && (
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>Servicio a domicilio</Text>
-                    <Text style={styles.priceLineValue}>
+                  <View style={wizardStyles.priceRow}>
+                    <Text style={wizardStyles.priceLabel}>Servicio a domicilio</Text>
+                    <Text style={wizardStyles.priceLineValue}>
                       {formatCurrency(deliveryFee)}
                     </Text>
                   </View>
                 )}
 
                 {/* Código de descuento */}
-                {appliedDiscount ? (
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>
-                      Descuento ({appliedDiscount.code})
-                    </Text>
-                    <View style={styles.discountAppliedValue}>
-                      <Text style={styles.discountValueText}>
-                        −{formatCurrency(discountTotal)}
-                      </Text>
-                      <TouchableOpacity onPress={removeDiscount} hitSlop={8}>
-                        <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.discountRow}>
-                    <TextInput
-                      style={styles.discountInput}
-                      placeholder="Código de descuento"
-                      placeholderTextColor={COLORS.textTertiary}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      value={discountCodeInput}
-                      onChangeText={setDiscountCodeInput}
-                      editable={!applyingDiscount}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.discountApplyBtn,
-                        (applyingDiscount || !discountCodeInput.trim()) &&
-                          styles.discountApplyBtnDisabled,
-                      ]}
-                      onPress={applyDiscount}
-                      disabled={applyingDiscount || !discountCodeInput.trim()}
-                    >
-                      <Text style={styles.discountApplyText}>
-                        {applyingDiscount ? "…" : "Aplicar"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                <DiscountCodeRow discount={discount} />
 
-                <View style={styles.priceDivider} />
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Pagas ahora</Text>
-                  <Text style={styles.priceValue}>{formatCurrency(total)}</Text>
+                <View style={wizardStyles.priceDivider} />
+                <View style={wizardStyles.priceRow}>
+                  <Text style={wizardStyles.priceLabel}>Pagas ahora</Text>
+                  <Text style={wizardStyles.priceValue}>{formatCurrency(total)}</Text>
                 </View>
               </View>
             )}
@@ -661,7 +408,10 @@ function CreateDaycareScreenContent() {
         {/* Botón pagar */}
         {selectedPets.length > 0 && checkInTime && checkOutTime && hours > 0 && (
           <TouchableOpacity
-            style={[styles.payButton, !canSubmit && styles.payButtonDisabled]}
+            style={[
+              wizardStyles.payButton,
+              !canSubmit && wizardStyles.payButtonDisabled,
+            ]}
             onPress={handleSubmit}
             disabled={!canSubmit}
             testID="daycare-pay-button"
@@ -671,7 +421,7 @@ function CreateDaycareScreenContent() {
             ) : (
               <>
                 <Ionicons name="card" size={20} color={COLORS.white} />
-                <Text style={styles.payButtonText}>
+                <Text style={wizardStyles.payButtonText}>
                   Pagar {formatCurrency(total)} y confirmar
                 </Text>
               </>
@@ -701,59 +451,9 @@ function CreateDaycareScreenContent() {
   );
 }
 
+// Estilos propios de guardería (cupo del día, horario entrada/salida y nota
+// de horas). Lo compartido con los otros wizards vive en wizardStyles.
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bgPage },
-  content: { padding: 20, paddingBottom: 60, gap: 8 },
-  sectionTitle: {
-    fontSize: 15,
-    fontFamily: "PlusJakartaSans_700Bold",
-    color: COLORS.textPrimary,
-    marginTop: 18,
-    marginBottom: 8,
-  },
-  petList: { gap: 8 },
-  petCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  petCardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
-  petAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  petName: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  petMeta: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
-  emptyCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.warningBg,
-    padding: 14,
-    borderRadius: 12,
-  },
-  emptyText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.warningText },
-  dateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-  },
-  dateText: { flex: 1, fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   capacityBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -843,101 +543,5 @@ const styles = StyleSheet.create({
     color: COLORS.infoText,
     fontFamily: "PlusJakartaSans_600SemiBold",
     lineHeight: 17,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  toggleRowActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
-  toggleTitle: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  toggleSub: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
-  deliveryFeeText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
-  deliveryQuoteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  deliveryQuoteText: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.primary,
-  },
-  priceCard: {
-    backgroundColor: COLORS.white,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 6,
-    gap: 8,
-  },
-  priceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontFamily: "PlusJakartaSans_600SemiBold", flexShrink: 1 },
-  priceValue: { fontSize: 20, fontFamily: "Outfit_600SemiBold", color: COLORS.primary },
-  priceLineValue: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  discountRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  discountInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    fontFamily: "PlusJakartaSans_400Regular",
-    color: COLORS.textPrimary,
-    backgroundColor: "#fff",
-  },
-  discountApplyBtn: {
-    height: 40,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  discountApplyBtnDisabled: { opacity: 0.5 },
-  discountApplyText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
-  discountAppliedValue: { flexDirection: "row", alignItems: "center", gap: 8 },
-  discountValueText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.successText },
-  priceDivider: {
-    height: 1,
-    backgroundColor: COLORS.bgSection,
-    marginVertical: 12,
-  },
-  payButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 24,
-  },
-  payButtonDisabled: {
-    backgroundColor: COLORS.textDisabled,
-  },
-  payButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

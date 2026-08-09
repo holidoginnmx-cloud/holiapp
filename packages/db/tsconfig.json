@@ -1,8 +1,23 @@
 {
-  "extends": "../../tsconfig.json",
+  // Autónomo a propósito — ver packages/shared/tsconfig.json: el base de expo
+  // trae noEmit/ESM de Metro y este paquete se consume desde Node compilado.
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"]
 }

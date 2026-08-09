@@ -398,7 +398,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     });
   } catch (err: any) {
     fastify.log.error(err);
-    return reply.status(500).send({ error: err?.message || "Error interno del servidor" });
+    return reply.status(500).send({ error: "Error interno del servidor" });
   }
   });
 

@@ -136,7 +136,11 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
   // ── POST /guest/baths/create-intent ─────────────────────────────────────
   fastify.post(
     "/guest/baths/create-intent",
-    { preHandler: [optionalAuth] },
+    // Sin cuenta no hay más freno que la IP (ver guestReservations).
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const parsed = GuestBathIntentSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -293,7 +297,10 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
   // ── POST /guest/baths/confirm ───────────────────────────────────────────
   fastify.post(
     "/guest/baths/confirm",
-    { preHandler: [optionalAuth] },
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const parsed = GuestBathConfirmSchema.safeParse(request.body);
       if (!parsed.success) {

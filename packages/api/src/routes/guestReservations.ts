@@ -51,7 +51,12 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
   // ── POST /guest/reservations/create-intent ──────────────────────────────
   fastify.post(
     "/guest/reservations/create-intent",
-    { preHandler: [optionalAuth] },
+    // Sin cuenta no hay más freno que la IP: límite propio, muy por debajo del
+    // global de 100/min, contra la creación masiva de reservas/intents.
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       try {
         const parsed = GuestReservationIntentSchema.safeParse(request.body);
@@ -291,7 +296,10 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
   // ── POST /guest/reservations/confirm ────────────────────────────────────
   fastify.post(
     "/guest/reservations/confirm",
-    { preHandler: [optionalAuth] },
+    {
+      preHandler: [optionalAuth],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const parsed = GuestReservationConfirmSchema.safeParse(request.body);
       if (!parsed.success) {

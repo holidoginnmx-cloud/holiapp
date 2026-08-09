@@ -15,9 +15,10 @@
     "android": "cd apps/mobile && expo run:android",
     "ios": "cd apps/mobile && expo run:ios",
     "update-ip": "bash scripts/update-ip.sh",
+    "test": "turbo run test",
     "test:e2e": "maestro test e2e/flows/",
     "test:e2e:studio": "maestro studio",
-    "postinstall": "patch-package || true"
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "patch-package": "^8.0.1",

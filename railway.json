@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npx prisma@6.19.2 generate --schema=packages/db/schema.prisma"
+    "buildCommand": "npx prisma@6.19.2 generate --schema=packages/db/schema.prisma && npx turbo run build --filter=@holidoginn/api"
   },
   "deploy": {
     "startCommand": "npx prisma@6.19.2 migrate deploy --schema=packages/db/schema.prisma && npm --workspace=@holidoginn/api run start",
