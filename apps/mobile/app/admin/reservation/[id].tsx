@@ -407,8 +407,12 @@ export default function AdminReservationDetail() {
   const config = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.CONFIRMED;
   const actions = getActions(reservation.status);
   const isBath = reservation.reservationType === "BATH";
+  const isDaycare = reservation.reservationType === "DAYCARE";
+  // Editar fechas solo aplica al hospedaje: baño y guardería son de un día y
+  // no tienen checkIn/checkOut que recalcular.
   const canEditDates =
     !isBath &&
+    !isDaycare &&
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
   const bathAddon = reservation.addons?.find(
     (a) => a.variant?.serviceType?.code === "BATH",
@@ -469,7 +473,9 @@ export default function AdminReservationDetail() {
         title:
           reservation.reservationType === "BATH"
             ? "Detalle del baño"
-            : "Detalle de reservación",
+            : reservation.reservationType === "DAYCARE"
+              ? "Detalle de guardería"
+              : "Detalle de reservación",
       }}
     />
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>

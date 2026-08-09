@@ -12,7 +12,9 @@ import { useRouter } from "expo-router";
 import {
   getStaffStaysAll,
   getStaffBaths,
+  getStaffDaycares,
   type StaffBath,
+  type StaffDaycare,
 } from "@/lib/api";
 import {
   CalendarView,
@@ -57,6 +59,40 @@ function bathToCalendarReservation(b: StaffBath): CalendarReservation {
   };
 }
 
+// Guardería: mismo shape que el baño (día único por `appointmentAt`), pero las
+// horas de entrada/salida sí importan — son las que definen el cobro.
+// Se traen aquí porque /staff/stays devuelve SOLO `reservationType: STAY`: sin
+// esto, una guardería del día no salía en el calendario por ningún lado.
+function daycareToCalendarReservation(d: StaffDaycare): CalendarReservation {
+  return {
+    id: d.id,
+    checkIn: d.checkIn,
+    checkOut: d.checkOut,
+    status: d.status,
+    totalAmount: Number(d.totalAmount),
+    reservationType: "DAYCARE",
+    appointmentAt: d.appointmentAt,
+    checkInTime: d.checkInTime ?? null,
+    checkOutTime: d.checkOutTime ?? null,
+    paymentType: d.paymentType,
+    hasBalance: false,
+    pet: {
+      id: d.pet?.id ?? "",
+      name: d.pet?.name ?? "—",
+      breed: d.pet?.breed ?? null,
+      photoUrl: d.pet?.photoUrl ?? null,
+    },
+    room: null,
+    owner: {
+      id: d.owner?.id ?? "",
+      firstName: d.owner?.firstName ?? "",
+      lastName: d.owner?.lastName ?? "",
+    },
+    staff: null,
+    checklists: [],
+  };
+}
+
 export default function StaffStays() {
   const router = useRouter();
   const { isTablet } = useResponsive();
@@ -85,6 +121,17 @@ export default function StaffStays() {
     queryFn: () => getStaffBaths(),
   });
 
+  const {
+    data: daycaresData,
+    isError: isErrorDaycares,
+    error: errorDaycares,
+    refetch: refetchDaycares,
+    isRefetching: isRefetchingDaycares,
+  } = useQuery({
+    queryKey: ["staff", "daycares"],
+    queryFn: () => getStaffDaycares(),
+  });
+
   const combined: CalendarReservation[] = useMemo(() => {
     const stayList: CalendarReservation[] = (stays ?? []).map((s) => ({
       ...(s as unknown as CalendarReservation),
@@ -96,8 +143,11 @@ export default function StaffStays() {
     const bathList = (bathsData?.baths ?? [])
       .filter((b) => b.reservationType === "BATH")
       .map(bathToCalendarReservation);
-    return [...stayList, ...bathList];
-  }, [stays, bathsData]);
+    const daycareList = (daycaresData?.daycares ?? []).map(
+      daycareToCalendarReservation,
+    );
+    return [...stayList, ...bathList, ...daycareList];
+  }, [stays, bathsData, daycaresData]);
 
   const filtered = combined.filter((r) => {
     if (!search.trim()) return true;
@@ -110,13 +160,14 @@ export default function StaffStays() {
     );
   });
 
-  if (isError || isErrorBaths) {
+  if (isError || isErrorBaths || isErrorDaycares) {
     return (
       <ErrorState
-        error={error ?? errorBaths}
+        error={error ?? errorBaths ?? errorDaycares}
         onRetry={() => {
           refetch();
           refetchBaths();
+          refetchDaycares();
         }}
       />
     );
@@ -163,15 +214,18 @@ export default function StaffStays() {
         const target = filtered.find((r) => r.id === id);
         if (target?.reservationType === "BATH") {
           router.push(`/staff/bath/${id}` as any);
+        } else if (target?.reservationType === "DAYCARE") {
+          router.push(`/staff/daycare/${id}` as any);
         } else {
           router.push(`/staff/stay/${id}` as any);
         }
       }}
       showOwnerName
-      refreshing={isRefetching || isRefetchingBaths}
+      refreshing={isRefetching || isRefetchingBaths || isRefetchingDaycares}
       onRefresh={() => {
         refetch();
         refetchBaths();
+        refetchDaycares();
       }}
     />
   );

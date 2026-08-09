@@ -36,6 +36,9 @@ export interface CalendarReservation {
   totalAmount: number | string;
   reservationType?: "STAY" | "BATH" | "DAYCARE";
   appointmentAt?: string | Date | null;
+  /** Horas de entrada/salida — en guardería son EL dato (definen el precio). */
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   paymentType?: string | null;
   hasBalance?: boolean;
   hasPendingChangeRequest?: boolean;
@@ -124,8 +127,11 @@ export function CalendarView({
     // Map: dateKey → reservations on that day
     const map: Record<string, CalendarReservation[]> = {};
     for (const r of reservations) {
-      // Baño: aparece sólo en el día de la cita.
-      if (r.reservationType === "BATH") {
+      // Baño y guardería: son de un solo día y no tienen checkIn/checkOut —
+      // se ubican por `appointmentAt`. La guardería estaba cayendo en la rama
+      // de hospedaje y, al no tener fechas, se descartaba: la reservación
+      // existía pero NO aparecía en el calendario.
+      if (r.reservationType === "BATH" || r.reservationType === "DAYCARE") {
         if (!r.appointmentAt) continue;
         const apt = new Date(r.appointmentAt);
         if (apt.getFullYear() === year && apt.getMonth() === month) {
@@ -157,15 +163,35 @@ export function CalendarView({
     return { cells: grid, dayMap: map };
   }, [year, month, reservations]);
 
-  // Reservations for selected day
+  // Reservations for selected day, agrupadas por servicio. Los grupos vacíos
+  // se caen solos; si solo queda uno, la lista va sin encabezados.
   const selectedReservations = dayMap[selectedDate] ?? [];
-  const selectedStays = selectedReservations.filter(
-    (r) => r.reservationType !== "BATH"
-  );
-  const selectedBaths = selectedReservations.filter(
-    (r) => r.reservationType === "BATH"
-  );
-  const hasBothTypes = selectedStays.length > 0 && selectedBaths.length > 0;
+  const dayGroups = (
+    [
+      {
+        key: "STAY",
+        label: "Hospedajes",
+        icon: "bed-outline" as const,
+        items: selectedReservations.filter(
+          (r) => r.reservationType !== "BATH" && r.reservationType !== "DAYCARE"
+        ),
+      },
+      {
+        key: "BATH",
+        label: "Baños",
+        icon: "water-outline" as const,
+        items: selectedReservations.filter((r) => r.reservationType === "BATH"),
+      },
+      {
+        key: "DAYCARE",
+        label: "Guardería",
+        icon: "sunny-outline" as const,
+        items: selectedReservations.filter(
+          (r) => r.reservationType === "DAYCARE"
+        ),
+      },
+    ] as const
+  ).filter((g) => g.items.length > 0);
 
   const renderCard = (r: CalendarReservation) => (
     <ReservationCard
@@ -177,6 +203,8 @@ export function CalendarView({
       checkOut={r.checkOut}
       reservationType={r.reservationType}
       appointmentAt={r.appointmentAt}
+      checkInTime={r.checkInTime}
+      checkOutTime={r.checkOutTime}
       hasBath={r.hasBath}
       totalAmount={Number(r.totalAmount)}
       paymentType={r.paymentType}
@@ -263,11 +291,16 @@ export function CalendarView({
           const isSelected = key === selectedDate;
           const dayReservations = dayMap[key] ?? [];
 
-          // Dots: tipo + status (color). Hospedaje = relleno, baño = anillo.
+          // Dots: tipo + status (color). Hospedaje = relleno, baño y guardería
+          // (los dos servicios de un día) = anillo.
           const stayDots = [
             ...new Set(
               dayReservations
-                .filter((r) => r.reservationType !== "BATH")
+                .filter(
+                  (r) =>
+                    r.reservationType !== "BATH" &&
+                    r.reservationType !== "DAYCARE"
+                )
                 .map((r) => STATUS_DOT[r.status])
                 .filter(Boolean)
             ),
@@ -275,7 +308,11 @@ export function CalendarView({
           const bathDots = [
             ...new Set(
               dayReservations
-                .filter((r) => r.reservationType === "BATH")
+                .filter(
+                  (r) =>
+                    r.reservationType === "BATH" ||
+                    r.reservationType === "DAYCARE"
+                )
                 .map((r) => STATUS_DOT[r.status])
                 .filter(Boolean)
             ),
@@ -355,7 +392,7 @@ export function CalendarView({
               { borderColor: COLORS.textTertiary },
             ]}
           />
-          <Text style={styles.legendText}>Baño</Text>
+          <Text style={styles.legendText}>Baño o guardería</Text>
         </View>
       </View>
 
@@ -373,26 +410,19 @@ export function CalendarView({
 
         {selectedReservations.length === 0 ? (
           <Text style={styles.emptyDay}>Sin reservaciones este día</Text>
-        ) : hasBothTypes ? (
-          <>
-            <View style={styles.groupHeader}>
-              <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.groupHeaderText}>Hospedajes</Text>
-              <View style={styles.groupCountBadge}>
-                <Text style={styles.groupCountText}>{selectedStays.length}</Text>
+        ) : dayGroups.length > 1 ? (
+          dayGroups.map((g, gi) => (
+            <View key={g.key}>
+              <View style={[styles.groupHeader, gi > 0 && { marginTop: 12 }]}>
+                <Ionicons name={g.icon} size={16} color={COLORS.primary} />
+                <Text style={styles.groupHeaderText}>{g.label}</Text>
+                <View style={styles.groupCountBadge}>
+                  <Text style={styles.groupCountText}>{g.items.length}</Text>
+                </View>
               </View>
+              {g.items.map(renderCard)}
             </View>
-            {selectedStays.map(renderCard)}
-
-            <View style={[styles.groupHeader, { marginTop: 12 }]}>
-              <Ionicons name="water-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.groupHeaderText}>Baños</Text>
-              <View style={styles.groupCountBadge}>
-                <Text style={styles.groupCountText}>{selectedBaths.length}</Text>
-              </View>
-            </View>
-            {selectedBaths.map(renderCard)}
-          </>
+          ))
         ) : (
           selectedReservations.map(renderCard)
         )}
