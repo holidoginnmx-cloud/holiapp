@@ -1,0 +1,6 @@
+# Railway (Nixpacks). Con NODE_ENV=production, `npm ci` omite devDependencies —
+# pero el build del API compilado necesita turbo/typescript/esbuild (devDeps de
+# la raíz y de packages/api). Forzamos el install completo; el runtime sigue
+# siendo production.
+[phases.install]
+cmds = ["npm ci --include=dev"]
