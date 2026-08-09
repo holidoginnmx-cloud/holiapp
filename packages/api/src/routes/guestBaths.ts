@@ -68,9 +68,14 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
   // respaldo. El sitio los manda para que un baño+corte no ofrezca horarios en
   // los que no cabría. `excludeReservationId` sirve al admin web para editar una
   // cita sin que se estorbe a sí misma.
+  //
+  // `petId` lo manda el admin web (que agenda perros ya registrados): con él la
+  // duración sale de la excepción del perro si el equipo la anotó, en vez de la
+  // tabla por talla. El sitio público no lo usa — ahí todavía no hay mascota.
   fastify.get<{
     Querystring: {
       date?: string;
+      petId?: string;
       petSize?: SizeKey;
       deslanado?: string;
       corte?: string;
@@ -80,12 +85,13 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
   }>(
     "/guest/baths/slots",
     async (request, reply) => {
-      const { date, petSize, deslanado, corte, variantId, excludeReservationId } =
+      const { date, petId, petSize, deslanado, corte, variantId, excludeReservationId } =
         request.query;
       if (!date || !isValidDateYMD(date)) {
         return reply.status(400).send({ error: "Parámetro date=YYYY-MM-DD requerido" });
       }
       return buildSlotsPayload(prisma, date, {
+        petId,
         petSize: petSize as never,
         variantId,
         deslanado: deslanado === "true",
