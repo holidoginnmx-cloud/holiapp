@@ -144,8 +144,9 @@ export function HeroStayCard({
           <View style={styles.dateHero}>
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>CHECK-IN</Text>
-              <Text style={styles.datePillDay}>{formatDayShort(checkIn)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn)}</Text>
+              {/* Día-calendario anclado a UTC — ver nota en ReservationCard. */}
+              <Text style={styles.datePillDay}>{formatDayShort(checkIn, { timeZone: "UTC" })}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn, { timeZone: "UTC" })}</Text>
             </View>
 
             <View style={styles.dateConnector}>
@@ -163,8 +164,8 @@ export function HeroStayCard({
 
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>CHECK-OUT</Text>
-              <Text style={styles.datePillDay}>{formatDayShort(checkOut)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut)}</Text>
+              <Text style={styles.datePillDay}>{formatDayShort(checkOut, { timeZone: "UTC" })}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut, { timeZone: "UTC" })}</Text>
             </View>
           </View>
         )}

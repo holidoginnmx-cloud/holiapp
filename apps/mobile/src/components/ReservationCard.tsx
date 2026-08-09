@@ -422,8 +422,11 @@ function ReservationCardBase({
           <View style={styles.dateHero}>
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>ENTRADA</Text>
-              <Text style={styles.datePillDay}>{formatDayShort(checkIn)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn)}</Text>
+              {/* Fechas de estadía: día-calendario anclado a UTC (igual que el
+                  detalle); sin timeZone, medianoche UTC retrocede un día en
+                  Hermosillo — la card mostraba la salida vieja tras editarla. */}
+              <Text style={styles.datePillDay}>{formatDayShort(checkIn, { timeZone: "UTC" })}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn, { timeZone: "UTC" })}</Text>
             </View>
 
             <View style={styles.dateConnector}>
@@ -441,8 +444,8 @@ function ReservationCardBase({
 
             <View style={styles.datePill}>
               <Text style={styles.datePillLabel}>SALIDA</Text>
-              <Text style={styles.datePillDay}>{formatDayShort(checkOut)}</Text>
-              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut)}</Text>
+              <Text style={styles.datePillDay}>{formatDayShort(checkOut, { timeZone: "UTC" })}</Text>
+              <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut, { timeZone: "UTC" })}</Text>
             </View>
           </View>
         ) : null}

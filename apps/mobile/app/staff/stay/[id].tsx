@@ -678,7 +678,7 @@ export default function StayDetail() {
             <Text style={styles.stayInfoLabel}>Entrada</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkIn
-                ? formatDayShort(stay.checkIn)
+                ? formatDayShort(stay.checkIn, { timeZone: "UTC" })
                 : "—"}
             </Text>
             {stay.checkInTime && (
@@ -691,7 +691,7 @@ export default function StayDetail() {
             <Text style={styles.stayInfoLabel}>Salida</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkOut
-                ? formatDayShort(stay.checkOut)
+                ? formatDayShort(stay.checkOut, { timeZone: "UTC" })
                 : "—"}
             </Text>
             {stay.checkOutTime && (

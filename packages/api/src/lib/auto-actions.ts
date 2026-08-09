@@ -123,14 +123,17 @@ export async function notifyExpiringVaccines(
 }
 
 // Auto-checkout STAY reservations cuyo checkOut ya pasó.
-// Si el staff/admin olvidó hacer checkout, se ejecuta automáticamente
-// a las 12:00 PM hora Hermosillo del día de salida. Como el picker de
-// mobile guarda el día a 00:00 local (Hermosillo = UTC-7 → 07:00 UTC),
-// 12 PM local de ese mismo día = checkOut + 12h.
+// Red de seguridad, no operación normal: el checkout lo hace el staff a mano.
+// Antes corría a las 12 h del día de salida, pero cerraba estancias que el
+// equipo aún necesitaba tocar (extender fechas, cobrar extras): una reserva
+// CHECKED_OUT ya no se puede modificar. Ahora espera UNA SEMANA — si en 7 días
+// nadie la cerró ni la movió, entonces sí se cierra sola.
+const AUTO_CHECKOUT_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function autoCheckoutOverdueStays(
   prisma: PrismaClient
 ): Promise<void> {
-  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - AUTO_CHECKOUT_GRACE_MS);
   const overdue = await prisma.reservation.findMany({
     where: {
       status: "CHECKED_IN",
@@ -202,11 +205,13 @@ export async function autoCompleteOverdueAppointments(
           appointmentAt: { lt: startOfToday },
         },
         // Estancia que nunca llegó a check-in (las CHECKED_IN ya las cierra
-        // `autoCheckoutOverdueStays`, que además sí notifica).
+        // `autoCheckoutOverdueStays`, que además sí notifica). Misma gracia de
+        // una semana: cerrada ya no se puede modificar, y el equipo a veces
+        // corrige fechas o cobra días después de la salida.
         {
           reservationType: "STAY",
           status: "CONFIRMED",
-          checkOut: { lt: startOfToday },
+          checkOut: { lt: new Date(startOfToday.getTime() - AUTO_CHECKOUT_GRACE_MS) },
         },
       ],
     },

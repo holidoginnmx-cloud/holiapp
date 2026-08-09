@@ -223,7 +223,7 @@ export default function PetHistoryScreen() {
                 <Text style={styles.timelineDates}>
                   {res.reservationType === "BATH" && res.appointmentAt
                     ? formatDayShortYear(res.appointmentAt) + " · Baño"
-                    : `${res.checkIn ? formatDayShort(res.checkIn) : "—"} - ${res.checkOut ? formatDayShortYear(res.checkOut) : "—"}`}
+                    : `${res.checkIn ? formatDayShort(res.checkIn, { timeZone: "UTC" }) : "—"} - ${res.checkOut ? formatDayShortYear(res.checkOut, { timeZone: "UTC" }) : "—"}`}
                 </Text>
                 <View style={styles.timelineHeaderRight}>
                   <Text style={styles.timelineStatus}>
