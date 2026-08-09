@@ -103,8 +103,6 @@ export function CalendarView({
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today));
-  /** "ALL" | "STAY" | "BATH" | "DAYCARE" — filtro de la lista del día. */
-  const [dayFilter, setDayFilter] = useState<string>("ALL");
 
   // Navigate months
   const goBack = () => {
@@ -168,14 +166,17 @@ export function CalendarView({
   // Reservations for selected day, agrupadas por servicio. Los grupos vacíos
   // se caen solos; si solo queda uno, la lista va sin encabezados.
   const selectedReservations = dayMap[selectedDate] ?? [];
+  // Guardería y baños ARRIBA, hospedajes al final: son los dos servicios de un
+  // día (pocos y con hora) y antes quedaban sepultados bajo veinte hospedajes,
+  // a un scroll largo de distancia.
   const dayGroups = (
     [
       {
-        key: "STAY",
-        label: "Hospedajes",
-        icon: "bed-outline" as const,
+        key: "DAYCARE",
+        label: "Guardería",
+        icon: "sunny-outline" as const,
         items: selectedReservations.filter(
-          (r) => r.reservationType !== "BATH" && r.reservationType !== "DAYCARE"
+          (r) => r.reservationType === "DAYCARE"
         ),
       },
       {
@@ -185,24 +186,15 @@ export function CalendarView({
         items: selectedReservations.filter((r) => r.reservationType === "BATH"),
       },
       {
-        key: "DAYCARE",
-        label: "Guardería",
-        icon: "sunny-outline" as const,
+        key: "STAY",
+        label: "Hospedajes",
+        icon: "bed-outline" as const,
         items: selectedReservations.filter(
-          (r) => r.reservationType === "DAYCARE"
+          (r) => r.reservationType !== "BATH" && r.reservationType !== "DAYCARE"
         ),
       },
     ] as const
   ).filter((g) => g.items.length > 0);
-
-  // Filtro por servicio del día. Con muchos hospedajes, el bloque de guardería
-  // (el más chico y el último) quedaba a un scroll largo de distancia: estas
-  // píldoras dicen de un vistazo qué hay ese día y lo aíslan de un toque.
-  // Si el tipo elegido no existe en el día seleccionado, se cae solo a "Todos"
-  // — así cambiar de día nunca deja la lista vacía por un filtro viejo.
-  const activeGroup = dayGroups.find((g) => g.key === dayFilter);
-  const visibleGroups = activeGroup ? [activeGroup] : dayGroups;
-  const showDayFilter = dayGroups.length > 1;
 
   const renderCard = (r: CalendarReservation) => (
     <ReservationCard
@@ -302,8 +294,10 @@ export function CalendarView({
           const isSelected = key === selectedDate;
           const dayReservations = dayMap[key] ?? [];
 
-          // Dots: tipo + status (color). Hospedaje = relleno, baño y guardería
-          // (los dos servicios de un día) = anillo.
+          // Un punto por servicio: hospedaje relleno y baño en anillo, los dos
+          // con el color de su status. La guardería NO usa el color del status:
+          // va siempre en ámbar, que es lo que la separa de un vistazo de las
+          // otras dos (antes compartía el anillo con el baño y no se distinguían).
           const stayDots = [
             ...new Set(
               dayReservations
@@ -319,15 +313,14 @@ export function CalendarView({
           const bathDots = [
             ...new Set(
               dayReservations
-                .filter(
-                  (r) =>
-                    r.reservationType === "BATH" ||
-                    r.reservationType === "DAYCARE"
-                )
+                .filter((r) => r.reservationType === "BATH")
                 .map((r) => STATUS_DOT[r.status])
                 .filter(Boolean)
             ),
           ].slice(0, 2);
+          const hasDaycare = dayReservations.some(
+            (r) => r.reservationType === "DAYCARE"
+          );
 
           return (
             <TouchableOpacity
@@ -370,40 +363,52 @@ export function CalendarView({
                     ]}
                   />
                 ))}
+                {hasDaycare && <View style={[styles.dot, styles.dotDaycare]} />}
               </View>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* ── Legend ── */}
+      {/* ── Legend ──
+          Dos renglones, uno por concepto: arriba qué significa el COLOR
+          (el status) y abajo qué significa la FORMA (el servicio). Antes iban
+          los siete en una sola tirada que se partía a media línea, y baño y
+          guardería compartían entrada. */}
       <View style={styles.legend}>
-        {Object.entries(STATUS_DOT).map(([status, color]) => (
-          <View key={status} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: color }]} />
-            <Text style={styles.legendText}>
-              {status === "CONFIRMED" ? "Confirmada" :
-               status === "CHECKED_IN" ? "Hospedado" :
-               status === "CHECKED_OUT" ? "Finalizada" : "Cancelada"}
-            </Text>
-          </View>
-        ))}
-        <View style={styles.legendDivider} />
-        <View style={styles.legendItem}>
-          <View
-            style={[styles.legendDot, { backgroundColor: COLORS.textTertiary }]}
-          />
-          <Text style={styles.legendText}>Hospedaje</Text>
+        <View style={styles.legendRow}>
+          {Object.entries(STATUS_DOT).map(([status, color]) => (
+            <View key={status} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: color }]} />
+              <Text style={styles.legendText}>
+                {status === "CONFIRMED" ? "Confirmada" :
+                 status === "CHECKED_IN" ? "Hospedado" :
+                 status === "CHECKED_OUT" ? "Finalizada" : "Cancelada"}
+              </Text>
+            </View>
+          ))}
         </View>
-        <View style={styles.legendItem}>
-          <View
-            style={[
-              styles.legendDot,
-              styles.dotBath,
-              { borderColor: COLORS.textTertiary },
-            ]}
-          />
-          <Text style={styles.legendText}>Baño o guardería</Text>
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: COLORS.textTertiary }]}
+            />
+            <Text style={styles.legendText}>Hospedaje</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[
+                styles.legendDot,
+                styles.dotBath,
+                { borderColor: COLORS.textTertiary },
+              ]}
+            />
+            <Text style={styles.legendText}>Baño</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, styles.dotDaycare]} />
+            <Text style={styles.legendText}>Guardería</Text>
+          </View>
         </View>
       </View>
 
@@ -419,31 +424,10 @@ export function CalendarView({
           </Text>
         </Text>
 
-        {showDayFilter && (
-          <View style={styles.dayFilterRow}>
-            <DayFilterPill
-              label="Todos"
-              count={selectedReservations.length}
-              active={!activeGroup}
-              onPress={() => setDayFilter("ALL")}
-            />
-            {dayGroups.map((g) => (
-              <DayFilterPill
-                key={g.key}
-                label={g.label}
-                icon={g.icon}
-                count={g.items.length}
-                active={activeGroup?.key === g.key}
-                onPress={() => setDayFilter(g.key)}
-              />
-            ))}
-          </View>
-        )}
-
         {selectedReservations.length === 0 ? (
           <Text style={styles.emptyDay}>Sin reservaciones este día</Text>
-        ) : visibleGroups.length > 1 ? (
-          visibleGroups.map((g, gi) => (
+        ) : dayGroups.length > 1 ? (
+          dayGroups.map((g, gi) => (
             <View key={g.key}>
               <View style={[styles.groupHeader, gi > 0 && { marginTop: 12 }]}>
                 <Ionicons name={g.icon} size={16} color={COLORS.primary} />
@@ -456,63 +440,10 @@ export function CalendarView({
             </View>
           ))
         ) : (
-          (visibleGroups[0]?.items ?? selectedReservations).map(renderCard)
+          selectedReservations.map(renderCard)
         )}
       </View>
     </ScrollView>
-  );
-}
-
-// Píldora del filtro por servicio del día (Todos / Hospedajes / Baños / Guardería).
-function DayFilterPill({
-  label,
-  count,
-  active,
-  onPress,
-  icon,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onPress: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.dayFilterPill, active && styles.dayFilterPillActive]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-    >
-      {icon && (
-        <Ionicons
-          name={icon}
-          size={13}
-          color={active ? COLORS.primary : COLORS.textTertiary}
-        />
-      )}
-      <Text
-        style={[styles.dayFilterText, active && styles.dayFilterTextActive]}
-      >
-        {label}
-      </Text>
-      <View
-        style={[
-          styles.dayFilterCount,
-          active && styles.dayFilterCountActive,
-        ]}
-      >
-        <Text
-          style={[
-            styles.dayFilterCountText,
-            active && styles.dayFilterCountTextActive,
-          ]}
-        >
-          {count}
-        </Text>
-      </View>
-    </TouchableOpacity>
   );
 }
 
@@ -610,16 +541,26 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderWidth: 1.5,
   },
+  // La guardería se distingue por COLOR (ámbar fijo), no por status: es el
+  // único servicio que no hereda el color de su estado.
+  dotDaycare: {
+    backgroundColor: COLORS.warningText,
+  },
   // Legend
   legend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
     marginTop: 4,
+  },
+  // Cada renglón reparte sus items a lo ancho: entran en una línea sin
+  // partirse a media palabra.
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   legendItem: {
     flexDirection: "row",
@@ -630,12 +571,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  legendDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: COLORS.borderLight,
-    marginHorizontal: 4,
   },
   legendText: {
     fontSize: 11,
@@ -662,56 +597,6 @@ const styles = StyleSheet.create({
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 24,
-  },
-  // Filtro por servicio del día
-  dayFilterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 14,
-  },
-  dayFilterPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.white,
-  },
-  dayFilterPillActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
-  dayFilterText: {
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.textTertiary,
-  },
-  dayFilterTextActive: {
-    color: COLORS.primary,
-    fontFamily: "PlusJakartaSans_700Bold",
-  },
-  dayFilterCount: {
-    minWidth: 20,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 999,
-    backgroundColor: COLORS.bgSection,
-    alignItems: "center",
-  },
-  dayFilterCountActive: {
-    backgroundColor: COLORS.primary,
-  },
-  dayFilterCountText: {
-    fontSize: 11,
-    fontFamily: "PlusJakartaSans_700Bold",
-    color: COLORS.textSecondary,
-  },
-  dayFilterCountTextActive: {
-    color: COLORS.white,
   },
   groupHeader: {
     flexDirection: "row",
