@@ -678,30 +678,6 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fullscreenBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.95)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fullscreenImage: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    width: undefined,
-    height: undefined,
-  },
-  fullscreenClose: {
-    position: "absolute",
-    top: 56,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // (Aquí vivían fullscreenBackdrop/Image/Close: el visor a pantalla completa
+  // de esta pantalla lo hace ahora MediaViewer, con el chrome de marca.)
 });

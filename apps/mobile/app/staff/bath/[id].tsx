@@ -42,6 +42,7 @@ import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { formatName, phoneToTelUri, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { useAuthStore } from "@/store/authStore";
+import { MediaViewer } from "@/components/MediaViewer";
 
 const SIZE_LABEL: Record<string, string> = {
   XS: "Extra chico",
@@ -109,7 +110,8 @@ export default function StaffBathDetail() {
   const queryClient = useQueryClient();
   const { banner, showSuccess } = useSuccessBanner();
   const [completing, setCompleting] = useState(false);
-  const [photoFullscreen, setPhotoFullscreen] = useState<string | null>(null);
+  // Foto abierta en el visor (índice dentro de `bath.updates`); null = cerrado.
+  const [photoIndex, setPhotoIndex] = useState<number | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
   const userId = useAuthStore((s) => s.userId);
   // Modal de cotización abierto para un extra específico (deslanado/corte).
@@ -506,11 +508,11 @@ export default function StaffBathDetail() {
           <Text style={styles.sectionTitle}>Foto del baño</Text>
           <View style={styles.card}>
             <View style={styles.photoGrid}>
-              {bath.updates.map((u) => (
+              {bath.updates.map((u, idx) => (
                 <TouchableOpacity
                   key={u.id}
                   activeOpacity={0.85}
-                  onPress={() => setPhotoFullscreen(u.mediaUrl)}
+                  onPress={() => setPhotoIndex(idx)}
                   style={styles.photoThumbWrap}
                 >
                   <Image
@@ -728,34 +730,23 @@ export default function StaffBathDetail() {
         </TouchableOpacity>
       )}
 
-      {/* Visor de foto fullscreen — montado solo cuando hay foto activa
-          para evitar conflictos con otros Modal en el árbol. */}
-      {photoFullscreen && (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          onRequestClose={() => setPhotoFullscreen(null)}
-        >
-          <Pressable
-            style={styles.fullscreenBackdrop}
-            onPress={() => setPhotoFullscreen(null)}
-          >
-            <Image
-              source={{ uri: cloudinaryResized(photoFullscreen, 1080, "limit") }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
-            <TouchableOpacity
-              style={styles.fullscreenClose}
-              onPress={() => setPhotoFullscreen(null)}
-              hitSlop={12}
-            >
-              <Ionicons name="close" size={28} color={COLORS.white} />
-            </TouchableOpacity>
-          </Pressable>
-        </Modal>
-      )}
+      {/* Visor de las fotos del baño: el mismo de las evidencias y el de la
+          foto de perfil de la mascota. Se abre en la que se tocó y se desliza
+          al resto. */}
+      <MediaViewer
+        items={
+          photoIndex == null
+            ? null
+            : bath.updates.map((u) => ({
+                url: u.mediaUrl,
+                type: "image" as const,
+                caption: formatDateLong(u.createdAt),
+              }))
+        }
+        index={photoIndex ?? 0}
+        title={formatName(bath.pet?.name ?? "Foto del baño")}
+        onClose={() => setPhotoIndex(null)}
+      />
 
       {extraKind && bathAddon && (
         <ExtrasPriceModal

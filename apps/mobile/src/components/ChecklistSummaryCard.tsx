@@ -74,7 +74,9 @@ export function ChecklistSummaryCard({
     );
   }
 
-  const date = formatDayShort(checklist.date);
+  // `date` es @db.Date (medianoche UTC): sin timeZone se pinta el día anterior
+  // en Hermosillo (UTC-7).
+  const date = formatDayShort(checklist.date, { timeZone: "UTC" });
 
   if (compact) {
     return (

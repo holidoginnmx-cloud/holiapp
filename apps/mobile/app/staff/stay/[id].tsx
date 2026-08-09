@@ -45,6 +45,7 @@ import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { BehaviorTagPill } from "@/components/BehaviorTagPill";
 import { ErrorState } from "@/components/ErrorState";
+import { PetPhotoViewer } from "@/components/PetPhotoViewer";
 import { SelectionListModal } from "@/components/SelectionListModal";
 import { useSuccessBanner } from "@/components/SuccessBanner";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
@@ -89,6 +90,8 @@ export default function StayDetail() {
   const [tagNotes, setTagNotes] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [uploadingPetPhoto, setUploadingPetPhoto] = useState(false);
+  // Visor de la foto de la mascota (el mismo del detalle de mascota).
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentInitialAmount, setPaymentInitialAmount] = useState("");
   const [roomModalVisible, setRoomModalVisible] = useState(false);
@@ -567,7 +570,11 @@ export default function StayDetail() {
 
         <View style={styles.petProfileRow}>
           <TouchableOpacity
-            onPress={changePetPhoto}
+            onPress={() =>
+              // Con foto se abre el visor (y desde ahí se cambia); sin foto no
+              // hay nada que ver, así que el tap va directo al picker.
+              stay.pet?.photoUrl ? setPhotoViewerOpen(true) : changePetPhoto()
+            }
             disabled={uploadingPetPhoto || petPhotoMutation.isPending}
             activeOpacity={0.8}
           >
@@ -587,7 +594,13 @@ export default function StayDetail() {
               </View>
             ) : (
               <View style={styles.petPhotoCameraBadge}>
-                <Ionicons name="camera" size={11} color={COLORS.white} />
+                {/* Con foto el tap la abre en grande (y ahí se cambia); sin
+                    foto el tap va al picker: el icono dice cuál de las dos. */}
+                <Ionicons
+                  name={stay.pet?.photoUrl ? "expand" : "camera"}
+                  size={11}
+                  color={COLORS.white}
+                />
               </View>
             )}
           </TouchableOpacity>
@@ -1418,6 +1431,20 @@ export default function StayDetail() {
       />
 
     </ScrollView>
+
+    <PetPhotoViewer
+      visible={photoViewerOpen}
+      photoUrl={stay.pet?.photoUrl}
+      petName={stay.pet?.name ?? ""}
+      breed={stay.pet?.breed}
+      onClose={() => setPhotoViewerOpen(false)}
+      onChangePhoto={() => {
+        // Cerrar antes de abrir el picker: si no, el selector de fotos sale
+        // encima del visor y al volver te deja en la foto vieja.
+        setPhotoViewerOpen(false);
+        changePetPhoto();
+      }}
+    />
     {/* Confirmación de éxito no bloqueante. */}
     {banner}
     </>

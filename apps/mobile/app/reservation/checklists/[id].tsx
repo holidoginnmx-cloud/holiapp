@@ -43,7 +43,12 @@ export default function ChecklistsScreen() {
   const [orphansExpanded, setOrphansExpanded] = useState(false);
   const initRef = useRef(false);
 
-  const [viewerItem, setViewerItem] = useState<MediaViewerItem | null>(null);
+  // Evidencia abierta: se guarda el grupo entero (el bloque del día) para poder
+  // deslizar entre las fotos de ese reporte sin volver a la lista.
+  const [viewer, setViewer] = useState<{
+    items: MediaViewerItem[];
+    index: number;
+  } | null>(null);
 
   // Staff/admin pueden eliminar evidencias; los dueños solo las ven.
   const role = useAuthStore((s) => s.role);
@@ -126,10 +131,17 @@ export default function ChecklistsScreen() {
     return { updatesByDay: byDay, orphans: orphan };
   }, [updates, sorted]);
 
-  const openItem = (u: StayUpdate) =>
-    setViewerItem({
-      url: u.mediaUrl,
-      type: u.mediaType === "video" ? "video" : "image",
+  const openItem = (u: StayUpdate, group: StayUpdate[]) =>
+    setViewer({
+      items: group.map((g) => ({
+        url: g.mediaUrl,
+        type: g.mediaType === "video" ? ("video" as const) : ("image" as const),
+        caption: formatDateLong(g.createdAt),
+      })),
+      index: Math.max(
+        0,
+        group.findIndex((g) => g.id === u.id),
+      ),
     });
 
   // Optimista: la evidencia desaparece al confirmar; si el server falla,
@@ -233,7 +245,12 @@ export default function ChecklistsScreen() {
                 activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.dayHeader}>{formatDateLong(c.date)}</Text>
+                  {/* `date` es @db.Date: llega como medianoche UTC. Sin
+                      timeZone:"UTC" se pinta el día anterior en Hermosillo
+                      (UTC-7) y el reporte de hoy aparece fechado ayer. */}
+                  <Text style={styles.dayHeader}>
+                    {formatDateLong(c.date, { timeZone: "UTC" })}
+                  </Text>
                   <Text style={styles.staffLabel}>
                     Reportado por {formatName(c.staff?.firstName ?? "—")}{" "}
                     {formatName(c.staff?.lastName ?? "")}
@@ -304,7 +321,12 @@ export default function ChecklistsScreen() {
         )}
       </ScrollView>
 
-      <MediaViewer item={viewerItem} onClose={() => setViewerItem(null)} />
+      <MediaViewer
+        items={viewer?.items ?? null}
+        index={viewer?.index ?? 0}
+        title={formatName(reservation?.pet?.name ?? "Evidencia")}
+        onClose={() => setViewer(null)}
+      />
     </View>
   );
 }

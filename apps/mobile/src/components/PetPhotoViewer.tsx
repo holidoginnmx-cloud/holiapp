@@ -1,21 +1,19 @@
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ImageView from "react-native-image-viewing";
 import { COLORS } from "@/constants/colors";
 import { formatName } from "@/lib/format";
+import { VIEWER_BACKDROP, ViewerHeader, viewerStyles } from "./viewerChrome";
 
 // ── Visor de la foto de la mascota ───────────────────────────────────────────
 // Se apoya en ImageView (pinch-zoom, doble tap y swipe para cerrar ya vienen
-// hechos) pero le pone chrome nuestro con `HeaderComponent`/`FooterComponent`:
-// fondo en el azul de marca en vez del negro plano, nombre y raza con las
-// tipografías de la app y el botón de cambiar foto en naranja.
+// hechos) pero le pone chrome nuestro: fondo en el azul de marca en vez del
+// negro plano, nombre y raza con las tipografías de la app y el botón de
+// cambiar foto en naranja.
 //
-// Distinto de MediaViewer, que es el visor de evidencias (fotos Y videos) y se
-// deja tal cual: aquí no hay video y sí hay identidad de la mascota que mostrar.
-
-/** Azul tinta de la marca (el mismo del héroe del login), casi opaco. */
-const BACKDROP = "rgba(6,47,61,0.97)";
+// El chrome vive en `viewerChrome` y lo comparte con MediaViewer (evidencias),
+// para que abrir una evidencia se vea igual que abrir esta foto.
 
 export function PetPhotoViewer({
   visible,
@@ -47,43 +45,35 @@ export function PetPhotoViewer({
       swipeToCloseEnabled
       doubleTapToZoomEnabled
       animationType="fade"
-      backgroundColor={BACKDROP}
+      backgroundColor={VIEWER_BACKDROP}
       HeaderComponent={() => (
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <View style={styles.headerText}>
-            <Text style={styles.name} numberOfLines={1}>
-              {formatName(petName)}
-            </Text>
-            {!!breed && (
-              <Text style={styles.breed} numberOfLines={1}>
-                {breed}
-              </Text>
-            )}
-          </View>
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Cerrar foto"
-            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-            testID="pet-photo-viewer-close"
-          >
-            <Ionicons name="close" size={22} color={COLORS.white} />
-          </Pressable>
-        </View>
+        <ViewerHeader
+          title={formatName(petName)}
+          subtitle={breed}
+          onClose={onClose}
+          testID="pet-photo-viewer-close"
+        />
       )}
       FooterComponent={
         onChangePhoto
           ? () => (
-              <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
+              <View
+                style={[
+                  viewerStyles.footer,
+                  { paddingBottom: insets.bottom + 18 },
+                ]}
+              >
                 <Pressable
                   onPress={onChangePhoto}
                   accessibilityRole="button"
-                  style={({ pressed }) => [styles.changeButton, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    viewerStyles.actionButton,
+                    pressed && viewerStyles.pressed,
+                  ]}
                   testID="pet-photo-viewer-change"
                 >
                   <Ionicons name="camera" size={17} color={COLORS.white} />
-                  <Text style={styles.changeText}>Cambiar foto</Text>
+                  <Text style={viewerStyles.actionText}>Cambiar foto</Text>
                 </Pressable>
               </View>
             )
@@ -92,62 +82,3 @@ export function PetPhotoViewer({
     />
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-  },
-  headerText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  name: {
-    fontSize: 20,
-    fontFamily: "Outfit_600SemiBold",
-    color: COLORS.white,
-    letterSpacing: -0.4,
-  },
-  breed: {
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_400Regular",
-    color: "rgba(255,255,255,0.7)",
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  footer: {
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-  },
-  changeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 999,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  changeText: {
-    fontSize: 15,
-    fontFamily: "PlusJakartaSans_700Bold",
-    color: COLORS.white,
-  },
-  pressed: { opacity: 0.85 },
-});

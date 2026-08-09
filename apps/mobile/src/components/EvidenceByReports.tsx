@@ -90,7 +90,11 @@ export function EvidenceByReports({
                 color={COLORS.primary}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.reportDate}>{formatDateLong(checklist.date)}</Text>
+                {/* `date` es @db.Date (medianoche UTC): en local se pintaría
+                    el día anterior. Ver nota en checklists/[id].tsx. */}
+                <Text style={styles.reportDate}>
+                  {formatDateLong(checklist.date, { timeZone: "UTC" })}
+                </Text>
                 {checklist.staff && (
                   <Text style={styles.reportStaff}>
                     Reportado por {formatName(checklist.staff.firstName)}{" "}

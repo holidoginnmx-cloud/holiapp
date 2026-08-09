@@ -58,7 +58,10 @@ function formatDurationMin(min: number): string {
 /** Citas que se pisan con otra: el encime que antes solo se descubría al vivirlo. */
 function findOverlaps(baths: StaffBath[]): Set<string> {
   const conHora = baths
-    .filter((b) => b.appointmentAt && b.durationMinutes)
+    // `groomingScheduled === false` = la "hora" es el check-out, no una cita:
+    // si se cuentan, todos los baños de salida del día caen en el mismo
+    // minuto y se marcan entre ellos como encimados sin estarlo.
+    .filter((b) => b.appointmentAt && b.durationMinutes && b.groomingScheduled !== false)
     .map((b) => ({
       id: b.id,
       start: new Date(b.appointmentAt!).getTime(),
@@ -223,14 +226,25 @@ export default function AdminBaths() {
               color={seEncima ? COLORS.errorText : COLORS.textTertiary}
             />
             <Text style={[styles.scheduleText, seEncima && styles.scheduleTextWarn]}>
-              {formatTime(new Date(item.appointmentAt))}
-              {item.appointmentEndAt
-                ? ` – ${formatTime(new Date(item.appointmentEndAt))}`
-                : ""}
-              {" · "}
-              {formatDurationMin(item.durationMinutes)}
-              {seEncima ? " · se encima" : ""}
-              {sinHorario ? " · hora estimada (sale)" : ""}
+              {sinHorario ? (
+                // Baño de hospedaje al que nadie le asignó hora de estética:
+                // `appointmentAt` es el día de salida, no una cita. Pintarlo
+                // como "5:00 a.m. – 6:00 a.m." era inventarse un horario.
+                <>
+                  Sin hora asignada · {formatDurationMin(item.durationMinutes)} ·
+                  antes del checkout
+                </>
+              ) : (
+                <>
+                  {formatTime(new Date(item.appointmentAt))}
+                  {item.appointmentEndAt
+                    ? ` – ${formatTime(new Date(item.appointmentEndAt))}`
+                    : ""}
+                  {" · "}
+                  {formatDurationMin(item.durationMinutes)}
+                  {seEncima ? " · se encima" : ""}
+                </>
+              )}
             </Text>
           </View>
         )}

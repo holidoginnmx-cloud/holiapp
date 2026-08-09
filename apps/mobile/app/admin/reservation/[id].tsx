@@ -37,7 +37,7 @@ import {
   deleteStayUpdate,
   completeStaffBath,
 } from "@/lib/api";
-import ImageView from "react-native-image-viewing";
+import { MediaViewer } from "@/components/MediaViewer";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -805,15 +805,21 @@ export default function AdminReservationDetail() {
                 calidad esperada.
               </Text>
 
-              <ImageView
-                images={photos.map((u) => ({
-                  uri: cloudinaryResized(u.mediaUrl, 1200, "limit"),
-                }))}
-                imageIndex={photoViewerIndex}
-                visible={photoViewerVisible}
-                onRequestClose={() => setPhotoViewerVisible(false)}
-                swipeToCloseEnabled
-                doubleTapToZoomEnabled
+              <MediaViewer
+                items={
+                  photoViewerVisible
+                    ? photos.map((u) => ({
+                        url: u.mediaUrl,
+                        type: "image" as const,
+                        caption: u.staff
+                          ? `${formatName(u.staff.firstName)} ${formatName(u.staff.lastName)}`
+                          : null,
+                      }))
+                    : null
+                }
+                index={photoViewerIndex}
+                title={formatName(reservation.pet?.name ?? "Foto del baño")}
+                onClose={() => setPhotoViewerVisible(false)}
               />
             </View>
           );

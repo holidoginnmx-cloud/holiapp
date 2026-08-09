@@ -684,6 +684,9 @@ function BathCard({
   if (variant?.corte) extras.push("Corte");
 
   const isStayBath = bath.reservationType === "STAY";
+  // Sin hora de estética asignada, `appointmentAt` es el check-out: un día, no
+  // una cita. Los baños sueltos siempre traen hora real.
+  const sinHorario = isStayBath && bath.groomingScheduled === false;
   const appointmentTime = bath.appointmentAt
     ? formatTime(bath.appointmentAt, { hour12: false })
     : "—";
@@ -785,17 +788,19 @@ function BathCard({
         </View>
 
         {/* Hora de la cita (en lugar del strip de entrada/salida).
-            En baños de hospedaje no hay hora exacta — el backend usa checkOut
-            (suele ser 00:00). Mostramos solo el día + "antes del checkout". */}
+            Sin hora de estética asignada no hay hora exacta — el backend usa
+            checkOut (suele ser 00:00). Mostramos solo el día + "antes del
+            checkout". Si el equipo YA le puso hora, se muestra esa, sea baño
+            suelto o de hospedaje. */}
         <View style={styles.bathTimeRow}>
           <Ionicons
-            name={isStayBath ? "calendar" : "time"}
+            name={sinHorario ? "calendar" : "time"}
             size={14}
             color={COLORS.primary}
           />
           <Text style={styles.bathTimeText}>
             {appointmentDayLabel}
-            {isStayBath
+            {sinHorario
               ? " · antes del checkout"
               : `${appointmentDayLabel ? " · " : ""}${appointmentTime}`}
           </Text>
