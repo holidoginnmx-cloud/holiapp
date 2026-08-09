@@ -14,6 +14,9 @@ import {
   Pressable,
   Dimensions,
   Alert,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -88,6 +91,9 @@ export default function PetDetailScreen() {
   const [deleteSuccess, setDeleteSuccess] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  // Editor de la duración de baño propia del perro (solo equipo).
+  const [groomingOpen, setGroomingOpen] = useState(false);
+  const [groomingDraft, setGroomingDraft] = useState("");
 
   const { data: pet, isLoading, error, refetch } = useQuery({
     queryKey: ["pet", id],
@@ -135,6 +141,46 @@ export default function PetDetailScreen() {
       );
     },
   });
+
+  // Duración de baño propia del perro. Se edita aquí y no en el formulario
+  // completo a propósito: la mayoría de los perros viejos tienen el perfil a
+  // medias (sin contacto de emergencia, sin preferencia de paseo) y el
+  // formulario no deja guardar hasta completarlo. Anotar cuánto tarda un baño
+  // no puede depender de eso.
+  const groomingMutation = useMutation({
+    mutationFn: (minutos: number | null) =>
+      updatePet(id!, { groomingMinutes: minutos }),
+    onSuccess: (_data, minutos) => {
+      qc.setQueryData<any>(["pet", id], (old: any) =>
+        old ? { ...old, groomingMinutes: minutos } : old
+      );
+      qc.invalidateQueries({ queryKey: ["pets"] });
+      qc.invalidateQueries({ queryKey: ["admin", "pets"] });
+      // La agenda y las listas de baños calculan con este número.
+      qc.invalidateQueries({ queryKey: ["staff-baths"] });
+      qc.invalidateQueries({ queryKey: ["admin-baths"] });
+      setGroomingOpen(false);
+    },
+    onError: (err: Error) => {
+      Alert.alert(
+        "No se pudo guardar la duración",
+        err.message || "Inténtalo de nuevo."
+      );
+    },
+  });
+
+  const guardarGrooming = () => {
+    const limpio = groomingDraft.trim();
+    if (!limpio) return groomingMutation.mutate(null);
+    const min = parseInt(limpio, 10);
+    if (!Number.isFinite(min) || min < 15 || min > 600) {
+      return Alert.alert(
+        "Duración fuera de rango",
+        "La duración del baño debe estar entre 15 y 600 minutos."
+      );
+    }
+    groomingMutation.mutate(min);
+  };
 
   const confirmRemovePhoto = () => {
     Alert.alert(
@@ -326,19 +372,36 @@ export default function PetDetailScreen() {
         )}
       </View>
 
-      {/* Duración de su baño — solo el equipo. Es una excepción a la tabla por
-          talla, así que solo se muestra cuando alguien la anotó. */}
-      {esEquipo && petAny.groomingMinutes != null && (
-        <View style={styles.infoCard}>
+      {/* Duración de su baño — solo el equipo. Se edita aquí mismo: es un dato
+          de operación que se descubre bañando al perro, y mandar a alguien al
+          formulario completo (que exige contacto de emergencia y demás) para
+          anotar un número sería garantizar que nadie lo anote. */}
+      {esEquipo && (
+        <TouchableOpacity
+          style={styles.infoCard}
+          activeOpacity={0.8}
+          onPress={() => {
+            setGroomingDraft(petAny.groomingMinutes?.toString() ?? "");
+            setGroomingOpen(true);
+          }}
+          testID="pet-grooming-card"
+        >
           <View style={styles.infoCardHeader}>
             <Ionicons name="time-outline" size={16} color={COLORS.primary} />
             <Text style={styles.infoCardTitle}>Duración de su baño</Text>
+            <Ionicons
+              name="create-outline"
+              size={16}
+              color={COLORS.primary}
+              style={{ marginLeft: "auto" }}
+            />
           </View>
           <Text style={styles.infoCardText}>
-            {petAny.groomingMinutes} minutos · lo que de verdad tarda, no la
-            tabla por talla. El corte y el deslanado suman aparte.
+            {petAny.groomingMinutes != null
+              ? `${petAny.groomingMinutes} minutos · lo que de verdad tarda, no la tabla por talla. El corte y el deslanado suman aparte.`
+              : "Sin definir: la agenda usa la tabla por talla. Tócalo para anotar cuánto tarda en realidad."}
           </Text>
-        </View>
+        </TouchableOpacity>
       )}
 
       {/* Personalidad */}
@@ -773,6 +836,88 @@ export default function PetDetailScreen() {
           changePhoto();
         }}
       />
+
+      {/* Editor de la duración de baño */}
+      <Modal
+        visible={groomingOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGroomingOpen(false)}
+      >
+        <Pressable
+          style={styles.groomingOverlay}
+          onPress={() => setGroomingOpen(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ width: "100%" }}
+          >
+            <Pressable
+              style={styles.groomingSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={styles.groomingTitle}>
+                ¿Cuánto tarda el baño de {formatName(pet.name)}?
+              </Text>
+              <Text style={styles.groomingHelp}>
+                Lo que tarda en la práctica, sin extras. Si lo dejas vacío, la
+                agenda usa la tabla por talla. El corte y el deslanado siguen
+                sumando su tiempo aparte.
+              </Text>
+
+              <View style={styles.groomingChips}>
+                {[45, 60, 90, 120, 150].map((min) => {
+                  const activo = groomingDraft === String(min);
+                  return (
+                    <TouchableOpacity
+                      key={min}
+                      style={[styles.groomingChip, activo && styles.groomingChipOn]}
+                      onPress={() =>
+                        setGroomingDraft(activo ? "" : String(min))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.groomingChipText,
+                          activo && styles.groomingChipTextOn,
+                        ]}
+                      >
+                        {min} min
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TextInput
+                style={styles.groomingInput}
+                value={groomingDraft}
+                onChangeText={(t) => setGroomingDraft(t.replace(/[^0-9]/g, ""))}
+                placeholder="Usa la tabla por talla"
+                placeholderTextColor={COLORS.textDisabled}
+                keyboardType="number-pad"
+                maxLength={3}
+                testID="pet-grooming-input"
+              />
+
+              <TouchableOpacity
+                style={styles.groomingSave}
+                onPress={guardarGrooming}
+                disabled={groomingMutation.isPending}
+                testID="pet-grooming-save"
+              >
+                {groomingMutation.isPending ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Text style={styles.groomingSaveText}>
+                    {groomingDraft.trim() ? "Guardar" : "Usar la tabla por talla"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1321,5 +1466,75 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontFamily: "PlusJakartaSans_600SemiBold",
     fontSize: 14,
+  },
+  groomingOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  groomingSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 22,
+    paddingBottom: 34,
+    gap: 12,
+  },
+  groomingTitle: {
+    fontSize: 18,
+    fontFamily: "Outfit_600SemiBold",
+    color: COLORS.textPrimary,
+  },
+  groomingHelp: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    lineHeight: 19,
+  },
+  groomingChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  groomingChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.bgPage,
+  },
+  groomingChipOn: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  groomingChipText: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  groomingChipTextOn: { color: COLORS.white },
+  groomingInput: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.bgPage,
+  },
+  groomingSave: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  groomingSaveText: {
+    color: COLORS.white,
+    fontFamily: "PlusJakartaSans_700Bold",
+    fontSize: 15,
   },
 });
