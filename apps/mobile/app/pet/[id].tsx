@@ -82,6 +82,8 @@ export default function PetDetailScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const userId = useAuthStore((s) => s.userId);
+  const role = useAuthStore((s) => s.role);
+  const esEquipo = role === "ADMIN" || role === "STAFF";
   const [cartillaFullSizeIdx, setCartillaFullSizeIdx] = useState<number | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -323,6 +325,21 @@ export default function PetDetailScreen() {
           </View>
         )}
       </View>
+
+      {/* Duración de su baño — solo el equipo. Es una excepción a la tabla por
+          talla, así que solo se muestra cuando alguien la anotó. */}
+      {esEquipo && petAny.groomingMinutes != null && (
+        <View style={styles.infoCard}>
+          <View style={styles.infoCardHeader}>
+            <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.infoCardTitle}>Duración de su baño</Text>
+          </View>
+          <Text style={styles.infoCardText}>
+            {petAny.groomingMinutes} minutos · lo que de verdad tarda, no la
+            tabla por talla. El corte y el deslanado suman aparte.
+          </Text>
+        </View>
+      )}
 
       {/* Personalidad */}
       {petAny.personality && (

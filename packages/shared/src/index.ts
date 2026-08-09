@@ -176,6 +176,11 @@ export const PetSchema = z.object({
   feedingInstructions: z.string().nullable(),
   diet: z.string().nullable(),
   personality: z.string().nullable(),
+  /**
+   * Minutos que tarda el baño de ESTE perro, sin extras. Excepción a la tabla
+   * por talla; null = sigue la regla general. Solo staff/admin lo escriben.
+   */
+  groomingMinutes: z.number().int().min(15).max(600).nullable(),
   /** @deprecated usar `cartillaPhotos`; queda por compatibilidad. */
   cartillaUrl: z.string().nullable(),
   cartillaPhotos: z.array(z.string()).default([]),
@@ -220,6 +225,7 @@ export const CreatePetSchema = PetSchema.omit({
   feedingInstructions: z.string().nullable().default(null),
   diet: z.string().nullable().default(null),
   personality: z.string().nullable().default(null),
+  groomingMinutes: z.number().int().min(15).max(600).nullable().default(null),
   /** @deprecated usar `cartillaPhotos`. */
   cartillaUrl: z.string().nullable().default(null),
   cartillaPhotos: z.array(z.string()).default([]),

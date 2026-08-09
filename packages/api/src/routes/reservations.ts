@@ -29,7 +29,11 @@ import {
   computeDaycareHours,
 } from "../lib/pricing";
 import { chainStarts, evaluateStart, localYMD } from "../lib/bathAvailability";
-import { loadScheduleCfg, loadBusyIntervals } from "../lib/bathAvailabilityDb";
+import {
+  loadScheduleCfg,
+  loadBusyIntervals,
+  resolveBathDuration,
+} from "../lib/bathAvailabilityDb";
 import { quoteDelivery } from "../lib/delivery";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -401,8 +405,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       // es justamente el encime que se reportó. Ahora se encadenan: el segundo
       // perro empieza cuando termina el primero.
       const schedule = await loadScheduleCfg(prisma);
-      const bathDurations = bathVariants.map(
-        (v) => v.durationMinutes ?? schedule.defaultBathDurationMinutes,
+      // Vía `resolveBathDuration` y no leyendo la variante a secas: así respeta
+      // la duración propia del perro (`pets.groomingMinutes`) cuando la tiene.
+      const bathDurations = await Promise.all(
+        bathVariants.map(async (v, i) => {
+          const { durationMinutes } = await resolveBathDuration(
+            prisma,
+            { variantId: v.id, petId: groupPets[i].id },
+            schedule,
+          );
+          return durationMinutes;
+        }),
       );
       const bathStarts = chainStarts(appointmentAt, bathDurations, schedule.bufferMinutes);
       const dateYMD = localYMD(appointmentAt);

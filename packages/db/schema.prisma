@@ -271,6 +271,14 @@ model Pet {
   diet                     String? // Legacy: campo anterior de dieta
   personality              String?
 
+  // Cuánto tarda REALMENTE el baño de este perro, en minutos y sin extras.
+  // La tabla de service_variants (talla × corte/deslanado) es el punto de
+  // partida, pero hay perros que se salen de su talla: uno que no se deja, uno
+  // con pelo enredado. Cuando este campo tiene valor manda sobre la tabla al
+  // calcular la agenda, y los extras siguen sumando lo que dice la tabla.
+  // NULL = este perro sigue la regla general.
+  groomingMinutes          Int?
+
   // Cartilla de vacunación (documento oficial del vet)
   // `cartillaUrl` (legacy) se mantiene por compatibilidad; el flujo nuevo
   // usa `cartillaPhotos` para soportar múltiples fotos de la misma cartilla.

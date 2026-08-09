@@ -104,6 +104,8 @@ export default function CreatePetScreen() {
   const [foodType, setFoodType] = useState("");
   const [feedingInstructions, setFeedingInstructions] = useState("");
   const [personality, setPersonality] = useState("");
+  // Minutos que tarda el baño de ESTE perro. Solo lo ve y lo escribe el equipo.
+  const [groomingMinutes, setGroomingMinutes] = useState("");
   const [cartillaPhotos, setCartillaPhotos] = useState<string[]>([]);
   const [cartillaStatus, setCartillaStatus] = useState<
     "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | null
@@ -150,6 +152,9 @@ export default function CreatePetScreen() {
       setFoodType((existingPet as any).foodType || "");
       setFeedingInstructions((existingPet as any).feedingInstructions || "");
       setPersonality((existingPet as any).personality || "");
+      setGroomingMinutes(
+        (existingPet as any).groomingMinutes?.toString() || "",
+      );
       const existingPhotos = (existingPet as any).cartillaPhotos as
         | string[]
         | undefined;
@@ -325,6 +330,16 @@ export default function CreatePetScreen() {
     if (!emergencyContactPhone.trim()) {
       return Alert.alert("Error", "Ingresa el teléfono del contacto de emergencia");
     }
+    // Mismo rango que valida el servidor: mejor decirlo aquí que comerse un 400.
+    if (capturaEquipo && groomingMinutes.trim()) {
+      const min = parseInt(groomingMinutes, 10);
+      if (!Number.isFinite(min) || min < 15 || min > 600) {
+        return Alert.alert(
+          "Duración fuera de rango",
+          "La duración del baño debe estar entre 15 y 600 minutos.",
+        );
+      }
+    }
 
     // El id de la BD (userId) puede faltar un instante por una carrera con
     // /users/me tras el login. Lo resolvemos antes de enviar: así no viaja un
@@ -362,6 +377,14 @@ export default function CreatePetScreen() {
       cartillaPhotos,
       cartillaUrl: cartillaPhotos[0] ?? null,
     };
+
+    // Solo el equipo manda este campo: el servidor lo descarta si viene de un
+    // dueño, y no enviarlo evita pisar con null lo que el equipo ya anotó.
+    if (capturaEquipo) {
+      data.groomingMinutes = groomingMinutes.trim()
+        ? parseInt(groomingMinutes, 10)
+        : null;
+    }
 
     if (!isEditing && ownerId) {
       data.ownerId = ownerId;
@@ -598,6 +621,57 @@ export default function CreatePetScreen() {
           />
         </View>
       </View>
+
+      {/* Estética — solo el equipo. La tabla de Configuración es un promedio
+          por talla; hay perros que no se parecen a su talla (el que no se deja,
+          el de pelo enredado, el que ya se conoce y sale en la mitad). Aquí se
+          anota lo que de verdad tarda y la agenda lo respeta. */}
+      {capturaEquipo && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Estética</Text>
+          <Text style={styles.cartillaHelp}>
+            Cuánto tarda el baño de este perro en la práctica. Vacío = la agenda
+            usa la tabla por talla. El corte y el deslanado siguen sumando su
+            tiempo aparte.
+          </Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Duración de su baño (minutos)</Text>
+            <View style={styles.chipRow}>
+              {[45, 60, 90, 120, 150].map((min) => {
+                const selected = groomingMinutes === String(min);
+                return (
+                  <TouchableOpacity
+                    key={min}
+                    style={[styles.chip, selected && styles.chipSelected]}
+                    onPress={() =>
+                      setGroomingMinutes(selected ? "" : String(min))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        selected && styles.chipTextSelected,
+                      ]}
+                    >
+                      {min} min
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TextInput
+              style={[styles.input, { marginTop: 10 }]}
+              value={groomingMinutes}
+              onChangeText={(t) => setGroomingMinutes(t.replace(/[^0-9]/g, ""))}
+              placeholder="Usa la tabla por talla"
+              placeholderTextColor={COLORS.textDisabled}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+          </View>
+        </View>
+      )}
 
       {/* Cartilla de vacunación */}
       <View

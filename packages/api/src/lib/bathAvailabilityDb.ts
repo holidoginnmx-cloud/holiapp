@@ -90,9 +90,57 @@ export type DurationQuery = {
   corte?: boolean;
 };
 
+/** Los campos de la variante que necesita el cálculo de duración. */
+const VARIANT_FOR_DURATION = {
+  id: true,
+  serviceTypeId: true,
+  petSize: true,
+  deslanado: true,
+  corte: true,
+  durationMinutes: true,
+} as const;
+
+type VariantForDuration = {
+  id: string;
+  serviceTypeId: string;
+  petSize: PetSize;
+  deslanado: boolean;
+  corte: boolean;
+  durationMinutes: number | null;
+};
+
 /**
- * Cuántos minutos toma un servicio. Precedencia: variante explícita → talla
- * derivada del peso de la mascota → talla recibida → respaldo de configuración.
+ * Cuánto suma la tabla por los extras de esa variante, respecto al baño solo de
+ * la misma talla. Es lo que se le añade a la duración propia de un perro: su
+ * excepción dice cuánto tarda BAÑARSE, y el corte sigue costando lo que cuesta.
+ */
+async function extrasDelta(prisma: Db, variant: VariantForDuration): Promise<number> {
+  if (!variant.corte && !variant.deslanado) return 0;
+  if (variant.durationMinutes == null) return 0;
+  const base = await prisma.serviceVariant.findUnique({
+    where: {
+      serviceTypeId_petSize_deslanado_corte: {
+        serviceTypeId: variant.serviceTypeId,
+        petSize: variant.petSize,
+        deslanado: false,
+        corte: false,
+      },
+    },
+    select: { durationMinutes: true },
+  });
+  if (base?.durationMinutes == null) return 0;
+  return Math.max(0, variant.durationMinutes - base.durationMinutes);
+}
+
+/**
+ * Cuántos minutos toma un servicio. Precedencia: duración propia de la mascota
+ * (+ los extras de la tabla) → variante explícita → talla derivada del peso →
+ * talla recibida → respaldo de configuración.
+ *
+ * La excepción por perro (`pets.groomingMinutes`) existe porque la tabla es un
+ * promedio por talla y hay perros que no se parecen a su talla: el que no se
+ * deja, el de pelo enredado, el que ya se conoce y sale en la mitad. Cuando el
+ * equipo la anota, manda.
  *
  * `resolved: false` avisa a quien llama que la duración es un respaldo y no un
  * dato real, para que el cliente pueda decirlo en pantalla en lugar de mostrar
@@ -109,12 +157,58 @@ export async function resolveBathDuration(
     resolved: false,
   };
 
+  const pet = q.petId
+    ? await prisma.pet.findUnique({
+        where: { id: q.petId },
+        select: { weight: true, groomingMinutes: true },
+      })
+    : null;
+  const propia = pet?.groomingMinutes ?? null;
+
+  let variant: VariantForDuration | null = null;
+
   if (q.variantId) {
-    const variant = await prisma.serviceVariant.findUnique({
+    variant = await prisma.serviceVariant.findUnique({
       where: { id: q.variantId },
-      select: { id: true, durationMinutes: true },
+      select: VARIANT_FOR_DURATION,
     });
-    if (!variant) return fallback;
+  } else {
+    let petSize = q.petSize ?? null;
+    // Sin peso registrado no hay talla que derivar: mejor el respaldo que una
+    // talla inventada que produciría una duración equivocada.
+    if (!petSize && pet?.weight != null) {
+      petSize = bathSizeKey(sizeFromWeight(pet.weight));
+    }
+    if (petSize) {
+      const bath = await prisma.serviceType.findUnique({
+        where: { code: "BATH" },
+        select: { id: true },
+      });
+      if (bath) {
+        variant = await prisma.serviceVariant.findUnique({
+          where: {
+            serviceTypeId_petSize_deslanado_corte: {
+              serviceTypeId: bath.id,
+              petSize,
+              deslanado: q.deslanado ?? false,
+              corte: q.corte ?? false,
+            },
+          },
+          select: VARIANT_FOR_DURATION,
+        });
+      }
+    }
+  }
+
+  // Sin variante no hay tabla que aplicar, pero la excepción del perro sigue
+  // siendo mejor dato que el respaldo genérico.
+  if (!variant) {
+    return propia != null
+      ? { durationMinutes: propia, variantId: null, resolved: true }
+      : fallback;
+  }
+
+  if (propia == null) {
     return {
       durationMinutes: variant.durationMinutes ?? cfg.defaultBathDurationMinutes,
       variantId: variant.id,
@@ -122,42 +216,10 @@ export async function resolveBathDuration(
     };
   }
 
-  let petSize = q.petSize ?? null;
-  if (!petSize && q.petId) {
-    const pet = await prisma.pet.findUnique({
-      where: { id: q.petId },
-      select: { weight: true },
-    });
-    // Sin peso registrado no hay talla que derivar: mejor el respaldo que una
-    // talla inventada que produciría una duración equivocada.
-    if (pet?.weight == null) return fallback;
-    petSize = bathSizeKey(sizeFromWeight(pet.weight));
-  }
-  if (!petSize) return fallback;
-
-  const bath = await prisma.serviceType.findUnique({
-    where: { code: "BATH" },
-    select: { id: true },
-  });
-  if (!bath) return fallback;
-
-  const variant = await prisma.serviceVariant.findUnique({
-    where: {
-      serviceTypeId_petSize_deslanado_corte: {
-        serviceTypeId: bath.id,
-        petSize,
-        deslanado: q.deslanado ?? false,
-        corte: q.corte ?? false,
-      },
-    },
-    select: { id: true, durationMinutes: true },
-  });
-  if (!variant) return fallback;
-
   return {
-    durationMinutes: variant.durationMinutes ?? cfg.defaultBathDurationMinutes,
+    durationMinutes: propia + (await extrasDelta(prisma, variant)),
     variantId: variant.id,
-    resolved: variant.durationMinutes != null,
+    resolved: true,
   };
 }
 

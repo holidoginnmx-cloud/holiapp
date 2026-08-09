@@ -360,10 +360,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Variante de baño no encontrada" });
       }
 
-      // La duración depende del servicio contratado (talla × corte × deslanado):
-      // un baño+corte de perro chico no cabe donde cabía un baño simple. El
-      // cliente NO la manda — se resuelve aquí, igual que el precio.
-      const durationMinutes = variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+      // La duración depende del servicio contratado (talla × corte × deslanado)
+      // y de la excepción del perro si el equipo la anotó: un baño+corte de
+      // perro chico no cabe donde cabía un baño simple. El cliente NO la manda
+      // — se resuelve aquí, igual que el precio.
+      const { durationMinutes } = await resolveBathDuration(
+        prisma,
+        { variantId: variant.id, petId },
+        schedule,
+      );
       const verdict = evaluateStart(appointmentDate, durationMinutes, schedule, busy);
       if (!verdict.ok) {
         return reply
@@ -536,6 +541,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             photoUrl: true,
             size: true,
             notes: true,
+            // Excepción de duración de este perro (ver durationOf).
+            groomingMinutes: true,
           },
         },
         owner: {
@@ -591,18 +598,47 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
       const schedule = toScheduleCfg(cfg);
 
-      /** Duración efectiva de un baño: snapshot → variante contratada → respaldo. */
+      // Baño solo, por talla. Es la base contra la que se mide cuánto suman los
+      // extras, para poder aplicar la duración propia de un perro sin perder lo
+      // que la tabla dice que agregan corte y deslanado.
+      const baseBySize = new Map<string, number>();
+      for (const v of await prisma.serviceVariant.findMany({
+        where: { serviceType: { code: "BATH" }, deslanado: false, corte: false },
+        select: { petSize: true, durationMinutes: true },
+      })) {
+        if (v.durationMinutes != null) baseBySize.set(v.petSize, v.durationMinutes);
+      }
+
+      /**
+       * Duración efectiva de un baño: snapshot de la cita → duración propia del
+       * perro (+ extras de la tabla) → variante contratada → respaldo.
+       */
       const durationOf = (
         snapshot: number | null,
-        addons: { durationMinutes: number | null; variant: { durationMinutes: number | null; serviceType: { code: string } } }[],
+        addons: {
+          durationMinutes: number | null;
+          variant: {
+            petSize: string;
+            durationMinutes: number | null;
+            serviceType: { code: string };
+          };
+        }[],
+        petGroomingMinutes: number | null | undefined,
       ): number => {
         const bathAddon = addons.find((a) => a.variant.serviceType.code === "BATH");
-        return (
-          snapshot ??
-          bathAddon?.durationMinutes ??
-          bathAddon?.variant.durationMinutes ??
-          schedule.defaultBathDurationMinutes
-        );
+        // Lo agendado manda: cambiar la configuración no mueve una cita que ya
+        // se guardó con su duración.
+        const congelada = snapshot ?? bathAddon?.durationMinutes ?? null;
+        if (congelada != null) return congelada;
+
+        const tabla = bathAddon?.variant.durationMinutes ?? null;
+        if (petGroomingMinutes != null) {
+          const base = bathAddon ? baseBySize.get(bathAddon.variant.petSize) : undefined;
+          const extras =
+            tabla != null && base != null ? Math.max(0, tabla - base) : 0;
+          return petGroomingMinutes + extras;
+        }
+        return tabla ?? schedule.defaultBathDurationMinutes;
       };
 
       // Para que el mobile use el mismo render, los baños de hospedaje exponen
@@ -626,7 +662,11 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           return ta - tb;
         })
         .map((r) => {
-          const durationMinutes = durationOf(r.durationMinutes, r.addons);
+          const durationMinutes = durationOf(
+            r.durationMinutes,
+            r.addons,
+            r.pet?.groomingMinutes,
+          );
           return {
             ...r,
             durationMinutes,
@@ -1291,10 +1331,18 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       discountTotal = Math.min(Math.max(0, discountTotal), Number(variant.price));
 
       const schedule = toScheduleCfg(cfg);
+      // La del intent viene calculada en el checkout (ya con la excepción del
+      // perro, si la tiene); sin intent —pago con saldo— se recalcula igual.
       const durationMinutes =
         durationFromIntent > 0
           ? durationFromIntent
-          : variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
+          : (
+              await resolveBathDuration(
+                prisma,
+                { variantId: variant.id, petId },
+                schedule,
+              )
+            ).durationMinutes;
       const dateYMD = localYMD(appointmentAt);
 
       try {

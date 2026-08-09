@@ -207,6 +207,10 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       const pet = await prisma.pet.create({
         data: {
           ...parsed.data,
+          // Dato de operación: lo anota quien baña al perro, no el dueño.
+          groomingMinutes: registradaPorEquipo
+            ? (parsed.data.groomingMinutes ?? null)
+            : null,
           ownerId,
           cartillaPhotos: photos,
           cartillaUrl: parsed.data.cartillaUrl ?? photos[0] ?? null,
@@ -256,6 +260,11 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (request.userRole === "STAFF") {
         delete data.cartillaUrl;
         delete data.cartillaPhotos;
+      }
+      // Cuánto tarda el baño de este perro es un dato de operación: lo anota
+      // quien lo baña, no el dueño.
+      if (!isStaffOrAdmin(request.userRole)) {
+        delete data.groomingMinutes;
       }
 
       const incomingPhotos = data.cartillaPhotos as string[] | undefined;
