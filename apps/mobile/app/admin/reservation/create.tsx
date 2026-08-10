@@ -289,6 +289,9 @@ export default function AdminCreateReservation() {
   const bathConflict = useMemo(() => {
     if (!bathSlots || !appointmentAt) return null;
     const t = appointmentAt.getTime();
+    // Pasado (incluye fechas de días anteriores, aun fuera de la rejilla): se
+    // avisa y se deja forzar — el admin registra baños que ya ocurrieron.
+    if (t <= Date.now()) return "Ese horario ya pasó.";
     const exact = bathSlots.slots.find((s) => new Date(s.startUtc).getTime() === t);
     if (exact) {
       if (exact.available) return null;
@@ -296,7 +299,9 @@ export default function AdminCreateReservation() {
         ? "Se encima con otra cita."
         : exact.reason === "CLOSES_TOO_LATE"
           ? "No alcanza a terminar antes de que salga la estilista."
-          : "Ese horario no está disponible.";
+          : exact.reason === "PAST"
+            ? "Ese horario ya pasó."
+            : "Ese horario no está disponible.";
     }
     const end = t + bathSlots.durationMinutes * 60000;
     const choca = bathSlots.slots.some(
@@ -990,7 +995,9 @@ export default function AdminCreateReservation() {
                   empty={!appointmentAt}
                   mode="date"
                   pickerValue={appointmentAt ?? today}
-                  minimumDate={today}
+                  // Sin minimumDate a propósito: el admin registra baños que ya
+                  // ocurrieron (backfill). El aviso "ya pasó" + "Agendar de
+                  // todos modos" hacen el gate, no el picker.
                   onChange={(date) => {
                     const base = appointmentAt ?? new Date(today);
                     const next = new Date(date);
