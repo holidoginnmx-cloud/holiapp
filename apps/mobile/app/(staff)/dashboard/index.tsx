@@ -25,6 +25,7 @@ import { AlertItem } from "@/components/AlertItem";
 import { ErrorState } from "@/components/ErrorState";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import { formatName, formatDateLong, formatDayShort, formatTime, formatWeekdayDayShort } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
@@ -254,6 +255,9 @@ export default function StaffDashboard() {
         <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={COLORS.primary} />
       }
     >
+      {/* Novedades del release: Modal nativo, no le afecta estar en el scroll */}
+      <WhatsNewModal role="STAFF" />
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>Hola, {formatName(firstName)}</Text>

@@ -19,6 +19,7 @@ import { TouchableOpacity } from "react-native";
 import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatName, formatDateLong, hotelYMD } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
@@ -154,6 +155,8 @@ export default function AdminDashboard() {
         />
       }
     >
+      {/* Novedades del release: Modal nativo, no le afecta estar en el scroll */}
+      <WhatsNewModal role="ADMIN" />
       {/* Greeting */}
       <Text style={styles.greeting}>Hola, {formatName(firstName) || "Admin"}</Text>
       <Text style={styles.date}>{todayStr}</Text>
