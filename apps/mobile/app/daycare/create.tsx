@@ -41,7 +41,7 @@ import {
 
 const MAX_PETS = 6;
 
-// 08:00, 08:30, ..., 18:00 — ventana de operación de la guardería.
+// 09:00, 09:30, ..., 18:00 — ventana de operación de la guardería.
 const DAYCARE_TIME_SLOTS: string[] = (() => {
   const slots: string[] = [];
   for (let h = DAYCARE_OPEN_HOUR; h <= DAYCARE_CLOSE_HOUR; h++) {
@@ -434,7 +434,7 @@ function CreateDaycareScreenContent() {
           title={timePickerFor === "in" ? "Hora de entrada" : "Hora de salida"}
           subtitle={
             timePickerFor === "in"
-              ? "¿A qué hora dejas a tu peludito? La guardería abre a las 8:00 am."
+              ? "¿A qué hora dejas a tu peludito? La guardería abre a las 9:00 am."
               : "¿A qué hora lo recoges? Si pasas más tarde, las horas extra se cobran al recoger."
           }
           value={timePickerFor === "in" ? checkInTime : checkOutTime}

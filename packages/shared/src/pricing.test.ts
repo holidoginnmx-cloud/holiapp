@@ -176,14 +176,14 @@ describe("computeDaycareExtraHours", () => {
 });
 
 describe("isWithinDaycareHours", () => {
-  it("acepta la ventana completa 8:00–18:00 inclusive", () => {
-    expect(isWithinDaycareHours("08:00")).toBe(true);
+  it("acepta la ventana completa 9:00–18:00 inclusive", () => {
+    expect(isWithinDaycareHours("09:00")).toBe(true);
     expect(isWithinDaycareHours("13:30")).toBe(true);
     expect(isWithinDaycareHours("18:00")).toBe(true);
   });
 
   it("rechaza fuera de ventana o formato inválido", () => {
-    expect(isWithinDaycareHours("07:59")).toBe(false);
+    expect(isWithinDaycareHours("08:59")).toBe(false);
     expect(isWithinDaycareHours("18:01")).toBe(false);
     expect(isWithinDaycareHours("mal")).toBe(false);
   });

@@ -109,7 +109,7 @@ export function pricePerDayForWeight(
 // ============================================================
 
 /** Ventana de operación de la guardería (hora local del hotel). */
-export const DAYCARE_OPEN_HOUR = 8; // 8:00 am
+export const DAYCARE_OPEN_HOUR = 9; // 9:00 am
 export const DAYCARE_CLOSE_HOUR = 18; // 6:00 pm
 /** Minutos de gracia al recoger antes de cobrar horas extra. */
 export const DAYCARE_LATE_TOLERANCE_MIN = 15;
