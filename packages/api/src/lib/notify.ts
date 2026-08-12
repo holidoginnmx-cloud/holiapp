@@ -7,6 +7,8 @@ type NotifyData = {
   title: string;
   body: string;
   data?: Prisma.InputJsonValue;
+  /** Ver PushPayload.priority — solo afecta al push, no a la fila en DB. */
+  priority?: "default" | "high";
 };
 
 /**
@@ -33,6 +35,7 @@ export async function notifyUser(
   await sendPushToUser(prisma, opts.userId, {
     title: opts.title,
     body: opts.body,
+    priority: opts.priority,
     data: {
       notificationId: notif.id,
       type: opts.type,
@@ -66,6 +69,7 @@ export async function notifyUsers(
   return await sendPushToUsers(prisma, userIds, {
     title: payload.title,
     body: payload.body,
+    priority: payload.priority,
     data: {
       type: payload.type,
       ...(typeof payload.data === "object" && payload.data !== null ? payload.data : {}),

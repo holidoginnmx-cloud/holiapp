@@ -8,6 +8,15 @@ export type PushPayload = {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  /**
+   * "high" pide a APNs/FCM entrega inmediata en vez de agrupada. Se usa en los
+   * avisos que el equipo tiene que atender el mismo día (una llegada de hoy).
+   *
+   * NO confundir con `interruptionLevel: "time-sensitive"`, que atraviesa el
+   * modo concentración: ese exige un entitlement de Apple en el binario, o sea
+   * build nuevo y revisión — no sale por OTA.
+   */
+  priority?: "default" | "high";
 };
 
 /**
@@ -39,6 +48,7 @@ export async function sendPushToUser(
       title: payload.title,
       body: payload.body,
       data: payload.data ?? {},
+      ...(payload.priority ? { priority: payload.priority } : {}),
     });
   }
 

@@ -48,7 +48,7 @@ function nowMinutesLocal(): number {
 
 /**
  * Valida día + horas de una guardería. Devuelve mensaje de error o null.
- * Reglas: día no pasado, horas dentro de la ventana 8:00–18:00, salida
+ * Reglas: día no pasado, horas dentro de la ventana 9:00–18:00, salida
  * posterior a la entrada y, si es hoy, entrada aún no pasada (con tolerancia).
  */
 export function validateDaycareWindow(
@@ -429,6 +429,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         deliveryOverride,
         notes,
         legalAccepted: true,
+        source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
+        createdByUserId: request.userId ?? null,
       });
       if (!result.ok) {
         return reply.status(result.status).send({ error: result.error });

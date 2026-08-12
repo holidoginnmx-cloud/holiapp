@@ -8,6 +8,10 @@ import { Prisma, PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import {
+  notifyNewReservation,
+  type NewReservationSource,
+} from "../lib/notifyNewReservation";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
@@ -71,6 +75,11 @@ export function buildSlotsForDay(
   return buildStartCandidates(dateYMD, cfg, cfg.defaultBathDurationMinutes);
 }
 
+/**
+ * Adaptador sobre `notifyNewReservation`: antes esto solo avisaba a los ADMIN,
+ * dejando fuera al staff que de hecho baña al perro. La audiencia y el formato
+ * viven ahora en un único lugar, junto con hospedaje y guardería.
+ */
 export async function notifyBathBooked(
   prisma: FastifyInstance["prisma"],
   params: {
@@ -80,33 +89,25 @@ export async function notifyBathBooked(
     deslanado: boolean;
     corte: boolean;
     price: number;
+    owner?: { firstName?: string | null; lastName?: string | null };
+    source?: NewReservationSource;
+    createdByUserId?: string | null;
   }
 ) {
-  const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", isActive: true },
-    select: { id: true },
-  });
-  if (admins.length === 0) return;
-
-  const when = params.appointmentAt.toLocaleString("es-MX", {
-    timeZone: TZ_HOTEL,
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const title = `Cita de baño: ${params.petName}`;
-  const body = `${describeBath(params.deslanado, params.corte)} — ${when} — $${params.price.toLocaleString("es-MX")}`;
-
-  await notifyUsers(prisma, admins.map((a) => a.id), {
-    type: "GENERAL",
-    title,
-    body,
-    data: {
-      reservationId: params.reservationId,
-      kind: "BATH_BOOKED",
-      appointmentAt: params.appointmentAt.toISOString(),
-    },
+  await notifyNewReservation(prisma, {
+    reservations: [
+      {
+        id: params.reservationId,
+        reservationType: "BATH",
+        appointmentAt: params.appointmentAt,
+        pet: { name: params.petName },
+      },
+    ],
+    owner: params.owner ?? {},
+    source: params.source ?? "APP_CLIENTE",
+    createdByUserId: params.createdByUserId ?? null,
+    bathLabel: describeBath(params.deslanado, params.corte),
+    price: params.price,
   });
 }
 
@@ -1483,13 +1484,16 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           return { reservation, payment };
         });
 
-        // Notificar a admins
+        // Avisar al equipo
         const pet = await prisma.pet.findUnique({
           where: { id: petId },
-          select: { name: true },
+          select: {
+            name: true,
+            owner: { select: { firstName: true, lastName: true } },
+          },
         });
         if (pet) {
-          // Fire-and-forget: el push a admins no debe bloquear la respuesta.
+          // Fire-and-forget: el push al equipo no debe bloquear la respuesta.
           notifyBathBooked(prisma, {
             reservationId: result.reservation.id,
             petName: pet.name,
@@ -1497,6 +1501,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             deslanado: variant.deslanado,
             corte: variant.corte,
             price: Number(variant.price),
+            owner: pet.owner ?? undefined,
+            source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
+            createdByUserId: request.userId ?? null,
           }).catch((err) => fastify.log.error({ err }, "notifyBathBooked falló"));
         }
 

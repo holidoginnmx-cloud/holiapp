@@ -1,7 +1,11 @@
 import { Prisma } from "@holidoginn/db";
 import type { PrismaClient, Pet, User } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { notifyUser, notifyUsers } from "./notify";
+import { notifyUser } from "./notify";
+import {
+  notifyNewReservation,
+  type NewReservationSource,
+} from "./notifyNewReservation";
 import { getLodgingPricing, computeDaycareHours } from "./pricing";
 import { quoteDelivery } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
@@ -106,6 +110,10 @@ export interface CreateDaycareGroupParams {
   deliveryOverride?: { fee: number; distanceKm: number } | null;
   notes?: string | null;
   legalAccepted: boolean;
+  /** De dónde vino (app del cliente o sitio público). */
+  source?: NewReservationSource;
+  /** Si la creó alguien del equipo, se le excluye del aviso. */
+  createdByUserId?: string | null;
 }
 
 export type CreateDaycareGroupResult =
@@ -334,28 +342,12 @@ export async function createDaycareGroup(
     });
   }
 
-  // Notificar a staff/admins (mismo canal que las reservas nuevas).
-  const petNames = reservations
-    .map((r) => r.pet?.name)
-    .filter(Boolean)
-    .join(", ");
-  const staffUsers = await prisma.user.findMany({
-    where: { role: { in: ["STAFF", "ADMIN"] }, isActive: true },
-    select: { id: true },
+  await notifyNewReservation(prisma, {
+    reservations,
+    owner,
+    source: params.source ?? "SITIO_WEB",
+    createdByUserId: params.createdByUserId ?? null,
   });
-  if (staffUsers.length > 0) {
-    const when = `${date} · ${checkInTime}–${checkOutTime}`;
-    await notifyUsers(
-      prisma,
-      staffUsers.map((s) => s.id),
-      {
-        type: "NEW_RESERVATION" as never,
-        title: "Nueva guardería 🐾",
-        body: `${petNames || "Una mascota"} — ${when} (${hours} h).`,
-        data: { reservationId: reservations[0]?.id, kind: "DAYCARE_BOOKED" },
-      }
-    );
-  }
 
   return { ok: true, reservations, grandTotal, groupId, hours, creditApplied };
 }

@@ -34,18 +34,13 @@ export async function notifyBathContracted(
   const title = `Baño contratado: ${petName}`;
   const body = `${describeBath(deslanado, corte)} — $${price.toLocaleString("es-MX")}. Se debe entregar bañado al check-out.`;
 
-  const targets = new Set<string>();
-  if (assignedStaffId) targets.add(assignedStaffId);
+  // Solo el staff asignado. Antes esto también iba a todos los admins, pero
+  // desde que la reserva nueva ya les avisa (notifyNewReservation), un
+  // hospedaje con baño les vibraba dos veces por el mismo hecho.
+  const targets = assignedStaffId ? [assignedStaffId] : [];
+  if (targets.length === 0) return;
 
-  const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", isActive: true },
-    select: { id: true },
-  });
-  for (const a of admins) targets.add(a.id);
-
-  if (targets.size === 0) return;
-
-  await notifyUsers(prisma, Array.from(targets), {
+  await notifyUsers(prisma, targets, {
     type: "GENERAL" as const,
     title,
     body,

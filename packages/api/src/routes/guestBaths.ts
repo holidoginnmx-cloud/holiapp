@@ -436,7 +436,13 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
           return { reservation };
         });
 
-        const pet = await prisma.pet.findUnique({ where: { id: petId }, select: { name: true } });
+        const pet = await prisma.pet.findUnique({
+          where: { id: petId },
+          select: {
+            name: true,
+            owner: { select: { firstName: true, lastName: true } },
+          },
+        });
         if (pet) {
           await notifyBathBooked(prisma, {
             reservationId: result.reservation.id,
@@ -445,6 +451,8 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             deslanado: variant.deslanado,
             corte: variant.corte,
             price: Number(variant.price),
+            owner: pet.owner ?? undefined,
+            source: "SITIO_WEB",
           });
         }
 

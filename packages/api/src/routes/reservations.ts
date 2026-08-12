@@ -17,7 +17,8 @@ import {
   reservationConfirmedTemplate,
   sendEmail,
 } from "../lib/email";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { notifyUser } from "../lib/notify";
+import { notifyNewReservation } from "../lib/notifyNewReservation";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -345,8 +346,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     type CreatedReservation = Prisma.ReservationGetPayload<{
       include: { pet: true; room: true };
     }>;
-    const sendCreated = (rows: CreatedReservation[]) =>
-      reply.status(201).send(
+    const sendCreated = (rows: CreatedReservation[]) => {
+      // Aviso al equipo. Punto único para las tres ramas (BATH/DAYCARE/STAY),
+      // que convergen aquí. Fire-and-forget: el helper no lanza y el equipo no
+      // debe esperar al push para recibir su 201.
+      void notifyNewReservation(prisma, {
+        reservations: rows,
+        owner,
+        source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
+        createdByUserId: request.userId ?? null,
+      });
+
+      return reply.status(201).send(
         rows.length > 1
           ? {
               ...rows[0],
@@ -359,6 +370,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             }
           : rows[0],
       );
+    };
 
     // ── Rama BATH: cita puntual; el precio se resuelve server-side desde la
     // variante de cada mascota, o del total manual pactado (staff/admin).
@@ -1417,21 +1429,13 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }).catch((err) => fastify.log.error({ err }, "notifyUser(credit) falló"));
     }
 
-    // Notificar a todos los staff de nueva reservación disponible
-    const petNames = reservations.map((r) => r.pet?.name).filter(Boolean).join(", ");
-    const staffUsers = await prisma.user.findMany({
-      where: { role: "STAFF", isActive: true },
-      select: { id: true },
+    // Aviso al equipo. Fire-and-forget: no debe bloquear la respuesta.
+    void notifyNewReservation(prisma, {
+      reservations,
+      owner,
+      source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
+      createdByUserId: request.userId ?? null,
     });
-    if (staffUsers.length > 0) {
-      // Fire-and-forget: notificar al staff no debe bloquear la respuesta.
-      notifyUsers(prisma, staffUsers.map((s) => s.id), {
-        type: "NEW_RESERVATION",
-        title: "Nueva reservación creada 🐾",
-        body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
-        data: { reservationId: reservations[0]?.id },
-      }).catch((err) => fastify.log.error({ err }, "notifyUsers(staff) falló"));
-    }
 
     // Email de confirmación al dueño
     if (owner.email) {

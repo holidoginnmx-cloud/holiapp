@@ -3,7 +3,11 @@ import type { PrismaClient, Pet, User } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { notifyBathContracted } from "../routes/services";
 import { reservationConfirmedTemplate, sendEmail } from "./email";
-import { notifyUser, notifyUsers } from "./notify";
+import { notifyUser } from "./notify";
+import {
+  notifyNewReservation,
+  type NewReservationSource,
+} from "./notifyNewReservation";
 import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "./pricing";
 import { quoteDelivery } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
@@ -27,6 +31,8 @@ export interface CreateReservationGroupParams {
   creditApplied?: number;
   notes?: string | null;
   legalAccepted: boolean;
+  /** De dónde vino. El único llamador hoy es el sitio público. */
+  source?: NewReservationSource;
 }
 
 export type CreateReservationGroupResult =
@@ -350,26 +356,13 @@ export async function createReservationGroup(
     });
   }
 
-  const petNames = reservations
-    .map((r) => r.pet?.name)
-    .filter(Boolean)
-    .join(", ");
-  const staffUsers = await prisma.user.findMany({
-    where: { role: "STAFF", isActive: true },
-    select: { id: true },
+  await notifyNewReservation(prisma, {
+    reservations,
+    owner,
+    source: params.source ?? "SITIO_WEB",
+    // El flujo de invitado no tiene sesión del equipo: nadie que excluir.
+    createdByUserId: null,
   });
-  if (staffUsers.length > 0) {
-    await notifyUsers(
-      prisma,
-      staffUsers.map((s) => s.id),
-      {
-        type: "NEW_RESERVATION" as never,
-        title: "Nueva reservación creada 🐾",
-        body: `Se creó una reservación para ${petNames || "una mascota"}. Revisa si necesitas asignarte.`,
-        data: { reservationId: reservations[0]?.id },
-      }
-    );
-  }
 
   if (owner.email) {
     const depositAmount = paymentType === "DEPOSIT" ? grandTotal * 0.2 : grandTotal;
