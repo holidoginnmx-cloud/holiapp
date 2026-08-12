@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { clearSessionState } from "@/lib/session";
 import { getPendingCartillasCount } from "@/lib/api";
 import { formatName } from "@/lib/format";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -82,6 +83,8 @@ export default function AdminSettings() {
   });
   const cartillasCount = cartillasPending?.pending ?? 0;
 
+  const { unreadCount } = useUnreadNotifications();
+
   const handleLogout = () => {
     Alert.alert("Cerrar sesion", "¿Estas seguro?", [
       { text: "Cancelar", style: "cancel" },
@@ -126,6 +129,18 @@ export default function AdminSettings() {
 
       {/* Menu */}
       <View style={styles.menuSection}>
+        <MenuItem
+          icon="notifications-outline"
+          iconTint={COLORS.primary}
+          label="Avisos"
+          subtitle={
+            unreadCount > 0
+              ? `${unreadCount} sin leer`
+              : "Reservas nuevas, cartillas y alertas"
+          }
+          badge={unreadCount}
+          onPress={() => router.push("/admin/notifications" as any)}
+        />
         <MenuItem
           icon="people-outline"
           iconTint={COLORS.primary}

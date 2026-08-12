@@ -117,7 +117,8 @@ export default function NotificationsScreen() {
             // (compartido con el deep link de push del _layout raíz).
             const route = notificationRoute(
               item.type,
-              item.data as NotificationRouteData
+              item.data as NotificationRouteData,
+              "OWNER"
             );
             if (route) router.push(route as any);
           }}

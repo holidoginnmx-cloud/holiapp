@@ -4,7 +4,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { getStaffStays, getNotifications } from "@/lib/api";
+import { getStaffStays } from "@/lib/api";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { formatName } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 
@@ -94,15 +95,9 @@ export default function StaffMore() {
     queryFn: () => getStaffStays("CONFIRMED"),
   });
 
-  // Misma key que el layout de tabs: el badge de "Más" y este contador salen
+  // Mismo hook que el layout de tabs: el badge de "Más" y este contador salen
   // del mismo dato.
-  const { data: notifications } = useQuery({
-    queryKey: ["notifications", userId],
-    queryFn: () => getNotifications(userId!),
-    enabled: !!userId,
-    refetchInterval: 30_000,
-  });
-  const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
+  const { unreadCount } = useUnreadNotifications();
 
   // Los baños comparten status con las estancias pero son citas: fuera.
   const active = (activeStays ?? []).filter((s) => s.reservationType !== "BATH");

@@ -281,7 +281,14 @@ function PushNavigationHandler() {
   const role = useAuthStore((s) => s.role);
   const lastResponse = Notifications.useLastNotificationResponse();
 
-  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  // Se guarda el CONTENIDO de la notificación, no la ruta ya resuelta: la
+  // pantalla destino depende del rol, y en arranque frío el tap ocurre cuando
+  // `role` todavía es null. Resolverla aquí mandaba a un admin a la vista de
+  // cliente. Se resuelve abajo, en el effect que ya espera a tener rol.
+  const [pending, setPending] = useState<{
+    type: string;
+    data: NotificationRouteData;
+  } | null>(null);
   // Evita re-navegar a la misma notificación (el hook conserva su valor entre
   // re-renders y el listener puede emitir la misma respuesta).
   const handledRef = useRef<string | null>(null);
@@ -291,20 +298,17 @@ function PushNavigationHandler() {
     const key = `${request.identifier}:${response.actionIdentifier}`;
     if (handledRef.current === key) return;
     handledRef.current = key;
-    const route = notificationRoute(
+    const type =
       typeof request.content.data?.type === "string"
         ? (request.content.data.type as string)
-        : "",
-      (request.content.data ?? null) as NotificationRouteData
-    );
+        : "";
     if (__DEV__) {
-      console.log(
-        "[push] tap →",
-        route ?? "(sin ruta)",
-        JSON.stringify(request.content.data)
-      );
+      console.log("[push] tap →", JSON.stringify(request.content.data));
     }
-    if (route) setPendingRoute(route);
+    setPending({
+      type,
+      data: (request.content.data ?? null) as NotificationRouteData,
+    });
     // Limpia la respuesta cacheada para que un relanzamiento normal de la app
     // (sin tap) no vuelva a navegar a la misma pantalla.
     try {
@@ -324,18 +328,21 @@ function PushNavigationHandler() {
   }, [enqueue]);
 
   useEffect(() => {
-    if (!pendingRoute) return;
+    if (!pending) return;
     if (!isLoaded || !isSignedIn || !role) return;
     // Aún en el arranque/onboarding: esperamos a caer en el área principal.
     const root = segments[0];
     if (root !== "(tabs)" && root !== "(admin)" && root !== "(staff)") return;
 
-    setPendingRoute(null);
+    // Ya hay rol: recién ahora se sabe a qué pantalla lleva la notificación.
+    const route = notificationRoute(pending.type, pending.data, role);
+    setPending(null);
+    if (!route) return;
     // Deja terminar la navegación en curso antes de empujar la pantalla.
     InteractionManager.runAfterInteractions(() => {
-      router.push(pendingRoute as any);
+      router.push(route as any);
     });
-  }, [pendingRoute, isLoaded, isSignedIn, role, segments, router]);
+  }, [pending, isLoaded, isSignedIn, role, segments, router]);
 
   return null;
 }

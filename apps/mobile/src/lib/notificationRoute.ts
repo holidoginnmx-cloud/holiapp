@@ -11,6 +11,8 @@
 export type NotificationRouteData = {
   reservationId?: string;
   petId?: string;
+  /** STAY | BATH | DAYCARE — el staff tiene una pantalla por tipo. */
+  reservationType?: string;
   /**
    * Subtipo de las notificaciones de cartilla (el `type` de todas es GENERAL):
    *   - CARTILLA_UPLOADED → para ADMIN, hay cartilla por revisar
@@ -21,24 +23,35 @@ export type NotificationRouteData = {
   action?: string;
 } | null;
 
+/**
+ * Rol de quien recibe la notificación: "OWNER" | "STAFF" | "ADMIN". Se acepta
+ * `string` porque así lo guarda el authStore; cualquier valor desconocido —o
+ * `null`, que es lo que hay antes de que cargue la sesión— cae en el trato de
+ * OWNER, que es el destino seguro (todas esas pantallas existen para cualquier
+ * rol).
+ */
+export type NotificationRole = string | null | undefined;
+
 export function notificationRoute(
   type: string,
-  data: NotificationRouteData
+  data: NotificationRouteData,
+  role?: NotificationRole
 ): string | null {
   const reservationId =
     typeof data?.reservationId === "string" ? data.reservationId : undefined;
   const petId = typeof data?.petId === "string" ? data.petId : undefined;
+  const isOwner = role == null || role === "OWNER";
 
   // CREDIT_ADDED: historial de saldo a favor.
-  if (type === "CREDIT_ADDED") return "/profile/credit-history";
+  if (type === "CREDIT_ADDED" && isOwner) return "/profile/credit-history";
 
   // DAILY_REPORT: reportes diarios de la estancia.
-  if (type === "DAILY_REPORT" && reservationId) {
+  if (type === "DAILY_REPORT" && reservationId && isOwner) {
     return `/reservation/checklists/${reservationId}`;
   }
 
   // action=CHOOSE_REFUND: detalle con el modal de elegir reembolso vs saldo.
-  if (data?.action === "CHOOSE_REFUND" && reservationId) {
+  if (data?.action === "CHOOSE_REFUND" && reservationId && isOwner) {
     return `/reservation/detail/${reservationId}?action=choose-refund`;
   }
 
@@ -56,8 +69,20 @@ export function notificationRoute(
     if (vaAcartilla) return `/pet/renew-cartilla/${petId}`;
   }
 
-  // Resto: detalle de la reservación si trae id.
-  if (reservationId) return `/reservation/detail/${reservationId}`;
+  // Resto: la reservación, en la pantalla que le toca a cada rol. Mandar a un
+  // admin al detalle del CLIENTE lo dejaba viendo la vista equivocada, sin
+  // ninguna de las acciones del panel.
+  if (reservationId) {
+    if (role === "ADMIN") return `/admin/reservation/${reservationId}`;
+    if (role === "STAFF") {
+      if (data?.reservationType === "BATH") return `/staff/bath/${reservationId}`;
+      if (data?.reservationType === "DAYCARE") {
+        return `/staff/daycare/${reservationId}`;
+      }
+      return `/staff/stay/${reservationId}`;
+    }
+    return `/reservation/detail/${reservationId}`;
+  }
 
   // Cualquier otra cosa con petId (p.ej. cartilla aprobada) → perfil del perro.
   if (petId) return `/pet/${petId}`;

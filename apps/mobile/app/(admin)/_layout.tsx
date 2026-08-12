@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import { useAuth } from "@clerk/clerk-expo";
 
 import { useAuthStore } from "@/store/authStore";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -20,6 +21,7 @@ export default function AdminLayout() {
   const role = useAuthStore((s) => s.role);
   const userId = useAuthStore((s) => s.userId);
   const syncUser = useAuthStore((s) => s.syncUser);
+  const { unreadCount } = useUnreadNotifications();
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -50,6 +52,7 @@ export default function AdminLayout() {
       tintColor={COLORS.primary}
       iconColor={COLORS.textDisabled}
       backgroundColor={COLORS.white}
+      badgeBackgroundColor={COLORS.dangerText}
       minimizeBehavior="onScrollDown"
     >
       <NativeTabs.Trigger name="dashboard">
@@ -72,7 +75,19 @@ export default function AdminLayout() {
         <Label>Baños</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="settings">
+      {/* Avisos vive dentro de Ajustes (el tab bar ya está lleno; con seis
+          triggers visibles UIKit pinta cinco y genera su propia pantalla
+          "More"). El badge de no leídos se hereda aquí para que el aviso no se
+          pierda cuando el admin está en otra pestaña. Va por `options` y no
+          como <Badge> condicional: setOptions mergea, así que una clave que
+          desaparece dejaría el badge pegado. */}
+      <NativeTabs.Trigger
+        name="settings"
+        options={{
+          badgeValue:
+            unreadCount > 0 ? String(Math.min(unreadCount, 99)) : undefined,
+        }}
+      >
         <Icon src={<VectorIcon family={Ionicons} name="settings-outline" />} />
         <Label>Ajustes</Label>
       </NativeTabs.Trigger>

@@ -10,9 +10,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { useAuth } from "@clerk/clerk-expo";
-import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { getNotifications } from "@/lib/api";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -42,13 +41,7 @@ export default function StaffLayout() {
     }
   }, [role]);
 
-  const { data: notifications } = useQuery({
-    queryKey: ["notifications", userId],
-    queryFn: () => getNotifications(userId!),
-    enabled: !!userId,
-    refetchInterval: 30_000,
-  });
-  const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
+  const { unreadCount } = useUnreadNotifications();
 
   if (!isLoaded || !isSignedIn) return null;
 
