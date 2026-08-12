@@ -699,6 +699,18 @@ export default function PetDetailScreen() {
               Motivo: {(pet as any).cartillaRejectionReason}
             </Text>
           )}
+
+        {/* Observación que el equipo mandó junto con la aprobación (ej.
+            "falta desparasitación"); llega también por notificación. */}
+        {(pet as any).cartillaStatus === "APPROVED" &&
+          (pet as any).cartillaApprovalNote && (
+            <View style={styles.cartillaNoteBox}>
+              <Text style={styles.cartillaNoteTitle}>Nota del equipo HDI</Text>
+              <Text style={styles.cartillaNoteText}>
+                {(pet as any).cartillaApprovalNote}
+              </Text>
+            </View>
+          )}
       </View>
 
       {pet.vaccines && pet.vaccines.length > 0 ? (
@@ -1395,6 +1407,24 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.errorText,
     fontStyle: "italic",
+  },
+  cartillaNoteBox: {
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    gap: 2,
+  },
+  cartillaNoteTitle: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.warningText,
+  },
+  cartillaNoteText: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.warningText,
+    lineHeight: 20,
   },
   deleteButton: {
     flexDirection: "row",

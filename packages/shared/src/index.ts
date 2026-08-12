@@ -188,6 +188,7 @@ export const PetSchema = z.object({
   cartillaReviewedAt: z.coerce.date().nullable(),
   cartillaReviewedById: z.string().nullable(),
   cartillaRejectionReason: z.string().nullable(),
+  cartillaApprovalNote: z.string().nullable(),
   isActive: z.boolean(),
   ownerId: z.string(),
   createdAt: z.coerce.date(),
@@ -202,6 +203,7 @@ export const CreatePetSchema = PetSchema.omit({
   cartillaReviewedAt: true,
   cartillaReviewedById: true,
   cartillaRejectionReason: true,
+  cartillaApprovalNote: true,
 }).extend({
   isActive: z.boolean().default(true),
   // El dueño se deriva del usuario autenticado en el servidor; el cliente
@@ -264,6 +266,9 @@ export const ReviewCartillaSchema = z.discriminatedUnion("action", [
     action: z.literal("APPROVE"),
     vaccines: z.array(VaccineEntrySchema).optional(),
     dewormings: z.array(DewormingEntrySchema).optional(),
+    // Observación opcional para el cliente; viaja en la notificación de
+    // aprobación y se persiste en Pet.cartillaApprovalNote.
+    note: z.string().max(500).optional(),
   }),
   z.object({
     action: z.literal("REJECT"),

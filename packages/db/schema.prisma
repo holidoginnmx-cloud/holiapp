@@ -290,6 +290,9 @@ model Pet {
   cartillaReviewedById    String?
   cartillaReviewedBy      User?           @relation("CartillaReviewer", fields: [cartillaReviewedById], references: [id])
   cartillaRejectionReason String?
+  // Observación opcional del equipo al APROBAR (ej. "falta desparasitación").
+  // Se limpia al re-subir fotos y al rechazar.
+  cartillaApprovalNote    String?
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

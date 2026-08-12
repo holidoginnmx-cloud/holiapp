@@ -161,6 +161,36 @@ export const styles = StyleSheet.create({
     marginBottom: 2,
   },
   prevReasonText: { fontSize: 13, color: COLORS.errorText },
+  // Observación enviada al cliente con la aprobación (tab Aprobadas)
+  sentNoteBox: {
+    backgroundColor: COLORS.warningBg,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  sentNoteLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.warningText,
+    marginBottom: 2,
+  },
+  sentNoteText: { fontSize: 13, color: COLORS.warningText },
+  // Chips de plantilla de la observación al aprobar
+  noteChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  noteChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  noteChipText: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
   label: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary, marginTop: 8 },
   labelHint: { fontWeight: "400", color: COLORS.textTertiary, fontSize: 12 },
   input: {

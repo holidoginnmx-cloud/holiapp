@@ -18,6 +18,7 @@ import {
   getLodgingPricing,
   computeDays,
   pricePerDayForWeight,
+  dewormSizeFromWeight,
 } from "../lib/pricing";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
@@ -1198,6 +1199,47 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // GET /admin/pets/:id/deworming-price — precio sugerido del desparasitante
+  // según el peso de la mascota, para prellenar la observación al aprobar la
+  // cartilla. La talla usa la escala PROPIA del desparasitante
+  // (dewormSizeFromWeight, no la del baño) y el precio se lee de
+  // service_variants (fuente de verdad). price null = no cotizable (sin peso,
+  // fuera de rango o sin variante activa).
+  fastify.get<{ Params: { id: string } }>(
+    "/admin/pets/:id/deworming-price",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({
+        where: { id: request.params.id },
+        select: { weight: true },
+      });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+
+      const petSize = dewormSizeFromWeight(pet.weight);
+      if (!petSize) {
+        return { weight: pet.weight, petSize: null, price: null };
+      }
+
+      const variant = await prisma.serviceVariant.findFirst({
+        where: {
+          petSize,
+          deslanado: false,
+          corte: false,
+          isActive: true,
+          serviceType: { code: "DEWORMING", isActive: true },
+        },
+        select: { price: true },
+      });
+      return {
+        weight: pet.weight,
+        petSize,
+        price: variant ? Number(variant.price) : null,
+      };
+    }
+  );
+
   // POST /admin/pets/:id/cartilla/ocr — lee las fotos de la cartilla con Claude
   // y devuelve SUGERENCIAS de vacunas/desparasitaciones para prellenar el
   // formulario de aprobación. No persiste nada.
@@ -1271,6 +1313,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       if (data.action === "APPROVE") {
         const vaccines = data.vaccines ?? [];
         const dewormings = data.dewormings ?? [];
+        const note = data.note?.trim() || null;
 
         // Validar catalogIds antes de la transacción para fallar rápido con 400.
         // El tipo es opcional: solo validamos los renglones que sí lo traen.
@@ -1303,6 +1346,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               cartillaReviewedAt: reviewedAt,
               cartillaReviewedById: request.userId,
               cartillaRejectionReason: null,
+              // La revisión real es autoritativa sobre la nota; el flujo
+              // "Agregar vacunas" (cartilla YA aprobada) no la toca salvo que
+              // mande una nueva.
+              ...(pet.cartillaStatus !== "APPROVED"
+                ? { cartillaApprovalNote: note }
+                : note
+                ? { cartillaApprovalNote: note }
+                : {}),
             },
           }),
           ...vaccines.map((v) =>
@@ -1341,8 +1392,17 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             userId: pet.ownerId,
             type: "GENERAL",
             title: `Cartilla aprobada: ${pet.name}`,
-            body: `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`,
-            data: { petId: pet.id, kind: "CARTILLA_REVIEW", action: "APPROVE" },
+            // Sin truncar: este body es también lo que muestra el inbox, y el
+            // detalle completo vive en /pet/{petId} (deep link por defecto).
+            body: note
+              ? `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar. Nota del equipo: ${note}`
+              : `La cartilla de ${pet.name} fue aprobada. Ya puedes reservar estancias.`,
+            data: {
+              petId: pet.id,
+              kind: "CARTILLA_REVIEW",
+              action: "APPROVE",
+              hasNote: Boolean(note),
+            },
           });
         }
 
@@ -1359,6 +1419,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           cartillaReviewedAt: reviewedAt,
           cartillaReviewedById: request.userId,
           cartillaRejectionReason: reason?.trim() || null,
+          cartillaApprovalNote: null,
         },
       });
 

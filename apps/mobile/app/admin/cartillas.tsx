@@ -25,6 +25,7 @@ import {
   reviewCartilla,
   ocrCartilla,
   getVaccineCatalog,
+  getDewormingPrice,
   updateAdminVaccine,
   deleteAdminVaccine,
   type CartillaStatusValue,
@@ -140,6 +141,32 @@ const STATUS_TABS: { key: CartillaStatusValue; label: string }[] = [
   { key: "EXPIRED", label: "Vencidas" },
 ];
 
+// Plantillas de la observación para el cliente al aprobar. El texto queda
+// editable antes de enviar; los corchetes son huecos que el equipo rellena
+// (marca/vigencia varían por producto en uso). El precio del desparasitante
+// sí se inserta solo cuando el peso de la mascota permite cotizarlo.
+const NOTE_TEMPLATES: {
+  label: string;
+  text: (petName: string, dewormPrice: number | null) => string;
+}[] = [
+  {
+    label: "Falta desparasitación",
+    text: (petName, dewormPrice) =>
+      `¡Las vacunas de ${petName} están al 100! 🎉 Solo falta actualizar su ` +
+      `desparasitación. Puedes llevarlo con tu veterinario, o nosotros se la ` +
+      `aplicamos en el check-in: usamos [marca], con vigencia de [vigencia] y ` +
+      `costo de ${
+        dewormPrice != null ? `$${dewormPrice}` : "$[precio]"
+      } según su peso. Avísanos si quieres que se la apliquemos.`,
+  },
+  {
+    label: "Vacuna por vencer",
+    text: (petName) =>
+      `Todo en orden con la cartilla de ${petName}. Toma en cuenta que la ` +
+      `vacuna [nombre] vence el [fecha]; te avisaremos cuando toque renovarla.`,
+  },
+];
+
 export default function AdminCartillas() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<CartillaStatusValue>("PENDING");
@@ -165,6 +192,9 @@ export default function AdminCartillas() {
   // Captura de desparasitaciones al aprobar.
   const [dewormingRows, setDewormingRows] = useState<DewormingRow[]>([]);
 
+  // Observación opcional para el cliente; viaja con la aprobación.
+  const [approvalNote, setApprovalNote] = useState("");
+
   // Edición de vacuna existente.
   const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<VaccineRow | null>(null);
@@ -187,6 +217,36 @@ export default function AdminCartillas() {
   // vacunas/desparasitaciones a las que ya tiene.
   const yaAprobada = selectedPet?.cartillaStatus === "APPROVED";
   const sinCapturas = vaccineRows.length === 0 && dewormingRows.length === 0;
+
+  // Precio del desparasitante para la plantilla de observación. Solo hace
+  // falta al aprobar por primera vez (la observación no aplica en el flujo
+  // "Agregar vacunas" de una cartilla ya aprobada).
+  const { data: dewormPrice } = useQuery({
+    queryKey: ["admin", "deworming-price", selectedPet?.id],
+    queryFn: () => getDewormingPrice(selectedPet!.id),
+    enabled: !!selectedPet && !yaAprobada,
+  });
+
+  // Prellena la observación con una plantilla; el texto queda editable.
+  const applyNoteTemplate = (tpl: (typeof NOTE_TEMPLATES)[number]) => {
+    if (!selectedPet) return;
+    const fill = () =>
+      setApprovalNote(
+        tpl.text(formatName(selectedPet.name), dewormPrice?.price ?? null)
+      );
+    if (approvalNote.trim().length > 0) {
+      Alert.alert(
+        "Reemplazar texto",
+        "¿Reemplazar la observación actual con la plantilla?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Reemplazar", onPress: fill },
+        ]
+      );
+    } else {
+      fill();
+    }
+  };
 
   const reviewMutation = useMutation({
     mutationFn: ({
@@ -214,11 +274,14 @@ export default function AdminCartillas() {
             dCount === 1 ? "1 desparasitación" : `${dCount} desparasitaciones`
           );
         }
+        const withNote = Boolean(variables.payload.note);
         showSuccess(
           parts.length > 0
             ? `${parts.join(" y ")} agregada${
                 vCount + dCount === 1 ? "" : "s"
-              } correctamente`
+              } correctamente${withNote ? " · Observación enviada" : ""}`
+            : withNote
+            ? "Cartilla aprobada y observación enviada"
             : "Cartilla aprobada"
         );
       }
@@ -354,6 +417,7 @@ export default function AdminCartillas() {
     setVaccineRows([]);
     setCatalogPickerForRow(null);
     setDewormingRows([]);
+    setApprovalNote("");
     cancelEdit();
   };
 
@@ -394,6 +458,12 @@ export default function AdminCartillas() {
         expiresAt: r.expiresAt.toISOString(),
         notes: r.notes.trim() || null,
       }));
+    }
+    // La observación solo aplica en la aprobación real; el flujo "Agregar
+    // vacunas" (cartilla ya aprobada) no muestra el campo.
+    const note = approvalNote.trim();
+    if (note && !yaAprobada) {
+      payload.note = note;
     }
 
     reviewMutation.mutate({ petId: selectedPet.id, payload });
@@ -624,6 +694,20 @@ export default function AdminCartillas() {
                       <Text style={styles.prevReasonLabel}>Motivo previo</Text>
                       <Text style={styles.prevReasonText}>
                         {selectedPet.cartillaRejectionReason}
+                      </Text>
+                    </View>
+                  )}
+
+                {/* Qué se le dijo al cliente al aprobar, para no repetirlo
+                    por otro canal ni contradecirlo. */}
+                {selectedPet.cartillaStatus === "APPROVED" &&
+                  selectedPet.cartillaApprovalNote && (
+                    <View style={styles.sentNoteBox}>
+                      <Text style={styles.sentNoteLabel}>
+                        Observación enviada
+                      </Text>
+                      <Text style={styles.sentNoteText}>
+                        {selectedPet.cartillaApprovalNote}
                       </Text>
                     </View>
                   )}
@@ -1048,6 +1132,36 @@ export default function AdminCartillas() {
                       rows={dewormingRows}
                       onChange={setDewormingRows}
                     />
+
+                    {!yaAprobada && (
+                      <View style={{ marginTop: 16 }}>
+                        <Text style={styles.label}>
+                          Observaciones para el cliente{" "}
+                          <Text style={styles.labelHint}>(opcional)</Text>
+                        </Text>
+                        <View style={styles.noteChipsRow}>
+                          {NOTE_TEMPLATES.map((tpl) => (
+                            <TouchableOpacity
+                              key={tpl.label}
+                              style={styles.noteChip}
+                              onPress={() => applyNoteTemplate(tpl)}
+                            >
+                              <Text style={styles.noteChipText}>{tpl.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <TextInput
+                          value={approvalNote}
+                          onChangeText={setApprovalNote}
+                          placeholder="Se enviará al cliente junto con la aprobación…"
+                          placeholderTextColor={COLORS.textDisabled}
+                          multiline
+                          numberOfLines={3}
+                          maxLength={500}
+                          style={[styles.input, { marginTop: 8 }]}
+                        />
+                      </View>
+                    )}
 
                     <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                       <TouchableOpacity

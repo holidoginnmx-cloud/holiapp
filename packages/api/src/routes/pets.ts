@@ -294,6 +294,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           data.cartillaReviewedAt = autoAprobada ? new Date() : null;
           data.cartillaReviewedById = autoAprobada ? request.userId : null;
           data.cartillaRejectionReason = null;
+          data.cartillaApprovalNote = null;
         }
       } else if (incomingUrl !== undefined && incomingUrl !== pet.cartillaUrl) {
         request.log.warn(

@@ -27,6 +27,7 @@ export type PetWithCartilla = Pet & {
   cartillaReviewedAt: string | null;
   cartillaReviewedById: string | null;
   cartillaRejectionReason: string | null;
+  cartillaApprovalNote: string | null;
   owner: {
     id: string;
     firstName: string;
@@ -77,6 +78,8 @@ export type ReviewCartillaPayload =
         expiresAt?: string | null;
         notes?: string | null;
       }[];
+      /** Observación opcional para el cliente; viaja en la notificación. */
+      note?: string;
     }
   | { action: "REJECT"; reason?: string };
 
@@ -85,6 +88,18 @@ export const reviewCartilla = (petId: string, data: ReviewCartillaPayload) =>
     method: "PATCH",
     body: JSON.stringify(data),
   });
+
+// Precio sugerido del desparasitante según el peso de la mascota (escala de
+// peso propia del DEWORMING; el precio sale de service_variants en el server).
+// price null = no cotizable (sin peso, fuera de rango o sin variante activa).
+export type DewormingPriceResult = {
+  weight: number | null;
+  petSize: "S" | "M" | "L" | "XL" | null;
+  price: number | null;
+};
+
+export const getDewormingPrice = (petId: string) =>
+  apiFetch<DewormingPriceResult>(`/admin/pets/${petId}/deworming-price`);
 
 // OCR de la cartilla con Claude: devuelve sugerencias para prellenar el
 // formulario de aprobación. No persiste nada.

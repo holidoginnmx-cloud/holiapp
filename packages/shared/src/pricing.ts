@@ -27,6 +27,25 @@ export function bathSizeKey(size: "XS" | SizeKey): SizeKey {
 }
 
 /**
+ * Talla para cotizar el DESPARASITANTE a partir del peso (kg). Escala PROPIA
+ * del desparasitante: sus tramos NO coinciden con `sizeFromWeight` (baño) ni
+ * con la talla general del perro — no unificar. Mismos tramos que
+ * `dewormSizeKey` del admin web (lib/desparasitante.ts, repo aparte).
+ * Devuelve null si falta el peso o cae fuera del rango cubierto (3.6–60 kg):
+ * en ese caso no hay tarifa y no se debe cotizar.
+ */
+export function dewormSizeFromWeight(
+  kg: number | null | undefined
+): SizeKey | null {
+  if (kg == null || Number.isNaN(kg)) return null;
+  if (kg >= 3.6 && kg <= 7.5) return "S";
+  if (kg >= 7.6 && kg <= 15) return "M";
+  if (kg >= 15.1 && kg <= 30) return "L";
+  if (kg >= 30.1 && kg <= 60) return "XL";
+  return null;
+}
+
+/**
  * Número de noches entre dos fechas: delta de días-calendario en UTC.
  * Anclar a los componentes UTC evita el sobre-conteo de un `Math.ceil` sobre
  * milisegundos cuando las horas-del-día difieren. DEBE coincidir
