@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   View,
@@ -16,6 +16,7 @@ import {
   WHATS_NEW,
   type TeamRole,
   type WhatsNewItem,
+  type WhatsNewRelease,
 } from "@/constants/whatsNew";
 import { readWhatsNewSeen, writeWhatsNewSeen } from "@/lib/whatsNewSeen";
 
@@ -24,7 +25,7 @@ type Props = {
   /**
    * Abre el modal a demanda desde el botón "Novedades" de Ajustes (admin) o
    * Más (staff). Sin esta prop el componente conserva su comportamiento
-   * automático: aparece solo, una vez por release y por usuario.
+   * automático: aparece solo cuando hay entregas sin ver.
    *
    * Hace falta porque el aviso se lee de corrido y se cierra: sin una forma de
    * volver a abrirlo, quien lo despacha sin leer pierde la información para
@@ -36,41 +37,115 @@ type Props = {
 };
 
 /**
- * "Qué hay de nuevo" para el equipo. Se monta en el dashboard de admin y en el
- * de staff; muestra el release más reciente (filtrado por rol) una sola vez
- * por usuario. Se marca visto al cerrarlo o al saltar a probar una función.
+ * "Qué hay de nuevo" para el equipo, con HISTORIAL.
+ *
+ * Antes solo se veía la entrega más reciente, así que cada release nuevo
+ * enterraba al anterior: quien no hubiera abierto la app en unos días perdía
+ * para siempre lo del medio. Ahora se listan todas: las que aún no has visto
+ * salen abiertas, y las anteriores quedan plegadas con su fecha, a un toque de
+ * distancia.
  */
 export function WhatsNewModal({ role, open, onClose }: Props) {
   const router = useRouter();
   const userId = useAuthStore((s) => s.userId);
   const [autoVisible, setAutoVisible] = useState(false);
+  /** `undefined` = todavía leyendo SecureStore; `null` = nunca vio ninguna. */
+  const [seenId, setSeenId] = useState<string | null | undefined>(undefined);
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
 
-  const release = WHATS_NEW[0];
-  const items = release?.items.filter((i) => i.roles.includes(role)) ?? [];
-  // `open` mandado por el padre gana; si no viene, manda el automático.
+  // Entregas que le tocan a este rol. Una entrega sin items para el rol no se
+  // muestra: al staff no le sirve leer el encabezado de algo que es solo de
+  // admin.
+  const releases = useMemo(
+    () =>
+      WHATS_NEW.map((r) => ({
+        ...r,
+        items: r.items.filter((i) => i.roles.includes(role)),
+      })).filter((r) => r.items.length > 0),
+    [role]
+  );
+
+  const ultimo = releases[0];
   const controlado = open !== undefined;
   const visible = controlado ? open : autoVisible;
 
+  // Sin ver = más nueva que la última marcada. Los ids son YYYY-MM-DD (con
+  // sufijo -b si hubo dos el mismo día), así que comparar como string ordena
+  // bien.
+  const sinVer = useMemo(
+    () => (seenId === undefined ? [] : releases.filter((r) => !seenId || r.id > seenId)),
+    [releases, seenId]
+  );
+
   useEffect(() => {
-    // En modo controlado no se auto-abre: el padre decide cuándo.
-    if (controlado) return;
-    if (!userId || !release || items.length === 0) return;
+    // Sin usuario no hay nada que leer, pero NO dejamos `seenId` colgado en
+    // `undefined`: el guard de abajo bloquearía el render y el botón de
+    // "Novedades" de Ajustes no abriría nada.
+    if (!userId) {
+      setSeenId(null);
+      return;
+    }
     let cancelled = false;
     readWhatsNewSeen(userId).then((seen) => {
-      if (!cancelled && seen !== release.id) setAutoVisible(true);
+      if (cancelled) return;
+      setSeenId(seen);
+      // Misma definición de "sin ver" que usa `sinVer`. Comparar contra
+      // `ultimo.id` con !== abría el modal sin nada nuevo cuando el id guardado
+      // era MÁS nuevo que la última entrega visible para el rol — pasa de
+      // verdad al degradar un ADMIN a STAFF, porque la última entrega es
+      // ADMIN-only y el id guardado sobrevive al cambio de rol.
+      if (!controlado && releases.some((r) => !seen || r.id > seen)) {
+        setAutoVisible(true);
+      }
     });
     return () => {
       cancelled = true;
     };
-    // items se deriva de release+role; con release.id alcanza como dependencia.
-  }, [controlado, userId, release?.id, role]);
+  }, [controlado, userId, ultimo?.id]);
 
-  if (!visible || !release || items.length === 0) return null;
+  // La instancia CONTROLADA (Ajustes/Más) y la automática (dashboard) coexisten
+  // montadas: las tabs nativas no desmontan las pantallas. Cada una cachea su
+  // propio `seenId` al montar, así que la de Ajustes no se entera de lo que
+  // escribió la del dashboard y mostraría como "Nuevo" algo ya leído. Se relee
+  // al abrirse.
+  //
+  // Solo en modo controlado: en el automático, `visible` cae a false al cerrar,
+  // lo que re-dispararía la lectura antes de que el write async termine y el
+  // modal se reabriría solo.
+  useEffect(() => {
+    if (!controlado || !open || !userId) return;
+    let cancelled = false;
+    readWhatsNewSeen(userId).then((seen) => {
+      if (!cancelled) setSeenId(seen);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [controlado, open, userId]);
+
+  // Qué queda abierto al mostrarse: lo que no has visto. Si ya viste todo
+  // (entraste desde el botón de Ajustes), se abre la entrega más reciente para
+  // que el modal nunca aparezca completamente plegado.
+  useEffect(() => {
+    if (!visible || seenId === undefined) return;
+    setExpandidos(
+      new Set(sinVer.length > 0 ? sinVer.map((r) => r.id) : ultimo ? [ultimo.id] : [])
+    );
+  }, [visible, seenId, sinVer.length, ultimo?.id]);
+
+  if (!visible || releases.length === 0 || seenId === undefined) return null;
 
   const dismiss = () => {
     setAutoVisible(false);
     onClose?.();
-    if (userId) writeWhatsNewSeen(userId, release.id);
+    // Se marca con la MÁS reciente: todo lo anterior queda visto de una vez.
+    // Nunca se retrocede el puntero: si el guardado ya era mayor (p.ej. venías
+    // de ADMIN y ahora eres STAFF, que no ve la última entrega), se conserva.
+    if (userId && ultimo) {
+      const marca = seenId && seenId > ultimo.id ? seenId : ultimo.id;
+      setSeenId(marca);
+      writeWhatsNewSeen(userId, marca);
+    }
   };
 
   const tryItem = (item: WhatsNewItem) => {
@@ -78,15 +153,28 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
     if (item.route) router.push(item.route as never);
   };
 
+  const toggle = (id: string) => {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const hayNuevas = sinVer.length > 0;
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.sparkle}>✨</Text>
-            <Text style={styles.title}>{release.title}</Text>
+            <Text style={styles.title}>Novedades</Text>
             <Text style={styles.subtitle}>
-              Esto es lo nuevo que ya puedes usar:
+              {hayNuevas
+                ? "Esto es lo nuevo que ya puedes usar:"
+                : "Todo lo que se ha ido agregando:"}
             </Text>
           </View>
 
@@ -95,25 +183,15 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
             contentContainerStyle={styles.itemsContent}
             showsVerticalScrollIndicator={false}
           >
-            {items.map((item) => (
-              <View key={item.title} style={styles.item}>
-                <View style={styles.itemIconWrap}>
-                  <Ionicons name={item.icon} size={20} color={COLORS.primary} />
-                </View>
-                <View style={styles.itemBody}>
-                  <Text style={styles.itemTitle}>{item.title}</Text>
-                  <Text style={styles.itemText}>{item.body}</Text>
-                  {item.route && (
-                    <TouchableOpacity
-                      onPress={() => tryItem(item)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.itemTryLink}>Probarlo →</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+            {releases.map((release) => (
+              <ReleaseSection
+                key={release.id}
+                release={release}
+                abierto={expandidos.has(release.id)}
+                esNuevo={sinVer.some((r) => r.id === release.id)}
+                onToggle={() => toggle(release.id)}
+                onTry={tryItem}
+              />
             ))}
           </ScrollView>
 
@@ -127,6 +205,97 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
         </View>
       </View>
     </Modal>
+  );
+}
+
+/**
+ * "12 ago 2026" a partir del id `YYYY-MM-DD`. Si hubo dos entregas el mismo día
+ * (sufijo `-b`, `-c`…) se numera: sin eso, las dos filas se leen como
+ * duplicados exactos y solo las distingue el conteo de novedades.
+ */
+export function fechaDeRelease(id: string): string {
+  const ymd = id.slice(0, 10);
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return id;
+  // Medianoche LOCAL, no UTC: con `new Date("2026-08-12")` la fecha se pintaría
+  // un día antes en Hermosillo.
+  const fecha = d.toLocaleDateString("es-MX", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const sufijo = id.slice(11);
+  if (!sufijo) return fecha;
+  // La primera entrega del día no lleva sufijo, así que "b" es la 2ª: 98-96=2.
+  const n = sufijo.charCodeAt(0) - 96;
+  return Number.isFinite(n) && n > 1 ? `${fecha} · ${n}ª entrega` : fecha;
+}
+
+function ReleaseSection({
+  release,
+  abierto,
+  esNuevo,
+  onToggle,
+  onTry,
+}: {
+  release: WhatsNewRelease;
+  abierto: boolean;
+  esNuevo: boolean;
+  onToggle: () => void;
+  onTry: (item: WhatsNewItem) => void;
+}) {
+  const n = release.items.length;
+
+  return (
+    <View style={styles.release}>
+      <TouchableOpacity
+        style={styles.releaseHeader}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierto }}
+        hitSlop={6}
+      >
+        <Ionicons
+          name={abierto ? "chevron-down" : "chevron-forward"}
+          size={16}
+          color={COLORS.textTertiary}
+        />
+        <Text style={styles.releaseFecha}>{fechaDeRelease(release.id)}</Text>
+        {esNuevo && (
+          <View style={styles.nuevoChip}>
+            <Text style={styles.nuevoChipText}>Nuevo</Text>
+          </View>
+        )}
+        <Text style={styles.releaseCount}>
+          {n} {n === 1 ? "novedad" : "novedades"}
+        </Text>
+      </TouchableOpacity>
+
+      {abierto && (
+        <View style={styles.releaseItems}>
+          {release.items.map((item) => (
+            <View key={item.title} style={styles.item}>
+              <View style={styles.itemIconWrap}>
+                <Ionicons name={item.icon} size={20} color={COLORS.primary} />
+              </View>
+              <View style={styles.itemBody}>
+                <Text style={styles.itemTitle}>{item.title}</Text>
+                <Text style={styles.itemText}>{item.body}</Text>
+                {item.route && (
+                  <TouchableOpacity
+                    onPress={() => onTry(item)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.itemTryLink}>Probarlo →</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -161,7 +330,44 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   itemsScroll: { flexGrow: 0 },
-  itemsContent: { gap: 14, paddingVertical: 4 },
+  itemsContent: { gap: 8, paddingVertical: 4 },
+  // Entrega
+  release: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+    paddingTop: 8,
+  },
+  releaseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+  },
+  releaseFecha: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textPrimary,
+    textTransform: "capitalize",
+  },
+  nuevoChip: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  nuevoChipText: {
+    fontSize: 10,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.primary,
+  },
+  releaseCount: {
+    flex: 1,
+    textAlign: "right",
+    fontSize: 11,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  releaseItems: { gap: 14, paddingTop: 6, paddingBottom: 6 },
   item: { flexDirection: "row", gap: 12 },
   itemIconWrap: {
     width: 36,

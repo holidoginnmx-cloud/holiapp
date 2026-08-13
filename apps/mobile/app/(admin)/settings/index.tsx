@@ -231,7 +231,7 @@ export default function AdminSettings() {
         <MenuItem
           icon="sparkles-outline"
           label="Novedades"
-          subtitle="Qué se agregó en la última actualización"
+          subtitle="Todo lo que se ha ido agregando"
           onPress={() => setNovedadesVisible(true)}
           isLast
         />

@@ -4,9 +4,15 @@ import { Ionicons } from "@expo/vector-icons";
 // actualización. El cliente (OWNER) nunca ve este modal.
 //
 // Cómo publicar una entrega nueva: agrega un release AL INICIO del arreglo con
-// un id mayor (YYYY-MM-DD; si hay dos el mismo día, sufijo "-b"). Cada usuario
-// ve solo el release más reciente, una vez: el último id visto se guarda por
-// usuario en SecureStore (src/lib/whatsNewSeen.ts).
+// un id mayor (YYYY-MM-DD; si hay dos el mismo día, sufijo "-b"). El id se
+// compara como string, así que el formato importa.
+//
+// El modal muestra el HISTORIAL completo: las entregas que el usuario todavía
+// no ha visto salen desplegadas, y las anteriores plegadas con su fecha. El
+// último id visto se guarda por usuario en SecureStore
+// (src/lib/whatsNewSeen.ts) y al cerrar se marca con el MÁS reciente.
+//
+// Nada se borra de este arreglo: es el historial que ve el equipo.
 
 export type TeamRole = "ADMIN" | "STAFF";
 
