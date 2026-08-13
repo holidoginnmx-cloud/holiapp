@@ -44,6 +44,7 @@ const TYPE_STYLE: Record<string, TypeStyle> = {
     icon: "document-text-outline",
     tint: COLORS.warningText,
   },
+  PAYOUT_PAID: { icon: "business-outline", tint: COLORS.successText },
 };
 
 function relativeTime(date: string | Date): string {

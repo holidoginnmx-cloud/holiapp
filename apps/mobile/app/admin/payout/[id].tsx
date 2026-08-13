@@ -77,7 +77,7 @@ export default function PayoutDetailScreen() {
 
     const irADetalle =
       m?.reservationId
-        ? () => router.push(`/admin/reservation/detail/${m.reservationId}` as any)
+        ? () => router.push(`/admin/reservation/${m.reservationId}` as any)
         : undefined;
 
     return (

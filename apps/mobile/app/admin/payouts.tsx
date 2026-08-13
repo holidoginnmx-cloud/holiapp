@@ -6,7 +6,7 @@
  * estado de cuenta no había forma de saber a qué correspondía. Aquí se busca
  * por ese mismo monto, que es lo único que el banco sí muestra.
  */
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -37,20 +37,29 @@ export default function PayoutsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  // Solo se manda como filtro si parece un monto; así el usuario puede teclear
-  // "663." a medias sin que la lista se vacíe.
+  // El input se pinta con `search` (responde a cada tecla) pero la consulta usa
+  // el valor diferido: sin esto, teclear "663.80" dispara una búsqueda por cada
+  // tecla y se ven estados intermedios absurdos ("Ningún depósito por $6.00").
+  const searchDiferido = useDeferredValue(search);
+
+  // Solo se filtra por monto si lo tecleado es un número POSITIVO. Un negativo
+  // —pegado del estado de cuenta, o tecleado con teclado físico en iPad, que el
+  // `decimal-pad` no puede impedir— la API lo rechaza con 400.
   const amount = useMemo(() => {
-    const limpio = search.replace(/[$,\s]/g, "");
-    return limpio && Number.isFinite(Number(limpio)) ? limpio : undefined;
-  }, [search]);
+    const limpio = searchDiferido.replace(/[$,\s]/g, "");
+    const n = Number(limpio);
+    return limpio && Number.isFinite(n) && n > 0 ? limpio : undefined;
+  }, [searchDiferido]);
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "payouts", amount ?? "todos"],
     queryFn: () => getAdminPayouts({ limit: 30, amount }),
   });
 
-  if (isError) return <ErrorState error={error} onRetry={refetch} />;
-
+  // OJO: el error NO se renderiza con un `return` temprano. Eso desmontaría el
+  // buscador junto con la pantalla, y quien llegara aquí con una búsqueda que
+  // falla no podría ni corregir ni borrar el texto: solo salirse. El error va
+  // dentro de la lista, con el input siempre montado.
   const payouts = data?.payouts ?? [];
 
   const renderItem = ({ item }: { item: PayoutSummary }) => {
@@ -59,11 +68,16 @@ export default function PayoutsScreen() {
       bg: COLORS.bgSection,
       fg: COLORS.textTertiary,
     };
+    // Nombres y conteo van por separado a propósito. Antes se añadía " y más"
+    // comparando `lineCount` contra `preview.length`, que no son la misma
+    // escala: el preview trae mascotas DEDUPLICADAS y recortadas, y las líneas
+    // de comisión o ajuste no aportan ninguna. Un depósito de dos cobros del
+    // mismo perro decía "Bailey y más", insinuando un cliente que no existe.
+    const movimientos = `${item.lineCount} ${item.lineCount === 1 ? "movimiento" : "movimientos"}`;
     const quienes =
       item.preview.length > 0
-        ? item.preview.join(", ") +
-          (item.lineCount > item.preview.length ? " y más" : "")
-        : `${item.lineCount} ${item.lineCount === 1 ? "movimiento" : "movimientos"}`;
+        ? `${item.preview.join(", ")} · ${movimientos}`
+        : movimientos;
 
     return (
       <Pressable
@@ -113,7 +127,7 @@ export default function PayoutsScreen() {
           />
         )}
       </View>
-      {!isLoading && (
+      {!isLoading && !isError && (
         <Text style={styles.countLabel}>
           {amount
             ? `${payouts.length} depósito${payouts.length !== 1 ? "s" : ""} de ${formatCurrencyExact(Number(amount))}`
@@ -139,7 +153,9 @@ export default function PayoutsScreen() {
         />
       }
       ListEmptyComponent={
-        isLoading ? (
+        isError ? (
+          <ErrorState error={error} onRetry={refetch} compact />
+        ) : isLoading ? (
           <ActivityIndicator
             size="large"
             color={COLORS.primary}

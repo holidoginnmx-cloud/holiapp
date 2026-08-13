@@ -28,6 +28,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-12-b",
+    title: "Novedades para el equipo",
+    items: [
+      {
+        icon: "business-outline",
+        title: "De qué reservas viene cada depósito del banco",
+        body:
+          "Cuando Stripe te transfiere, junta los cobros de varios clientes en " +
+          "un solo depósito y el banco no dice de quién es. Ahora entras a " +
+          "Ajustes → Depósitos al banco, tecleas el monto que te llegó (por " +
+          "ejemplo 663.80) y ves el desglose: qué cliente, qué mascota, qué " +
+          "servicio, cuánto cobró Stripe de comisión y cuánto quedó neto. La " +
+          "suma cuadra exacto con lo que entró a la cuenta.",
+        route: "/admin/payouts",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "notifications-outline",
+        title: "Aviso en cuanto sale un depósito",
+        body:
+          "Ya no hay que estar revisando el banco: en cuanto Stripe emite la " +
+          "transferencia te llega un aviso con el monto y de qué mascotas era. " +
+          "Si el banco la rechaza, también te avisa.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-12",
     title: "Novedades para el equipo",
     items: [
