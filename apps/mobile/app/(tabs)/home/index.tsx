@@ -25,6 +25,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { formatName, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { TabFab } from "@/components/TabFab";
+import { GlobalReviewPrompt } from "@/components/GlobalReviewPrompt";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -607,6 +608,10 @@ export default function HomeScreen() {
       >
         <Ionicons name="logo-whatsapp" size={28} color={COLORS.white} />
       </TabFab>
+
+      {/* Pop-up de calificación de la última visita finalizada. Va aquí y no
+          dentro del ScrollView: es un Modal nativo, no contenido del scroll. */}
+      <GlobalReviewPrompt />
     </>
   );
 }

@@ -10,6 +10,7 @@ import {
   createStaffMiddleware,
 } from "../middleware/auth";
 import { notifyUser } from "../lib/notify";
+import { requestReview } from "../lib/reviewRequest";
 import { quoteDelivery } from "../lib/delivery";
 import { resolveDiscount } from "../lib/discounts";
 import {
@@ -667,6 +668,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           body: `${reservation.pet.name} salió de guardería. ¡Gracias por visitarnos!`,
           data: { reservationId: reservation.id, kind: "DAYCARE_CHECK_OUT" },
         });
+        await requestReview(prisma, reservation.id);
       }
 
       return reply.send({
@@ -765,6 +767,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           data: { status: "CHECKED_OUT" },
         });
         concluded = true;
+        await requestReview(prisma, reservation.id);
       }
 
       await notifyUser(prisma, {

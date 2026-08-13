@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@holidoginn/db";
 import { notifyUser } from "./notify";
+import { requestReview } from "./reviewRequest";
 import { dayRangeUtc, localYMD } from "./bathAvailability";
 
 // Recordatorios automáticos de vacunas por vencer.
@@ -159,13 +160,7 @@ export async function autoCheckoutOverdueStays(
       body: `La estancia de ${res.pet.name} ha finalizado. Gracias por confiar en nosotros, nos vemos pronto.`,
       data: { reservationId: res.id },
     });
-    await notifyUser(prisma, {
-      userId: res.ownerId,
-      type: "REVIEW_REQUEST",
-      title: "¿Cómo fue la experiencia? ⭐",
-      body: `Cuéntanos sobre la estancia de ${res.pet.name}. Tu reseña nos ayuda a mejorar.`,
-      data: { reservationId: res.id },
-    });
+    await requestReview(prisma, res.id);
   }
 }
 
@@ -236,7 +231,11 @@ export async function autoCompleteOverdueAppointments(
   await prisma.$transaction(async (tx) => {
     await tx.reservation.updateMany({
       where: { id: { in: ids } },
-      data: { status: "CHECKED_OUT" },
+      // `reviewRequestedAt` se sella aquí para que `requestPendingReviews` NO
+      // las recoja: son rezago de días o semanas y pedir reseña por un baño de
+      // hace tres semanas es justo lo que la regla 2 de arriba evita. Sellarlo
+      // es más honesto que afinar la ventana del barrido.
+      data: { status: "CHECKED_OUT", reviewRequestedAt: new Date() },
     });
     await tx.reservationChangeRequest.updateMany({
       where: { reservationId: { in: ids }, status: "PENDING" },
@@ -244,6 +243,63 @@ export async function autoCompleteOverdueAppointments(
     });
   });
   return ids.length;
+}
+
+// Pide reseña de las visitas que se cerraron SIN pasar por el API.
+//
+// El admin web finaliza reservaciones escribiendo directo a Supabase (no llama
+// a esta API, por diseño: ver su CLAUDE.md §2), así que ningún `requestReview`
+// corre en ese camino — que es justamente el más común, porque el equipo cierra
+// desde la web. Este barrido lo cubre sin que el web tenga que saber del API.
+//
+// Dos topes deliberados:
+//  1. Ventana de 14 días: nunca despierta visitas viejas. Junto con el backfill
+//     de la migración (todo lo CHECKED_OUT nació con `reviewRequestedAt`), hace
+//     imposible el aluvión de pushes históricos al desplegar.
+//  2. Máximo 40 visitas por corrida: si un día se cierran 300 reservaciones, se
+//     reparten entre corridas en vez de saturar Expo de un golpe.
+const REVIEW_SWEEP_WINDOW_MS = 14 * 86_400_000;
+const REVIEW_SWEEP_MAX_GROUPS = 40;
+
+export async function requestPendingReviews(
+  prisma: PrismaClient
+): Promise<number> {
+  const desde = new Date(Date.now() - REVIEW_SWEEP_WINDOW_MS);
+
+  const candidates = await prisma.reservation.findMany({
+    where: {
+      status: "CHECKED_OUT",
+      reviewRequestedAt: null,
+      review: { is: null },
+      // `updatedAt` es el único instante REAL de "cuándo se cerró esto":
+      // `checkOut` guarda el día a 00:00 UTC y el `appointmentAt` de guardería
+      // está anclado a mediodía UTC. El admin web lo escribe a mano en `aRow`
+      // (app/(dashboard)/reservaciones/actions.ts) — si alguna vez deja de
+      // hacerlo, sus check-outs dejarían de pedir reseña en silencio.
+      updatedAt: { gte: desde },
+    },
+    select: { id: true, groupId: true },
+    orderBy: { updatedAt: "desc" },
+    take: 300,
+  });
+  if (candidates.length === 0) return 0;
+
+  // Una visita = un grupo. Basta pedirla por cualquier hermana: `requestReview`
+  // resuelve el grupo completo y se salta los que aún no cierran del todo.
+  const porVisita = new Map<string, string>();
+  for (const r of candidates) {
+    const key = r.groupId ?? r.id;
+    if (!porVisita.has(key)) porVisita.set(key, r.id);
+  }
+
+  let enviadas = 0;
+  for (const reservationId of [...porVisita.values()].slice(
+    0,
+    REVIEW_SWEEP_MAX_GROUPS
+  )) {
+    if (await requestReview(prisma, reservationId)) enviadas++;
+  }
+  return enviadas;
 }
 
 // NOTA: aquí vivía `cancelOverdueDeposits`, que cancelaba automáticamente las

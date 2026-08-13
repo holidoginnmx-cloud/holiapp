@@ -12,6 +12,7 @@ import {
   notifyNewReservation,
   type NewReservationSource,
 } from "../lib/notifyNewReservation";
+import { requestReview } from "../lib/reviewRequest";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
@@ -177,6 +178,14 @@ export async function maybeConcludeStandaloneBath(
     where: { reservationId, status: "PENDING" },
     data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
   });
+
+  // Pedir reseña del baño. Va AQUÍ y no en cada endpoint porque los cuatro
+  // caminos que concluyen un baño pasan por este helper. Ojo con el timing: el
+  // baño suelto se cierra al liquidar el saldo, no al subir la foto, así que si
+  // el equipo cobra al día siguiente el aviso sale entonces. Es lo correcto —
+  // antes de pagar la cita todavía puede cambiar.
+  await requestReview(prisma, reservationId);
+
   return true;
 }
 

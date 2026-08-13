@@ -9,6 +9,7 @@ import {
   formatWeekdayShort,
   formatTime,
 } from "@/lib/format";
+import { PawRating } from "./PawRating";
 
 interface ReservationCardProps {
   petName: string;
@@ -302,7 +303,7 @@ function ReservationCardBase({
                 ]}
               >
                 <Ionicons
-                  name="star-outline"
+                  name="paw-outline"
                   size={13}
                   color={adminView ? COLORS.textTertiary : COLORS.star}
                 />
@@ -325,16 +326,12 @@ function ReservationCardBase({
                   { backgroundColor: COLORS.primaryLight, gap: 3 },
                 ]}
               >
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Ionicons
-                    key={i}
-                    name={i <= reviewRating! ? "paw" : "paw-outline"}
-                    size={12}
-                    color={
-                      i <= reviewRating! ? COLORS.primary : COLORS.textDisabled
-                    }
-                  />
-                ))}
+                <PawRating
+                  value={reviewRating!}
+                  size={12}
+                  gap={3}
+                  emptyColor={COLORS.textDisabled}
+                />
               </View>
             )}
             {showPetCount && (

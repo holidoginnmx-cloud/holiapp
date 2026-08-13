@@ -55,6 +55,14 @@ export function notificationRoute(
     return `/reservation/detail/${reservationId}?action=choose-refund`;
   }
 
+  // REVIEW_REQUEST: detalle con el modal de calificación ya abierto. Antes caía
+  // en el fallback de abajo y el modal se abría de rebote, por un efecto que ya
+  // no existe (reaparecía en CADA visita al detalle, aunque no vinieras del
+  // push). Ahora el destino es explícito.
+  if (type === "REVIEW_REQUEST" && reservationId && isOwner) {
+    return `/reservation/detail/${reservationId}?action=review`;
+  }
+
   // --- Cartilla / vacunas -------------------------------------------------
   if (petId) {
     // Admin: cartilla subida pendiente de revisión.

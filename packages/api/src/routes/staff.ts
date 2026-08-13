@@ -13,6 +13,7 @@ import {
 } from "@holidoginn/shared";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
+import { requestReview } from "../lib/reviewRequest";
 import { maybeConcludeStandaloneBath } from "./baths";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
@@ -420,14 +421,9 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         data: { reservationId: id },
       });
 
-      // Solicitud de reseña (in-app + push)
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
-        type: "REVIEW_REQUEST",
-        title: "¿Cómo fue la experiencia? ⭐",
-        body: `Cuéntanos sobre la estancia de ${reservation.pet.name}. Tu reseña nos ayuda a mejorar.`,
-        data: { reservationId: id },
-      });
+      // Solicitud de reseña (in-app + push). Por VISITA, no por reservación:
+      // en un grupo multi-mascota sale un solo aviso, cuando cierra la última.
+      await requestReview(prisma, id);
 
       return { reservation: updated, warnings };
     }

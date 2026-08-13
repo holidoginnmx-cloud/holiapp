@@ -3,6 +3,7 @@ import {
   autoCheckoutOverdueStays,
   autoCompleteOverdueAppointments,
   notifyExpiringVaccines,
+  requestPendingReviews,
 } from "./auto-actions";
 
 // Tareas de mantenimiento periódicas: auto-checkout de estancias vencidas y
@@ -52,6 +53,17 @@ export async function runMaintenance(prisma: PrismaClient): Promise<void> {
     }
   } catch (err) {
     console.error("[maintenance] autoCompleteOverdueAppointments falló:", err);
+  }
+  // Después del cierre automático a propósito: así las visitas que ese job
+  // acaba de finalizar entran en el mismo ciclo (y las que selló como "sin
+  // reseña" quedan fuera, que es justo lo que queremos).
+  try {
+    const pedidas = await requestPendingReviews(prisma);
+    if (pedidas > 0) {
+      console.log(`[maintenance] ${pedidas} reseña(s) solicitada(s)`);
+    }
+  } catch (err) {
+    console.error("[maintenance] requestPendingReviews falló:", err);
   }
   try {
     await notifyExpiringVaccines(prisma);

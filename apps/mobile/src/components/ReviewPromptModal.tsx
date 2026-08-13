@@ -15,30 +15,50 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createReview } from "@/lib/api";
+import { REVIEW_COPY, reviewWho } from "@holidoginn/shared";
+import { createReview, snoozeReview } from "@/lib/api";
+import { PawRating, RATING_LABELS } from "./PawRating";
+import { maybePromptStoreReview } from "@/lib/storeReview";
 
-const RATING_LABELS: Record<number, string> = {
-  1: "Malo",
-  2: "Regular",
-  3: "Bueno",
-  4: "Muy bueno",
-  5: "Excelente",
+export type ReviewTarget = {
+  /** Reservaciones de la visita (una por mascota). Se califica UNA vez. */
+  reservationIds: string[];
+  reservationType: "STAY" | "BATH" | "DAYCARE";
+  petNames: string[];
 };
 
 interface ReviewPromptModalProps {
   visible: boolean;
-  reservationId: string;
-  onDismiss: () => void;
+  target: ReviewTarget;
+  /** Para el gate de la invitación a la tienda (clave por usuario). */
+  userId?: string | null;
+  /** `snoozed` = el cliente tocó "Más tarde" (no volver a abrirlo en la sesión). */
+  onDismiss: (result: "snoozed" | "submitted" | "closed") => void;
 }
 
 export function ReviewPromptModal({
   visible,
-  reservationId,
+  target,
+  userId,
   onDismiss,
 }: ReviewPromptModalProps) {
   const queryClient = useQueryClient();
-  const [rating, setRating] = useState(5);
+  // Arranca en 0, no en 5: precargarlo en "Excelente" sesga el resultado y un
+  // toque accidental en Enviar registraba 5 patitas que nadie eligió.
+  const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
+
+  const reservationId = target.reservationIds[0];
+  const copy = REVIEW_COPY[target.reservationType] ?? REVIEW_COPY.STAY;
+  const who = reviewWho(target.petNames);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["reviews", "pending"] });
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    for (const id of target.reservationIds) {
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -48,21 +68,41 @@ export function ReviewPromptModal({
         reservationId,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["reservation", reservationId] });
-      Alert.alert("Gracias", "Tu reseña fue enviada exitosamente");
-      setRating(5);
+      invalidate();
+      const enviado = rating;
+      setRating(0);
       setComment("");
-      onDismiss();
+      onDismiss("submitted");
+      // La alerta va DESPUÉS de cerrar el modal, y la invitación a la tienda
+      // desde el onPress: dos Alert en el mismo tick se pisan en iOS.
+      Alert.alert("¡Gracias! 🐾", "Tu reseña nos ayuda muchísimo.", [
+        {
+          text: "Listo",
+          onPress: () => void maybePromptStoreReview(userId, enviado),
+        },
+      ]);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  const snooze = useMutation({
+    mutationFn: () => snoozeReview(reservationId),
+    // Se cierra igual si falla: el "Más tarde" no puede dejar al cliente
+    // atrapado en el modal por un error de red.
+    onSettled: () => {
+      invalidate();
+      onDismiss("snoozed");
+    },
+  });
+
+  const busy = mutation.isPending || snooze.isPending;
 
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onDismiss}
+      onRequestClose={() => onDismiss("closed")}
     >
       <KeyboardAvoidingView
         style={styles.overlay}
@@ -75,40 +115,41 @@ export function ReviewPromptModal({
           >
             <View style={styles.headerRow}>
               <Ionicons name="paw" size={28} color={COLORS.primary} />
-              <TouchableOpacity onPress={onDismiss} hitSlop={10}>
+              <TouchableOpacity
+                onPress={() => onDismiss("closed")}
+                hitSlop={10}
+                disabled={busy}
+              >
                 <Ionicons name="close" size={24} color={COLORS.textTertiary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.title}>¿Cómo fue la experiencia?</Text>
+            <Text style={styles.title}>{copy.modalTitle}</Text>
             <Text style={styles.subtitle}>
-              Tu opinión nos ayuda a mejorar el servicio
+              {target.petNames.length > 1
+                ? `Tu reseña aplica a la visita de ${who}`
+                : copy.modalSubtitle}
             </Text>
 
             <View style={styles.pawRow}>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => setRating(i)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={i <= rating ? "paw" : "paw-outline"}
-                    size={40}
-                    color={i <= rating ? COLORS.primary : COLORS.border}
-                  />
-                </TouchableOpacity>
-              ))}
+              <PawRating value={rating} onChange={setRating} size={40} />
             </View>
 
-            <Text style={styles.ratingLabel}>{RATING_LABELS[rating]}</Text>
+            <Text
+              style={[
+                styles.ratingLabel,
+                rating === 0 && styles.ratingLabelEmpty,
+              ]}
+            >
+              {RATING_LABELS[rating]}
+            </Text>
 
             <Text style={styles.commentLabel}>Comentarios (opcional)</Text>
             <TextInput
               style={styles.textArea}
               value={comment}
               onChangeText={setComment}
-              placeholder="Cuéntanos más sobre la estancia de tu mascota..."
+              placeholder={copy.placeholder(who)}
               placeholderTextColor={COLORS.textDisabled}
               multiline
               numberOfLines={4}
@@ -117,10 +158,10 @@ export function ReviewPromptModal({
             <TouchableOpacity
               style={[
                 styles.submitButton,
-                mutation.isPending && { opacity: 0.6 },
+                (busy || rating === 0) && { opacity: 0.5 },
               ]}
               onPress={() => mutation.mutate()}
-              disabled={mutation.isPending}
+              disabled={busy || rating === 0}
               activeOpacity={0.85}
             >
               {mutation.isPending ? (
@@ -135,8 +176,8 @@ export function ReviewPromptModal({
 
             <TouchableOpacity
               style={styles.laterButton}
-              onPress={onDismiss}
-              disabled={mutation.isPending}
+              onPress={() => snooze.mutate()}
+              disabled={busy}
             >
               <Text style={styles.laterText}>Más tarde</Text>
             </TouchableOpacity>
@@ -184,9 +225,6 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   pawRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
     marginBottom: 10,
   },
   ratingLabel: {
@@ -195,6 +233,10 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: "center",
     marginBottom: 20,
+  },
+  ratingLabelEmpty: {
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
   },
   commentLabel: {
     fontSize: 14,
