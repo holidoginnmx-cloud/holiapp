@@ -1031,6 +1031,27 @@ model StripePayoutLine {
   chargeId              String?
   stripePaymentIntentId String?
 
+  // Metadata del cobro tal como la guardó Stripe. Es el ÚNICO rastro de a quién
+  // pertenece un cobro que nunca llegó a `payments` — pasa cuando la app no
+  // alcanzó a registrar el pago tras confirmar (el webhook no lo crea, solo
+  // avisa). Sin esto esas líneas salen como "movimiento sin reserva asociada" y
+  // el desglose no contesta la única pregunta que importa: ¿de quién era?
+  stripeMetadata    Json?
+  /**
+   * `ownerId` de la metadata → User. Indexado para resolver en lote.
+   */
+  metaOwnerId       String?
+  /**
+   * `petId` o `petIds` de la metadata; csv tal como viene de Stripe.
+   */
+  metaPetIds        String?
+  /**
+   * `reservationId` de la metadata, cuando Stripe lo trae literal: los pagos de
+   * saldo, las extensiones de estadía y los add-ons sueltos sí lo mandan. Es la
+   * vía EXACTA y gana siempre sobre adivinar por dueño + mascota + fecha.
+   */
+  metaReservationId String?
+
   // FKs suaves (SetNull): si un pago se borra, la línea sobrevive como "no
   // identificada" en lugar de desaparecer y descuadrar el total del depósito.
   paymentId String?
@@ -1045,6 +1066,7 @@ model StripePayoutLine {
   @@index([stripePaymentIntentId])
   @@index([paymentId])
   @@index([orderId])
+  @@index([metaOwnerId])
   @@map("stripe_payout_lines")
 }
 

@@ -109,7 +109,12 @@ export type PayoutSummary = {
 };
 
 export type PayoutLineMatch = {
-  kind: "RESERVATION" | "STORE_ORDER" | "REFUND";
+  /**
+   * `SIN_REGISTRAR`: se sabe de quién es por la metadata de Stripe, pero el
+   * cobro NO existe como pago en la base — el dinero entró y la reserva figura
+   * debiéndolo.
+   */
+  kind: "RESERVATION" | "STORE_ORDER" | "REFUND" | "SIN_REGISTRAR";
   paymentId: string | null;
   reservationId: string | null;
   orderId: string | null;
@@ -147,6 +152,10 @@ export type PayoutBreakdown = {
     net: number;
     matched: number;
     unmatched: number;
+    /** Cobros identificados por metadata pero sin pago registrado. */
+    sinRegistrar: number;
+    /** Suma bruta de esos cobros: dinero que no está en los ingresos. */
+    sinRegistrarMonto: number;
   };
   /** La suma de las líneas da exactamente el monto depositado. */
   cuadra: boolean;

@@ -37,7 +37,9 @@ function tipoLabel(type: string): string {
 function lineaIcono(l: PayoutLine): keyof typeof Ionicons.glyphMap {
   if (l.match?.kind === "STORE_ORDER") return "bag-outline";
   if (l.match?.kind === "REFUND" || l.net < 0) return "arrow-undo-outline";
-  if (l.match?.kind === "RESERVATION") return "paw-outline";
+  if (l.match?.kind === "RESERVATION" || l.match?.kind === "SIN_REGISTRAR") {
+    return "paw-outline";
+  }
   return "ellipse-outline";
 }
 
@@ -61,7 +63,11 @@ export default function PayoutDetailScreen() {
     );
   }
 
-  const conReserva = data.lines.filter((l) => l.match);
+  // Tres grupos, no dos: un cobro que sabemos de quién es pero que nunca se
+  // registró como pago no es lo mismo que una comisión de Stripe, y mezclarlos
+  // esconde justo lo que hay que revisar.
+  const conPago = data.lines.filter((l) => l.match && l.match.kind !== "SIN_REGISTRAR");
+  const sinRegistrar = data.lines.filter((l) => l.match?.kind === "SIN_REGISTRAR");
   const sinIdentificar = data.lines.filter((l) => !l.match);
 
   const renderLinea = (l: PayoutLine) => {
@@ -184,12 +190,33 @@ export default function PayoutDetailScreen() {
       </View>
 
       {/* Cobros identificados */}
-      {conReserva.length > 0 && (
+      {conPago.length > 0 && (
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>
-            De qué viene ({conReserva.length})
+          <Text style={styles.sectionTitle}>De qué viene ({conPago.length})</Text>
+          {conPago.map(renderLinea)}
+        </View>
+      )}
+
+      {/* Cobrados y depositados, pero sin pago registrado. Se muestran con
+          nombre y todo: el dinero ya entró, y la reserva sigue apareciendo
+          como si debiera. */}
+      {sinRegistrar.length > 0 && (
+        <View style={[styles.sectionCard, styles.sectionAviso]}>
+          <View style={styles.avisoHeader}>
+            <Ionicons name="alert-circle" size={16} color={COLORS.warningText} />
+            <Text style={styles.avisoTitle}>
+              Cobros sin registrar ({sinRegistrar.length})
+            </Text>
+          </View>
+          <Text style={styles.sectionHint}>
+            Stripe cobró y depositó este dinero, pero no quedó registrado como pago
+            en la app: esas reservas siguen apareciendo como si debieran
+            {data.totals.sinRegistrarMonto > 0
+              ? ` ${formatCurrencyExact(data.totals.sinRegistrarMonto)}`
+              : ""}
+            .
           </Text>
-          {conReserva.map(renderLinea)}
+          {sinRegistrar.map(renderLinea)}
         </View>
       )}
 
@@ -263,6 +290,21 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     marginBottom: 8,
     lineHeight: 16,
+  },
+  sectionAviso: {
+    borderWidth: 1,
+    borderColor: COLORS.warningBg,
+  },
+  avisoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+  avisoTitle: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.warningText,
   },
   // Resumen de cuadre
   resumenRow: {

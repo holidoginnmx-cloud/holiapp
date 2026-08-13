@@ -61,9 +61,27 @@ export type SourceRefs = {
   paymentIntentId: string | null;
   /** `re_...` — sólo en líneas de reembolso. Ver el comentario del matching. */
   refundId: string | null;
+  /**
+   * Metadata que el charge trae de su PaymentIntent. Es el único rastro de a
+   * quién pertenece un cobro que nunca llegó a `payments`, y viene ya en el
+   * `expand: data.source` — no cuesta una llamada extra.
+   */
+  metadata: Record<string, string> | null;
 };
 
-const NO_REFS: SourceRefs = { chargeId: null, paymentIntentId: null, refundId: null };
+const NO_REFS: SourceRefs = {
+  chargeId: null,
+  paymentIntentId: null,
+  refundId: null,
+  metadata: null,
+};
+
+/** Metadata vacía → null, para no guardar `{}` en media tabla. */
+function limpiarMetadata(m: unknown): Record<string, string> | null {
+  if (!m || typeof m !== "object") return null;
+  const obj = m as Record<string, string>;
+  return Object.keys(obj).length > 0 ? obj : null;
+}
 
 /**
  * Saca `charge`, `payment_intent` y `refund` del `source` expandido de un
@@ -84,15 +102,26 @@ export function extractRefs(bt: Stripe.BalanceTransaction): SourceRefs {
 
   switch (src.object) {
     case "charge":
-      return { chargeId: src.id, paymentIntentId: idOf(src.payment_intent), refundId: null };
+      return {
+        chargeId: src.id,
+        paymentIntentId: idOf(src.payment_intent),
+        refundId: null,
+        metadata: limpiarMetadata(src.metadata),
+      };
     case "refund":
       return {
         chargeId: idOf(src.charge),
         paymentIntentId: idOf(src.payment_intent),
         refundId: src.id,
+        metadata: limpiarMetadata(src.metadata),
       };
     case "dispute":
-      return { chargeId: idOf(src.charge), paymentIntentId: idOf(src.payment_intent), refundId: null };
+      return {
+        chargeId: idOf(src.charge),
+        paymentIntentId: idOf(src.payment_intent),
+        refundId: null,
+        metadata: limpiarMetadata(src.metadata),
+      };
     default:
       // application_fee, transfer, payout, fee_refund… no cuelgan de un cobro
       // nuestro. La línea igual se guarda, como ajuste sin identificar.
@@ -270,6 +299,7 @@ export async function syncPayout(
     const refsBt = refs.get(bt.id)!;
     const { paymentId, orderId } = matchLine(bt.type, refsBt, maps);
 
+    const meta = refsBt.metadata;
     return {
       id: bt.id,
       payoutId,
@@ -282,6 +312,14 @@ export async function syncPayout(
       stripePaymentIntentId: refsBt.paymentIntentId,
       paymentId,
       orderId,
+      stripeMetadata: (meta ?? undefined) as Prisma.InputJsonValue | undefined,
+      metaOwnerId: meta?.ownerId ?? null,
+      // Hospedaje manda `petIds` (csv, puede traer varias); baño y guardería,
+      // `petId`. Se guarda tal cual y se parte al leer.
+      metaPetIds: meta?.petIds ?? meta?.petId ?? null,
+      // Los cobros de saldo, extensión y add-ons traen el id de la reserva
+      // literal — y algunos NO traen ownerId, así que este es su único hilo.
+      metaReservationId: meta?.reservationId ?? null,
     };
   });
 
@@ -400,7 +438,12 @@ export async function syncRecentPayouts(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type PayoutLineMatch = {
-  kind: "RESERVATION" | "STORE_ORDER" | "REFUND";
+  /**
+   * `SIN_REGISTRAR`: sabemos de quién es el cobro por la metadata de Stripe,
+   * pero NO existe como pago en la base. El dinero entró y la reserva figura
+   * debiéndolo, así que la pantalla tiene que decirlo, no disimularlo.
+   */
+  kind: "RESERVATION" | "STORE_ORDER" | "REFUND" | "SIN_REGISTRAR";
   paymentId: string | null;
   reservationId: string | null;
   orderId: string | null;
@@ -432,7 +475,17 @@ export type PayoutBreakdown = {
   stripeCreatedAt: string;
   syncedAt: string;
   failureMessage: string | null;
-  totals: { gross: number; fees: number; net: number; matched: number; unmatched: number };
+  totals: {
+    gross: number;
+    fees: number;
+    net: number;
+    matched: number;
+    unmatched: number;
+    /** Identificados por metadata pero SIN pago registrado en la base. */
+    sinRegistrar: number;
+    /** Suma bruta de esos cobros: dinero que entró y no está en los ingresos. */
+    sinRegistrarMonto: number;
+  };
   /** El desglose suma exactamente el monto que llegó al banco. */
   cuadra: boolean;
   diferencia: number;
@@ -444,6 +497,236 @@ const SERVICE_LABEL: Record<string, string> = {
   BATH: "Estética",
   DAYCARE: "Guardería",
 };
+
+/** Servicio según el `type` de la metadata; sin `type` es hospedaje. */
+function servicioDeMetadata(meta: Record<string, unknown> | null): string {
+  const t = typeof meta?.type === "string" ? meta.type : null;
+  if (t === "bath_appointment" || t === "bath_addon" || t === "bath_extra") return "Estética";
+  if (t === "daycare") return "Guardería";
+  if (meta?.source === "store") return "Tienda";
+  return "Hospedaje";
+}
+
+type LineaHuerfana = {
+  id: string;
+  metaOwnerId: string | null;
+  metaPetIds: string | null;
+  metaReservationId: string | null;
+  stripeMetadata: unknown;
+};
+
+/** Tipo de reserva que le corresponde a un cobro, según su metadata. */
+function tipoEsperado(meta: Record<string, unknown> | null): "STAY" | "BATH" | "DAYCARE" {
+  const t = typeof meta?.type === "string" ? meta.type : null;
+  if (t === "bath_appointment" || t === "bath_addon" || t === "bath_extra") return "BATH";
+  if (t === "daycare") return "DAYCARE";
+  return "STAY";
+}
+
+/**
+ * Cuánto puede alejarse la fecha de la metadata de la que guarda la reserva.
+ *
+ * No es un número único porque cada tipo guarda la fecha en otra escala:
+ * - BATH: la metadata manda el instante exacto de la cita y la reserva guarda
+ *   ESE MISMO instante. Una hora es de sobra, y estrecharla evita que dos citas
+ *   del mismo día se confundan.
+ * - DAYCARE: la metadata manda `date` como "YYYY-MM-DD" (medianoche) y la
+ *   reserva ancla a mediodía UTC → 12 h de diferencia estructural.
+ * - STAY: la metadata manda el check-in en hora del hotel y la reserva lo
+ *   guarda a medianoche UTC → hasta 7 h, y el día puede correrse.
+ */
+const VENTANA_POR_TIPO: Record<"STAY" | "BATH" | "DAYCARE", number> = {
+  BATH: 60 * 60 * 1000,
+  DAYCARE: 24 * 60 * 60 * 1000,
+  STAY: 36 * 60 * 60 * 1000,
+};
+
+export type ReservaCandidata = {
+  id: string;
+  ownerId: string;
+  petId: string;
+  reservationType: string;
+  status: string;
+  checkIn: Date | null;
+  appointmentAt: Date | null;
+};
+
+/**
+ * Elige a qué reserva pertenece un cobro, o `null` si no se puede afirmar.
+ *
+ * Pura y exportada para poder probarla: aquí vivían dos errores que solo se ven
+ * con datos reales. Tomaba la PRIMERA candidata dentro de la ventana en vez de
+ * la más cercana —y sin orden estable, así que la ganadora podía cambiar entre
+ * corridas— y no filtraba por tipo, de modo que el baño del día de salida se
+ * colgaba de la estancia.
+ *
+ * Ante un empate prefiere no vincular: mandar al admin a la reserva equivocada
+ * es peor que no ofrecerle el enlace, porque el siguiente paso natural es
+ * registrar el pago ahí.
+ */
+export function elegirReserva(
+  candidatas: ReservaCandidata[],
+  criterio: {
+    ownerId: string | null;
+    petIds: string[];
+    tipo: "STAY" | "BATH" | "DAYCARE";
+    fecha: Date;
+  }
+): string | null {
+  const ventana = VENTANA_POR_TIPO[criterio.tipo];
+  const distancias = candidatas
+    .filter(
+      (r) =>
+        r.ownerId === criterio.ownerId &&
+        criterio.petIds.includes(r.petId) &&
+        r.reservationType === criterio.tipo &&
+        r.status !== "CANCELLED"
+    )
+    .map((r) => {
+      const ref = criterio.tipo === "STAY" ? r.checkIn : r.appointmentAt;
+      return ref ? { id: r.id, d: Math.abs(ref.getTime() - criterio.fecha.getTime()) } : null;
+    })
+    .filter((x): x is { id: string; d: number } => !!x && x.d <= ventana)
+    .sort((a, b) => a.d - b.d || a.id.localeCompare(b.id));
+
+  const [mejor, segunda] = distancias;
+  if (!mejor) return null;
+  const ambiguo = !!segunda && Math.abs(segunda.d - mejor.d) < 60_000;
+  return ambiguo ? null : mejor.id;
+}
+
+/**
+ * Reconstruye cliente, mascotas y —si todavía existe— la reserva de un cobro
+ * que nunca se registró como pago, usando la metadata que Stripe conservó.
+ *
+ * La reserva se busca por dueño + mascota + fecha porque la metadata NO trae el
+ * `reservationId` (se genera después del cobro). La ventana de ±36 h absorbe
+ * que la metadata guarde la fecha en hora del hotel y la base la guarde a
+ * medianoche UTC. Si no aparece, igual devolvemos cliente y mascota: saber de
+ * quién es el dinero ya resuelve la pregunta, aunque la reserva se haya
+ * borrado o cancelado.
+ */
+async function resolverDesdeMetadata(
+  prisma: PrismaClient,
+  lineas: LineaHuerfana[]
+): Promise<Map<string, PayoutLineMatch>> {
+  const out = new Map<string, PayoutLineMatch>();
+  if (lineas.length === 0) return out;
+
+  const ownerIds = [...new Set(lineas.map((l) => l.metaOwnerId).filter((v): v is string => !!v))];
+  const petIds = [
+    ...new Set(lineas.flatMap((l) => (l.metaPetIds ?? "").split(",").map((s) => s.trim()).filter(Boolean))),
+  ];
+
+  // Las metadatas de saldo, extensión y add-ons traen el reservationId literal:
+  // esas no hay que adivinarlas.
+  const resvIds = [
+    ...new Set(lineas.map((l) => l.metaReservationId).filter((v): v is string => !!v)),
+  ];
+
+  const [owners, pets, exactas] = await Promise.all([
+    ownerIds.length
+      ? prisma.user.findMany({
+          where: { id: { in: ownerIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : Promise.resolve([]),
+    petIds.length
+      ? prisma.pet.findMany({ where: { id: { in: petIds } }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+    resvIds.length
+      ? prisma.reservation.findMany({
+          where: { id: { in: resvIds } },
+          select: {
+            id: true,
+            reservationType: true,
+            pet: { select: { name: true } },
+            owner: { select: { firstName: true, lastName: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const ownerById = new Map(owners.map((o) => [o.id, o]));
+  const petById = new Map(pets.map((p) => [p.id, p.name]));
+  const exactaById = new Map(exactas.map((r) => [r.id, r]));
+
+  // Reservas candidatas para el cruce heurístico: mismas mascotas, mismo dueño.
+  // `orderBy` fija un orden estable — sin él Postgres devuelve lo que le
+  // convenga y el ganador cambiaría entre corridas.
+  const candidatas =
+    ownerIds.length && petIds.length
+      ? await prisma.reservation.findMany({
+          where: { ownerId: { in: ownerIds }, petId: { in: petIds } },
+          select: {
+            id: true,
+            ownerId: true,
+            petId: true,
+            reservationType: true,
+            status: true,
+            checkIn: true,
+            appointmentAt: true,
+          },
+          orderBy: [{ appointmentAt: "asc" }, { checkIn: "asc" }, { id: "asc" }],
+        })
+      : [];
+
+  const nombreDe = (o?: { firstName: string; lastName: string } | null) =>
+    o ? [o.firstName, o.lastName].filter(Boolean).join(" ").trim() || null : null;
+
+  for (const l of lineas) {
+    const meta = (l.stripeMetadata ?? null) as Record<string, unknown> | null;
+    const ids = (l.metaPetIds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const nombres = ids.map((id) => petById.get(id)).filter((n): n is string => !!n);
+    const owner = l.metaOwnerId ? ownerById.get(l.metaOwnerId) : undefined;
+
+    // ── Vía exacta ─────────────────────────────────────────────────────────
+    const exacta = l.metaReservationId ? exactaById.get(l.metaReservationId) : undefined;
+    if (exacta) {
+      out.set(l.id, {
+        kind: "SIN_REGISTRAR",
+        paymentId: null,
+        reservationId: exacta.id,
+        orderId: null,
+        orderNumber: null,
+        petNames: nombres.length > 0 ? nombres : exacta.pet?.name ? [exacta.pet.name] : [],
+        ownerName: nombreDe(owner) ?? nombreDe(exacta.owner),
+        serviceLabel: SERVICE_LABEL[exacta.reservationType] ?? servicioDeMetadata(meta),
+        paidAt: null,
+      });
+      continue;
+    }
+
+    // ── Vía heurística: dueño + mascota + tipo + fecha más cercana ─────────
+    const tipo = tipoEsperado(meta);
+    // La guardería manda la fecha en `date`, no en appointmentAt ni checkIn.
+    const fechaRaw = (meta?.appointmentAt ?? meta?.checkIn ?? meta?.date) as string | undefined;
+    const fecha = fechaRaw ? new Date(fechaRaw) : null;
+
+    const reservationId =
+      fecha && !Number.isNaN(fecha.getTime())
+        ? elegirReserva(candidatas, {
+            ownerId: l.metaOwnerId,
+            petIds: ids,
+            tipo,
+            fecha,
+          })
+        : null;
+
+    out.set(l.id, {
+      kind: "SIN_REGISTRAR",
+      paymentId: null,
+      reservationId,
+      orderId: null,
+      orderNumber: null,
+      petNames: nombres,
+      ownerName: nombreDe(owner),
+      serviceLabel: servicioDeMetadata(meta),
+      paidAt: null,
+    });
+  }
+
+  return out;
+}
 
 export async function getPayoutBreakdown(
   prisma: PrismaClient,
@@ -503,6 +786,17 @@ export async function getPayoutBreakdown(
     petsByGroup.set(r.groupId, arr);
   }
 
+  // ── Cobros que nunca llegaron a `payments` ────────────────────────────────
+  // Se resuelven por la metadata de Stripe. Sin esto la pantalla los muestra
+  // como "movimiento sin reserva asociada", que es justo NO contestar la
+  // pregunta que motivó la feature.
+  // Basta con CUALQUIERA de los dos hilos: los cobros de saldo traen
+  // `reservationId` pero no `ownerId`, y exigir el dueño los dejaba fuera.
+  const huerfanas = payout.lines.filter(
+    (l) => !l.payment && !l.order && (l.metaOwnerId || l.metaReservationId)
+  );
+  const desdeMeta = await resolverDesdeMetadata(prisma, huerfanas);
+
   const lines: PayoutLineDTO[] = payout.lines.map((l) => {
     let match: PayoutLineMatch | null = null;
 
@@ -537,6 +831,10 @@ export async function getPayoutBreakdown(
         serviceLabel: SERVICE_LABEL[resv?.reservationType ?? ""] ?? "Reserva",
         paidAt: l.payment.paidAt?.toISOString() ?? null,
       };
+    } else {
+      // Último recurso: la metadata de Stripe. Sigue quedando `null` para las
+      // líneas que de verdad no son de nadie (comisiones, ajustes).
+      match = desdeMeta.get(l.id) ?? null;
     }
 
     return {
@@ -571,6 +869,13 @@ export async function getPayoutBreakdown(
       net: Number(netTotal.toFixed(2)),
       matched: lines.filter((l) => l.match).length,
       unmatched: lines.filter((l) => !l.match).length,
+      sinRegistrar: lines.filter((l) => l.match?.kind === "SIN_REGISTRAR").length,
+      sinRegistrarMonto: Number(
+        lines
+          .filter((l) => l.match?.kind === "SIN_REGISTRAR")
+          .reduce((a, l) => a + l.gross, 0)
+          .toFixed(2)
+      ),
     },
     cuadra: Math.abs(diferencia) < 0.01,
     diferencia,
@@ -614,6 +919,7 @@ export async function listPayouts(
     include: {
       lines: {
         select: {
+          metaPetIds: true,
           payment: {
             select: { reservation: { select: { pet: { select: { name: true } } } } },
           },
@@ -623,12 +929,39 @@ export async function listPayouts(
     },
   });
 
+  // Nombres de las mascotas que solo se conocen por la metadata (cobros que
+  // nunca llegaron a `payments`). Sin esto la lista muestra "3 movimientos" y
+  // hay que abrir el depósito para saber de quién era.
+  const idsDeMeta = [
+    ...new Set(
+      payouts.flatMap((p) =>
+        p.lines.flatMap((l) =>
+          (l.metaPetIds ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+        )
+      )
+    ),
+  ];
+  const petsMeta = idsDeMeta.length
+    ? await prisma.pet.findMany({
+        where: { id: { in: idsDeMeta } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const petNameById = new Map(petsMeta.map((p) => [p.id, p.name]));
+
   return payouts.map((p) => {
     const names: string[] = [];
+    const push = (n: string | undefined | null) => {
+      if (n && !names.includes(n)) names.push(n);
+    };
     for (const l of p.lines) {
-      const pet = l.payment?.reservation?.pet?.name;
-      if (pet && !names.includes(pet)) names.push(pet);
-      else if (l.order && !names.includes("Tienda")) names.push("Tienda");
+      if (l.payment?.reservation?.pet?.name) push(l.payment.reservation.pet.name);
+      else if (l.order) push("Tienda");
+      else {
+        for (const id of (l.metaPetIds ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+          push(petNameById.get(id));
+        }
+      }
     }
     return {
       id: p.id,

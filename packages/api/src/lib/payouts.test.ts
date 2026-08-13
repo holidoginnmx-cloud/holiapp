@@ -14,7 +14,9 @@ import {
   matchLine,
   isRefundType,
   excluirTransaccionDelPayout,
+  elegirReserva,
   type MatchMaps,
+  type ReservaCandidata,
 } from "./payouts";
 
 // ─── Helpers de fixtures ─────────────────────────────────────────────────────
@@ -102,14 +104,24 @@ describe("excluirTransaccionDelPayout", () => {
 describe("extractRefs", () => {
   it("saca charge y payment_intent de un cobro", () => {
     const refs = extractRefs(bt({ source: charge("ch_1", "pi_1") }));
-    expect(refs).toEqual({ chargeId: "ch_1", paymentIntentId: "pi_1", refundId: null });
+    expect(refs).toEqual({
+      chargeId: "ch_1",
+      paymentIntentId: "pi_1",
+      refundId: null,
+      metadata: null,
+    });
   });
 
   it("saca el refundId de un reembolso, además del charge y el PI", () => {
     const refs = extractRefs(
       bt({ type: "refund", source: refund("re_1", "ch_1", "pi_1") }),
     );
-    expect(refs).toEqual({ chargeId: "ch_1", paymentIntentId: "pi_1", refundId: "re_1" });
+    expect(refs).toEqual({
+      chargeId: "ch_1",
+      paymentIntentId: "pi_1",
+      refundId: "re_1",
+      metadata: null,
+    });
   });
 
   it("acepta el payment_intent expandido como objeto, no solo como string", () => {
@@ -120,7 +132,41 @@ describe("extractRefs", () => {
 
   it("devuelve todo en null para movimientos que no cuelgan de un cobro", () => {
     const refs = extractRefs(bt({ type: "stripe_fee", source: null }));
-    expect(refs).toEqual({ chargeId: null, paymentIntentId: null, refundId: null });
+    expect(refs).toEqual({
+      chargeId: null,
+      paymentIntentId: null,
+      refundId: null,
+      metadata: null,
+    });
+  });
+
+  // La metadata es el ÚNICO rastro de a quién pertenece un cobro que nunca
+  // llegó a `payments`, y viaja ya en el charge expandido.
+  it("conserva la metadata del charge, que dice de quién es el cobro", () => {
+    const src = {
+      id: "ch_1",
+      object: "charge",
+      payment_intent: "pi_1",
+      metadata: {
+        ownerId: "usr_1",
+        petId: "pet_1",
+        type: "bath_appointment",
+        appointmentAt: "2026-08-08T00:00:00.000Z",
+      },
+    };
+    const refs = extractRefs(bt({ source: src as unknown as Stripe.Charge }));
+    expect(refs.metadata).toEqual({
+      ownerId: "usr_1",
+      petId: "pet_1",
+      type: "bath_appointment",
+      appointmentAt: "2026-08-08T00:00:00.000Z",
+    });
+  });
+
+  it("una metadata vacía se guarda como null, no como {}", () => {
+    const src = { id: "ch_1", object: "charge", payment_intent: "pi_1", metadata: {} };
+    const refs = extractRefs(bt({ source: src as unknown as Stripe.Charge }));
+    expect(refs.metadata).toBeNull();
   });
 });
 
@@ -223,6 +269,126 @@ describe("isRefundType", () => {
     expect(isRefundType("charge")).toBe(false);
     expect(isRefundType("payment")).toBe(false);
     expect(isRefundType("stripe_fee")).toBe(false);
+  });
+});
+
+// ─── A qué reserva pertenece un cobro sin registrar ──────────────────────────
+
+describe("elegirReserva", () => {
+  const base = (over: Partial<ReservaCandidata> = {}): ReservaCandidata => ({
+    id: "r1",
+    ownerId: "usr_1",
+    petId: "pet_1",
+    reservationType: "BATH",
+    status: "CONFIRMED",
+    checkIn: null,
+    appointmentAt: new Date("2026-08-08T00:00:00.000Z"),
+    ...over,
+  });
+
+  const criterio = {
+    ownerId: "usr_1",
+    petIds: ["pet_1"],
+    tipo: "BATH" as const,
+    fecha: new Date("2026-08-08T00:00:00.000Z"),
+  };
+
+  it("encuentra la reserva cuando la fecha coincide exacto", () => {
+    expect(elegirReserva([base()], criterio)).toBe("r1");
+  });
+
+  /**
+   * El caso real: dos citas del mismo cliente separadas por UNA hora. Con la
+   * ventana ancha de antes ambas entraban y ganaba la primera que devolviera
+   * Postgres — sin ORDER BY, la ganadora podía cambiar entre corridas.
+   */
+  it("se queda con la MÁS CERCANA, no con la primera de la lista", () => {
+    const lejana = base({ id: "r_lejana", appointmentAt: new Date("2026-08-08T00:50:00.000Z") });
+    const exacta = base({ id: "r_exacta", appointmentAt: new Date("2026-08-08T00:00:00.000Z") });
+    // La lejana va primero a propósito: si se tomara la primera, fallaría.
+    expect(elegirReserva([lejana, exacta], criterio)).toBe("r_exacta");
+  });
+
+  it("no vincula nada si dos reservas están igual de cerca", () => {
+    const a = base({ id: "r_a", appointmentAt: new Date("2026-08-08T00:10:00.000Z") });
+    const b = base({ id: "r_b", appointmentAt: new Date("2026-08-07T23:50:00.000Z") });
+    // Ambas a 10 min: apuntar a una al azar mandaría al admin a la equivocada.
+    expect(elegirReserva([a, b], criterio)).toBeNull();
+  });
+
+  /**
+   * El upsell clásico del negocio: baño el día de la salida. El STAY tiene su
+   * checkIn cerca, y comparando `appointmentAt ?? checkIn` el cobro del baño se
+   * colgaba de la estancia.
+   */
+  it("no confunde un baño con el hospedaje del mismo día", () => {
+    const estancia = base({
+      id: "r_stay",
+      reservationType: "STAY",
+      appointmentAt: null,
+      checkIn: new Date("2026-08-08T00:00:00.000Z"),
+    });
+    expect(elegirReserva([estancia], criterio)).toBeNull();
+  });
+
+  it("ignora una reserva cancelada", () => {
+    expect(elegirReserva([base({ status: "CANCELLED" })], criterio)).toBeNull();
+  });
+
+  it("prefiere la viva sobre la cancelada de la misma fecha", () => {
+    const cancelada = base({ id: "r_cancel", status: "CANCELLED" });
+    const viva = base({ id: "r_viva" });
+    expect(elegirReserva([cancelada, viva], criterio)).toBe("r_viva");
+  });
+
+  it("no cruza mascotas ni dueños ajenos", () => {
+    expect(elegirReserva([base({ petId: "pet_otro" })], criterio)).toBeNull();
+    expect(elegirReserva([base({ ownerId: "usr_otro" })], criterio)).toBeNull();
+  });
+
+  it("descarta lo que cae fuera de la ventana del tipo", () => {
+    // Un baño a 3 h de distancia: fuera de la ventana de 1 h.
+    const lejos = base({ appointmentAt: new Date("2026-08-08T03:00:00.000Z") });
+    expect(elegirReserva([lejos], criterio)).toBeNull();
+  });
+
+  it("el hospedaje tolera el desfase de zona horaria del check-in", () => {
+    // La metadata manda la hora del hotel (07:00Z) y la reserva guarda el día a
+    // medianoche UTC: 7 h de diferencia estructural que sí deben casar.
+    const stay = base({
+      id: "r_stay",
+      reservationType: "STAY",
+      appointmentAt: null,
+      checkIn: new Date("2026-11-20T00:00:00.000Z"),
+    });
+    const r = elegirReserva([stay], {
+      ownerId: "usr_1",
+      petIds: ["pet_1"],
+      tipo: "STAY",
+      fecha: new Date("2026-11-20T07:00:00.000Z"),
+    });
+    expect(r).toBe("r_stay");
+  });
+
+  it("la guardería casa aunque la metadata mande solo el día", () => {
+    // `date` llega como "YYYY-MM-DD" (medianoche) y la reserva ancla a mediodía
+    // UTC: 12 h de diferencia estructural.
+    const day = base({
+      id: "r_day",
+      reservationType: "DAYCARE",
+      appointmentAt: new Date("2026-08-20T12:00:00.000Z"),
+    });
+    const r = elegirReserva([day], {
+      ownerId: "usr_1",
+      petIds: ["pet_1"],
+      tipo: "DAYCARE",
+      fecha: new Date("2026-08-20T00:00:00.000Z"),
+    });
+    expect(r).toBe("r_day");
+  });
+
+  it("sin candidatas devuelve null, no revienta", () => {
+    expect(elegirReserva([], criterio)).toBeNull();
   });
 });
 
