@@ -26,6 +26,7 @@ export default function BathLayout() {
       }}
     >
       <Stack.Screen name="[id]" options={{ title: "Detalle del baño", headerLeft: backButton }} />
+      <Stack.Screen name="edit-appointment" options={{ title: "Reagendar baño", headerLeft: backButton }} />
     </Stack>
   );
 }

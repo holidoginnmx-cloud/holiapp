@@ -1,13 +1,14 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyReply } from "fastify";
 import {
   UpdateBathConfigSchema,
   CreateBathIntentSchema,
   ConfirmBathSchema,
+  UpdateBathAppointmentSchema,
 } from "@holidoginn/shared";
 import { Prisma, PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
 import {
   notifyNewReservation,
   type NewReservationSource,
@@ -31,6 +32,7 @@ import {
 import {
   ensureConfig,
   toScheduleCfg,
+  loadScheduleCfg,
   resolveBathDuration,
   loadBusyIntervals,
   buildSlotsPayload,
@@ -786,6 +788,233 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ success: true });
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  Reagendar una cita de baño suelta (appointmentAt).
+  //  Solo mueve la hora: el servicio, el precio y el grupo no
+  //  cambian. Valida la agenda como el confirm (mismo lock por
+  //  día) y con `force` guarda de todos modos (scheduleOverridden).
+  //  Compartido por dos rutas: la de staff/admin (app móvil) y la
+  //  interna server-to-server (admin web vía x-cron-secret).
+  // ────────────────────────────────────────────────────────────
+  type RescheduleOutcome =
+    | { kind: "NOT_FOUND" }
+    | { kind: "BAD_REQUEST"; error: string }
+    | { kind: "CONFLICT"; message: string; reason: string }
+    | {
+        kind: "OK";
+        appointmentAt: string;
+        scheduleOverridden: boolean;
+        warning: string | null;
+      };
+
+  async function applyBathReschedule(
+    reservationId: string,
+    body: { appointmentAt: Date; force?: boolean; overrideReason?: string },
+    actorUserId: string | null,
+  ): Promise<RescheduleOutcome> {
+    const { appointmentAt: newStart, force, overrideReason } = body;
+
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: {
+        pet: { select: { name: true } },
+        addons: {
+          where: { variant: { serviceType: { code: "BATH" } } },
+          select: { variantId: true },
+          take: 1,
+        },
+      },
+    });
+    if (!reservation) return { kind: "NOT_FOUND" };
+    if (reservation.reservationType !== "BATH") {
+      // Los baños de perros hospedados viven en el addon (scheduledAt);
+      // esta ruta es solo para citas sueltas.
+      return { kind: "BAD_REQUEST", error: "Solo se pueden reagendar citas de baño" };
+    }
+    if (reservation.status !== "CONFIRMED") {
+      return { kind: "BAD_REQUEST", error: "Solo se pueden reagendar citas confirmadas" };
+    }
+
+    const schedule = await loadScheduleCfg(prisma);
+    // El servicio no cambia: se preserva el snapshot de duración. El
+    // fallback cubre citas anteriores a la agenda por duración.
+    const durationMinutes =
+      reservation.durationMinutes ??
+      (
+        await resolveBathDuration(
+          prisma,
+          {
+            variantId: reservation.addons[0]?.variantId ?? undefined,
+            petId: reservation.petId,
+          },
+          schedule,
+        )
+      ).durationMinutes;
+
+    const newYMD = localYMD(newStart);
+    const oldYMD = reservation.appointmentAt
+      ? localYMD(reservation.appointmentAt)
+      : null;
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Mismo lock por día que el confirm (namespace 42). Se toma el día
+      // nuevo y el viejo —quien agenda en el hueco que se libera compite por
+      // él— en orden lexicográfico fijo para que dos reagendados cruzados no
+      // se deadlockeen.
+      const days = [...new Set([oldYMD, newYMD].filter(Boolean))].sort();
+      for (const ymd of days) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${ymd}))`;
+      }
+
+      const busy = await loadBusyIntervals(tx, newYMD, schedule, {
+        excludeReservationIds: [reservation.id],
+      });
+      const verdict = evaluateStart(newStart, durationMinutes, schedule, busy);
+      if (!verdict.ok && !force) {
+        return { conflict: verdict } as const;
+      }
+      const overridden = !verdict.ok;
+
+      await tx.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          appointmentAt: newStart,
+          durationMinutes,
+          // Mover a un slot válido LIMPIA la bandera de forzado.
+          scheduleOverridden: overridden,
+          scheduleOverrideReason: overridden
+            ? (overrideReason ?? (verdict.ok ? null : verdict.message))
+            : null,
+          // El saldo se cobra al recoger: la fecha límite sigue a la cita.
+          ...(reservation.paymentType === "DEPOSIT"
+            ? { depositDeadline: newStart }
+            : {}),
+        },
+      });
+
+      // Los recordatorios (24h y 90min) deduplican por la existencia de una
+      // Notification previa con este reservationId: sin esto, una cita
+      // movida después del recordatorio jamás anunciaría la hora nueva.
+      await tx.notification.deleteMany({
+        where: {
+          userId: reservation.ownerId,
+          type: "RESERVATION_REMINDER",
+          data: { path: ["reservationId"], equals: reservation.id },
+        },
+      });
+
+      return {
+        conflict: null,
+        overridden,
+        warning: verdict.ok ? null : verdict.message,
+      } as const;
+    });
+
+    if (result.conflict) {
+      return {
+        kind: "CONFLICT",
+        message: result.conflict.message,
+        reason: result.conflict.reason,
+      };
+    }
+
+    // Avisos post-transacción, best-effort: nunca tumban la edición escrita.
+    const when = newStart.toLocaleString("es-MX", {
+      timeZone: TZ_HOTEL,
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    try {
+      await notifyUser(prisma, {
+        userId: reservation.ownerId,
+        type: "GENERAL",
+        title: "Cita de baño reagendada 🛁",
+        body: `El baño de ${reservation.pet.name} ahora es el ${when}. ¡Te esperamos!`,
+        data: { reservationId: reservation.id, kind: "BATH_RESCHEDULED" },
+      });
+    } catch (err) {
+      console.error("[bath appointment] aviso al dueño falló:", err);
+    }
+    await notifyTeamReservationUpdated(prisma, {
+      reservationId: reservation.id,
+      petName: reservation.pet.name,
+      body: `Cita movida al ${when}.`,
+      actorUserId,
+      assignedStaffId: reservation.staffId,
+    });
+
+    return {
+      kind: "OK",
+      appointmentAt: newStart.toISOString(),
+      scheduleOverridden: result.overridden,
+      warning: result.warning,
+    };
+  }
+
+  function sendRescheduleOutcome(reply: FastifyReply, outcome: RescheduleOutcome) {
+    switch (outcome.kind) {
+      case "NOT_FOUND":
+        return reply.status(404).send({ error: "Cita no encontrada" });
+      case "BAD_REQUEST":
+        return reply.status(400).send({ error: outcome.error });
+      case "CONFLICT":
+        return reply.status(409).send({
+          error: outcome.message,
+          code: "AGENDA_CONFLICT",
+          reason: outcome.reason,
+        });
+      case "OK":
+        return reply.send({
+          success: true,
+          appointmentAt: outcome.appointmentAt,
+          scheduleOverridden: outcome.scheduleOverridden,
+          warning: outcome.warning,
+        });
+    }
+  }
+
+  // ─── PATCH /staff/baths/:id/appointment — app móvil (STAFF/ADMIN) ───
+  fastify.patch<{ Params: { id: string } }>(
+    "/staff/baths/:id/appointment",
+    { preHandler: staffAuth },
+    async (request, reply) => {
+      const parsed = UpdateBathAppointmentSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const outcome = await applyBathReschedule(
+        request.params.id,
+        parsed.data,
+        request.userId ?? null,
+      );
+      return sendRescheduleOutcome(reply, outcome);
+    },
+  );
+
+  // ─── PATCH /internal/baths/:id/appointment — admin web (server-to-server) ───
+  // El admin web usa OTRA instancia de Clerk, así que no puede presentar un
+  // token que esta API valide. Se autentica como los crons: header
+  // x-cron-secret con CRON_SECRET compartido. Si el secreto falta, la ruta
+  // queda cerrada (401), nunca abierta.
+  fastify.patch<{ Params: { id: string } }>(
+    "/internal/baths/:id/appointment",
+    async (request, reply) => {
+      const secret = process.env.CRON_SECRET;
+      if (!secret || request.headers["x-cron-secret"] !== secret) {
+        return reply.status(401).send({ error: "No autorizado" });
+      }
+      const parsed = UpdateBathAppointmentSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      // Sin actor: el aviso de equipo llega a todos los admins.
+      const outcome = await applyBathReschedule(request.params.id, parsed.data, null);
+      return sendRescheduleOutcome(reply, outcome);
     },
   );
 

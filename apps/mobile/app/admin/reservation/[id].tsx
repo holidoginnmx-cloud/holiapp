@@ -540,6 +540,8 @@ export default function AdminReservationDetail() {
     !isBath &&
     !isDaycare &&
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
+  // Reagendar la cita (appointmentAt) solo aplica a baños sueltos confirmados.
+  const canEditAppointment = isBath && reservation.status === "CONFIRMED";
   const bathAddon = reservation.addons?.find(
     (a) => a.variant?.serviceType?.code === "BATH",
   );
@@ -700,7 +702,16 @@ export default function AdminReservationDetail() {
         {/* Bath hero — cita + variante + datos relevantes para el baño */}
         {isBath && (
           <View style={styles.bathHeroWrap}>
-            <View style={styles.bathHero}>
+            {/* Tocable para reagendar la cita mientras siga confirmada. */}
+            <TouchableOpacity
+              style={styles.bathHero}
+              activeOpacity={0.7}
+              disabled={!canEditAppointment}
+              onPress={() =>
+                router.push(`/admin/reservation/edit-appointment?id=${id}` as any)
+              }
+              testID="admin-reservation-edit-appointment"
+            >
               <View style={styles.bathBadge}>
                 <Ionicons name="water" size={14} color={COLORS.primary} />
                 <Text style={styles.bathBadgeText}>Baño</Text>
@@ -713,9 +724,12 @@ export default function AdminReservationDetail() {
                   <Text style={styles.bathTime}>
                     {formatTime(reservation.appointmentAt)}
                   </Text>
+                  {canEditAppointment && (
+                    <Ionicons name="pencil" size={12} color={COLORS.primary} />
+                  )}
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
 
             {bathExtras.length > 0 && (
               <View style={styles.bathChipsRow}>

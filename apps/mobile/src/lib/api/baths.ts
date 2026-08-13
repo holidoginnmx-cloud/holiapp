@@ -110,6 +110,24 @@ export const getBathSlots = (
   return apiFetch<BathSlotsResponse>(`${ENDPOINTS.baths}/slots?${params}`);
 };
 
+// Reagendar una cita suelta (STAFF/ADMIN). Solo mueve la hora; con `force`
+// guarda aunque se encime o esté en el pasado ("Agendar de todos modos").
+export type UpdateBathAppointmentResult = {
+  success: boolean;
+  appointmentAt: string;
+  scheduleOverridden: boolean;
+  warning: string | null;
+};
+
+export const updateBathAppointment = (
+  reservationId: string,
+  data: { appointmentAt: string; force?: boolean; overrideReason?: string },
+) =>
+  apiFetch<UpdateBathAppointmentResult>(
+    `/staff${ENDPOINTS.baths}/${reservationId}/appointment`,
+    { method: "PATCH", body: JSON.stringify(data) },
+  );
+
 export const BATH_DEPOSIT_AMOUNT = 150;
 export const BATH_LATE_TOLERANCE_MIN = 15;
 

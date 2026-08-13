@@ -604,6 +604,16 @@ export type AdminUpdateReservation = z.infer<typeof AdminUpdateReservationSchema
 export type AdminCreateAddon = z.infer<typeof AdminCreateAddonSchema>;
 export type AdminUpdateAddon = z.infer<typeof AdminUpdateAddonSchema>;
 
+// ── Reagendar una cita de baño YA creada (STAFF/ADMIN) ───────────────────────
+// Solo mueve la hora: el servicio, el precio y el grupo no cambian.
+export const UpdateBathAppointmentSchema = z.object({
+  appointmentAt: z.coerce.date(),
+  // "Agendar de todos modos": guarda aunque se encime o esté en el pasado.
+  force: z.boolean().optional(),
+  overrideReason: z.string().max(300).optional(),
+});
+export type UpdateBathAppointment = z.infer<typeof UpdateBathAppointmentSchema>;
+
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type CreateReservation = z.infer<typeof CreateReservationSchema>;
 export type CreateMultiReservation = z.infer<typeof CreateMultiReservationSchema>;

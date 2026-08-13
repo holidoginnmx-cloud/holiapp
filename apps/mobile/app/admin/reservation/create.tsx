@@ -52,6 +52,11 @@ import {
   DAYCARE_CLOSE_HOUR,
 } from "@holidoginn/shared/src/pricing";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
+import {
+  useBathConflict,
+  localDayKey,
+  formatDurationMin,
+} from "@/hooks/useBathConflict";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -76,19 +81,6 @@ function fromHHmm(hhmm: string, base: Date): Date {
 function formatDate(d: Date | null): string {
   if (!d) return "Seleccionar";
   return formatWeekdayDayShort(d);
-}
-
-// Date → "YYYY-MM-DD" del día local (el dispositivo corre en hora del hotel).
-function utcDayKeyLocal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function formatDurationMin(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return h === 1 ? "1 hora" : `${h} horas`;
-  return `${h} h ${m} min`;
 }
 
 function formatDateTime(d: Date): string {
@@ -275,7 +267,7 @@ export default function AdminCreateReservation() {
   // depende del servicio (talla × corte × deslanado), así que se recalcula al
   // cambiar la mascota o los extras.
   const bathDateYMD = useMemo(
-    () => (appointmentAt ? utcDayKeyLocal(appointmentAt) : null),
+    () => (appointmentAt ? localDayKey(appointmentAt) : null),
     [appointmentAt],
   );
   const { data: bathSlots } = useQuery({
@@ -285,41 +277,7 @@ export default function AdminCreateReservation() {
     enabled: reservationType === "BATH" && !!bathDateYMD && petIds.length > 0,
   });
 
-  // ¿La hora elegida cabe? Se compara contra el horario exacto; si el operador
-  // eligió una fuera de la rejilla, se revisa el traslape con los ocupados.
-  const bathConflict = useMemo(() => {
-    if (!bathSlots || !appointmentAt) return null;
-    const t = appointmentAt.getTime();
-    // Pasado (incluye fechas de días anteriores, aun fuera de la rejilla): se
-    // avisa y se deja forzar — el admin registra baños que ya ocurrieron.
-    if (t <= Date.now()) return "Ese horario ya pasó.";
-    const exact = bathSlots.slots.find((s) => new Date(s.startUtc).getTime() === t);
-    if (exact) {
-      if (exact.available) return null;
-      return exact.reason === "CAPACITY"
-        ? "Se encima con otra cita."
-        : exact.reason === "CLOSES_TOO_LATE"
-          ? "No alcanza a terminar antes de que salga la estilista."
-          : exact.reason === "PAST"
-            ? "Ese horario ya pasó."
-            : "Ese horario no está disponible.";
-    }
-    const end = t + bathSlots.durationMinutes * 60000;
-    const choca = bathSlots.slots.some(
-      (s) =>
-        !s.available &&
-        s.reason === "CAPACITY" &&
-        s.endUtc != null &&
-        t < new Date(s.endUtc).getTime() &&
-        new Date(s.startUtc).getTime() < end,
-    );
-    if (choca) return "Se encima con otra cita.";
-    const ultimo = [...bathSlots.slots].reverse().find((s) => s.available);
-    if (ultimo && t > new Date(ultimo.startUtc).getTime()) {
-      return "No alcanza a terminar antes de que salga la estilista.";
-    }
-    return null;
-  }, [bathSlots, appointmentAt]);
+  const bathConflict = useBathConflict(bathSlots, appointmentAt);
 
   // Tarifa por hora de guardería (para sugerir el total). Se recalcula server-side.
   const { data: lodgingPricing } = useQuery({

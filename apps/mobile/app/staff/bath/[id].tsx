@@ -25,7 +25,7 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -106,6 +106,7 @@ export default function StaffBathDetail() {
   // que es lo que necesita el flujo normal. Lo manda el historial de la mascota
   // para poder abrir una cita vieja, que de otro modo no vendría en la lista.
   const { id, date } = useLocalSearchParams<{ id: string; date?: string }>();
+  const router = useRouter();
   const { isTablet } = useResponsive();
   const queryClient = useQueryClient();
   const { banner, showSuccess } = useSuccessBanner();
@@ -297,6 +298,9 @@ export default function StaffBathDetail() {
   const physicallyDone = isBathPhysicallyDone(bath);
   const concluded = isBathConcluded(bath);
   const isStayBath = bath.reservationType === "STAY";
+  // Reagendar solo aplica a citas sueltas confirmadas: la hora de un baño de
+  // hospedaje vive en el addon (scheduledAt), no en appointmentAt.
+  const canEditAppointment = !isStayBath && bath.status === "CONFIRMED";
   const balance = bathOutstandingBalance(bath);
   const hasOutstanding = !isStayBath && balance.total > 0.01;
   const variantLine = describeVariant(bath);
@@ -400,7 +404,16 @@ export default function StaffBathDetail() {
         {/* Bloque de cita prominente */}
         {bath.appointmentAt && (
           <>
-            <View style={styles.summaryAppointment}>
+            {/* Tocable para reagendar mientras la cita siga confirmada. */}
+            <TouchableOpacity
+              style={styles.summaryAppointment}
+              activeOpacity={0.7}
+              disabled={!canEditAppointment}
+              onPress={() =>
+                router.push(`/staff/bath/edit-appointment?id=${id}` as any)
+              }
+              testID="staff-bath-edit-appointment"
+            >
               <View style={styles.summaryAppointmentIcon}>
                 <Ionicons name="calendar" size={20} color={COLORS.primary} />
               </View>
@@ -413,7 +426,10 @@ export default function StaffBathDetail() {
                   {isStayBath ? " · antes del checkout" : ""}
                 </Text>
               </View>
-            </View>
+              {canEditAppointment && (
+                <Ionicons name="pencil" size={14} color={COLORS.primary} />
+              )}
+            </TouchableOpacity>
             <View style={styles.summaryDivider} />
           </>
         )}

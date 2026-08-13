@@ -15,7 +15,7 @@ import {
   AdminUpdateAddonSchema,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
 import { extraerCartilla } from "../lib/ocr";
 import {
@@ -1121,48 +1121,6 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   // el de `/times` solo las horas, así que una reserva capturada sin el
   // descuento quedaba mal para siempre y no había dónde escribir una nota.
 
-  /**
-   * Avisa al RESTO del equipo (admins + staff asignado) de que una reserva
-   * cambió, para que la caché de sus teléfonos se refresque sola.
-   *
-   * `kind: "RESERVATION_UPDATED"` es lo que busca el listener de push del móvil
-   * (apps/mobile/src/lib/notificationInvalidate.ts). Sin este aviso, el otro
-   * teléfono solo se enteraría al volver a entrar a la pantalla.
-   *
-   * Nunca lanza: el push es best-effort y no debe tumbar una edición ya escrita.
-   * Nunca incluye texto de notas internas en el cuerpo.
-   */
-  async function notifyTeamReservationUpdated(params: {
-    reservationId: string;
-    petName: string;
-    body: string;
-    actorUserId?: string | null;
-    assignedStaffId?: string | null;
-  }) {
-    try {
-      const admins = await prisma.user.findMany({
-        where: { role: "ADMIN", isActive: true },
-        select: { id: true },
-      });
-      const ids = new Set(admins.map((a) => a.id));
-      if (params.assignedStaffId) ids.add(params.assignedStaffId);
-      if (params.actorUserId) ids.delete(params.actorUserId);
-      const targets = [...ids];
-      if (targets.length === 0) return;
-      await notifyUsers(prisma, targets, {
-        type: "GENERAL",
-        title: `Reserva actualizada: ${params.petName}`,
-        body: params.body,
-        data: {
-          reservationId: params.reservationId,
-          kind: "RESERVATION_UPDATED",
-        },
-      });
-    } catch (err) {
-      console.error("[notifyTeamReservationUpdated] falló:", err);
-    }
-  }
-
   // ─── PATCH /admin/reservations/:id — precio y notas ─────────────
   fastify.patch<{ Params: { id: string } }>(
     "/admin/reservations/:id",
@@ -1256,7 +1214,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         }
         const signo = delta > 0 ? "subió" : "bajó";
         const motivo = priceChangeReason ? ` — ${priceChangeReason}` : "";
-        await notifyTeamReservationUpdated({
+        await notifyTeamReservationUpdated(prisma, {
           reservationId: reservation.id,
           petName: reservation.pet.name,
           body: `El total ${signo} a $${newTotal.toLocaleString("es-MX")}${motivo}.`,
@@ -1264,7 +1222,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           assignedStaffId: reservation.staffId,
         });
       } else {
-        await notifyTeamReservationUpdated({
+        await notifyTeamReservationUpdated(prisma, {
           reservationId: reservation.id,
           petName: reservation.pet.name,
           body: "Se actualizaron las notas de la reserva.",
@@ -1412,7 +1370,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       });
 
       const etiqueta = isCourtesy ? " de CORTESÍA" : "";
-      await notifyTeamReservationUpdated({
+      await notifyTeamReservationUpdated(prisma, {
         reservationId: reservation.id,
         petName: reservation.pet.name,
         body: `Se agregó ${variant.serviceType.name}${etiqueta} a la reserva.`,
@@ -1528,7 +1486,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         const motivo = marcaCortesia
           ? ` (${addon.variant.serviceType.name} de cortesía)`
           : "";
-        await notifyTeamReservationUpdated({
+        await notifyTeamReservationUpdated(prisma, {
           reservationId: addon.reservation.id,
           petName: addon.reservation.pet.name,
           body: `El total ${signo} a $${result.newTotal.toLocaleString("es-MX")}${motivo}.`,

@@ -76,3 +76,48 @@ export async function notifyUsers(
     },
   });
 }
+
+/**
+ * Avisa al RESTO del equipo (admins + staff asignado) de que una reserva
+ * cambió, para que la caché de sus teléfonos se refresque sola.
+ *
+ * `kind: "RESERVATION_UPDATED"` es lo que busca el listener de push del móvil
+ * (apps/mobile/src/lib/notificationInvalidate.ts). Sin este aviso, el otro
+ * teléfono solo se enteraría al volver a entrar a la pantalla.
+ *
+ * Nunca lanza: el push es best-effort y no debe tumbar una edición ya escrita.
+ * Nunca incluye texto de notas internas en el cuerpo.
+ */
+export async function notifyTeamReservationUpdated(
+  prisma: PrismaClient,
+  params: {
+    reservationId: string;
+    petName: string;
+    body: string;
+    actorUserId?: string | null;
+    assignedStaffId?: string | null;
+  }
+) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    const ids = new Set(admins.map((a) => a.id));
+    if (params.assignedStaffId) ids.add(params.assignedStaffId);
+    if (params.actorUserId) ids.delete(params.actorUserId);
+    const targets = [...ids];
+    if (targets.length === 0) return;
+    await notifyUsers(prisma, targets, {
+      type: "GENERAL",
+      title: `Reserva actualizada: ${params.petName}`,
+      body: params.body,
+      data: {
+        reservationId: params.reservationId,
+        kind: "RESERVATION_UPDATED",
+      },
+    });
+  } catch (err) {
+    console.error("[notifyTeamReservationUpdated] falló:", err);
+  }
+}

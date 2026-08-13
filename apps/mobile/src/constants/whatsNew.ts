@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-13",
+    title: "Reagendar citas de baño",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "Mueve una cita de baño sin cancelarla",
+        body:
+          "Si el cliente pide cambiar su hora (ej. «¿me lo recorres 30 " +
+          "minutos?»), ya no hay que cancelar y volver a capturar: toca la " +
+          "fecha en el detalle del baño, elige la hora nueva y listo. La app " +
+          "te avisa si se encima con otra cita o si no alcanza antes del " +
+          "cierre, y aun así puedes forzarla con «Agendar de todos modos».",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "notifications-outline",
+        title: "El cliente se entera solito",
+        body:
+          "Al mover la cita, al dueño le llega el aviso con la hora nueva al " +
+          "instante, y sus recordatorios (el de un día antes y el de 90 " +
+          "minutos) se reprograman solos con el horario correcto. Antes, si " +
+          "ya se le había recordado, nadie le avisaba del cambio.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-12-b",
     title: "Depósitos de Stripe",
     items: [
