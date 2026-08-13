@@ -39,6 +39,7 @@ import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 type BathTypeFilter = "loose" | "stay";
 
@@ -209,6 +210,10 @@ export default function StaffBaths() {
     queryFn: () => getStaffBaths(),
     refetchInterval: 60_000,
   });
+
+  // El intervalo de 60s ya la mantiene fresca, pero al volver a la pestaña se
+  // quiere la agenda del día YA, no en el próximo tick.
+  useRefetchOnFocus([["staff-baths"]]);
 
   const allBaths = data?.baths ?? [];
 

@@ -1,6 +1,8 @@
 import { COLORS } from "@/constants/colors";
+import { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -84,6 +86,7 @@ export default function AdminSettings() {
   const cartillasCount = cartillasPending?.pending ?? 0;
 
   const { unreadCount } = useUnreadNotifications();
+  const [novedadesVisible, setNovedadesVisible] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Cerrar sesion", "¿Estas seguro?", [
@@ -215,6 +218,14 @@ export default function AdminSettings() {
           label="Ingresos"
           subtitle="Resumen de ingresos del mes y desglose"
           onPress={() => router.push("/admin/revenue" as any)}
+        />
+        {/* Reabrir el aviso de novedades: se lee de corrido y se cierra, así que
+            sin esto quien lo despacha sin leer pierde la información. */}
+        <MenuItem
+          icon="sparkles-outline"
+          label="Novedades"
+          subtitle="Qué se agregó en la última actualización"
+          onPress={() => setNovedadesVisible(true)}
           isLast
         />
       </View>
@@ -228,6 +239,12 @@ export default function AdminSettings() {
           isLast
         />
       </View>
+
+      <WhatsNewModal
+        role="ADMIN"
+        open={novedadesVisible}
+        onClose={() => setNovedadesVisible(false)}
+      />
     </ScrollView>
   );
 }

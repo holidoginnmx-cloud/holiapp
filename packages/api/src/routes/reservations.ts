@@ -22,6 +22,10 @@ import { notifyNewReservation } from "../lib/notifyNewReservation";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
+import {
+  stripInternalFields,
+  stripInternalFieldsList,
+} from "../lib/stripInternal";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
   getLodgingPricing,
@@ -128,7 +132,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     });
     // Defensa: omite reservaciones con relaciones rotas (datos legacy con FK
     // huérfana) para no romper a los clientes que asumen pet/owner presentes.
-    return reservations
+    const rows = reservations
       .filter((r) => r.pet && r.owner)
       .map(({ payments, changeRequests, updates, review, addons, ...r }) => {
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -146,6 +150,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         hasCorte,
       };
     });
+    // El `...r` de arriba arrastra TODA la fila, incluida la nota interna del
+    // equipo: hay que quitarla antes de que salga hacia un dueño.
+    return stripInternalFieldsList(rows, isStaffOrAdmin);
   });
 
   // GET /reservations/:id — obtener con relaciones completas (owner o staff/admin)
@@ -184,7 +191,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
         return reply.status(403).send({ error: "No autorizado" });
       }
-      return reservation;
+      // El `include` (no `select`) devuelve la fila completa: sin este filtro la
+      // nota interna del equipo y el motivo de las cortesías viajan al dueño.
+      return stripInternalFields(reservation, isStaffOrAdmin);
     }
   );
 
@@ -209,6 +218,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       roomId,
       roomIds,
       notes,
+      internalNotes,
       legalAccepted,
       appointmentAt,
       deslanado,
@@ -493,6 +503,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
                 isFirst ? deliveryFee : 0,
               ),
               notes,
+              internalNotes: internalNotes ?? null,
               legalAccepted,
               status: "CONFIRMED",
               groupId,
@@ -579,6 +590,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
                 isFirst ? deliveryFee : 0,
               ),
               notes,
+              internalNotes: internalNotes ?? null,
               legalAccepted,
               status: "CONFIRMED",
               groupId,
@@ -715,6 +727,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               isFirst ? deliveryFee : 0,
             ),
             notes,
+            internalNotes: internalNotes ?? null,
             legalAccepted,
             status: "CONFIRMED",
             groupId,

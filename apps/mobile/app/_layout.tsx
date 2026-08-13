@@ -3,6 +3,9 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+// Puente AppState → focusManager de React Query. Import por efecto de módulo:
+// sin él `refetchOnWindowFocus` no hace nada en React Native.
+import "@/lib/queryFocus";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -31,6 +34,7 @@ import {
   notificationRoute,
   type NotificationRouteData,
 } from "@/lib/notificationRoute";
+import { notificationInvalidationKeys } from "@/lib/notificationInvalidate";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -347,6 +351,35 @@ function PushNavigationHandler() {
   return null;
 }
 
+/**
+ * Refresca la caché cuando LLEGA un push, sin esperar a que nadie lo toque.
+ *
+ * Componente aparte de PushNavigationHandler a propósito: ése tiene una máquina
+ * de estados delicada (pending / handledRef / espera de rol) que resuelve el
+ * "usuario terminaba sólo en el inicio" en arranque frío, y no conviene meterle
+ * responsabilidades nuevas. Aquí solo se escucha y se invalida.
+ *
+ * `addNotificationReceivedListener` dispara únicamente con la app en PRIMER
+ * PLANO — que es exactamente el hueco que no cubren el puente de AppState
+ * (lib/queryFocus.ts) ni el refetch por foco de pantalla (useRefetchOnFocus).
+ */
+function PushCacheInvalidator() {
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const content = notification.request.content;
+      const data = (content.data ?? null) as NotificationRouteData;
+      const type = typeof content.data?.type === "string" ? content.data.type : "";
+      const keys = notificationInvalidationKeys(type, data);
+      for (const queryKey of keys) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  return null;
+}
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
@@ -373,6 +406,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
         <PushNavigationHandler />
+        <PushCacheInvalidator />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{
@@ -389,15 +423,10 @@ export default function RootLayout() {
           <Stack.Screen name="reservation" />
           <Stack.Screen name="legal" />
           <Stack.Screen name="welcome" />
-          <Stack.Screen
-            name="review/[reservationId]"
-            options={{
-              headerShown: true,
-              headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
-              title: "Dejar reseña",
-              headerTintColor: COLORS.primary,
-            }}
-          />
+          {/* NOTA: aquí vivía `review/[reservationId]`, una pantalla completa
+              de reseña a la que nadie navegaba (tercera copia del formulario).
+              La reseña se captura en `ReviewPromptModal`: desde el Inicio
+              (GlobalReviewPrompt) o desde el detalle de la reservación. */}
         </Stack>
         <DevRoleSwitcher />
         <SplashGate />

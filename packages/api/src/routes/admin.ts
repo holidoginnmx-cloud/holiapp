@@ -10,7 +10,11 @@ import {
   CartillaStatusEnum,
   UpdateVaccineSchema,
   CreateChangeRequestSchema,
+  AdminUpdateReservationSchema,
+  AdminCreateAddonSchema,
+  AdminUpdateAddonSchema,
 } from "@holidoginn/shared";
+import { Prisma } from "@holidoginn/db";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
 import { extraerCartilla } from "../lib/ocr";
@@ -1040,6 +1044,439 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({ success: true, ...preview });
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════
+  //  Edición de una reserva ya creada: precio, notas y add-ons
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Antes no existía: `PATCH /reservations/:id/status` acepta SOLO `status` y
+  // el de `/times` solo las horas, así que una reserva capturada sin el
+  // descuento quedaba mal para siempre y no había dónde escribir una nota.
+
+  /**
+   * Avisa al RESTO del equipo (admins + staff asignado) de que una reserva
+   * cambió, para que la caché de sus teléfonos se refresque sola.
+   *
+   * `kind: "RESERVATION_UPDATED"` es lo que busca el listener de push del móvil
+   * (apps/mobile/src/lib/notificationInvalidate.ts). Sin este aviso, el otro
+   * teléfono solo se enteraría al volver a entrar a la pantalla.
+   *
+   * Nunca lanza: el push es best-effort y no debe tumbar una edición ya escrita.
+   * Nunca incluye texto de notas internas en el cuerpo.
+   */
+  async function notifyTeamReservationUpdated(params: {
+    reservationId: string;
+    petName: string;
+    body: string;
+    actorUserId?: string | null;
+    assignedStaffId?: string | null;
+  }) {
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN", isActive: true },
+        select: { id: true },
+      });
+      const ids = new Set(admins.map((a) => a.id));
+      if (params.assignedStaffId) ids.add(params.assignedStaffId);
+      if (params.actorUserId) ids.delete(params.actorUserId);
+      const targets = [...ids];
+      if (targets.length === 0) return;
+      await notifyUsers(prisma, targets, {
+        type: "GENERAL",
+        title: `Reserva actualizada: ${params.petName}`,
+        body: params.body,
+        data: {
+          reservationId: params.reservationId,
+          kind: "RESERVATION_UPDATED",
+        },
+      });
+    } catch (err) {
+      console.error("[notifyTeamReservationUpdated] falló:", err);
+    }
+  }
+
+  // ─── PATCH /admin/reservations/:id — precio y notas ─────────────
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/reservations/:id",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = AdminUpdateReservationSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { totalAmount, internalNotes, notes, depositAgreed, priceChangeReason } =
+        parsed.data;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: { pet: { select: { name: true } }, payments: true },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+
+      // A DIFERENCIA del cambio de fechas (que exige CONFIRMED/CHECKED_IN),
+      // aquí se permite CHECKED_OUT a propósito: el barrido de mantenimiento
+      // cierra solas las reservas ya liquidadas, y el equipo cobra o corrige
+      // días después de la salida. Bloquearlo era justo la queja reportada.
+      if (reservation.status === "CANCELLED") {
+        return reply.status(400).send({
+          error: "No se puede editar una reserva cancelada",
+        });
+      }
+
+      // Solo cuando se toca el DINERO: la solicitud de cambio del cliente trae
+      // sus propios montos recalculados y pisarlos descuadra. Editar únicamente
+      // notas no tiene por qué bloquearse.
+      if (totalAmount !== undefined) {
+        const pendingCR = await prisma.reservationChangeRequest.findFirst({
+          where: { reservationId: reservation.id, status: "PENDING" },
+        });
+        if (pendingCR) {
+          return reply.status(409).send({
+            error:
+              "El cliente tiene una solicitud de cambio pendiente. Apruébala o recházala antes de cambiar el precio.",
+          });
+        }
+      }
+
+      const previousTotal = Number(reservation.totalAmount);
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          ...(totalAmount !== undefined
+            ? { totalAmount: new Prisma.Decimal(totalAmount) }
+            : {}),
+          ...(internalNotes !== undefined ? { internalNotes } : {}),
+          ...(notes !== undefined ? { notes } : {}),
+          ...(depositAgreed !== undefined
+            ? {
+                depositAgreed:
+                  depositAgreed === null
+                    ? null
+                    : new Prisma.Decimal(depositAgreed),
+              }
+            : {}),
+        },
+      });
+
+      const newTotal = totalAmount ?? previousTotal;
+      const delta = newTotal - previousTotal;
+      const totalChanged = Math.abs(delta) > 0.01;
+
+      // Cuánto se pagó ya: bajar el total por debajo de lo cobrado NO se
+      // rechaza (es justo el caso "olvidé el descuento"), se reporta para que
+      // la UI le diga al admin que hay saldo a favor por gestionar.
+      const totalPaid = reservation.payments
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const overpaid = Math.max(0, Number((totalPaid - newTotal).toFixed(2)));
+
+      if (totalChanged) {
+        // Al dueño SOLO si el total bajó. Una corrección al alza se habla con
+        // él; un push automático de "ahora debes más" genera más problemas que
+        // los que resuelve.
+        if (delta < 0) {
+          const motivo = priceChangeReason ? ` (${priceChangeReason})` : "";
+          await notifyUser(prisma, {
+            userId: reservation.ownerId,
+            type: "GENERAL",
+            title: "Ajustamos el total de tu reserva 💛",
+            body: `El total de ${reservation.pet.name} bajó a $${newTotal.toLocaleString("es-MX")}${motivo}.`,
+            data: { reservationId: reservation.id },
+          });
+        }
+        const signo = delta > 0 ? "subió" : "bajó";
+        const motivo = priceChangeReason ? ` — ${priceChangeReason}` : "";
+        await notifyTeamReservationUpdated({
+          reservationId: reservation.id,
+          petName: reservation.pet.name,
+          body: `El total ${signo} a $${newTotal.toLocaleString("es-MX")}${motivo}.`,
+          actorUserId: request.userId,
+          assignedStaffId: reservation.staffId,
+        });
+      } else {
+        await notifyTeamReservationUpdated({
+          reservationId: reservation.id,
+          petName: reservation.pet.name,
+          body: "Se actualizaron las notas de la reserva.",
+          actorUserId: request.userId,
+          assignedStaffId: reservation.staffId,
+        });
+      }
+
+      return reply.send({
+        success: true,
+        totalAmount: newTotal,
+        previousTotal,
+        delta: Number(delta.toFixed(2)),
+        overpaid,
+      });
+    }
+  );
+
+  /**
+   * Cuánto aporta un add-on al total de la reserva.
+   *
+   * NO se multiplica por `quantity`: pese al nombre, `unitPrice` guarda el
+   * monto TOTAL del add-on, y `quantity` es solo el dato de cuántas unidades
+   * lo componen (en EXTRA_HOURS, el nº de horas). Multiplicarlos cobraría las
+   * horas al cuadrado. Misma convención que usa el admin web al ajustar el
+   * total (`nuevoTotal = totalAmount + monto`); ver el comentario del modelo en
+   * schema.prisma.
+   *
+   * Cero si es cortesía: ahí `unitPrice` conserva el precio de catálogo para
+   * saber cuánto se regaló, pero no se cobra.
+   */
+  function addonContribution(addon: {
+    unitPrice: Prisma.Decimal | number;
+    isCourtesy: boolean;
+  }): number {
+    if (addon.isCourtesy) return 0;
+    return Number(addon.unitPrice);
+  }
+
+  // ─── POST /admin/reservations/:id/addons — agregar servicio ─────
+  // La capacidad que faltaba: sumar un baño (o cualquier add-on) a una estadía
+  // que ya existe, sin pasar por Stripe. NO confundir con
+  // POST /reservations/:id/addons/bath (routes/services.ts), que es la ruta del
+  // CLIENTE pagando con tarjeta.
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/reservations/:id/addons",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = AdminCreateAddonSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const {
+        variantId,
+        quantity,
+        unitPriceOverride,
+        isCourtesy,
+        courtesyReason,
+        internalNote,
+        scheduledAt,
+        addToTotal,
+      } = parsed.data;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: {
+          pet: { select: { name: true } },
+          addons: { include: { variant: { include: { serviceType: true } } } },
+        },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+      if (reservation.status === "CANCELLED") {
+        return reply.status(400).send({
+          error: "No se puede agregar un servicio a una reserva cancelada",
+        });
+      }
+
+      const variant = await prisma.serviceVariant.findUnique({
+        where: { id: variantId },
+        include: { serviceType: true },
+      });
+      if (!variant) {
+        return reply.status(404).send({ error: "Variante no encontrada" });
+      }
+
+      // Un segundo baño COBRADO casi siempre es un doble clic; uno de cortesía
+      // sobre uno pagado es un caso real (el baño salió mal, se repone gratis).
+      if (variant.serviceType.code === "BATH" && !isCourtesy) {
+        const yaTieneBano = reservation.addons.some(
+          (a) => a.variant.serviceType.code === "BATH" && !a.isCourtesy
+        );
+        if (yaTieneBano) {
+          return reply.status(409).send({
+            error: "Esta reservación ya tiene un baño contratado",
+          });
+        }
+      }
+
+      // El precio es autoridad del servidor (igual que en el flujo del cliente):
+      // el override solo aplica cuando se pactó otro monto y no es cortesía.
+      const unitPrice =
+        !isCourtesy && unitPriceOverride != null
+          ? unitPriceOverride
+          : Number(variant.price);
+
+      // `unitPrice` ya es el monto total del add-on (ver addonContribution).
+      const contribution = isCourtesy || !addToTotal ? 0 : unitPrice;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const addon = await tx.reservationAddon.create({
+          data: {
+            reservationId: reservation.id,
+            variantId: variant.id,
+            unitPrice: new Prisma.Decimal(unitPrice),
+            quantity: quantity ?? null,
+            // Cortesía sigue siendo BOOKING: se agenda y se ejecuta con la
+            // reserva. `paidWith` dice CÓMO se pagó, no SI se pagó.
+            paidWith: isCourtesy || addToTotal ? "BOOKING" : "STANDALONE",
+            durationMinutes: variant.durationMinutes ?? null,
+            scheduledAt: scheduledAt ?? null,
+            internalNote: internalNote ?? null,
+            isCourtesy,
+            ...(isCourtesy
+              ? {
+                  courtesyReason: courtesyReason ?? null,
+                  courtesySetById: request.userId ?? null,
+                  courtesySetAt: new Date(),
+                }
+              : {}),
+          },
+          include: { variant: { include: { serviceType: true } } },
+        });
+
+        let newTotal = Number(reservation.totalAmount);
+        if (contribution > 0) {
+          newTotal = Number((newTotal + contribution).toFixed(2));
+          await tx.reservation.update({
+            where: { id: reservation.id },
+            data: { totalAmount: new Prisma.Decimal(newTotal) },
+          });
+        }
+        return { addon, newTotal };
+      });
+
+      const etiqueta = isCourtesy ? " de CORTESÍA" : "";
+      await notifyTeamReservationUpdated({
+        reservationId: reservation.id,
+        petName: reservation.pet.name,
+        body: `Se agregó ${variant.serviceType.name}${etiqueta} a la reserva.`,
+        actorUserId: request.userId,
+        assignedStaffId: reservation.staffId,
+      });
+
+      return reply.send({
+        success: true,
+        addon: result.addon,
+        totalAmount: result.newTotal,
+        addedToTotal: contribution,
+      });
+    }
+  );
+
+  // ─── PATCH /admin/reservations/:id/addons/:addonId ──────────────
+  fastify.patch<{ Params: { id: string; addonId: string } }>(
+    "/admin/reservations/:id/addons/:addonId",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = AdminUpdateAddonSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { internalNote, isCourtesy, courtesyReason, unitPrice, scheduledAt } =
+        parsed.data;
+
+      const addon = await prisma.reservationAddon.findUnique({
+        where: { id: request.params.addonId },
+        include: {
+          variant: { include: { serviceType: true } },
+          reservation: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true,
+              ownerId: true,
+              staffId: true,
+              pet: { select: { name: true } },
+            },
+          },
+        },
+      });
+      // El addon tiene que ser DE esta reserva: sin esta comprobación un id
+      // suelto permitiría editar el add-on de cualquier otra.
+      if (!addon || addon.reservation.id !== request.params.id) {
+        return reply.status(404).send({ error: "Servicio no encontrado" });
+      }
+      if (addon.reservation.status === "CANCELLED") {
+        return reply.status(400).send({
+          error: "No se puede editar un servicio de una reserva cancelada",
+        });
+      }
+
+      // Delta del total por el toggle de cortesía. El precio efectivo tras el
+      // PATCH manda: si se cambian precio y cortesía a la vez, el delta se
+      // calcula con el precio nuevo, no con el viejo.
+      const efectivoUnit = unitPrice ?? Number(addon.unitPrice);
+      const antes = addonContribution(addon);
+      const despues = (isCourtesy ?? addon.isCourtesy) ? 0 : efectivoUnit;
+      // Solo se ajusta el total de los add-ons que SÍ estaban dentro de él; uno
+      // STANDALONE se cobró aparte y nunca sumó.
+      const ajustaTotal = addon.paidWith === "BOOKING";
+      const delta = ajustaTotal ? Number((despues - antes).toFixed(2)) : 0;
+
+      const marcaCortesia = isCourtesy === true && !addon.isCourtesy;
+      const quitaCortesia = isCourtesy === false && addon.isCourtesy;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await tx.reservationAddon.update({
+          where: { id: addon.id },
+          data: {
+            ...(internalNote !== undefined ? { internalNote } : {}),
+            ...(unitPrice !== undefined
+              ? { unitPrice: new Prisma.Decimal(unitPrice) }
+              : {}),
+            ...(scheduledAt !== undefined ? { scheduledAt } : {}),
+            ...(isCourtesy !== undefined ? { isCourtesy } : {}),
+            ...(courtesyReason !== undefined ? { courtesyReason } : {}),
+            ...(marcaCortesia
+              ? {
+                  courtesySetById: request.userId ?? null,
+                  courtesySetAt: new Date(),
+                }
+              : {}),
+            // Al quitar la cortesía se limpia la auditoría: dejar el sello de
+            // quién la puso en un add-on que ya se cobra confunde el reporte.
+            ...(quitaCortesia
+              ? {
+                  courtesyReason: null,
+                  courtesySetById: null,
+                  courtesySetAt: null,
+                }
+              : {}),
+          },
+          include: { variant: { include: { serviceType: true } } },
+        });
+
+        let newTotal = Number(addon.reservation.totalAmount);
+        if (delta !== 0) {
+          newTotal = Math.max(0, Number((newTotal + delta).toFixed(2)));
+          await tx.reservation.update({
+            where: { id: addon.reservation.id },
+            data: { totalAmount: new Prisma.Decimal(newTotal) },
+          });
+        }
+        return { addon: updated, newTotal };
+      });
+
+      if (delta !== 0) {
+        const signo = delta > 0 ? "subió" : "bajó";
+        const motivo = marcaCortesia
+          ? ` (${addon.variant.serviceType.name} de cortesía)`
+          : "";
+        await notifyTeamReservationUpdated({
+          reservationId: addon.reservation.id,
+          petName: addon.reservation.pet.name,
+          body: `El total ${signo} a $${result.newTotal.toLocaleString("es-MX")}${motivo}.`,
+          actorUserId: request.userId,
+          assignedStaffId: addon.reservation.staffId,
+        });
+      }
+
+      return reply.send({
+        success: true,
+        addon: result.addon,
+        totalAmount: result.newTotal,
+        delta,
+      });
     }
   );
 

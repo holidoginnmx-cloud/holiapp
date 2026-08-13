@@ -401,6 +401,10 @@ export const ReservationSchema = z.object({
   totalDays: z.number().int().positive().nullable(),
   totalAmount: z.number().nonnegative(),
   notes: z.string().nullable(),
+  // Nota del equipo. Opcional porque la API la BORRA de la respuesta cuando
+  // quien pregunta es el dueño (ver lib/stripInternal.ts): en el payload del
+  // cliente el campo no viene.
+  internalNotes: z.string().nullable().optional(),
   // Instrucciones de medicamento (existe en la BD; staff la captura por estancia).
   medicationNotes: z.string().nullable().optional(),
   legalAccepted: z.boolean(),
@@ -450,7 +454,11 @@ export const TimeHHmmSchema = z
 
 export const CreateReservationSchema = z.object({
   reservationType: z.enum(["STAY", "BATH", "DAYCARE"]).default("STAY"),
+  // Nota del CLIENTE (la ve él en su app).
   notes: z.string().nullable().default(null),
+  // Nota del EQUIPO. Es la que captura el wizard del admin: antes escribía en
+  // `notes` con el placeholder "Notas internas...", y el dueño la leía.
+  internalNotes: z.string().nullable().optional(),
   legalAccepted: z.boolean(),
   ownerId: z.string(),
   // Una mascota (flujo clásico) o varias (multi-perro desde admin: se crea
@@ -531,6 +539,70 @@ export const UpdateReservationTimesSchema = z
     (d) => d.checkInTime !== undefined || d.checkOutTime !== undefined,
     { message: "Indica al menos una hora" },
   );
+
+// ── Edición de una reserva YA creada (solo ADMIN) ────────────────────────────
+// Hasta ahora no había forma de corregir el precio ni las notas después de
+// crear: si se capturaba sin el descuento, quedaba mal para siempre.
+
+export const AdminUpdateReservationSchema = z
+  .object({
+    // Total NETO de la reserva, tal como se guarda en la columna. OJO: para
+    // baños la UI muestra `totalAmount + extras del staff`; aquí va SOLO la
+    // columna, o los extras se irían acumulando dentro de ella.
+    totalAmount: z.number().nonnegative().optional(),
+    // Nota del equipo. Nunca sale hacia el dueño.
+    internalNotes: z.string().max(2000).nullable().optional(),
+    // Nota del cliente (la que escribió al reservar); el admin puede corregirla.
+    notes: z.string().max(2000).nullable().optional(),
+    depositAgreed: z.number().nonnegative().nullable().optional(),
+    // Queda en el aviso al equipo: "bajó $200 — descuento olvidado".
+    priceChangeReason: z.string().max(200).optional(),
+  })
+  .refine(
+    (d) =>
+      d.totalAmount !== undefined ||
+      d.internalNotes !== undefined ||
+      d.notes !== undefined ||
+      d.depositAgreed !== undefined,
+    { message: "Indica al menos un campo a actualizar" }
+  );
+
+export const AdminCreateAddonSchema = z.object({
+  variantId: z.string(),
+  quantity: z.number().int().positive().optional(),
+  // El precio lo manda el servidor desde el catálogo; esto solo lo pisa cuando
+  // se pactó otro monto. Ignorado si `isCourtesy`.
+  unitPriceOverride: z.number().nonnegative().optional(),
+  isCourtesy: z.boolean().default(false),
+  courtesyReason: z.string().max(200).optional(),
+  internalNote: z.string().max(500).nullable().optional(),
+  scheduledAt: z.coerce.date().optional(),
+  // false = el servicio se cobrará aparte (addon STANDALONE) y no se suma al
+  // total de la reserva. Irrelevante en cortesía, que nunca suma.
+  addToTotal: z.boolean().default(true),
+});
+
+export const AdminUpdateAddonSchema = z
+  .object({
+    internalNote: z.string().max(500).nullable().optional(),
+    isCourtesy: z.boolean().optional(),
+    courtesyReason: z.string().max(200).nullable().optional(),
+    unitPrice: z.number().nonnegative().optional(),
+    scheduledAt: z.coerce.date().nullable().optional(),
+  })
+  .refine(
+    (d) =>
+      d.internalNote !== undefined ||
+      d.isCourtesy !== undefined ||
+      d.courtesyReason !== undefined ||
+      d.unitPrice !== undefined ||
+      d.scheduledAt !== undefined,
+    { message: "Indica al menos un campo a actualizar" }
+  );
+
+export type AdminUpdateReservation = z.infer<typeof AdminUpdateReservationSchema>;
+export type AdminCreateAddon = z.infer<typeof AdminCreateAddonSchema>;
+export type AdminUpdateAddon = z.infer<typeof AdminUpdateAddonSchema>;
 
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type CreateReservation = z.infer<typeof CreateReservationSchema>;
@@ -806,6 +878,9 @@ export const ReviewSchema = z.object({
   comment: z.string().nullable(),
   reservationId: z.string(),
   ownerId: z.string(),
+  // Agrupa las reseñas de una misma visita multi-mascota (= groupId ?? id).
+  // Nullable por las reseñas anteriores a la migración de agosto 2026.
+  groupKey: z.string().nullable().optional(),
   createdAt: z.coerce.date(),
 });
 
@@ -815,8 +890,79 @@ export const CreateReviewSchema = z.object({
   reservationId: z.string(),
 });
 
+/**
+ * Visita terminada que aún espera reseña. La devuelve `GET /reviews/pending`
+ * para el pop-up del inicio; una visita puede abarcar varias reservaciones
+ * (una por mascota) y se califica UNA sola vez.
+ */
+export const PendingReviewSchema = z.object({
+  groupKey: z.string(),
+  reservationIds: z.array(z.string()).min(1),
+  // Enum inline a propósito: `ReservationTypeEnum` se declara más abajo en este
+  // archivo y usarlo aquí reventaría por TDZ al evaluar el módulo.
+  reservationType: z.enum(["STAY", "BATH", "DAYCARE"]),
+  petNames: z.array(z.string()),
+  endedAt: z.coerce.date(),
+  /** Cuántas veces el cliente ya le dio "Más tarde" (máximo 3). */
+  promptCount: z.number().int(),
+});
+
 export type Review = z.infer<typeof ReviewSchema>;
 export type CreateReview = z.infer<typeof CreateReviewSchema>;
+export type PendingReview = z.infer<typeof PendingReviewSchema>;
+
+/**
+ * Textos de la reseña por tipo de servicio. Único lugar donde se decide si algo
+ * se llama "estancia", "baño" o "guardería": lo usan el push del API y el modal
+ * de la app, que antes decían "estancia" incluso para un baño.
+ */
+export const REVIEW_COPY: Record<
+  "STAY" | "BATH" | "DAYCARE",
+  {
+    /** Push: `${pushTitle(quién)}` */
+    pushTitle: (who: string) => string;
+    pushBody: string;
+    /** Modal de la app */
+    modalTitle: string;
+    modalSubtitle: string;
+    placeholder: (who: string) => string;
+    /** CTA del detalle de la reservación */
+    cta: string;
+  }
+> = {
+  STAY: {
+    pushTitle: (who) => `¿Cómo estuvo la estancia de ${who}? 🐾`,
+    pushBody: "Califícanos con patitas y cuéntanos cómo la pasó.",
+    modalTitle: "¿Cómo estuvo la estancia?",
+    modalSubtitle: "Tu opinión nos ayuda a mejorar el servicio",
+    placeholder: (who) => `Cuéntanos cómo la pasó ${who}…`,
+    cta: "Califica esta estancia",
+  },
+  BATH: {
+    pushTitle: (who) => `¿Cómo quedó el baño de ${who}? 🛁`,
+    pushBody: "Califica el servicio de estética y déjanos un comentario.",
+    modalTitle: "¿Cómo quedó el baño?",
+    modalSubtitle: "Tu opinión nos ayuda a mejorar el servicio",
+    placeholder: (who) => `Cuéntanos cómo quedó ${who}…`,
+    cta: "Califica este baño",
+  },
+  DAYCARE: {
+    pushTitle: (who) => `¿Qué tal la guardería de ${who}? ☀️`,
+    pushBody: "Cuéntanos cómo le fue hoy. Tu opinión nos ayuda a mejorar.",
+    modalTitle: "¿Qué tal la guardería?",
+    modalSubtitle: "Tu opinión nos ayuda a mejorar el servicio",
+    placeholder: (who) => `Cuéntanos cómo le fue a ${who}…`,
+    cta: "Califica esta guardería",
+  },
+};
+
+/** "Bailey" · "Bailey y Rocco" · "tus peluditos" (3 o más). */
+export function reviewWho(names: string[]): string {
+  if (names.length === 0) return "tu peludito";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} y ${names[1]}`;
+  return "tus peluditos";
+}
 
 // ========================
 // Services (Baño y otros addons)

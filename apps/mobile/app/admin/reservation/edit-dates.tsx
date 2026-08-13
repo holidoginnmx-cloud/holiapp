@@ -28,6 +28,7 @@ import {
   formatWeekdayDayShort,
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
 // Pantalla admin: modifica las fechas de una estadía directamente (sin flujo
 // de aprobación). El total se recalcula por delta de hospedaje en el server;
@@ -90,10 +91,7 @@ export default function AdminEditDatesScreen() {
       });
     },
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["reservation", id] });
-      qc.invalidateQueries({ queryKey: ["admin", "stats"] });
-      qc.invalidateQueries({ queryKey: ["admin", "reservations"] });
-      qc.invalidateQueries({ queryKey: ["admin", "rooms"] });
+      invalidateReservationScope(qc, id);
       const deltaMsg =
         res.delta > 0
           ? `El total subió ${formatCurrency(res.delta)}; registra el cobro desde el detalle.`

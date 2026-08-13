@@ -22,6 +22,8 @@ import { ReservationCard } from "@/components/ReservationCard";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatName, formatDateLong, hotelYMD } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
+import { LIVE_OPS } from "@/lib/queryOptions";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 type SectionKey = "active" | "stays" | "baths" | "overdueBaths";
 
@@ -52,15 +54,41 @@ export default function AdminDashboard() {
     refetchInterval: 60_000,
   });
 
-  const { data: activeReservations } = useQuery({
+  const {
+    data: activeReservations,
+    refetch: refetchActive,
+    isRefetching: isRefetchingActive,
+  } = useQuery({
     queryKey: ["admin", "reservations", "CHECKED_IN"],
     queryFn: () => getReservations({ status: "CHECKED_IN" }),
+    ...LIVE_OPS,
   });
 
-  const { data: upcomingReservations } = useQuery({
+  const {
+    data: upcomingReservations,
+    refetch: refetchUpcoming,
+    isRefetching: isRefetchingUpcoming,
+  } = useQuery({
     queryKey: ["admin", "reservations", "CONFIRMED"],
     queryFn: () => getReservations({ status: "CONFIRMED" }),
+    ...LIVE_OPS,
   });
+
+  useRefetchOnFocus([
+    ["admin", "stats"],
+    ["admin", "reservations"],
+  ]);
+
+  // El RefreshControl tiraba SOLO de la query de stats: jalar hacia abajo
+  // actualizaba los contadores de arriba y dejaba viejas las listas de
+  // Hospedados / Próximas llegadas, que es justo lo que se está mirando.
+  const refreshAll = () => {
+    refetch();
+    refetchActive();
+    refetchUpcoming();
+  };
+  const isRefreshingAny =
+    isRefetching || isRefetchingActive || isRefetchingUpcoming;
 
   const { upcomingStays, upcomingBaths, overdueBaths } = useMemo(() => {
     const today = hotelYMD(new Date());
@@ -149,8 +177,8 @@ export default function AdminDashboard() {
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={refetch}
+          refreshing={isRefreshingAny}
+          onRefresh={refreshAll}
           tintColor={COLORS.primary}
         />
       }

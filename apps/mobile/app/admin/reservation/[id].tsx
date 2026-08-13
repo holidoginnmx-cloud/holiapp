@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 
 const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
@@ -36,7 +37,14 @@ import {
   getRooms,
   deleteStayUpdate,
   completeStaffBath,
+  adminUpdateReservation,
+  adminUpdateReservationAddon,
 } from "@/lib/api";
+import {
+  AmountEditModal,
+  type AmountEditValues,
+} from "@/components/AmountEditModal";
+import { NoteEditModal } from "@/components/NoteEditModal";
 import { MediaViewer } from "@/components/MediaViewer";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
 import * as ImagePicker from "expo-image-picker";
@@ -50,6 +58,9 @@ import {
   formatTime,
   formatTimeHHmm,
 } from "@/lib/format";
+import { LIVE_OPS } from "@/lib/queryOptions";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
 const STATUS_CONFIG: Record<
   string,
@@ -122,6 +133,12 @@ export default function AdminReservationDetail() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [roomModalVisible, setRoomModalVisible] = useState(false);
+  const [amountModalVisible, setAmountModalVisible] = useState(false);
+  const [internalNoteModalVisible, setInternalNoteModalVisible] = useState(false);
+  const [clientNoteModalVisible, setClientNoteModalVisible] = useState(false);
+  // Add-on sobre el que se está actuando (menú de cortesía / editar nota).
+  const [addonActionId, setAddonActionId] = useState<string | null>(null);
+  const [addonNoteId, setAddonNoteId] = useState<string | null>(null);
   const { banner, showSuccess } = useSuccessBanner();
 
   const closePaymentModal = () => setPaymentModalVisible(false);
@@ -236,27 +253,39 @@ export default function AdminReservationDetail() {
     isError,
     error,
     refetch,
+    isRefetching,
   } = useQuery({
     queryKey: ["reservation", id],
     queryFn: () => getReservationById(id!),
     enabled: !!id,
+    ...LIVE_OPS,
   });
 
-  const { data: checklists } = useQuery({
+  const {
+    data: checklists,
+    refetch: refetchChecklists,
+  } = useQuery({
     queryKey: ["reservation-checklists", id],
     queryFn: () => getOwnerChecklists(id!),
     enabled: !!id,
     refetchInterval: 30_000,
   });
 
+  // Esta pantalla no tenía NINGUNA forma de refrescarse: ni intervalo, ni foco,
+  // ni pull-to-refresh. Un cambio hecho desde otro teléfono no se veía nunca.
+  useRefetchOnFocus([["reservation", id]]);
+
+  const refreshAll = () => {
+    refetch();
+    refetchChecklists();
+  };
+
   // Invalidaciones dirigidas: antes se invalidaba la key ["admin"] completa,
   // lo que refetcheaba TODAS las queries admin (stats, listas, cuartos,
-  // cartillas, revenue...) tras cada acción.
+  // cartillas, revenue...) tras cada acción. Ahora el alcance vive en un solo
+  // helper para que las listas de staff tampoco queden viejas.
   const invalidateAfterStatusChange = () => {
-    queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-    queryClient.invalidateQueries({ queryKey: ["admin", "stats"] });
-    queryClient.invalidateQueries({ queryKey: ["admin", "reservations"] });
-    queryClient.invalidateQueries({ queryKey: ["admin", "rooms"] });
+    invalidateReservationScope(queryClient, id);
   };
 
   const statusMutation = useMutation({
@@ -301,6 +330,103 @@ export default function AdminReservationDetail() {
       showSuccess("Pago registrado y notificado al dueño");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  // Corregir el total. NO usa useOptimisticMutation a propósito: es dinero, y
+  // ahí el servidor es la autoridad (isPending + banner, no parche local).
+  const totalMutation = useMutation({
+    mutationFn: (values: AmountEditValues) =>
+      adminUpdateReservation(id!, {
+        totalAmount: values.amount,
+        priceChangeReason: values.reason,
+      }),
+    onSuccess: (res) => {
+      invalidateAfterStatusChange();
+      setAmountModalVisible(false);
+      const partes: string[] = [`Total actualizado a ${formatCurrency(res.totalAmount)}`];
+      if (res.delta < 0) partes.push("se avisó al dueño");
+      if (res.overpaid > 0) {
+        partes.push(
+          `hay ${formatCurrency(res.overpaid)} a favor por reembolsar o dejar de saldo`,
+        );
+      }
+      showSuccess(`${partes.join(" · ")}.`);
+    },
+    onError: (e: Error) => Alert.alert("No se pudo cambiar el total", e.message),
+  });
+
+  // Notas: texto, reversible y sin dinero de por medio → sí van optimistas.
+  const internalNoteMutation = useOptimisticMutation({
+    mutationFn: (value: string | null) =>
+      adminUpdateReservation(id!, { internalNotes: value }),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, value) =>
+          old ? { ...(old as object), internalNotes: value } : old,
+      },
+    ],
+    invalidateKeys: [["reservation", id]],
+    onSuccess: () => {
+      setInternalNoteModalVisible(false);
+      showSuccess("Nota interna guardada");
+    },
+    errorTitle: "No se pudo guardar la nota",
+  });
+
+  const clientNoteMutation = useOptimisticMutation({
+    mutationFn: (value: string | null) =>
+      adminUpdateReservation(id!, { notes: value }),
+    patches: [
+      {
+        queryKey: ["reservation", id],
+        updater: (old, value) =>
+          old ? { ...(old as object), notes: value } : old,
+      },
+    ],
+    invalidateKeys: [["reservation", id]],
+    onSuccess: () => {
+      setClientNoteModalVisible(false);
+      showSuccess("Nota guardada");
+    },
+    errorTitle: "No se pudo guardar la nota",
+  });
+
+  // Cortesía: toca el total, así que va sin optimismo y con banner.
+  const courtesyMutation = useMutation({
+    mutationFn: (vars: { addonId: string; isCourtesy: boolean }) =>
+      adminUpdateReservationAddon(id!, vars.addonId, {
+        isCourtesy: vars.isCourtesy,
+      }),
+    onSuccess: (res, vars) => {
+      invalidateAfterStatusChange();
+      setAddonActionId(null);
+      const cambio =
+        res.delta === 0
+          ? "el total no cambió"
+          : res.delta < 0
+            ? `el total bajó ${formatCurrency(-res.delta)}`
+            : `el total subió ${formatCurrency(res.delta)}`;
+      showSuccess(
+        vars.isCourtesy
+          ? `Marcado como cortesía · ${cambio}`
+          : `Cortesía quitada · ${cambio}`,
+      );
+    },
+    onError: (e: Error) => Alert.alert("No se pudo actualizar el servicio", e.message),
+  });
+
+  const addonNoteMutation = useMutation({
+    mutationFn: (vars: { addonId: string; internalNote: string | null }) =>
+      adminUpdateReservationAddon(id!, vars.addonId, {
+        internalNote: vars.internalNote,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+      setAddonNoteId(null);
+      showSuccess("Nota del servicio guardada");
+    },
+    onError: (e: Error) => Alert.alert("No se pudo guardar la nota", e.message),
   });
 
   // Lista de staff activos — solo se carga cuando se abre el modal.
@@ -433,6 +559,51 @@ export default function AdminReservationDetail() {
     ? Number(reservation.totalAmount) + extrasSum
     : Number(reservation.totalAmount);
 
+  // Menú del servicio seleccionado. Se arma aquí (y no en el render del modal)
+  // porque necesita el addon vivo de la reserva ya cargada.
+  const selectedAddon = (reservation.addons ?? []).find(
+    (a) => a.id === addonActionId,
+  );
+  const addonActions: {
+    key: string;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    onPress: () => void;
+  }[] = selectedAddon
+    ? [
+        selectedAddon.isCourtesy
+          ? {
+              key: "courtesy-off",
+              label: "Quitar cortesía (se vuelve a cobrar)",
+              icon: "cash-outline" as const,
+              onPress: () =>
+                courtesyMutation.mutate({
+                  addonId: selectedAddon.id,
+                  isCourtesy: false,
+                }),
+            }
+          : {
+              key: "courtesy-on",
+              label: "Marcar como cortesía (no se cobra)",
+              icon: "gift-outline" as const,
+              onPress: () =>
+                courtesyMutation.mutate({
+                  addonId: selectedAddon.id,
+                  isCourtesy: true,
+                }),
+            },
+        {
+          key: "note",
+          label: selectedAddon.internalNote ? "Editar nota" : "Agregar nota",
+          icon: "create-outline" as const,
+          onPress: () => {
+            setAddonNoteId(selectedAddon.id);
+            setAddonActionId(null);
+          },
+        },
+      ]
+    : [];
+
   // Staff que completó el baño: tomamos del StayUpdate más reciente con
   // caption del baño (lo registra el endpoint POST /staff/baths/:id/complete).
   const bathCompletedUpdate = isBath
@@ -478,7 +649,17 @@ export default function AdminReservationDetail() {
               : "Detalle de reservación",
       }}
     />
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefetching}
+          onRefresh={refreshAll}
+          tintColor={COLORS.primary}
+        />
+      }
+    >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -723,26 +904,68 @@ export default function AdminReservationDetail() {
         </View>
         )}
 
-        {/* Total */}
-        <View style={styles.totalFooter}>
+        {/* Total — editable: una reserva capturada sin el descuento no tenía
+            forma de corregirse. */}
+        <TouchableOpacity
+          style={styles.totalFooter}
+          onPress={() => setAmountModalVisible(true)}
+          activeOpacity={0.7}
+          testID="admin-reservation-edit-total"
+        >
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalAmount}>
-            {formatCurrency(displayedTotal)}
-          </Text>
-        </View>
+          <View style={styles.metaValueRow}>
+            <Text style={styles.totalAmount}>
+              {formatCurrency(displayedTotal)}
+            </Text>
+            <Ionicons name="pencil" size={13} color={COLORS.primary} />
+          </View>
+        </TouchableOpacity>
 
+        {/* Nota interna: SIEMPRE presente. Antes el bloque solo existía si la
+            reserva ya tenía notas, así que en las que se crearon sin ellas no
+            había ni dónde tocar para agregarlas. */}
+        <TouchableOpacity
+          style={styles.notesBox}
+          onPress={() => setInternalNoteModalVisible(true)}
+          activeOpacity={0.7}
+          testID="admin-reservation-edit-internal-note"
+        >
+          <Ionicons name="lock-closed-outline" size={14} color={COLORS.notesText} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.notesLabel}>Nota interna (solo el equipo)</Text>
+            {reservation.internalNotes ? (
+              <Text style={styles.notesText}>{reservation.internalNotes}</Text>
+            ) : (
+              <Text style={[styles.notesText, styles.unassigned]}>
+                Agregar nota interna
+              </Text>
+            )}
+          </View>
+          <Ionicons
+            name={reservation.internalNotes ? "pencil" : "add-circle"}
+            size={14}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+
+        {/* Nota del cliente: solo si escribió algo al reservar. */}
         {reservation.notes && (
-          <View style={styles.notesBox}>
+          <TouchableOpacity
+            style={styles.notesBox}
+            onPress={() => setClientNoteModalVisible(true)}
+            activeOpacity={0.7}
+          >
             <Ionicons
               name="document-text-outline"
               size={14}
               color={COLORS.notesText}
             />
             <View style={{ flex: 1 }}>
-              <Text style={styles.notesLabel}>Notas</Text>
+              <Text style={styles.notesLabel}>Nota del cliente</Text>
               <Text style={styles.notesText}>{reservation.notes}</Text>
             </View>
-          </View>
+            <Ionicons name="pencil" size={14} color={COLORS.primary} />
+          </TouchableOpacity>
         )}
       </View>
 
@@ -827,17 +1050,29 @@ export default function AdminReservationDetail() {
 
       {/* Servicios contratados — sólo hospedajes (en baños el servicio es la
           reserva misma y ya aparece en el hero). */}
-      {!isBath && reservation.addons && reservation.addons.length > 0 && (
+      {!isBath && (
         <View style={styles.sectionCard}>
           <View style={styles.sectionCardHeader}>
             <Text style={styles.sectionCardTitle}>Servicios contratados</Text>
-            <View style={styles.countChip}>
-              <Text style={styles.countChipText}>
-                {reservation.addons.length}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={styles.metaValueRow}
+              onPress={() =>
+                router.push(`/admin/reservation/add-addon?id=${id}` as any)
+              }
+              activeOpacity={0.7}
+              testID="admin-reservation-add-addon"
+            >
+              <Text style={styles.addAddonText}>Agregar</Text>
+              <Ionicons name="add-circle" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
           </View>
-          {reservation.addons.map((addon, idx) => {
+          {(reservation.addons ?? []).length === 0 && (
+            <Text style={styles.addonEmpty}>
+              Sin servicios adicionales. Usa "Agregar" para sumar un baño
+              (también de cortesía) o un desparasitante.
+            </Text>
+          )}
+          {(reservation.addons ?? []).map((addon, idx) => {
             const extras: string[] = [];
             if (addon.variant?.deslanado) extras.push("Deslanado");
             if (addon.variant?.corte) extras.push("Corte");
@@ -851,9 +1086,12 @@ export default function AdminReservationDetail() {
             const isInBooking = addon.paidWith === "BOOKING";
             const isLastAddon = idx === (reservation.addons?.length ?? 0) - 1;
             return (
-              <View
+              <TouchableOpacity
                 key={addon.id}
                 style={[styles.addonRow, isLastAddon && styles.lastRow]}
+                onPress={() => setAddonActionId(addon.id)}
+                activeOpacity={0.7}
+                testID={`admin-reservation-addon-${addon.id}`}
               >
                 <View style={styles.addonIconWrap}>
                   <Ionicons name={icon} size={18} color={COLORS.primary} />
@@ -861,32 +1099,57 @@ export default function AdminReservationDetail() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.addonLabel}>{label}</Text>
                   <View style={styles.addonMetaRow}>
-                    <View
-                      style={[
-                        styles.metaPill,
-                        isInBooking ? styles.metaPillSuccess : styles.metaPillInfo,
-                      ]}
-                    >
-                      <Text
+                    {addon.isCourtesy ? (
+                      <View style={[styles.metaPill, styles.metaPillCourtesy]}>
+                        <Text
+                          style={[
+                            styles.metaPillText,
+                            { color: COLORS.warningText },
+                          ]}
+                        >
+                          Cortesía
+                        </Text>
+                      </View>
+                    ) : (
+                      <View
                         style={[
-                          styles.metaPillText,
-                          isInBooking
-                            ? { color: COLORS.successText }
-                            : { color: COLORS.infoText },
+                          styles.metaPill,
+                          isInBooking ? styles.metaPillSuccess : styles.metaPillInfo,
                         ]}
                       >
-                        {isInBooking ? "En reserva" : "Después"}
-                      </Text>
-                    </View>
+                        <Text
+                          style={[
+                            styles.metaPillText,
+                            isInBooking
+                              ? { color: COLORS.successText }
+                              : { color: COLORS.infoText },
+                          ]}
+                        >
+                          {isInBooking ? "En reserva" : "Después"}
+                        </Text>
+                      </View>
+                    )}
                     <Text style={styles.addonDate}>
                       {formatDateTime(addon.createdAt)}
                     </Text>
                   </View>
+                  {addon.internalNote ? (
+                    <Text style={styles.addonNote} numberOfLines={2}>
+                      {addon.internalNote}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text style={styles.addonPrice}>
+                {/* En cortesía el precio de catálogo va tachado: así se ve qué
+                    se regaló sin tener que abrir nada. */}
+                <Text
+                  style={[
+                    styles.addonPrice,
+                    addon.isCourtesy && styles.addonPriceCourtesy,
+                  ]}
+                >
                   {formatCurrency(addon.unitPrice)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -1314,6 +1577,100 @@ export default function AdminReservationDetail() {
       onClose={closePaymentModal}
       submitting={paymentMutation.isPending}
       onSubmit={(values) => paymentMutation.mutate(values)}
+    />
+
+    {/* Corregir el total. Se precarga `totalAmount`, NO `displayedTotal`: en
+        baños el segundo incluye los extras del staff y guardarlo los metería
+        dentro de la columna, duplicándolos en cada edición. */}
+    <AmountEditModal
+      visible={amountModalVisible}
+      onClose={() => setAmountModalVisible(false)}
+      submitting={totalMutation.isPending}
+      onSubmit={(values) => totalMutation.mutate(values)}
+      initialAmount={String(reservation.totalAmount)}
+      title="Editar total de la reserva"
+      label={isBath ? "Total de la reserva (sin extras del baño)" : "Total"}
+      hint={
+        isBath
+          ? "Los extras de deslanado/corte que define el staff se suman aparte."
+          : undefined
+      }
+    />
+
+    <NoteEditModal
+      visible={internalNoteModalVisible}
+      onClose={() => setInternalNoteModalVisible(false)}
+      submitting={internalNoteMutation.isPending}
+      onSubmit={(value) => internalNoteMutation.mutate(value)}
+      initialValue={reservation.internalNotes}
+      title="Nota interna"
+      hint="Solo la ve el equipo. El dueño nunca la ve en su app."
+      placeholder="Ej. Baño de cortesía, no cobrar."
+    />
+
+    <NoteEditModal
+      visible={clientNoteModalVisible}
+      onClose={() => setClientNoteModalVisible(false)}
+      submitting={clientNoteMutation.isPending}
+      onSubmit={(value) => clientNoteMutation.mutate(value)}
+      initialValue={reservation.notes}
+      title="Nota del cliente"
+      hint="Es lo que el dueño indicó al reservar."
+    />
+
+    {/* Acciones de un servicio: cortesía y nota. */}
+    <SelectionListModal
+      variant="view"
+      visible={!!addonActionId}
+      onClose={() => setAddonActionId(null)}
+      title="Servicio"
+      subtitle="Marcar como cortesía ajusta el total automáticamente."
+      data={addonActions}
+      emptyText=""
+      keyExtractor={(a) => a.key}
+      styles={{
+        overlay: styles.modalOverlay,
+        content: styles.modalContent,
+        header: styles.staffModalHeader,
+        title: styles.modalTitle,
+        subtitle: styles.staffModalSubtitle,
+        list: styles.staffList,
+        empty: styles.staffEmptyText,
+      }}
+      renderItem={(a) => (
+        <TouchableOpacity
+          style={styles.staffRow}
+          onPress={a.onPress}
+          disabled={courtesyMutation.isPending}
+          activeOpacity={0.7}
+        >
+          <View style={styles.addonIconWrap}>
+            <Ionicons name={a.icon} size={18} color={COLORS.primary} />
+          </View>
+          <Text style={[styles.staffName, { flex: 1 }]}>{a.label}</Text>
+          {courtesyMutation.isPending && a.key !== "note" ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : null}
+        </TouchableOpacity>
+      )}
+    />
+
+    <NoteEditModal
+      visible={!!addonNoteId}
+      onClose={() => setAddonNoteId(null)}
+      submitting={addonNoteMutation.isPending}
+      onSubmit={(value) =>
+        addonNoteId &&
+        addonNoteMutation.mutate({ addonId: addonNoteId, internalNote: value })
+      }
+      initialValue={
+        (reservation.addons ?? []).find((a) => a.id === addonNoteId)
+          ?.internalNote ?? null
+      }
+      title="Nota del servicio"
+      hint="La ve quien ejecuta el servicio en su lista del día."
+      placeholder="Ej. Usar shampoo hipoalergénico."
+      maxLength={500}
     />
 
     {/* Staff Picker Modal */}

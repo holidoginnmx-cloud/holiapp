@@ -22,6 +22,8 @@ import {
 } from "@/components/CalendarView";
 import { ErrorState } from "@/components/ErrorState";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
+import { LIVE_OPS } from "@/lib/queryOptions";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
 // Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
@@ -108,6 +110,7 @@ export default function StaffStays() {
   } = useQuery({
     queryKey: ["staff", "stays", "all"],
     queryFn: () => getStaffStaysAll(),
+    ...LIVE_OPS,
   });
 
   const {
@@ -119,6 +122,7 @@ export default function StaffStays() {
   } = useQuery({
     queryKey: ["staff-baths", "upcoming"],
     queryFn: () => getStaffBaths(),
+    ...LIVE_OPS,
   });
 
   const {
@@ -130,7 +134,14 @@ export default function StaffStays() {
   } = useQuery({
     queryKey: ["staff", "daycares"],
     queryFn: () => getStaffDaycares(),
+    ...LIVE_OPS,
   });
+
+  useRefetchOnFocus([
+    ["staff", "stays"],
+    ["staff-baths"],
+    ["staff", "daycares"],
+  ]);
 
   const combined: CalendarReservation[] = useMemo(() => {
     const stayList: CalendarReservation[] = (stays ?? []).map((s) => ({

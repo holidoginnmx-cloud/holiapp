@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/colors";
+import { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +9,7 @@ import { getStaffStays } from "@/lib/api";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { formatName } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 
 // ── "Más" del staff, hecha en casa ───────────────────────────────────────────
 // Con 6 pestañas visibles el tab bar de Apple mostraba 5 y generaba él solo una
@@ -83,6 +85,7 @@ export default function StaffMore() {
   const firstName = useAuthStore((s) => s.firstName);
   const lastName = useAuthStore((s) => s.lastName);
   const email = useAuthStore((s) => s.email);
+  const [novedadesVisible, setNovedadesVisible] = useState(false);
 
   // Mismas queries (y mismas keys) que el Panel y /staff-list: los números del
   // día salen de la caché, sin pedirle nada nuevo a la API.
@@ -218,9 +221,23 @@ export default function StaffMore() {
           label="Perfil"
           subtitle="Tus datos, tus números y cerrar sesión"
           onPress={() => router.push("/(staff)/more/profile" as any)}
+        />
+        {/* Reabrir el aviso de novedades: se lee de corrido y se cierra, así que
+            sin esto quien lo despacha sin leer pierde la información. */}
+        <MenuItem
+          icon="sparkles-outline"
+          label="Novedades"
+          subtitle="Qué se agregó en la última actualización"
+          onPress={() => setNovedadesVisible(true)}
           isLast
         />
       </View>
+
+      <WhatsNewModal
+        role="STAFF"
+        open={novedadesVisible}
+        onClose={() => setNovedadesVisible(false)}
+      />
     </ScrollView>
   );
 }

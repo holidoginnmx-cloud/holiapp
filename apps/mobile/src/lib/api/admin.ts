@@ -1,5 +1,6 @@
 import type { Room } from "@holidoginn/shared";
 import { apiFetch } from "./client";
+import type { ReservationAddonWithVariant } from "./types";
 
 // ─── Admin ──────────────────────────────────────────────
 
@@ -151,6 +152,84 @@ export const adminUpdateReservationDates = (
 ) =>
   apiFetch<{ success: boolean } & AdminDatesPreview>(
     `/admin/reservations/${reservationId}/dates`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+
+// ─── Editar una reserva ya creada ───────────────────────────────
+
+export type AdminUpdateReservationResult = {
+  success: boolean;
+  totalAmount: number;
+  previousTotal: number;
+  delta: number;
+  /** Pagado de más tras bajar el total: hay que reembolsar o dejar a favor. */
+  overpaid: number;
+};
+
+/**
+ * Corrige precio y/o notas de una reserva existente.
+ *
+ * `totalAmount` es la COLUMNA, no lo que se pinta en pantalla: en los baños el
+ * detalle muestra `totalAmount + extras del staff`, y mandar esa suma metería
+ * los extras dentro de la columna y los duplicaría en cada guardado.
+ */
+export const adminUpdateReservation = (
+  reservationId: string,
+  data: {
+    totalAmount?: number;
+    internalNotes?: string | null;
+    notes?: string | null;
+    depositAgreed?: number | null;
+    priceChangeReason?: string;
+  }
+) =>
+  apiFetch<AdminUpdateReservationResult>(`/admin/reservations/${reservationId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export type AdminAddonResult = {
+  success: boolean;
+  addon: ReservationAddonWithVariant;
+  totalAmount: number;
+};
+
+/**
+ * Agrega un servicio a una reserva existente (baño de cortesía, desparasitante…).
+ * Distinto de la ruta del cliente que paga con tarjeta.
+ */
+export const adminCreateReservationAddon = (
+  reservationId: string,
+  data: {
+    variantId: string;
+    quantity?: number;
+    unitPriceOverride?: number;
+    isCourtesy?: boolean;
+    courtesyReason?: string;
+    internalNote?: string | null;
+    scheduledAt?: string;
+    addToTotal?: boolean;
+  }
+) =>
+  apiFetch<AdminAddonResult & { addedToTotal: number }>(
+    `/admin/reservations/${reservationId}/addons`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+
+/** Marca/desmarca cortesía o edita la nota de un servicio ya agregado. */
+export const adminUpdateReservationAddon = (
+  reservationId: string,
+  addonId: string,
+  data: {
+    internalNote?: string | null;
+    isCourtesy?: boolean;
+    courtesyReason?: string | null;
+    unitPrice?: number;
+    scheduledAt?: string | null;
+  }
+) =>
+  apiFetch<AdminAddonResult & { delta: number }>(
+    `/admin/reservations/${reservationId}/addons/${addonId}`,
     { method: "PATCH", body: JSON.stringify(data) }
   );
 

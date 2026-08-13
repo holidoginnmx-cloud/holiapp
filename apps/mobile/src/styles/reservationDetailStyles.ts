@@ -601,6 +601,9 @@ export const styles = StyleSheet.create({
   metaPillInfo: {
     backgroundColor: COLORS.infoBg,
   },
+  metaPillCourtesy: {
+    backgroundColor: COLORS.warningBg,
+  },
   metaPillText: {
     fontSize: 10,
     fontWeight: "700",
@@ -614,6 +617,28 @@ export const styles = StyleSheet.create({
   addonPrice: {
     fontSize: 15,
     fontWeight: "800",
+    color: COLORS.primary,
+  },
+  // Cortesía: el precio de catálogo se conserva pero tachado — se ve cuánto se
+  // regaló sin que parezca un cobro.
+  addonPriceCourtesy: {
+    color: COLORS.textTertiary,
+    textDecorationLine: "line-through",
+  },
+  addonNote: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+  addonEmpty: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    paddingVertical: 8,
+  },
+  addAddonText: {
+    fontSize: 13,
+    fontWeight: "700",
     color: COLORS.primary,
   },
   // Bath photos

@@ -22,6 +22,7 @@ import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { SkeletonList } from "@/components/Skeleton";
 import { buildWhatsappUrl } from "@/constants/business";
 import type { ReservationListItem } from "@/lib/api";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 type GroupedReservation = {
   id: string;
@@ -298,6 +299,10 @@ export default function ReservationsScreen() {
     queryFn: () => getReservations({ ownerId: userId! }),
     enabled: !!userId,
   });
+
+  // El useFocusEffect de arriba solo sincroniza el tab activo de la UI; esto es
+  // lo que revalida los datos cuando el equipo cambia algo de la reserva.
+  useRefetchOnFocus([["reservations", userId]]);
 
   // Derivados memoizados: antes se recalculaban (agrupar, filtrar 4 veces,
   // contar) en CADA render de la pantalla.

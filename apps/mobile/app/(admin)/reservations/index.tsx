@@ -21,6 +21,8 @@ import {
   type CalendarReservation,
 } from "@/components/CalendarView";
 import { ErrorState } from "@/components/ErrorState";
+import { LIVE_OPS } from "@/lib/queryOptions";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -31,7 +33,12 @@ export default function AdminReservations() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations"],
     queryFn: () => getReservations({}),
+    ...LIVE_OPS,
   });
+
+  // El calendario es la pantalla donde el equipo se cruza: lo que Jessica crea
+  // en su teléfono tiene que aparecer aquí sin cerrar la app.
+  useRefetchOnFocus([["admin", "reservations"]]);
 
   const { data: pendingChanges } = useQuery({
     queryKey: ["admin", "change-requests", "PENDING"],

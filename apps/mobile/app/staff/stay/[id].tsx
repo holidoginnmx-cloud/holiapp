@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import {
 } from "react-native";
 
 const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -57,6 +57,8 @@ import { formatName, utcDayKey, localDayKey, formatPhoneInput, displayEmail, NO_
 import type { AlertType, BehaviorTagValue } from "@holidoginn/shared";
 import { styles } from "@/styles/stayDetailStyles";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
+import { invalidateReservationScope } from "@/lib/invalidateReservations";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 const ALERT_TYPES: { key: AlertType; label: string; icon: string }[] = [
   { key: "NOT_EATING", label: "No está comiendo", icon: "restaurant-outline" },
@@ -106,19 +108,15 @@ export default function StayDetail() {
 
   // Al volver a la pantalla: invalidar SIN bloquear — el cache se muestra al
   // instante y el refetch corre en background (antes: staleTime 0 + refetch
-  // forzado = espera de red garantizada en cada regreso).
-  useFocusEffect(
-    useCallback(() => {
-      if (!id) return;
-      queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
-    }, [id])
-  );
+  // forzado = espera de red garantizada en cada regreso). Este patrón, que aquí
+  // era el único del proyecto, ahora vive en useRefetchOnFocus.
+  useRefetchOnFocus([["staff", "stay", id]]);
 
-  // Invalidación dirigida: detalle + listas de estancias. Antes se invalidaba
-  // ["staff"] completo (stats, checklists, todo) tras cada acción.
+  // Invalidación dirigida (nunca la key ["staff"] completa, que arrastraba
+  // stats y checklists). El alcance vive en un helper compartido para que un
+  // check-in hecho por el staff tampoco deje viejas las listas del admin.
   const invalidateStay = () => {
-    queryClient.invalidateQueries({ queryKey: ["staff", "stay", id] });
-    queryClient.invalidateQueries({ queryKey: ["staff", "stays"] });
+    invalidateReservationScope(queryClient, id);
   };
 
   const assignMutation = useMutation({

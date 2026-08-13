@@ -28,6 +28,72 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-12",
+    title: "Novedades para el equipo",
+    items: [
+      {
+        icon: "sync-outline",
+        title: "Lo que cambia uno, lo ven todos",
+        body:
+          "Si un compañero crea o edita una reservación desde su teléfono, ya " +
+          "no hay que cerrar la app para verlo: la lista se actualiza sola al " +
+          "volver a la pantalla, al reabrir la app y en cuanto llega el aviso " +
+          "de la reserva nueva.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "pricetag-outline",
+        title: "Corregir el precio de una reserva",
+        body:
+          "Toca el Total en el detalle de la reservación y escribe el monto " +
+          "correcto, con un motivo (ej. «descuento olvidado»). Funciona incluso " +
+          "si la reserva ya está finalizada. Si el total baja, al dueño le " +
+          "llega el aviso; si ya había pagado de más, la app te dice cuánto " +
+          "quedó a favor.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "gift-outline",
+        title: "Baño de cortesía",
+        body:
+          "En el detalle de la reserva, «Agregar» servicio y activa Cortesía: " +
+          "el baño entra a la agenda y se hace normal, pero no se cobra ni suma " +
+          "al total. Aparece con la etiqueta «Cortesía» y el precio tachado, " +
+          "para que nadie lo cobre por inercia al entregarlo.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "lock-closed-outline",
+        title: "Notas internas, separadas de las del cliente",
+        body:
+          "Ahora hay dos notas: la interna, que solo ve el equipo, y la del " +
+          "cliente. Antes eran la misma y el dueño alcanzaba a leer lo que " +
+          "escribíamos entre nosotros. La nota interna se puede agregar y " +
+          "editar en cualquier momento.",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "chatbubble-ellipses-outline",
+        title: "Instrucciones pegadas al servicio",
+        body:
+          "Cada baño puede llevar su propia nota (ej. «usar shampoo " +
+          "hipoalergénico»). Te aparece en la agenda del día, junto a la cita, " +
+          "para que no haya que preguntarla.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "sparkles-outline",
+        title: "Este aviso se puede volver a abrir",
+        body:
+          "Si lo cierras sin leerlo, no se pierde: está en Ajustes → Novedades " +
+          "(y en Más → Novedades si eres staff).",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-11",
     title: "Novedades para el equipo",
     items: [

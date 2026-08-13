@@ -38,11 +38,14 @@ import {
 } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
+import { PawRating } from "@/components/PawRating";
+import { REVIEW_COPY } from "@holidoginn/shared";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 import { styles } from "@/styles/ownerReservationDetailStyles";
 import { cloudinaryResized } from "@/lib/cloudinary";
+import { LIVE_OPS } from "@/lib/queryOptions";
 
 export function ErrorBoundary({ error }: { error: Error }) {
   return (
@@ -126,6 +129,7 @@ function ReservationDetailScreenContent() {
     queryFn: () => getReservationById(id!),
     enabled: !!id,
     refetchInterval: 30_000,
+    ...LIVE_OPS,
   });
 
   // Load grouped reservations if multi-pet
@@ -238,8 +242,14 @@ function ReservationDetailScreenContent() {
     reservation?.status !== "CANCELLED" &&
     reservation?.status !== "CHECKED_OUT";
 
+  // El modal de reseña se abre SOLO si venimos del push (?action=review) o si
+  // el cliente toca el CTA. Antes se abría solo cada vez que se entraba a una
+  // reservación finalizada sin reseñar, incluso para consultar un pago: era el
+  // pop-up más molesto de la app y el "Más tarde" no lo callaba. Ahora quien
+  // insiste es `GlobalReviewPrompt` en el Inicio, con snooze del lado servidor.
   useEffect(() => {
     if (
+      action === "review" &&
       reservation &&
       reservation.status === "CHECKED_OUT" &&
       !reservation.review &&
@@ -248,7 +258,28 @@ function ReservationDetailScreenContent() {
       setReviewPrompted(true);
       setReviewModalOpen(true);
     }
-  }, [reservation, reviewPrompted]);
+  }, [action, reservation, reviewPrompted]);
+
+  // La reseña es de la VISITA: si vinieron tres perros, una sola calificación
+  // cubre a los tres (el API escribe una fila por mascota).
+  const reviewType = (reservation?.reservationType ?? "STAY") as
+    | "STAY"
+    | "BATH"
+    | "DAYCARE";
+  const reviewCopy = REVIEW_COPY[reviewType] ?? REVIEW_COPY.STAY;
+  const reviewTarget = {
+    reservationIds:
+      groupedReservations && groupedReservations.length > 0
+        ? groupedReservations.map((r: any) => r.id)
+        : [reservation?.id ?? ""],
+    reservationType: reviewType,
+    petNames:
+      groupedReservations && groupedReservations.length > 0
+        ? (groupedReservations
+            .map((r: any) => r.pet?.name)
+            .filter(Boolean) as string[])
+        : [reservation?.pet?.name].filter(Boolean) as string[],
+  };
 
   const handlePayBalance = async () => {
     if (!id) return;
@@ -721,13 +752,12 @@ function ReservationDetailScreenContent() {
         </View>
       )}
 
-      {/* Notes */}
-      {reservation.notes && (
-        <View style={styles.notesCard}>
-          <Ionicons name="document-text-outline" size={16} color={COLORS.warningText} />
-          <Text style={styles.notesText}>{reservation.notes}</Text>
-        </View>
-      )}
+      {/* La nota de la reserva ya NO se le muestra al dueño: el campo `notes`
+          venía sirviendo a la vez de nota del cliente y de nota interna del
+          equipo (el wizard del admin decía "Notas internas..." y escribía ahí),
+          así que lo interno era legible para él. Ahora el equipo usa
+          `internalNotes`, y las notas históricas de este campo dejan de verse
+          sin tener que revisarlas una por una. */}
 
       {/* Bath upsell: solo para STAYS donde se puede sumar un baño de salida. */}
       {reservation.reservationType === "STAY" && (
@@ -889,18 +919,7 @@ function ReservationDetailScreenContent() {
             <View style={styles.reviewCard}>
               <Text style={styles.reviewTitle}>Tu reseña</Text>
               <View style={styles.pawRow}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Ionicons
-                    key={i}
-                    name={
-                      i <= reservation.review!.rating ? "paw" : "paw-outline"
-                    }
-                    size={24}
-                    color={
-                      i <= reservation.review!.rating ? COLORS.primary : COLORS.border
-                    }
-                  />
-                ))}
+                <PawRating value={reservation.review.rating} size={24} gap={4} />
               </View>
               {reservation.review.comment && (
                 <Text style={styles.reviewComment}>
@@ -914,10 +933,9 @@ function ReservationDetailScreenContent() {
               onPress={() => setReviewModalOpen(true)}
               activeOpacity={0.8}
             >
-              <Ionicons name="star-outline" size={22} color={COLORS.primary} />
-              <Text style={styles.reviewCTAText}>
-                Dejar reseña de esta estancia
-              </Text>
+              {/* Patita, no estrella: la calificación son patitas. */}
+              <Ionicons name="paw-outline" size={22} color={COLORS.primary} />
+              <Text style={styles.reviewCTAText}>{reviewCopy.cta}</Text>
               <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
             </TouchableOpacity>
           )}
@@ -997,8 +1015,14 @@ function ReservationDetailScreenContent() {
 
       <ReviewPromptModal
         visible={reviewModalOpen}
-        reservationId={reservation.id}
-        onDismiss={() => setReviewModalOpen(false)}
+        userId={reservation.ownerId}
+        target={reviewTarget}
+        onDismiss={() => {
+          setReviewModalOpen(false);
+          // Limpiar el ?action del push para que volver atrás no lo reabra
+          // (mismo cuidado que con choose-refund).
+          if (action === "review") router.setParams({ action: undefined });
+        }}
       />
 
       <CancelReservationModal

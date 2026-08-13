@@ -221,6 +221,7 @@ model User {
   behaviorTags     BehaviorTag[]      @relation("StaffBehaviorTags")
   staffAlerts      StaffAlert[]       @relation("StaffAlerts")
   addonExtrasSet   ReservationAddon[] @relation("AddonExtraSetter")
+  addonCourtesySet ReservationAddon[] @relation("AddonCourtesySetter")
 
   // Cambios y saldo
   changeRequests  ReservationChangeRequest[] @relation("ChangeRequestedBy")
@@ -426,7 +427,14 @@ model Reservation {
   // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
   // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
   depositAgreed          Decimal?          @db.Decimal(10, 2)
+  // Nota del CLIENTE: lo que escribió al reservar. La ve él en su app.
   notes                  String?
+  // Nota del EQUIPO: nunca sale hacia el dueño. `notes` estaba sobrecargada
+  // (el wizard del cliente y el del admin escribían la misma columna, y el
+  // detalle del cliente la pintaba) así que lo interno era visible para él.
+  // La API la borra de la respuesta cuando el solicitante no es staff/admin:
+  // ver stripInternalFields en packages/api/src/lib/stripInternal.ts.
+  internalNotes          String?
   medicationNotes        String? // Instrucciones de administración si la mascota toma medicamento
   legalAccepted          Boolean           @default(false)
   groupId                String? // Agrupa reservaciones multi-mascota
@@ -455,6 +463,14 @@ model Reservation {
   homeDeliveryAddress    String?
   homeDeliveryDistanceKm Float?
   homeDeliveryFee        Decimal?          @db.Decimal(10, 2)
+  // Reseña post-servicio. El marcador de "ya se pidió" vive AQUÍ y no en
+  // `notifications` porque el barrido de mantenimiento lo consulta cada 10 min:
+  // una columna indexable es un findMany, buscar en el JSON de notifications
+  // serían N queries json-path sin índice. Se llenan por VISITA (todo el
+  // groupId a la vez), ver packages/api/src/lib/reviewRequest.ts.
+  reviewRequestedAt      DateTime? // cuándo se le pidió reseña al dueño
+  reviewSnoozedUntil     DateTime? // "Más tarde": no volver a preguntar antes de esto
+  reviewPromptCount      Int               @default(0) // cuántas veces se pospuso
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
@@ -495,6 +511,7 @@ model Reservation {
   @@index([paymentType, status, depositDeadline]) // cancelOverdueDeposits
   @@index([roomId, status]) // countOverlappingForRoom / ocupación
   @@index([reservationType, status, appointmentAt]) // listas diarias de baños/guarderías (staff)
+  @@index([ownerId, status, reviewRequestedAt]) // GET /reviews/pending + barrido de reseñas
   @@map("reservations")
 }
 
@@ -622,6 +639,15 @@ model Review {
   rating    Int // 1-5 patitas
   comment   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // La unidad de reseña es la VISITA, no la reservación: cuando el cliente
+  // trae 3 perros (mismo groupId) califica una sola vez y se escribe una fila
+  // por hermana con el mismo groupKey. Las filas duplicadas son deliberadas —
+  // cada una es una instancia de servicio cobrada, y así el promedio por
+  // servicio cuadra. Para LISTAR reseñas hay que agrupar por groupKey.
+  // groupKey = reservation.groupId ?? reservation.id
+  groupKey String?
 
   reservationId String      @unique
   reservation   Reservation @relation(fields: [reservationId], references: [id])
@@ -629,6 +655,8 @@ model Review {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
+  @@index([groupKey])
+  @@index([createdAt])
   @@map("reviews")
 }
 
@@ -798,6 +826,29 @@ model ReservationAddon {
   extraSetAt                 DateTime?
   extraPaidAt                DateTime?
   extraStripePaymentIntentId String?
+
+  // Instrucción para quien ejecuta el servicio ("usar shampoo hipoalergénico").
+  // Interna: la API la borra para el dueño, igual que Reservation.internalNotes.
+  // NO reusar `extraDescription` para esto: la sobreescribe el endpoint de
+  // extras del staff (POST /staff/addons/:id/set-extras).
+  internalNote String?
+
+  // Servicio REGALADO: se agenda y se ejecuta como cualquier otro, pero no se
+  // cobra. `unitPrice` conserva el precio de catálogo (así se sabe cuánto se
+  // regaló y los reportes pueden sumarlo aparte como costo de marketing), y es
+  // `isCourtesy` —no un unitPrice de 0— lo que decide si entra al total: un 0
+  // suelto no distingue "regalado" de "error de captura".
+  //
+  // Eje distinto a `paidWith`: ése dice CÓMO se pagó (BOOKING = venía en la
+  // reserva, STANDALONE = se cobró aparte) y un baño de cortesía sigue siendo
+  // un BOOKING que se agenda. Por eso es un booleano y no un valor más del enum.
+  isCourtesy      Boolean   @default(false)
+  courtesyReason  String? // "descuento olvidado", "compensación"
+  // Auditoría de quién regaló el servicio, mismo patrón que extraSetById/At:
+  // todo lo que toca dinero deja rastro.
+  courtesySetById String?
+  courtesySetBy   User?     @relation("AddonCourtesySetter", fields: [courtesySetById], references: [id])
+  courtesySetAt   DateTime?
 
   reservationId String
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)

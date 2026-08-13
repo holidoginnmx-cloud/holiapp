@@ -19,35 +19,57 @@ import {
 } from "@/constants/whatsNew";
 import { readWhatsNewSeen, writeWhatsNewSeen } from "@/lib/whatsNewSeen";
 
+type Props = {
+  role: TeamRole;
+  /**
+   * Abre el modal a demanda desde el botón "Novedades" de Ajustes (admin) o
+   * Más (staff). Sin esta prop el componente conserva su comportamiento
+   * automático: aparece solo, una vez por release y por usuario.
+   *
+   * Hace falta porque el aviso se lee de corrido y se cierra: sin una forma de
+   * volver a abrirlo, quien lo despacha sin leer pierde la información para
+   * siempre.
+   */
+  open?: boolean;
+  /** Requerido cuando se usa `open`: el padre controla el cierre. */
+  onClose?: () => void;
+};
+
 /**
  * "Qué hay de nuevo" para el equipo. Se monta en el dashboard de admin y en el
  * de staff; muestra el release más reciente (filtrado por rol) una sola vez
  * por usuario. Se marca visto al cerrarlo o al saltar a probar una función.
  */
-export function WhatsNewModal({ role }: { role: TeamRole }) {
+export function WhatsNewModal({ role, open, onClose }: Props) {
   const router = useRouter();
   const userId = useAuthStore((s) => s.userId);
-  const [visible, setVisible] = useState(false);
+  const [autoVisible, setAutoVisible] = useState(false);
 
   const release = WHATS_NEW[0];
   const items = release?.items.filter((i) => i.roles.includes(role)) ?? [];
+  // `open` mandado por el padre gana; si no viene, manda el automático.
+  const controlado = open !== undefined;
+  const visible = controlado ? open : autoVisible;
 
   useEffect(() => {
+    // En modo controlado no se auto-abre: el padre decide cuándo.
+    if (controlado) return;
     if (!userId || !release || items.length === 0) return;
     let cancelled = false;
     readWhatsNewSeen(userId).then((seen) => {
-      if (!cancelled && seen !== release.id) setVisible(true);
+      if (!cancelled && seen !== release.id) setAutoVisible(true);
     });
     return () => {
       cancelled = true;
     };
     // items se deriva de release+role; con release.id alcanza como dependencia.
-  }, [userId, release?.id, role]);
+  }, [controlado, userId, release?.id, role]);
 
   if (!visible || !release || items.length === 0) return null;
 
   const dismiss = () => {
-    setVisible(false);
+    setAutoVisible(false);
+    onClose?.();
     if (userId) writeWhatsNewSeen(userId, release.id);
   };
 

@@ -73,6 +73,14 @@ export type ReservationAddonWithVariant = {
   extraSetAt: string | null;
   extraPaidAt: string | null;
   extraStripePaymentIntentId: string | null;
+  // Instrucción para quien ejecuta el servicio. La API la borra de la respuesta
+  // cuando quien pregunta es el dueño (es interna del equipo).
+  internalNote: string | null;
+  // Servicio regalado: se agenda y se hace, pero no entra al total. `unitPrice`
+  // conserva el precio de catálogo para saber cuánto se regaló.
+  isCourtesy: boolean;
+  courtesyReason: string | null;
+  courtesySetAt: string | null;
   createdAt: string;
   variant: BathVariant & {
     serviceType: { id: string; code: string; name: string };

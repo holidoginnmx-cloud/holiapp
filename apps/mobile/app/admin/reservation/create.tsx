@@ -51,6 +51,7 @@ import {
   DAYCARE_OPEN_HOUR,
   DAYCARE_CLOSE_HOUR,
 } from "@holidoginn/shared/src/pricing";
+import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -440,8 +441,12 @@ export default function AdminCreateReservation() {
   const grandTotalEstimate = useMemo(() => {
     if (selectedPets.length === 0) return null;
     const override = Number(totalOverride);
+    // `>= 0`, no `> 0`: un total de $0 es legítimo (baño de cortesía, servicio
+    // regalado). Con `> 0` escribir "0" caía en silencio al precio automático.
     const base =
-      totalOverride.trim() && override > 0 ? override : suggestedBase;
+      totalOverride.trim() && Number.isFinite(override) && override >= 0
+        ? override
+        : suggestedBase;
     if (base == null) return null;
     return base + deliveryFeeEstimate;
   }, [selectedPets.length, totalOverride, suggestedBase, deliveryFeeEstimate]);
@@ -493,9 +498,11 @@ export default function AdminCreateReservation() {
 
     // Total manual pactado (opcional, cualquier servicio). Con varias
     // mascotas es el total del GRUPO; el server lo reparte entre las filas.
+    // `>= 0`, no `> 0`: el server acepta 0 (`nonnegative`) pero aquí se
+    // descartaba, así que era imposible crear una reserva de $0 desde el móvil.
     const override = Number(totalOverride);
     const overrideFields =
-      totalOverride.trim() && override > 0
+      totalOverride.trim() && Number.isFinite(override) && override >= 0
         ? { totalAmountOverride: override }
         : {};
 
@@ -504,7 +511,9 @@ export default function AdminCreateReservation() {
     const common: Record<string, unknown> = {
       ownerId,
       ...(petIds.length === 1 ? { petId: petIds[0] } : { petIds }),
-      notes: notes.trim() || null,
+      // Va a `internalNotes`, no a `notes`: el campo dice "Notas internas..."
+      // pero escribía en la nota del cliente, que el dueño ve en su app.
+      internalNotes: notes.trim() || null,
       legalAccepted: true,
       ...overrideFields,
       ...(staffId ? { staffId } : {}),
@@ -647,7 +656,7 @@ export default function AdminCreateReservation() {
           });
         }
       }
-      await queryClient.invalidateQueries({ queryKey: ["admin", "reservations"] });
+      invalidateReservationScope(queryClient, created?.id);
       Alert.alert("Reservación creada", "La reservación se creó correctamente.", [
         { text: "OK", onPress: () => router.back() },
       ]);
@@ -1246,10 +1255,10 @@ export default function AdminCreateReservation() {
         {/* ── Notas ── */}
         {petIds.length > 0 && (
           <>
-            <Text style={styles.label}>Notas (opcional)</Text>
+            <Text style={styles.label}>Nota interna (opcional)</Text>
             <TextInput
               style={styles.notesInput}
-              placeholder="Notas internas..."
+              placeholder="Solo la ve el equipo, nunca el dueño..."
               placeholderTextColor={COLORS.textDisabled}
               value={notes}
               onChangeText={setNotes}
