@@ -219,6 +219,13 @@ export default function AdminSettings() {
           subtitle="Resumen de ingresos del mes y desglose"
           onPress={() => router.push("/admin/revenue" as any)}
         />
+        <MenuItem
+          icon="business-outline"
+          iconTint={COLORS.primary}
+          label="Depósitos al banco"
+          subtitle="De qué reservas viene cada transferencia de Stripe"
+          onPress={() => router.push("/admin/payouts" as any)}
+        />
         {/* Reabrir el aviso de novedades: se lee de corrido y se cierra, así que
             sin esto quien lo despacha sin leer pierde la información. */}
         <MenuItem

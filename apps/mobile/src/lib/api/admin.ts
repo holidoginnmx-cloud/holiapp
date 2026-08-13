@@ -93,6 +93,85 @@ export const getAdminRevenueBreakdown = (month?: string) => {
   return apiFetch<AdminRevenueBreakdown>(`/admin/revenue/breakdown${qs}`);
 };
 
+// ─── Depósitos de Stripe (SPEI) ─────────────────────────
+// Stripe junta varios cobros en un solo depósito al banco, y el SPEI llega sin
+// referencia. Esto reconstruye de qué reservas venía cada transferencia.
+
+export type PayoutSummary = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  arrivalDate: string;
+  lineCount: number;
+  /** Mascotas/clientes representativos, para reconocerlo de un vistazo. */
+  preview: string[];
+};
+
+export type PayoutLineMatch = {
+  kind: "RESERVATION" | "STORE_ORDER" | "REFUND";
+  paymentId: string | null;
+  reservationId: string | null;
+  orderId: string | null;
+  orderNumber: number | null;
+  petNames: string[];
+  ownerName: string | null;
+  serviceLabel: string;
+  paidAt: string | null;
+};
+
+export type PayoutLine = {
+  id: string;
+  type: string;
+  gross: number;
+  fee: number;
+  net: number;
+  description: string | null;
+  stripePaymentIntentId: string | null;
+  /** null = la línea no cruzó con ninguna reserva ni pedido (ajuste de Stripe). */
+  match: PayoutLineMatch | null;
+};
+
+export type PayoutBreakdown = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  arrivalDate: string;
+  stripeCreatedAt: string;
+  syncedAt: string;
+  failureMessage: string | null;
+  totals: {
+    gross: number;
+    fees: number;
+    net: number;
+    matched: number;
+    unmatched: number;
+  };
+  /** La suma de las líneas da exactamente el monto depositado. */
+  cuadra: boolean;
+  diferencia: number;
+  lines: PayoutLine[];
+};
+
+/** `amount` filtra por el monto exacto que llegó al banco (tolerancia ±$0.01). */
+export const getAdminPayouts = (opts: { limit?: number; amount?: string } = {}) => {
+  const qs = new URLSearchParams();
+  if (opts.limit) qs.set("limit", String(opts.limit));
+  if (opts.amount) qs.set("amount", opts.amount);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch<{ payouts: PayoutSummary[] }>(`/admin/payouts${suffix}`);
+};
+
+export const getAdminPayoutBreakdown = (payoutId: string) =>
+  apiFetch<PayoutBreakdown>(`/admin/payouts/${payoutId}`);
+
+export const syncAdminPayouts = (limit = 10) =>
+  apiFetch<{ synced: number; descuadrados: string[] }>("/admin/payouts/sync", {
+    method: "POST",
+    body: JSON.stringify({ limit }),
+  });
+
 export type AdminAlert = {
   id: string;
   type: string;

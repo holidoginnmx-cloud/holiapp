@@ -24,6 +24,7 @@ import {
   pricePerDayForWeight,
   dewormSizeFromWeight,
 } from "../lib/pricing";
+import { listPayouts, getPayoutBreakdown, syncRecentPayouts } from "../lib/payouts";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -426,6 +427,71 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         byCategory,
         payments: enriched,
       });
+    }
+  );
+
+  // ─── Depósitos de Stripe (SPEI) ──────────────────────────────────
+  // Contestan "me llegó una transferencia de $X, ¿de qué reservas es?".
+  // Leen de stripe_payouts/stripe_payout_lines, que el webhook payout.paid
+  // mantiene al día — no llaman a Stripe salvo en /sync.
+
+  // GET /admin/payouts?limit=20&amount=663.80
+  fastify.get<{ Querystring: { limit?: string; amount?: string } }>(
+    "/admin/payouts",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const limitRaw = Number(request.query.limit);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 50)
+        : 20;
+
+      // El monto se teclea desde el estado de cuenta del banco ("663.80"), así
+      // que se acepta con o sin separadores de miles.
+      const amountRaw = request.query.amount?.replace(/[$,\s]/g, "");
+      const amount = amountRaw ? Number(amountRaw) : undefined;
+      if (amountRaw && (!Number.isFinite(amount) || amount! < 0)) {
+        return reply.status(400).send({ error: "Monto inválido" });
+      }
+
+      return reply.send({ payouts: await listPayouts(prisma, { limit, amount }) });
+    }
+  );
+
+  // GET /admin/payouts/:id — desglose línea por línea
+  fastify.get<{ Params: { id: string } }>(
+    "/admin/payouts/:id",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const detalle = await getPayoutBreakdown(prisma, request.params.id);
+      if (!detalle) {
+        return reply.status(404).send({ error: "Depósito no encontrado" });
+      }
+      return reply.send(detalle);
+    }
+  );
+
+  // POST /admin/payouts/sync — refresco manual contra Stripe.
+  // Red de seguridad para cuando el webhook no corrió (endpoint mal configurado,
+  // API caída) o para traer depósitos anteriores a esta feature.
+  fastify.post<{ Body?: { limit?: number } }>(
+    "/admin/payouts/sync",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const limitRaw = Number(request.body?.limit);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 50)
+        : 10;
+      try {
+        const results = await syncRecentPayouts(prisma, { limit });
+        return reply.send({
+          synced: results.length,
+          descuadrados: results.filter((r) => !r.cuadra).map((r) => r.payoutId),
+          results,
+        });
+      } catch (err) {
+        request.log.error({ err }, "Falló el sync de depósitos de Stripe");
+        return reply.status(502).send({ error: "No se pudo consultar Stripe" });
+      }
     }
   );
 

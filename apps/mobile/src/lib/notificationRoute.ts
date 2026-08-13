@@ -21,6 +21,8 @@ export type NotificationRouteData = {
    */
   kind?: string;
   action?: string;
+  /** `po_...` del depósito de Stripe (kind = STRIPE_PAYOUT). */
+  payoutId?: string;
 } | null;
 
 /**
@@ -61,6 +63,14 @@ export function notificationRoute(
   // push). Ahora el destino es explícito.
   if (type === "REVIEW_REQUEST" && reservationId && isOwner) {
     return `/reservation/detail/${reservationId}?action=review`;
+  }
+
+  // --- Depósitos de Stripe (solo admin) -----------------------------------
+  // El push del depósito es justo para poder ver, de un tap, de qué reservas
+  // venía la transferencia que acaba de caer al banco.
+  if (data?.kind === "STRIPE_PAYOUT" && role === "ADMIN") {
+    const payoutId = typeof data?.payoutId === "string" ? data.payoutId : undefined;
+    return payoutId ? `/admin/payout/${payoutId}` : "/admin/payouts";
   }
 
   // --- Cartilla / vacunas -------------------------------------------------

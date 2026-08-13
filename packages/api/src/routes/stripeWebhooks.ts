@@ -8,6 +8,7 @@ import {
   sendEmail,
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
+import { syncPayout, getPayoutBreakdown } from "../lib/payouts";
 import { Prisma } from "@holidoginn/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -73,6 +74,12 @@ export default async function stripeWebhookRoutes(fastify: FastifyInstance) {
             break;
           case "charge.dispute.created":
             await handleDisputeCreated(prisma, event.data.object as Stripe.Dispute);
+            break;
+          case "payout.paid":
+            await handlePayoutPaid(prisma, event.data.object as Stripe.Payout);
+            break;
+          case "payout.failed":
+            await handlePayoutFailed(prisma, event.data.object as Stripe.Payout);
             break;
           default:
             request.log.info({ type: event.type }, "Evento Stripe no manejado");
@@ -405,4 +412,116 @@ async function handleDisputeCreated(
     body: `Se abrió una disputa por $${amount.toLocaleString("es-MX")}. Responde en el dashboard de Stripe antes de la fecha límite.`,
     data: { disputeId: dispute.id, amount, reason: dispute.reason },
   });
+}
+
+/**
+ * Stripe emitió un depósito hacia la cuenta del hotel.
+ *
+ * Reconstruye el desglose (qué cobros lo componen) y avisa a los admins. Es lo
+ * que contesta la pregunta de siempre: "me llegó un SPEI de $663.80, ¿de qué
+ * reservas es?". Sin esto había que abrir el dashboard de Stripe y cruzar a mano.
+ */
+async function handlePayoutPaid(
+  prisma: FastifyInstance["prisma"],
+  payout: Stripe.Payout
+) {
+  // Si esto truena, el catch del switch devuelve 500 y Stripe reintenta — que
+  // es justo lo que queremos: sin el sync no hay desglose que mostrar.
+  const result = await syncPayout(prisma, payout.id);
+
+  // El aviso, en cambio, es best-effort: el desglose ya quedó guardado y el
+  // dueño puede consultarlo aunque el push falle.
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    if (admins.length === 0) return;
+
+    const monto = result.amount.toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    // `arrival_date` es cuándo el banco abona, no cuándo Stripe emite: el push
+    // suele llegar horas antes que el SPEI y decir "ya llegó" sería mentira.
+    const yaLlego = payout.arrival_date * 1000 <= Date.now();
+
+    const detalle = await getPayoutBreakdown(prisma, payout.id);
+    const mascotas = [
+      ...new Set((detalle?.lines ?? []).flatMap((l) => l.match?.petNames ?? [])),
+    ];
+    const quienes =
+      mascotas.length === 0
+        ? `${result.lineCount} ${result.lineCount === 1 ? "movimiento" : "movimientos"}`
+        : mascotas.length <= 3
+          ? mascotas.join(", ")
+          : `${mascotas.slice(0, 3).join(", ")} y ${mascotas.length - 3} más`;
+
+    await notifyUsers(
+      prisma,
+      admins.map((a) => a.id),
+      {
+        type: "PAYOUT_PAID",
+        title: yaLlego ? `🏦 Depósito recibido — $${monto}` : `🏦 Depósito en camino — $${monto}`,
+        body: `${quienes}. Toca para ver de qué reservas viene.`,
+        data: {
+          kind: "STRIPE_PAYOUT",
+          payoutId: payout.id,
+          amount: result.amount,
+          lineCount: result.lineCount,
+        },
+      }
+    );
+
+    // Railway solo guarda logs: sin esta línea no hay forma de saber si un
+    // depósito se concilió bien ni si cuadró.
+    console.info("[handlePayoutPaid]", {
+      payoutId: payout.id,
+      amount: result.amount,
+      lines: result.lineCount,
+      matched: result.matched,
+      unmatched: result.unmatched,
+      cuadra: result.cuadra,
+      diferencia: result.diferencia,
+    });
+  } catch (err) {
+    console.error("[handlePayoutPaid] el sync quedó, pero el aviso falló:", err);
+  }
+}
+
+/** El depósito rebotó (cuenta CLABE mal, banco rechazó). El dueño debe saberlo. */
+async function handlePayoutFailed(
+  prisma: FastifyInstance["prisma"],
+  payout: Stripe.Payout
+) {
+  try {
+    await syncPayout(prisma, payout.id);
+  } catch (err) {
+    console.error(`[handlePayoutFailed] no se pudo sincronizar ${payout.id}:`, err);
+  }
+
+  const admins = await prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true },
+  });
+  if (admins.length === 0) return;
+
+  const monto = (payout.amount / 100).toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  await notifyUsers(
+    prisma,
+    admins.map((a) => a.id),
+    {
+      type: "STAFF_ALERT",
+      title: `⚠️ Depósito rechazado — $${monto}`,
+      body: payout.failure_message
+        ? `El banco lo rechazó: ${payout.failure_message}. Revisa tu cuenta en Stripe.`
+        : "El banco rechazó el depósito. Revisa tu cuenta en Stripe.",
+      data: { kind: "STRIPE_PAYOUT", payoutId: payout.id, amount: payout.amount / 100 },
+      priority: "high",
+    }
+  );
 }

@@ -49,6 +49,7 @@ export default function AdminRootLayout() {
         name="revenue-breakdown"
         options={{ title: "Por método de pago" }}
       />
+      <Stack.Screen name="payouts" options={{ title: "Depósitos al banco" }} />
       <Stack.Screen
         name="bath-config"
         options={{ title: "Agenda de baños" }}
@@ -72,6 +73,7 @@ export default function AdminRootLayout() {
       />
       <Stack.Screen name="reservation" options={{ headerShown: false }} />
       <Stack.Screen name="room" options={{ headerShown: false }} />
+      <Stack.Screen name="payout" options={{ headerShown: false }} />
     </Stack>
   );
 }

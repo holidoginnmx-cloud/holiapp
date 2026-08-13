@@ -246,6 +246,41 @@ export function formatCurrency(
 }
 
 /**
+ * Moneda con SIEMPRE dos decimales: `$663.80`.
+ *
+ * `formatCurrency` deja que `toLocaleString` recorte el decimal final y muestra
+ * "$663.8", que no se puede comparar de un vistazo contra un estado de cuenta
+ * bancario. Úsalo donde el número se contrasta contra el banco (depósitos de
+ * Stripe); para precios y totales de la app, `formatCurrency` sigue bien.
+ */
+export function formatCurrencyExact(
+  amount: number | string | null | undefined,
+): string {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "$0.00";
+  return `$${n.toLocaleString(MX_LOCALE, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/**
+ * Día de llegada de un depósito de Stripe: `12 ago 2026`.
+ *
+ * `arrival_date` es un DÍA anclado a medianoche UTC, no un instante. Formatearlo
+ * en hora local lo correría al día anterior — el mismo bug que ya mordió con las
+ * fechas de estadía.
+ */
+export function formatArrivalDate(date: string | Date): string {
+  return new Date(date).toLocaleDateString(MX_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
  * Igual que `formatCurrency` pero SIN el símbolo `$` — para sitios donde el `$`
  * lo aporta el layout/etiqueta circundante. Devuelve `0` ante valores inválidos.
  */

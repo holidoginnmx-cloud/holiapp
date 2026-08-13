@@ -94,6 +94,7 @@ enum NotificationType {
   STAFF_ASSIGNED
   CHECKLIST_REMINDER
   VACCINE_EXPIRING
+  PAYOUT_PAID // Stripe emitió un depósito SPEI hacia la cuenta del hotel
 }
 
 enum EnergyLevel {
@@ -705,6 +706,11 @@ model Payment {
 
   terminalCharges TerminalCharge[]
 
+  // En qué depósito(s) de Stripe viajó este pago. Normalmente 0 o 1 líneas:
+  // 0 si es efectivo/transferencia/terminal (nunca pasa por Stripe) o si el
+  // depósito todavía no se emite.
+  payoutLines StripePayoutLine[]
+
   @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
   @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
   @@map("payments")
@@ -970,6 +976,76 @@ model StripeEvent {
 
   @@index([type, processedAt])
   @@map("stripe_events")
+}
+
+// =============================================================
+//  STRIPE PAYOUT — Depósitos SPEI que Stripe manda a la cuenta
+//  del hotel. Stripe agrupa N cobros en un solo depósito y el SPEI
+//  llega al banco sin referencia útil, así que sin esto no hay forma
+//  de saber a qué reservas corresponde un abono de, digamos, $663.80.
+// =============================================================
+
+model StripePayout {
+  id              String   @id // payout.id de Stripe (po_...)
+  // Lo que efectivamente cae al banco: NETO de comisiones. Es el monto exacto
+  // que el dueño ve en su estado de cuenta de Santander.
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("mxn")
+  status          String // paid | in_transit | pending | failed | canceled
+  // Fecha en que Stripe estima que el dinero llega al banco = la fecha del SPEI.
+  // Distinta de stripeCreatedAt: el payout se crea antes de que llegue.
+  arrivalDate     DateTime
+  stripeCreatedAt DateTime
+  failureMessage  String?
+  // Última vez que se reconcilió contra la API de Stripe. El sync es idempotente,
+  // así que re-sincronizar solo refresca esto y los montos.
+  syncedAt        DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  lines StripePayoutLine[]
+
+  @@index([arrivalDate])
+  // El dueño busca por el monto que le llegó al banco ("¿de qué son estos $663.80?").
+  @@index([amount])
+  @@map("stripe_payouts")
+}
+
+// Una línea del depósito = un balance transaction de Stripe. La suma de `net`
+// de todas las líneas es EXACTAMENTE el monto del depósito; por eso se guardan
+// también las que no cruzan con ningún pago nuestro (ajustes, disputas, cobros
+// huérfanos): ocultarlas descuadraría el desglose y el dueño no sabría por qué.
+model StripePayoutLine {
+  id       String       @id // balance_transaction.id (txn_...) — hace el sync idempotente
+  payoutId String
+  payout   StripePayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  // charge | payment | refund | payment_refund | adjustment | stripe_fee | ...
+  // String y no enum: Stripe agrega tipos nuevos sin avisar y una migración de
+  // enum tumbaría el sync completo por un tipo desconocido.
+  type        String
+  gross       Decimal @db.Decimal(10, 2) // balance_transaction.amount (bruto, puede ser negativo)
+  fee         Decimal @db.Decimal(10, 2) // comisión de Stripe de ESTA línea
+  net         Decimal @db.Decimal(10, 2) // gross - fee; es lo que suma al depósito
+  description String? // balance_transaction.description, único dato de las líneas sin match
+
+  chargeId              String?
+  stripePaymentIntentId String?
+
+  // FKs suaves (SetNull): si un pago se borra, la línea sobrevive como "no
+  // identificada" en lugar de desaparecer y descuadrar el total del depósito.
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([payoutId])
+  @@index([stripePaymentIntentId])
+  @@index([paymentId])
+  @@index([orderId])
+  @@map("stripe_payout_lines")
 }
 
 // =============================================================
@@ -1340,6 +1416,10 @@ model Order {
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
 
   items OrderItem[]
+
+  // Los pedidos de tienda NO generan filas en `payments`, pero sí viajan en los
+  // depósitos de Stripe. Sin esta relación aparecerían como "no identificados".
+  payoutLines StripePayoutLine[]
 
   @@index([userId])
   @@index([status])

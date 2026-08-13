@@ -265,6 +265,29 @@ export default function AdminRevenue() {
         </TouchableOpacity>
       )}
 
+      {/* Depósitos al banco — la otra mitad de la pregunta: no cuánto se cobró,
+          sino cuánto de eso ya cayó a la cuenta y de qué reservas venía. */}
+      <TouchableOpacity
+        style={styles.breakdownButton}
+        onPress={() => router.push("/admin/payouts" as any)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.breakdownIconWrap}>
+          <Ionicons name="business" size={18} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.breakdownTitle}>Depósitos al banco</Text>
+          <Text style={styles.breakdownSubtitle}>
+            De qué reservas viene cada transferencia de Stripe
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={COLORS.textTertiary}
+        />
+      </TouchableOpacity>
+
       {/* Pagos detalle */}
       <View style={styles.paymentsHeaderRow}>
         <Text style={styles.paymentsTitle}>Pagos</Text>
