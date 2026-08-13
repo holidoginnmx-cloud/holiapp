@@ -201,7 +201,15 @@ export type SyncPayoutResult = {
   payoutId: string;
   amount: number;
   lineCount: number;
+  /** Cruzaron con un pago o pedido registrado. */
   matched: number;
+  /**
+   * Sin pago registrado pero identificables por la metadata de Stripe: la
+   * pantalla sí dice de quién son. Se cuenta aparte porque meterlas en
+   * `unmatched` hacía leer el reporte como si fueran movimientos anónimos.
+   */
+  porMetadata: number;
+  /** Ni pago, ni pedido, ni metadata: comisiones y ajustes de Stripe. */
   unmatched: number;
   /** |SUM(net) − amount| < 0.01 */
   cuadra: boolean;
@@ -362,13 +370,17 @@ export async function syncPayout(
   const sumNet = rows.reduce((acc, r) => acc.add(r.net), new Prisma.Decimal(0));
   const diferencia = sumNet.minus(payoutData.amount);
   const matched = rows.filter((r) => r.paymentId || r.orderId).length;
+  const porMetadata = rows.filter(
+    (r) => !r.paymentId && !r.orderId && (r.metaOwnerId || r.metaReservationId)
+  ).length;
 
   return {
     payoutId,
     amount: payoutData.amount.toNumber(),
     lineCount: rows.length,
     matched,
-    unmatched: rows.length - matched,
+    porMetadata,
+    unmatched: rows.length - matched - porMetadata,
     cuadra: diferencia.abs().lessThan(0.01),
     diferencia: diferencia.toNumber(),
   };

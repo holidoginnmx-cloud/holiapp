@@ -38,19 +38,34 @@ async function main() {
 
   for (const r of results) {
     const estado = r.cuadra ? "✔" : "✖";
-    const detalle = `${r.lineCount} líneas · ${r.matched} identificadas · ${r.unmatched} sin identificar`;
+    const partes = [`${r.lineCount} líneas`, `${r.matched} con pago`];
+    if (r.porMetadata > 0) partes.push(`${r.porMetadata} solo por metadata`);
+    if (r.unmatched > 0) partes.push(`${r.unmatched} ajustes`);
     const descuadre = r.cuadra ? "" : `  ⚠️  DESCUADRE de ${money(r.diferencia)}`;
-    console.log(`   ${estado} ${r.payoutId}  ${money(r.amount).padStart(12)}  ${detalle}${descuadre}`);
+    console.log(
+      `   ${estado} ${r.payoutId}  ${money(r.amount).padStart(12)}  ${partes.join(" · ")}${descuadre}`
+    );
   }
 
   const descuadrados = results.filter((r) => !r.cuadra);
+  const porMetadata = results.reduce((a, r) => a + r.porMetadata, 0);
   const sinIdentificar = results.reduce((a, r) => a + r.unmatched, 0);
 
   console.log("\n─────────── RESUMEN ───────────");
   console.log(`   Depósitos:        ${results.length}`);
   console.log(`   Líneas totales:   ${results.reduce((a, r) => a + r.lineCount, 0)}`);
-  console.log(`   Sin identificar:  ${sinIdentificar}  (ajustes de Stripe o cobros huérfanos)`);
+  console.log(`   Con pago:         ${results.reduce((a, r) => a + r.matched, 0)}`);
+  console.log(`   Solo por metadata:${String(porMetadata).padStart(2)}  (COBRADOS pero sin registrar como pago)`);
+  console.log(`   Ajustes:          ${sinIdentificar}  (comisiones y movimientos de Stripe)`);
   console.log(`   Descuadrados:     ${descuadrados.length}`);
+
+  if (porMetadata > 0) {
+    console.log(
+      "\n   ℹ️  Los de 'solo por metadata' SÍ se identifican en la pantalla de Depósitos:" +
+        "\n      Stripe cobró y depositó ese dinero, pero nunca quedó registrado como" +
+        "\n      pago, así que esas reservas figuran debiendo algo que ya se pagó."
+    );
+  }
 
   if (descuadrados.length > 0) {
     console.log("\n   ⚠️  Estos depósitos NO cuadran y hay que revisarlos en Stripe:");
