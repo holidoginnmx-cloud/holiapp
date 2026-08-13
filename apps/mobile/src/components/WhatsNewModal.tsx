@@ -209,26 +209,21 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
 }
 
 /**
- * "12 ago 2026" a partir del id `YYYY-MM-DD`. Si hubo dos entregas el mismo día
- * (sufijo `-b`, `-c`…) se numera: sin eso, las dos filas se leen como
- * duplicados exactos y solo las distingue el conteo de novedades.
+ * "12 ago 2026" a partir del id `YYYY-MM-DD` (con o sin sufijo `-b`).
+ *
+ * No hace falta numerar las entregas del mismo día: quien las distingue es el
+ * tema de cada una, que va arriba de la fecha.
  */
 export function fechaDeRelease(id: string): string {
-  const ymd = id.slice(0, 10);
-  const d = new Date(`${ymd}T00:00:00`);
+  const d = new Date(`${id.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(d.getTime())) return id;
   // Medianoche LOCAL, no UTC: con `new Date("2026-08-12")` la fecha se pintaría
   // un día antes en Hermosillo.
-  const fecha = d.toLocaleDateString("es-MX", {
+  return d.toLocaleDateString("es-MX", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
-  const sufijo = id.slice(11);
-  if (!sufijo) return fecha;
-  // La primera entrega del día no lleva sufijo, así que "b" es la 2ª: 98-96=2.
-  const n = sufijo.charCodeAt(0) - 96;
-  return Number.isFinite(n) && n > 1 ? `${fecha} · ${n}ª entrega` : fecha;
 }
 
 function ReleaseSection({
@@ -260,15 +255,21 @@ function ReleaseSection({
           size={16}
           color={COLORS.textTertiary}
         />
-        <Text style={styles.releaseFecha}>{fechaDeRelease(release.id)}</Text>
+        {/* El TEMA manda y la fecha va debajo: una lista de puras fechas no
+            deja encontrar nada, que es justo para lo que sirve el historial. */}
+        <View style={styles.releaseTextGroup}>
+          <Text style={styles.releaseTitulo} numberOfLines={2}>
+            {release.title}
+          </Text>
+          <Text style={styles.releaseFecha}>
+            {fechaDeRelease(release.id)} · {n} {n === 1 ? "novedad" : "novedades"}
+          </Text>
+        </View>
         {esNuevo && (
           <View style={styles.nuevoChip}>
             <Text style={styles.nuevoChipText}>Nuevo</Text>
           </View>
         )}
-        <Text style={styles.releaseCount}>
-          {n} {n === 1 ? "novedad" : "novedades"}
-        </Text>
       </TouchableOpacity>
 
       {abierto && (
@@ -343,11 +344,16 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
   },
-  releaseFecha: {
-    fontSize: 13,
+  releaseTextGroup: { flex: 1, gap: 1 },
+  releaseTitulo: {
+    fontSize: 14,
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
-    textTransform: "capitalize",
+  },
+  releaseFecha: {
+    fontSize: 11,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
   },
   nuevoChip: {
     backgroundColor: COLORS.primaryLight,
@@ -359,13 +365,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
-  },
-  releaseCount: {
-    flex: 1,
-    textAlign: "right",
-    fontSize: 11,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.textTertiary,
   },
   releaseItems: { gap: 14, paddingTop: 6, paddingBottom: 6 },
   item: { flexDirection: "row", gap: 12 },

@@ -35,7 +35,7 @@ export type WhatsNewRelease = {
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
     id: "2026-08-12-b",
-    title: "Novedades para el equipo",
+    title: "Depósitos de Stripe",
     items: [
       {
         icon: "business-outline",
@@ -63,7 +63,7 @@ export const WHATS_NEW: WhatsNewRelease[] = [
   },
   {
     id: "2026-08-12",
-    title: "Novedades para el equipo",
+    title: "Correcciones de reserva y sincronización",
     items: [
       {
         icon: "sync-outline",
@@ -129,7 +129,7 @@ export const WHATS_NEW: WhatsNewRelease[] = [
   },
   {
     id: "2026-08-11",
-    title: "Novedades para el equipo",
+    title: "Cartillas, avisos y guardería",
     items: [
       {
         icon: "document-text-outline",
