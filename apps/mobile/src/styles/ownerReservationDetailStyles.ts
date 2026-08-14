@@ -422,6 +422,36 @@ export const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.primary,
   },
+  // Servicio a domicilio
+  deliveryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  deliveryAddress: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  deliveryFee: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    marginTop: 6,
+  },
+  deliveryCTA: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+  deliveryCTAText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
   // Group pets
   groupPetRow: {
     flexDirection: "row",

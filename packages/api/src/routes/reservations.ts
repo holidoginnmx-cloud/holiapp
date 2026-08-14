@@ -4,6 +4,7 @@ import {
   CreateMultiReservationSchema,
   UpdateReservationStatusSchema,
   UpdateReservationTimesSchema,
+  UpdateReservationDeliverySchema,
   ReservationStatus,
   CancelReservationSchema,
 } from "@holidoginn/shared";
@@ -17,7 +18,7 @@ import {
   reservationConfirmedTemplate,
   sendEmail,
 } from "../lib/email";
-import { notifyUser } from "../lib/notify";
+import { notifyUser, notifyTeamReservationUpdated } from "../lib/notify";
 import { notifyNewReservation } from "../lib/notifyNewReservation";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
@@ -120,11 +121,19 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         review: {
           select: { id: true, rating: true },
         },
-        // Para tarjetas de baño: indicadores deslanado/corte. Sólo se incluyen
-        // los flags del variant; el precio y demás detalles viven en el detail.
+        // Para tarjetas de baño: indicadores deslanado/corte y si el servicio ya
+        // se ejecutó (`completedAt`), que es lo que distingue "baño listo, falta
+        // cobrar" de "pendiente". El precio y demás detalles viven en el detail.
         addons: {
           select: {
-            variant: { select: { deslanado: true, corte: true } },
+            completedAt: true,
+            variant: {
+              select: {
+                deslanado: true,
+                corte: true,
+                serviceType: { select: { code: true } },
+              },
+            },
           },
         },
       },
@@ -148,6 +157,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         reviewRating: review?.rating ?? null,
         hasDeslanado,
         hasCorte,
+        // Slim: la UI deriva de aquí el estado "baño listo · por cobrar".
+        addons,
       };
     });
     // El `...r` de arriba arrastra TODA la fila, incluida la nota interna del
@@ -178,7 +189,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           staff: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
           review: true,
           addons: {
-            include: { variant: { include: { serviceType: true } } },
+            include: {
+              variant: { include: { serviceType: true } },
+              // Quién ejecutó el servicio ("Bañó: X"). Antes solo se sabía por
+              // el StayUpdate de la foto, que ahora es opcional.
+              completedBy: { select: { id: true, firstName: true, lastName: true } },
+            },
             orderBy: { createdAt: "desc" },
           },
         },
@@ -194,6 +210,173 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       // El `include` (no `select`) devuelve la fila completa: sin este filtro la
       // nota interna del equipo y el motivo de las cortesías viajan al dueño.
       return stripInternalFields(reservation, isStaffOrAdmin);
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  PATCH /reservations/:id/delivery — agregar/cambiar/quitar el
+  //  servicio a domicilio de una reserva YA creada.
+  //
+  //  Hasta ahora solo se podía capturar al crear: si el cliente lo
+  //  pedía después, no había dónde registrarlo. Lo puede hacer el
+  //  dueño (antes del check-in) o el equipo.
+  //
+  //  La tarifa SIEMPRE se recotiza server-side; el delta se aplica al
+  //  totalAmount y se cobra al recoger (no se cobra en línea aquí).
+  //  Nota: el admin web escribe estas mismas columnas directo en
+  //  Supabase y admite tarifa manual; no chocan (columnas distintas
+  //  del mismo registro), pero no hay que divergir a propósito.
+  // ────────────────────────────────────────────────────────────
+  fastify.patch<{ Params: { id: string } }>(
+    "/reservations/:id/delivery",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const parsed = UpdateReservationDeliverySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: {
+          pet: { select: { name: true } },
+          payments: true,
+        },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+
+      const isStaffOrAdmin =
+        request.userRole === "ADMIN" || request.userRole === "STAFF";
+      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+        return reply.status(403).send({ error: "No autorizado" });
+      }
+      if (reservation.status === "CANCELLED" || reservation.status === "CHECKED_OUT") {
+        return reply.status(400).send({ error: "La reserva ya no se puede modificar" });
+      }
+      // El equipo puede ajustarlo con la estancia en curso; el dueño solo antes
+      // de que su mascota llegue.
+      if (!isStaffOrAdmin && reservation.status !== "CONFIRMED") {
+        return reply
+          .status(400)
+          .send({ error: "El domicilio solo se puede cambiar antes del check-in" });
+      }
+      // Aquí siempre se mueve el total: mismo criterio que el PATCH de precio.
+      const pendingChange = await prisma.reservationChangeRequest.findFirst({
+        where: { reservationId: reservation.id, status: "PENDING" },
+      });
+      if (pendingChange) {
+        return reply.status(409).send({
+          error:
+            "Hay una solicitud de cambio pendiente en esta reserva. Resuélvela antes de tocar el total.",
+        });
+      }
+
+      const oldFee = reservation.homeDelivery ? Number(reservation.homeDeliveryFee ?? 0) : 0;
+      let deliveryData: Prisma.ReservationUpdateInput;
+      let newFee = 0;
+      let address = "";
+      let isCourtesy = false;
+
+      if (parsed.data.enable) {
+        // En un grupo multi-mascota el domicilio vive en UNA sola fila (es un
+        // viaje, no uno por perro). Si otra hermana ya lo tiene, se edita ahí.
+        if (reservation.groupId) {
+          const sibling = await prisma.reservation.findFirst({
+            where: {
+              groupId: reservation.groupId,
+              id: { not: reservation.id },
+              homeDelivery: true,
+              status: { not: "CANCELLED" },
+            },
+            include: { pet: { select: { name: true } } },
+          });
+          if (sibling) {
+            return reply.status(409).send({
+              error: `El domicilio de este grupo está en la reserva de ${sibling.pet.name}; edítalo desde ahí.`,
+            });
+          }
+        }
+
+        const quote = await quoteDelivery(prisma, parsed.data.lat, parsed.data.lng);
+        if (!quote.active) {
+          return reply
+            .status(400)
+            .send({ error: "El servicio a domicilio no está disponible por ahora" });
+        }
+        // Regalar el viaje es decisión del equipo: si la bandera viene del
+        // dueño se ignora. Se guarda como tarifa 0 —el viaje queda registrado
+        // en la reserva pero no entra al total— igual que un add-on de cortesía.
+        isCourtesy = !!parsed.data.isCourtesy && isStaffOrAdmin;
+        newFee = isCourtesy ? 0 : quote.fee;
+        address = parsed.data.address;
+        deliveryData = {
+          homeDelivery: true,
+          homeDeliveryAddress: parsed.data.address,
+          homeDeliveryDistanceKm: quote.distanceKm,
+          homeDeliveryFee: new Prisma.Decimal(newFee),
+        };
+      } else {
+        if (!reservation.homeDelivery) {
+          return reply
+            .status(400)
+            .send({ error: "La reserva no tiene servicio a domicilio" });
+        }
+        deliveryData = {
+          homeDelivery: false,
+          homeDeliveryAddress: null,
+          homeDeliveryDistanceKm: null,
+          homeDeliveryFee: null,
+        };
+      }
+
+      // Al quitar se descuenta la tarifa GUARDADA, no una recotización: se
+      // devuelve exactamente lo que se cobró, aunque los precios hayan cambiado.
+      const delta = Number((newFee - oldFee).toFixed(2));
+      const newTotal = Math.max(0, Number((Number(reservation.totalAmount) + delta).toFixed(2)));
+
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { ...deliveryData, totalAmount: new Prisma.Decimal(newTotal) },
+      });
+
+      const totalPaid = reservation.payments
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+      const overpaid = Math.max(0, Number((totalPaid - newTotal).toFixed(2)));
+
+      // Avisos best-effort: nunca tumban el cambio ya escrito.
+      try {
+        if (isStaffOrAdmin) {
+          await notifyUser(prisma, {
+            userId: reservation.ownerId,
+            type: "GENERAL",
+            title: parsed.data.enable
+              ? "Servicio a domicilio agregado 🚗"
+              : "Servicio a domicilio retirado",
+            body: parsed.data.enable
+              ? isCourtesy
+                ? `Recogeremos y entregaremos a ${reservation.pet.name} en ${address}, sin costo. ¡Va por nuestra cuenta!`
+                : `Recogeremos y entregaremos a ${reservation.pet.name} en ${address}. La tarifa de $${newFee} se suma al total y se paga al recoger.`
+              : `Se quitó el servicio a domicilio de la reserva de ${reservation.pet.name}. El total bajó $${oldFee}.`,
+            data: { reservationId: reservation.id, kind: "DELIVERY_UPDATED" },
+          });
+        }
+        await notifyTeamReservationUpdated(prisma, {
+          reservationId: reservation.id,
+          petName: reservation.pet.name,
+          body: parsed.data.enable
+            ? `Se agregó servicio a domicilio${isCourtesy ? " de CORTESÍA" : ` ($${newFee})`} — ${address}.`
+            : `Se quitó el servicio a domicilio (−$${oldFee}).`,
+          actorUserId: request.userId,
+          assignedStaffId: reservation.staffId,
+        });
+      } catch (err) {
+        console.error("[delivery] avisos fallaron:", err);
+      }
+
+      return reply.send({ success: true, delta, newTotal, overpaid });
     }
   );
 

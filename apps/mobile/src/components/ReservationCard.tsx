@@ -39,6 +39,8 @@ interface ReservationCardProps {
   adminView?: boolean;
   hasDeslanado?: boolean;
   hasCorte?: boolean;
+  /** Baño ya ejecutado al que le falta el cobro: se pinta en ámbar. */
+  bathReady?: boolean;
   onPress?: () => void;
 }
 
@@ -133,11 +135,25 @@ function ReservationCardBase({
   adminView,
   hasDeslanado,
   hasCorte,
+  bathReady,
   onPress,
 }: ReservationCardProps) {
   const isBath = reservationType === "BATH";
   const isDaycare = reservationType === "DAYCARE";
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.CONFIRMED;
+  const baseConfig = STATUS_CONFIG[status] || STATUS_CONFIG.CONFIRMED;
+  // Un baño ya hecho al que solo le falta el cobro se queda en CONFIRMED a
+  // propósito (para poder cobrarlo al entregar), y así se veía idéntico a uno
+  // que ni ha empezado. Se distingue en ámbar.
+  const showBathReady =
+    !!bathReady && status !== "CHECKED_OUT" && status !== "CANCELLED";
+  const config = showBathReady
+    ? {
+        label: "Baño listo · por cobrar",
+        bg: COLORS.warningBg,
+        text: COLORS.warningText,
+        accent: COLORS.warningText,
+      }
+    : baseConfig;
 
   const showDepositAlert =
     !!hasBalance &&
@@ -176,8 +192,10 @@ function ReservationCardBase({
           {
             // Baño/guardería activo o agendado → naranja (identidad de servicio
             // de día). Concluido → gris apagado, igual que un hospedaje finalizado.
-            backgroundColor:
-              (isBath || isDaycare) && status !== "CHECKED_OUT"
+            // Baño hecho pendiente de cobro → ámbar, para que salte a la vista.
+            backgroundColor: showBathReady
+              ? COLORS.warningText
+              : (isBath || isDaycare) && status !== "CHECKED_OUT"
                 ? COLORS.primary
                 : config.accent,
           },

@@ -414,6 +414,13 @@ export const ReservationSchema = z.object({
   checkOutTime: z.string().nullable().optional(),
   paymentType: z.string().nullable(),
   depositDeadline: z.coerce.date().nullable(),
+  // Servicio a domicilio. Opcionales por compatibilidad con payloads viejos.
+  // `homeDeliveryFee` es Decimal en la BD y Fastify lo serializa como STRING:
+  // conviértelo con Number() antes de sumarlo.
+  homeDelivery: z.boolean().optional(),
+  homeDeliveryAddress: z.string().nullable().optional(),
+  homeDeliveryDistanceKm: z.number().nullable().optional(),
+  homeDeliveryFee: z.union([z.string(), z.number()]).nullable().optional(),
   ownerId: z.string(),
   petId: z.string(),
   roomId: z.string().nullable(),
@@ -446,6 +453,27 @@ export const HomeDeliveryInputSchema = z.object({
   fee: z.number().optional(),
 });
 export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
+
+// Agregar / cambiar / quitar el domicilio de una reserva YA creada (el dueño o
+// el equipo). Hasta ahora solo se podía capturar al crear: si el cliente lo
+// pedía después, había que cancelar y volver a reservar.
+//
+// `enable: true` sobre una reserva que ya lo tiene REEMPLAZA la dirección (un
+// solo paso, un solo aviso). La tarifa la recotiza siempre el servidor.
+export const UpdateReservationDeliverySchema = z.discriminatedUnion("enable", [
+  z.object({
+    enable: z.literal(true),
+    address: z.string().min(1),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    placeId: z.string().optional(),
+    // Cortesía: el viaje se hace igual pero no se cobra (tarifa 0). Solo el
+    // equipo puede regalarlo; la API ignora esta bandera si la manda el dueño.
+    isCourtesy: z.boolean().optional(),
+  }),
+  z.object({ enable: z.literal(false) }),
+]);
+export type UpdateReservationDelivery = z.infer<typeof UpdateReservationDeliverySchema>;
 
 // Hora local del hotel en formato 24h "HH:mm" (p.ej. "09:30", "17:00").
 export const TimeHHmmSchema = z

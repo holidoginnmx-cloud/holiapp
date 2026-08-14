@@ -223,6 +223,7 @@ model User {
   staffAlerts      StaffAlert[]       @relation("StaffAlerts")
   addonExtrasSet   ReservationAddon[] @relation("AddonExtraSetter")
   addonCourtesySet ReservationAddon[] @relation("AddonCourtesySetter")
+  addonsCompleted  ReservationAddon[] @relation("AddonCompleter")
 
   // Cambios y saldo
   changeRequests  ReservationChangeRequest[] @relation("ChangeRequestedBy")
@@ -808,6 +809,10 @@ model ReservationAddon {
   quantity    Int?
   paidWith    AddonPaymentSource
   completedAt DateTime? // Fecha en que el staff completó el servicio
+  // Quién lo completó. Antes solo se sabía por el StayUpdate de la foto; desde
+  // que la foto es opcional, este es el registro de accountability.
+  completedById String?
+  completedBy   User?    @relation("AddonCompleter", fields: [completedById], references: [id])
   createdAt   DateTime           @default(now())
 
   // Agenda del baño de un perro HOSPEDADO (addon BATH colgado de un STAY).

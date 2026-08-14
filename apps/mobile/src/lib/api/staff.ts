@@ -68,10 +68,12 @@ export const getStaffBaths = (date?: string) =>
     `/staff/baths${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   );
 
-export const completeStaffBath = (id: string, mediaUrl: string) =>
+// `mediaUrl` opcional: la foto es lo ideal, pero cuando no se alcanzó a tomar
+// se prefiere cerrar la cita a subir una imagen cualquiera.
+export const completeStaffBath = (id: string, mediaUrl?: string) =>
   apiFetch<{ success: boolean }>(`/staff/baths/${id}/complete`, {
     method: "POST",
-    body: JSON.stringify({ mediaUrl }),
+    body: JSON.stringify(mediaUrl ? { mediaUrl } : {}),
   });
 
 // ─── Extras de baño (deslanado/corte cobrado por staff post-servicio) ──
@@ -302,8 +304,8 @@ export const resolveStaffAlert = (alertId: string) =>
     method: "PATCH",
   });
 
-export const completeAddon = (addonId: string, mediaUrl: string) =>
+export const completeAddon = (addonId: string, mediaUrl?: string) =>
   apiFetch<ReservationAddonWithVariant>(`/staff/addons/${addonId}/complete`, {
     method: "PATCH",
-    body: JSON.stringify({ mediaUrl }),
+    body: JSON.stringify(mediaUrl ? { mediaUrl } : {}),
   });

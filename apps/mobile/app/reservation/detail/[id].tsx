@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import {
   getReservationById,
@@ -22,6 +22,7 @@ import {
   createBalancePayment,
   confirmBalancePayment,
   updateReservationTimes,
+  updateReservationDelivery,
 } from "@/lib/api";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { PaymentCardFlow } from "@/components/PaymentCardFlow";
@@ -41,6 +42,7 @@ import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { PawRating } from "@/components/PawRating";
 import { REVIEW_COPY } from "@holidoginn/shared";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
+import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 import { styles } from "@/styles/ownerReservationDetailStyles";
@@ -117,6 +119,7 @@ function ReservationDetailScreenContent() {
   >(null);
   // Selector de hora estimada de llegada ("in") / recogida ("out").
   const [timePickerFor, setTimePickerFor] = useState<"in" | "out" | null>(null);
+  const [deliveryModalVisible, setDeliveryModalVisible] = useState(false);
   const {
     data: reservation,
     isLoading,
@@ -204,6 +207,33 @@ function ReservationDetailScreenContent() {
   });
   const canCancel =
     reservation && reservation.status === "CONFIRMED";
+  // El domicilio se puede pedir/quitar mientras la reserva no haya empezado.
+  const canEditDelivery = reservation?.status === "CONFIRMED";
+  // Decimal serializado: llega como string.
+  const deliveryFee = Number(reservation?.homeDeliveryFee ?? 0);
+
+  const deliveryMutation = useMutation({
+    mutationFn: (
+      payload:
+        | { enable: true; address: string; lat: number; lng: number; placeId?: string }
+        | { enable: false },
+    ) => updateReservationDelivery(id!, payload),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      setDeliveryModalVisible(false);
+      Alert.alert(
+        "Listo",
+        res.delta > 0
+          ? `Agregamos el servicio a domicilio. Se sumaron ${formatCurrency(res.delta)} a tu total; se pagan al recoger a tu mascota.`
+          : res.delta < 0
+            ? `Se quitó el servicio a domicilio. Tu total bajó ${formatCurrency(-res.delta)}.`
+            : "Tu servicio a domicilio quedó actualizado.",
+      );
+    },
+    onError: (e: Error) =>
+      Alert.alert("No se pudo actualizar el domicilio", e.message),
+  });
   // Count both PAID and PARTIAL — both are real money already paid by owner.
   const paidStripeAmount = reservation?.payments
     ?.filter((p: any) =>
@@ -942,6 +972,52 @@ function ReservationDetailScreenContent() {
         </View>
       )}
 
+      {/* Servicio a domicilio — se puede pedir después de reservar, mientras la
+          reserva siga confirmada. */}
+      {(reservation.homeDelivery || canEditDelivery) && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Servicio a domicilio</Text>
+          {reservation.homeDelivery ? (
+            <>
+              <View style={styles.deliveryRow}>
+                <Ionicons name="car-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.deliveryAddress}>
+                  {reservation.homeDeliveryAddress ?? "Dirección registrada"}
+                </Text>
+              </View>
+              <Text style={styles.deliveryFee}>
+                {deliveryFee > 0
+                  ? `${formatCurrency(deliveryFee)} · se paga al recoger a tu mascota`
+                  : "Sin costo · cortesía de Holidog Inn"}
+              </Text>
+              {canEditDelivery && (
+                <TouchableOpacity
+                  style={styles.deliveryCTA}
+                  onPress={() => setDeliveryModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.deliveryCTAText}>Cambiar o quitar</Text>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.deliveryCTA}
+              onPress={() => setDeliveryModalVisible(true)}
+              activeOpacity={0.7}
+              testID="client-add-delivery"
+            >
+              <Ionicons name="car-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.deliveryCTAText}>
+                Recogemos y entregamos a tu mascota
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Payment status — última sección */}
       {reservation.payments && reservation.payments.length > 0 && (
         <View style={styles.card}>
@@ -1037,6 +1113,19 @@ function ReservationDetailScreenContent() {
           if (action === "choose-refund") {
             router.setParams({ action: undefined });
           }
+        }}
+      />
+
+      <ReservationDeliveryModal
+        visible={deliveryModalVisible}
+        onClose={() => setDeliveryModalVisible(false)}
+        submitting={deliveryMutation.isPending}
+        onSubmit={(payload) => deliveryMutation.mutate(payload)}
+        preloadSavedAddress
+        current={{
+          enabled: !!reservation.homeDelivery,
+          address: reservation.homeDeliveryAddress ?? null,
+          fee: deliveryFee,
         }}
       />
 

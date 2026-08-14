@@ -46,3 +46,24 @@ export const saveDeliveryAddress = (data: {
     method: "PUT",
     body: JSON.stringify(data),
   });
+
+// Agregar / cambiar / quitar el domicilio de una reserva ya creada. El servidor
+// recotiza la tarifa y mueve el total; `delta` es lo que cambió el total y
+// `overpaid` el saldo a favor si el cliente ya había pagado de más.
+export type UpdateDeliveryResult = {
+  success: boolean;
+  delta: number;
+  newTotal: number;
+  overpaid: number;
+};
+
+export const updateReservationDelivery = (
+  reservationId: string,
+  payload:
+    | { enable: true; address: string; lat: number; lng: number; placeId?: string }
+    | { enable: false },
+) =>
+  apiFetch<UpdateDeliveryResult>(`/reservations/${reservationId}/delivery`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });

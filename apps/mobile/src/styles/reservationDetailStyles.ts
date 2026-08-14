@@ -440,6 +440,35 @@ export const styles = StyleSheet.create({
     fontWeight: "800",
     color: COLORS.primary,
   },
+  // Servicio a domicilio
+  deliveryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+    paddingTop: 12,
+    marginTop: 12,
+  },
+  deliveryTexts: { flex: 1 },
+  deliveryLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  deliveryValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  deliveryEmpty: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
   // Notes
   notesBox: {
     flexDirection: "row",

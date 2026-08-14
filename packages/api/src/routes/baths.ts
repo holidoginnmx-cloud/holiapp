@@ -701,11 +701,12 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
     "/staff/baths/:id/complete",
     { preHandler: staffAuth },
     async (request, reply) => {
+      // La foto es OPCIONAL: cuando hay prisa y no se alcanzó a tomar, el
+      // equipo prefiere cerrar la cita a subir una imagen cualquiera. Si viene,
+      // tiene que ser una URL subida (Cloudinary).
       const mediaUrl = request.body?.mediaUrl;
-      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
-        return reply.status(400).send({
-          error: "Se requiere una foto del baño completado",
-        });
+      if (mediaUrl !== undefined && (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http"))) {
+        return reply.status(400).send({ error: "La foto no es válida" });
       }
 
       const reservation = await prisma.reservation.findUnique({
@@ -735,22 +736,29 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           .send({ error: "La reservación no tiene baño contratado" });
       }
 
-      // Standalone: si ya está CHECKED_OUT, ya se completó.
-      // STAY con baño: si ya hay addon BATH con completedAt, también.
       if (isStandaloneBath && reservation.status === "CHECKED_OUT") {
         return reply.status(409).send({ error: "La cita ya fue completada" });
       }
       const bathAddon = reservation.addons.find(
         (a) => a.variant?.serviceType?.code === "BATH",
       );
-      if (isStayWithBath && bathAddon?.completedAt) {
+      // Ya ejecutado. El status no basta para las citas sueltas: un baño hecho
+      // con saldo pendiente se queda en CONFIRMED a propósito, y sin esta
+      // guarda se podía "completar" otra vez y el dueño recibía un segundo
+      // aviso de "¡Baño listo!" (y una foto duplicada en su muro).
+      const alreadyCompleted = isStandaloneBath
+        ? reservation.addons.some((a) => a.completedAt)
+        : !!bathAddon?.completedAt;
+      if (alreadyCompleted) {
         return reply.status(409).send({ error: "El baño ya fue completado" });
       }
 
       await prisma.$transaction(async (tx) => {
-        // Marca el addon de baño como físicamente terminado (foto subida).
+        // Marca el addon de baño como físicamente terminado.
         // Para baños sueltos, la reservación NO se cierra aquí — se cierra
         // cuando se liquida el saldo (extras + deposit). Ver maybeConcludeStandaloneBath.
+        // `completedById` es el rastro de quién lo hizo: sin foto no hay
+        // StayUpdate del que deducirlo.
         await tx.reservationAddon.updateMany({
           where: {
             reservationId: reservation.id,
@@ -759,18 +767,22 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
               ? {}
               : { variant: { serviceType: { code: "BATH" } } }),
           },
-          data: { completedAt: new Date() },
+          data: { completedAt: new Date(), completedById: request.userId },
         });
-        await tx.stayUpdate.create({
-          data: {
-            reservationId: reservation.id,
-            petId: reservation.pet.id,
-            staffId: request.userId!,
-            mediaUrl,
-            mediaType: "image",
-            caption: `${reservation.pet.name} listo después del baño`,
-          },
-        });
+        // Sin foto no hay publicación en el muro de la estancia; el resto del
+        // cierre (y el aviso al dueño) ocurre igual.
+        if (mediaUrl) {
+          await tx.stayUpdate.create({
+            data: {
+              reservationId: reservation.id,
+              petId: reservation.pet.id,
+              staffId: request.userId!,
+              mediaUrl,
+              mediaType: "image",
+              caption: `${reservation.pet.name} listo después del baño`,
+            },
+          });
+        }
       });
 
       // Si es baño suelto sin saldo pendiente, concluir inmediatamente.

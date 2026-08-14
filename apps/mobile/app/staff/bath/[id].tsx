@@ -42,6 +42,13 @@ import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
 import { formatName, phoneToTelUri, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { useAuthStore } from "@/store/authStore";
+import {
+  getBathAddon,
+  isBathPhysicallyDone,
+  isBathConcluded,
+  bathOutstandingBalance,
+  deriveBathBadge,
+} from "@/lib/bathStatus";
 import { MediaViewer } from "@/components/MediaViewer";
 
 const SIZE_LABEL: Record<string, string> = {
@@ -63,43 +70,8 @@ function describeVariant(bath: StaffBath): string {
   return extras.length > 0 ? `Baño + ${extras.join(" + ")}` : "Baño";
 }
 
-function getBathAddon(bath: StaffBath) {
-  return bath.addons.find((a) => a.variant?.serviceType?.code === "BATH");
-}
-
-// Físicamente terminado: el staff ya subió la foto del baño.
-function isBathPhysicallyDone(bath: StaffBath): boolean {
-  return !!getBathAddon(bath)?.completedAt;
-}
-
-// Concluido: ya se liquidó el saldo (extras + deposit). Solo aplica a BATH.
-function isBathConcluded(bath: StaffBath): boolean {
-  if (bath.reservationType === "BATH") return bath.status === "CHECKED_OUT";
-  return !!getBathAddon(bath)?.completedAt;
-}
-
-function bathOutstandingBalance(bath: StaffBath): {
-  deposit: number;
-  extras: number;
-  total: number;
-} {
-  const paid = (bath.payments ?? []).reduce(
-    (sum, p) => sum + Number(p.amount),
-    0,
-  );
-  const deposit = Math.max(0, Number(bath.totalAmount) - paid);
-  const extras = bath.addons.reduce((sum, a) => {
-    if (
-      a.variant?.serviceType?.code === "BATH" &&
-      a.extraPrice !== null &&
-      a.extraPaymentStatus !== "PAID"
-    ) {
-      return sum + Number(a.extraPrice);
-    }
-    return sum;
-  }, 0);
-  return { deposit, extras, total: deposit + extras };
-}
+// Los helpers de estado del baño viven en @/lib/bathStatus (los comparten esta
+// pantalla y las dos listas).
 
 export default function StaffBathDetail() {
   // `date` (YYYY-MM-DD) es opcional: sin él la lista trae los próximos 30 días,
@@ -223,6 +195,38 @@ export default function StaffBathDetail() {
     }
   }
 
+  // Completar sin foto: se pide confirmar para que siga siendo la excepción y
+  // no la costumbre (antes la foto era obligatoria y con prisas se subía
+  // cualquier imagen con tal de cerrar la cita).
+  async function completeWithoutPhoto() {
+    if (!bath) return;
+    setCompleting(true);
+    try {
+      await completeStaffBath(bath.id);
+      queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo completar";
+      Alert.alert("Error", msg);
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  function askCompleteWithoutPhoto() {
+    Alert.alert(
+      "¿Completar sin foto?",
+      "Al cliente le encanta recibir la foto de su perro recién bañado. ¿Seguro que quieres completar la cita sin foto?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Completar",
+          style: "destructive",
+          onPress: () => completeWithoutPhoto(),
+        },
+      ],
+    );
+  }
+
   function handleComplete() {
     if (!bath) return;
     Alert.alert(
@@ -232,6 +236,7 @@ export default function StaffBathDetail() {
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadAndComplete("camera") },
         { text: "Elegir foto", onPress: () => uploadAndComplete("library") },
+        { text: "Completar sin foto", onPress: () => askCompleteWithoutPhoto() },
       ],
     );
   }
@@ -357,9 +362,8 @@ export default function StaffBathDetail() {
                   size={12}
                   color={COLORS.warningText}
                 />
-                <Text style={styles.awaitingText}>
-                  Listo · esperando pago
-                </Text>
+                {/* Mismo nombre que en las listas y el detalle admin. */}
+                <Text style={styles.awaitingText}>Baño listo · por cobrar</Text>
               </View>
             ) : (
               <View style={styles.pendingBadge}>

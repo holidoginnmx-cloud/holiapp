@@ -22,6 +22,11 @@ import {
   formatTime,
   hotelYMD,
 } from "@/lib/format";
+import {
+  getBathAddon,
+  isBathConcluded,
+  isBathReadyToCollect,
+} from "@/lib/bathStatus";
 import { ReservationCard } from "@/components/ReservationCard";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 import { ErrorState } from "@/components/ErrorState";
@@ -81,22 +86,13 @@ function findOverlaps(baths: StaffBath[]): Set<string> {
   return out;
 }
 
-function getBathAddon(bath: StaffBath) {
-  return bath.addons.find((a) => a.variant?.serviceType?.code === "BATH");
-}
-
-function isBathDone(bath: StaffBath): boolean {
-  if (bath.reservationType === "BATH") return bath.status === "CHECKED_OUT";
-  return !!getBathAddon(bath)?.completedAt;
-}
-
 type Row =
   | { type: "header"; title: string; count: number }
   | { type: "item"; bath: StaffBath };
 
 function buildRows(baths: StaffBath[]): Row[] {
-  const pending = baths.filter((b) => !isBathDone(b));
-  const done = baths.filter((b) => isBathDone(b));
+  const pending = baths.filter((b) => !isBathConcluded(b));
+  const done = baths.filter((b) => isBathConcluded(b));
   const out: Row[] = [];
   const today = todayYMD();
   const overdue: StaffBath[] = [];
@@ -196,7 +192,7 @@ export default function AdminBaths() {
   );
   const activeBaths = typeFilter === "loose" ? looseBaths : stayBaths;
   const pending = useMemo(
-    () => activeBaths.filter((b) => !isBathDone(b)),
+    () => activeBaths.filter((b) => !isBathConcluded(b)),
     [activeBaths],
   );
   const revenue = useMemo(
@@ -265,6 +261,7 @@ export default function AdminBaths() {
           adminView
           hasDeslanado={hasDeslanado}
           hasCorte={hasCorte}
+          bathReady={isBathReadyToCollect(item)}
           onPress={() => router.push(`/admin/reservation/${item.id}` as any)}
         />
       </View>

@@ -39,6 +39,11 @@ export type ReservationListItem = Reservation & {
   /** Hospedaje que incluye un baño (addon BATH). Lo envía el backend; si aún
    * no llega, el frontend cae a hasDeslanado/hasCorte como aproximación. */
   hasBath?: boolean;
+  /** Slim: solo lo necesario para derivar "baño listo · por cobrar". */
+  addons?: {
+    completedAt: string | null;
+    variant: { deslanado: boolean; corte: boolean; serviceType: { code: string } } | null;
+  }[];
 };
 
 export type BathVariant = {
@@ -62,6 +67,10 @@ export type ReservationAddonWithVariant = {
   paidWith: "BOOKING" | "STANDALONE";
   paymentId: string | null;
   completedAt: string | null;
+  // Quién ejecutó el servicio. Null en los completados antes de esta columna:
+  // ahí el nombre se deduce del StayUpdate de la foto.
+  completedById?: string | null;
+  completedBy?: { id: string; firstName: string; lastName: string } | null;
   // Extras (deslanado/corte) — el precio lo define staff post-servicio.
   // `extraPrice` es el total; `extraDeslanadoPrice`/`extraCortePrice` el desglose.
   extraPrice: string | null;

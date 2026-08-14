@@ -34,6 +34,58 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-14",
+    title: "Domicilio y cierre de baños",
+    items: [
+      {
+        icon: "car-outline",
+        title: "Agrega el domicilio a una reserva ya hecha",
+        body:
+          "Antes el servicio a domicilio solo se podía elegir al momento de " +
+          "reservar: si el cliente lo pedía después, no había dónde anotarlo. " +
+          "Ahora, en el detalle de la reserva toca «Servicio a domicilio» para " +
+          "agregarlo, cambiar la dirección o quitarlo. La tarifa se calcula " +
+          "sola por distancia y se suma al saldo (los pagos no se ajustan " +
+          "solos: se cobra al recoger). También puedes marcarlo como cortesía " +
+          "si va por cuenta de la casa.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "phone-portrait-outline",
+        title: "El cliente también puede pedirlo desde su app",
+        body:
+          "Si el dueño lo agrega o lo quita desde su teléfono antes del " +
+          "check-in, a ustedes les llega el aviso con el nuevo total, para que " +
+          "nadie se entere del viaje hasta el día de la entrega.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "water-outline",
+        title: "Se distingue el baño hecho que falta cobrar",
+        body:
+          "Un baño ya terminado pero sin liquidar ya no se ve igual que uno " +
+          "pendiente: sale con la etiqueta ámbar «Baño listo · por cobrar» en " +
+          "las listas y en el detalle. La reserva sigue abierta hasta que se " +
+          "cobre —igual que siempre— pero ahora se ve de lejos a quién hay que " +
+          "cobrarle cuando pasen por su perro.",
+        route: "/(staff)/baths",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "camera-outline",
+        title: "Completar un baño sin foto, si no hubo tiempo",
+        body:
+          "La foto sigue siendo lo ideal (al cliente le encanta recibirla), " +
+          "pero ya no bloquea: en el menú de completar hay «Completar sin " +
+          "foto», que pide confirmación. Así nadie tiene que subir una foto " +
+          "cualquiera con tal de cerrar la cita. Queda registrado quién " +
+          "completó el baño y a qué hora, y el aviso al dueño sale igual.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-13",
     title: "Reagendar citas de baño",
     items: [

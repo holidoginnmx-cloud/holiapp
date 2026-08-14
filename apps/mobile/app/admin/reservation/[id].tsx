@@ -39,11 +39,13 @@ import {
   completeStaffBath,
   adminUpdateReservation,
   adminUpdateReservationAddon,
+  updateReservationDelivery,
 } from "@/lib/api";
 import {
   AmountEditModal,
   type AmountEditValues,
 } from "@/components/AmountEditModal";
+import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
 import { NoteEditModal } from "@/components/NoteEditModal";
 import { MediaViewer } from "@/components/MediaViewer";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
@@ -134,6 +136,7 @@ export default function AdminReservationDetail() {
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [roomModalVisible, setRoomModalVisible] = useState(false);
   const [amountModalVisible, setAmountModalVisible] = useState(false);
+  const [deliveryModalVisible, setDeliveryModalVisible] = useState(false);
   const [internalNoteModalVisible, setInternalNoteModalVisible] = useState(false);
   const [clientNoteModalVisible, setClientNoteModalVisible] = useState(false);
   // Add-on sobre el que se está actuando (menú de cortesía / editar nota).
@@ -213,6 +216,38 @@ export default function AdminReservationDetail() {
     }
   }
 
+  // Sin foto se pide confirmar: que siga siendo la excepción y no la costumbre.
+  async function completeBathWithoutPhoto() {
+    if (!id) return;
+    setCompletingBath(true);
+    try {
+      await completeStaffBath(id);
+      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-baths"] });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "No se pudo completar el baño";
+      Alert.alert("Error", msg);
+    } finally {
+      setCompletingBath(false);
+    }
+  }
+
+  function askCompleteBathWithoutPhoto() {
+    Alert.alert(
+      "¿Completar sin foto?",
+      "Al cliente le encanta recibir la foto de su perro recién bañado. ¿Seguro que quieres completar la cita sin foto?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Completar",
+          style: "destructive",
+          onPress: () => completeBathWithoutPhoto(),
+        },
+      ],
+    );
+  }
+
   function askCompleteBath() {
     if (!reservation) return;
     Alert.alert(
@@ -227,6 +262,10 @@ export default function AdminReservationDetail() {
         {
           text: "Elegir foto",
           onPress: () => uploadAndCompleteBath("library"),
+        },
+        {
+          text: "Completar sin foto",
+          onPress: () => askCompleteBathWithoutPhoto(),
         },
       ],
     );
@@ -353,6 +392,32 @@ export default function AdminReservationDetail() {
       showSuccess(`${partes.join(" · ")}.`);
     },
     onError: (e: Error) => Alert.alert("No se pudo cambiar el total", e.message),
+  });
+
+  // Servicio a domicilio: la tarifa la recalcula el servidor y mueve el total.
+  const deliveryMutation = useMutation({
+    mutationFn: (
+      payload:
+        | { enable: true; address: string; lat: number; lng: number; placeId?: string }
+        | { enable: false },
+    ) => updateReservationDelivery(id!, payload),
+    onSuccess: (res) => {
+      invalidateAfterStatusChange();
+      setDeliveryModalVisible(false);
+      const partes: string[] = [
+        res.delta >= 0
+          ? `Domicilio actualizado · el total subió ${formatCurrency(res.delta)}`
+          : `Domicilio actualizado · el total bajó ${formatCurrency(-res.delta)}`,
+        "se avisó al dueño",
+      ];
+      if (res.overpaid > 0) {
+        partes.push(
+          `hay ${formatCurrency(res.overpaid)} a favor por reembolsar o dejar de saldo`,
+        );
+      }
+      showSuccess(`${partes.join(" · ")}.`);
+    },
+    onError: (e: Error) => Alert.alert("No se pudo actualizar el domicilio", e.message),
   });
 
   // Notas: texto, reversible y sin dinero de por medio → sí van optimistas.
@@ -530,7 +595,7 @@ export default function AdminReservationDetail() {
     );
   }
 
-  const config = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.CONFIRMED;
+  const baseConfig = STATUS_CONFIG[reservation.status] || STATUS_CONFIG.CONFIRMED;
   const actions = getActions(reservation.status);
   const isBath = reservation.reservationType === "BATH";
   const isDaycare = reservation.reservationType === "DAYCARE";
@@ -542,6 +607,12 @@ export default function AdminReservationDetail() {
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
   // Reagendar la cita (appointmentAt) solo aplica a baños sueltos confirmados.
   const canEditAppointment = isBath && reservation.status === "CONFIRMED";
+  // El domicilio se puede tocar mientras la reserva siga viva (el equipo también
+  // con la estancia en curso).
+  const canEditDelivery =
+    reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN";
+  // Decimal serializado: llega como string desde la API.
+  const deliveryFee = Number(reservation.homeDeliveryFee ?? 0);
   const bathAddon = reservation.addons?.find(
     (a) => a.variant?.serviceType?.code === "BATH",
   );
@@ -606,8 +677,9 @@ export default function AdminReservationDetail() {
       ]
     : [];
 
-  // Staff que completó el baño: tomamos del StayUpdate más reciente con
-  // caption del baño (lo registra el endpoint POST /staff/baths/:id/complete).
+  // Staff que completó el baño. La fuente buena es `completedBy` del addon; el
+  // StayUpdate con caption de baño queda como respaldo para las citas
+  // completadas antes de que existiera esa columna.
   const bathCompletedUpdate = isBath
     ? reservation.updates.find(
         (u) =>
@@ -617,7 +689,21 @@ export default function AdminReservationDetail() {
       // Fallback: si no hay caption, usar el update más reciente con foto.
       reservation.updates.find((u) => u.staff)
     : null;
-  const bathStaff = bathCompletedUpdate?.staff ?? null;
+  const bathStaff = bathAddon?.completedBy ?? bathCompletedUpdate?.staff ?? null;
+  // Ya se ejecutó el servicio (con o sin foto).
+  const bathDone = isBath && !!bathAddon?.completedAt;
+  // Un baño hecho al que solo le falta el cobro sigue en CONFIRMED (para poder
+  // cobrarlo al entregar) y se veía igual que uno pendiente: se marca en ámbar.
+  const config =
+    bathDone &&
+    reservation.status !== "CHECKED_OUT" &&
+    reservation.status !== "CANCELLED"
+      ? {
+          label: "Baño listo · por cobrar",
+          bg: COLORS.warningBg,
+          text: COLORS.warningText,
+        }
+      : baseConfig;
 
   const SIZE_LABELS: Record<string, string> = {
     XS: "Extra pequeño",
@@ -751,7 +837,7 @@ export default function AdminReservationDetail() {
               </View>
             )}
 
-            {bathStaff && (
+            {(bathStaff || bathDone) && (
               <View style={styles.bathStaffStrip}>
                 <Ionicons
                   name="ribbon-outline"
@@ -759,16 +845,25 @@ export default function AdminReservationDetail() {
                   color={COLORS.primary}
                 />
                 <Text style={styles.bathStaffText}>
-                  Bañó:{" "}
-                  <Text style={styles.bathStaffName}>
-                    {formatName(bathStaff.firstName)}{" "}
-                    {formatName(bathStaff.lastName)}
-                  </Text>
+                  {bathStaff ? (
+                    <>
+                      Bañó:{" "}
+                      <Text style={styles.bathStaffName}>
+                        {formatName(bathStaff.firstName)}{" "}
+                        {formatName(bathStaff.lastName)}
+                      </Text>
+                    </>
+                  ) : (
+                    // Citas viejas completadas sin registro de quién lo hizo.
+                    "Baño completado"
+                  )}
                 </Text>
-                {bathCompletedUpdate?.createdAt && (
+                {(bathCompletedUpdate?.createdAt ?? bathAddon?.completedAt) && (
                   <Text style={styles.bathStaffDate}>
                     {" · "}
-                    {formatDateTime(bathCompletedUpdate.createdAt)}
+                    {formatDateTime(
+                      bathCompletedUpdate?.createdAt ?? bathAddon!.completedAt!,
+                    )}
                   </Text>
                 )}
               </View>
@@ -916,6 +1011,40 @@ export default function AdminReservationDetail() {
             )}
           </TouchableOpacity>
         </View>
+        )}
+
+        {/* Servicio a domicilio — antes solo se podía capturar al crear la
+            reserva; si el cliente lo pedía después, no había dónde anotarlo. */}
+        {(deliveryFee > 0 || reservation.homeDelivery || canEditDelivery) && (
+          <TouchableOpacity
+            style={styles.deliveryRow}
+            onPress={() => canEditDelivery && setDeliveryModalVisible(true)}
+            disabled={!canEditDelivery}
+            activeOpacity={0.7}
+            testID="admin-reservation-edit-delivery"
+          >
+            <View style={styles.metaIconWrap}>
+              <Ionicons name="car-outline" size={16} color={COLORS.primary} />
+            </View>
+            <View style={styles.deliveryTexts}>
+              <Text style={styles.deliveryLabel}>Servicio a domicilio</Text>
+              {reservation.homeDelivery ? (
+                <Text style={styles.deliveryValue} numberOfLines={2}>
+                  {reservation.homeDeliveryAddress ?? "Dirección no registrada"}
+                  {deliveryFee > 0 ? ` · ${formatCurrency(deliveryFee)}` : ""}
+                </Text>
+              ) : (
+                <Text style={styles.deliveryEmpty}>Agregar servicio a domicilio</Text>
+              )}
+            </View>
+            {canEditDelivery && (
+              <Ionicons
+                name={reservation.homeDelivery ? "pencil" : "add-circle"}
+                size={reservation.homeDelivery ? 12 : 15}
+                color={COLORS.primary}
+              />
+            )}
+          </TouchableOpacity>
         )}
 
         {/* Total — editable: una reserva capturada sin el descuento no tenía
@@ -1536,9 +1665,11 @@ export default function AdminReservationDetail() {
         </View>
       )}
 
-      {/* Marcar baño como completado — sólo si el baño no está completado/cancelado */}
+      {/* Marcar baño como completado — sólo si el baño no está completado/cancelado.
+          Se mira `completedAt` del addon, no el StayUpdate: sin foto no hay
+          update y el botón reaparecería sobre un baño ya hecho. */}
       {isBath &&
-        !bathStaff &&
+        !bathDone &&
         reservation.status !== "CHECKED_OUT" &&
         reservation.status !== "CANCELLED" && (
           <TouchableOpacity
@@ -1609,6 +1740,18 @@ export default function AdminReservationDetail() {
           ? "Los extras de deslanado/corte que define el staff se suman aparte."
           : undefined
       }
+    />
+
+    <ReservationDeliveryModal
+      visible={deliveryModalVisible}
+      onClose={() => setDeliveryModalVisible(false)}
+      submitting={deliveryMutation.isPending}
+      onSubmit={(payload) => deliveryMutation.mutate(payload)}
+      current={{
+        enabled: !!reservation.homeDelivery,
+        address: reservation.homeDeliveryAddress ?? null,
+        fee: deliveryFee,
+      }}
     />
 
     <NoteEditModal

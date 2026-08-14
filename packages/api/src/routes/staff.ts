@@ -929,11 +929,11 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     "/staff/addons/:id/complete",
     { preHandler },
     async (request, reply) => {
+      // Foto OPCIONAL (mismo criterio que /staff/baths/:id/complete): si viene,
+      // tiene que ser una URL subida.
       const mediaUrl = request.body?.mediaUrl;
-      if (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http")) {
-        return reply.status(400).send({
-          error: "Se requiere una foto del baño completado",
-        });
+      if (mediaUrl !== undefined && (typeof mediaUrl !== "string" || !mediaUrl.startsWith("http"))) {
+        return reply.status(400).send({ error: "La foto no es válida" });
       }
 
       const addon = await prisma.reservationAddon.findUnique({
@@ -955,19 +955,21 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       const updated = await prisma.$transaction(async (tx) => {
         const result = await tx.reservationAddon.update({
           where: { id: request.params.id },
-          data: { completedAt: new Date() },
+          data: { completedAt: new Date(), completedById: request.userId },
           include: { variant: { include: { serviceType: true } } },
         });
-        await tx.stayUpdate.create({
-          data: {
-            reservationId: addon.reservation.id,
-            petId: addon.reservation.petId,
-            staffId: request.userId!,
-            mediaUrl,
-            mediaType: "image",
-            caption: `${addon.reservation.pet.name} listo después del baño`,
-          },
-        });
+        if (mediaUrl) {
+          await tx.stayUpdate.create({
+            data: {
+              reservationId: addon.reservation.id,
+              petId: addon.reservation.petId,
+              staffId: request.userId!,
+              mediaUrl,
+              mediaType: "image",
+              caption: `${addon.reservation.pet.name} listo después del baño`,
+            },
+          });
+        }
         return result;
       });
 

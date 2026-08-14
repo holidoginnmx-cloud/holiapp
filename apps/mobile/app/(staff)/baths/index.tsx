@@ -29,6 +29,12 @@ import {
 } from "@/lib/api";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import {
+  getBathAddon,
+  isBathPhysicallyDone,
+  isBathConcluded,
+  isBathReadyToCollect,
+} from "@/lib/bathStatus";
+import {
   formatName,
   formatCurrency,
   formatWeekdayDayShort,
@@ -60,10 +66,6 @@ function formatDayHeader(ymd: string): string {
   if (diffDays === 0) return `Hoy · ${label}`;
   if (diffDays === 1) return `Mañana · ${label}`;
   return label;
-}
-
-function getBathAddon(bath: StaffBath) {
-  return bath.addons.find((a) => a.variant?.serviceType?.code === "BATH");
 }
 
 function formatDurationMin(min: number): string {
@@ -104,19 +106,6 @@ function findOverlaps(baths: StaffBath[]): Set<string> {
     }
   }
   return out;
-}
-
-// Físicamente terminado (foto subida). No equivale a "concluido" — baños
-// sueltos quedan en este estado hasta que se liquide el saldo.
-function isBathPhysicallyDone(bath: StaffBath): boolean {
-  return !!getBathAddon(bath)?.completedAt;
-}
-
-// Concluido = totalmente cerrado (status CHECKED_OUT para sueltos, addon
-// completado para hospedajes — éstos no requieren liquidación aquí).
-function isBathConcluded(bath: StaffBath): boolean {
-  if (bath.reservationType === "BATH") return bath.status === "CHECKED_OUT";
-  return !!getBathAddon(bath)?.completedAt;
 }
 
 type Row =
@@ -290,6 +279,35 @@ export default function StaffBaths() {
     }
   }
 
+  // Sin foto se pide confirmar: que siga siendo la excepción y no la costumbre.
+  async function completeWithoutPhoto(bath: StaffBath) {
+    setCompletingId(bath.id);
+    try {
+      await completeStaffBath(bath.id);
+      queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No se pudo completar";
+      Alert.alert("Error", msg);
+    } finally {
+      setCompletingId(null);
+    }
+  }
+
+  function askCompleteWithoutPhoto(bath: StaffBath) {
+    Alert.alert(
+      "¿Completar sin foto?",
+      "Al cliente le encanta recibir la foto de su perro recién bañado. ¿Seguro que quieres completar la cita sin foto?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Completar",
+          style: "destructive",
+          onPress: () => completeWithoutPhoto(bath),
+        },
+      ],
+    );
+  }
+
   async function handleComplete(bath: StaffBath) {
     Alert.alert(
       "Foto del baño",
@@ -298,6 +316,7 @@ export default function StaffBaths() {
         { text: "Cancelar", style: "cancel" },
         { text: "Tomar foto", onPress: () => uploadAndComplete(bath, "camera") },
         { text: "Elegir foto", onPress: () => uploadAndComplete(bath, "library") },
+        { text: "Completar sin foto", onPress: () => askCompleteWithoutPhoto(bath) },
       ],
     );
   }
@@ -357,6 +376,7 @@ export default function StaffBaths() {
           hasBalance={false}
           hasDeslanado={hasDeslanado}
           hasCorte={hasCorte}
+          bathReady={isBathReadyToCollect(item)}
           onPress={() =>
             router.push(
               item.reservationType === "BATH"
