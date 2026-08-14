@@ -30,6 +30,7 @@ export default function AdminReservationLayout() {
       <Stack.Screen name="edit-dates" options={{ title: "Modificar fechas", headerLeft: backButton }} />
       <Stack.Screen name="edit-appointment" options={{ title: "Reagendar baño", headerLeft: backButton }} />
       <Stack.Screen name="add-addon" options={{ title: "Agregar servicio", headerLeft: backButton }} />
+      <Stack.Screen name="add-domicilio" options={{ title: "Agregar domicilio", headerLeft: backButton }} />
     </Stack>
   );
 }

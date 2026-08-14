@@ -13,9 +13,11 @@ import {
   AdminUpdateReservationSchema,
   AdminCreateAddonSchema,
   AdminUpdateAddonSchema,
+  AdminCreateDeliverySchema,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
 import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
+import { quoteDelivery } from "../lib/delivery";
 import { triggerMaintenance } from "../lib/maintenance";
 import { extraerCartilla } from "../lib/ocr";
 import {
@@ -1383,6 +1385,148 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         addon: result.addon,
         totalAmount: result.newTotal,
         addedToTotal: contribution,
+      });
+    }
+  );
+
+  // ─── POST /admin/reservations/:id/delivery — agregar domicilio ──
+  // La capacidad que faltaba: sumar el servicio a domicilio a una reserva que
+  // YA existe. El domicilio no es un ReservationAddon (es un viaje por reserva,
+  // no un servicio de catálogo): vive en columnas propias de la reserva
+  // (homeDelivery*), así que tiene su propia ruta. La tarifa se RE-CALCULA
+  // server-side desde lat/lng — nunca se confía en un monto del cliente.
+  fastify.post<{ Params: { id: string } }>(
+    "/admin/reservations/:id/delivery",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = AdminCreateDeliverySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { address, lat, lng, isCourtesy } = parsed.data;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: { pet: { select: { name: true } } },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+      if (reservation.status === "CANCELLED") {
+        return reply.status(400).send({
+          error: "No se puede agregar domicilio a una reserva cancelada",
+        });
+      }
+      if (reservation.homeDelivery) {
+        return reply.status(409).send({
+          error: "Esta reservación ya tiene servicio a domicilio",
+        });
+      }
+
+      // La tarifa SIEMPRE sale de `quoteDelivery` (misma fuente que los
+      // wizards). Si el servicio está desactivado, no se puede agregar.
+      const quote = await quoteDelivery(prisma, lat, lng);
+      if (!quote.active) {
+        return reply.status(400).send({
+          error: "El servicio a domicilio está desactivado",
+        });
+      }
+
+      // En cortesía no se cobra: se registra el domicilio con tarifa 0 para que
+      // el saldo del cliente y el auto-cierre sigan cuadrando (mismo criterio
+      // que los add-on de cortesía). La distancia sí se guarda para la ruta.
+      const fee = isCourtesy ? 0 : quote.fee;
+
+      const result = await prisma.$transaction(async (tx) => {
+        let newTotal = Number(reservation.totalAmount);
+        if (fee > 0) {
+          newTotal = Number((newTotal + fee).toFixed(2));
+        }
+        await tx.reservation.update({
+          where: { id: reservation.id },
+          data: {
+            homeDelivery: true,
+            homeDeliveryAddress: address,
+            homeDeliveryDistanceKm: quote.distanceKm,
+            homeDeliveryFee: new Prisma.Decimal(fee),
+            ...(fee > 0 ? { totalAmount: new Prisma.Decimal(newTotal) } : {}),
+          },
+        });
+        return { newTotal };
+      });
+
+      const etiqueta = isCourtesy ? " de CORTESÍA" : "";
+      await notifyTeamReservationUpdated(prisma, {
+        reservationId: reservation.id,
+        petName: reservation.pet.name,
+        body: `Se agregó servicio a domicilio${etiqueta} a la reserva.`,
+        actorUserId: request.userId,
+        assignedStaffId: reservation.staffId,
+      });
+
+      return reply.send({
+        success: true,
+        totalAmount: result.newTotal,
+        addedToTotal: fee,
+        distanceKm: quote.distanceKm,
+        fee,
+      });
+    }
+  );
+
+  // ─── DELETE /admin/reservations/:id/delivery — quitar domicilio ─
+  // Contraparte del POST: si se capturó mal (dirección equivocada) el equipo
+  // puede quitarlo y volver a agregarlo. Resta del total lo que se había
+  // cobrado por el domicilio (0 si fue cortesía).
+  fastify.delete<{ Params: { id: string } }>(
+    "/admin/reservations/:id/delivery",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: { pet: { select: { name: true } } },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+      if (!reservation.homeDelivery) {
+        return reply.status(400).send({
+          error: "Esta reservación no tiene servicio a domicilio",
+        });
+      }
+
+      const cobrado = Number(reservation.homeDeliveryFee ?? 0);
+
+      const result = await prisma.$transaction(async (tx) => {
+        let newTotal = Number(reservation.totalAmount);
+        if (cobrado > 0) {
+          newTotal = Number(Math.max(0, newTotal - cobrado).toFixed(2));
+        }
+        await tx.reservation.update({
+          where: { id: reservation.id },
+          data: {
+            homeDelivery: false,
+            homeDeliveryAddress: null,
+            homeDeliveryDistanceKm: null,
+            homeDeliveryFee: null,
+            ...(cobrado > 0 ? { totalAmount: new Prisma.Decimal(newTotal) } : {}),
+          },
+        });
+        return { newTotal };
+      });
+
+      await notifyTeamReservationUpdated(prisma, {
+        reservationId: reservation.id,
+        petName: reservation.pet.name,
+        body: "Se quitó el servicio a domicilio de la reserva.",
+        actorUserId: request.userId,
+        assignedStaffId: reservation.staffId,
+      });
+
+      return reply.send({
+        success: true,
+        totalAmount: result.newTotal,
+        removedFromTotal: cobrado,
       });
     }
   );

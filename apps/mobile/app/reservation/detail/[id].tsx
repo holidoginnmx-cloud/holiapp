@@ -644,6 +644,20 @@ function ReservationDetailScreenContent() {
           </View>
         )}
 
+        {reservation.homeDelivery && (
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <View style={styles.metaIconWrap}>
+                <Ionicons name="car-outline" size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.metaLabel}>Servicio a domicilio</Text>
+              <Text style={styles.metaValue} numberOfLines={2}>
+                {reservation.homeDeliveryAddress ?? "Recogemos y entregamos a tu mascota"}
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>

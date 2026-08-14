@@ -418,6 +418,13 @@ export const ReservationSchema = z.object({
   petId: z.string(),
   roomId: z.string().nullable(),
   staffId: z.string().nullable(),
+  // Servicio a domicilio: bandera + dirección + distancia + tarifa cobrada.
+  // La tarifa es Decimal en la BD (llega como string o number en el JSON);
+  // se envuelve en Number() al mostrarla, igual que `totalAmount`.
+  homeDelivery: z.boolean().optional(),
+  homeDeliveryAddress: z.string().nullable().optional(),
+  homeDeliveryDistanceKm: z.number().nullable().optional(),
+  homeDeliveryFee: z.union([z.number(), z.string()]).nullable().optional(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -599,6 +606,21 @@ export const AdminUpdateAddonSchema = z
       d.scheduledAt !== undefined,
     { message: "Indica al menos un campo a actualizar" }
   );
+
+// ── Agregar servicio a domicilio a una reserva YA creada (STAFF/ADMIN) ───────
+// El caso que faltaba: el cliente pidió domicilio después de reservar y ni él
+// ni el equipo tenían dónde agregarlo. La dirección + lat/lng vienen de Google
+// Places (igual que en los wizards); el backend SIEMPRE recalcula la tarifa
+// server-side desde lat/lng — nunca confía en un monto mandado por el cliente.
+export const AdminCreateDeliverySchema = z.object({
+  address: z.string().min(1),
+  lat: z.number(),
+  lng: z.number(),
+  placeId: z.string().optional(),
+  // Cortesía: se registra el domicilio pero no se cobra ni suma al total.
+  isCourtesy: z.boolean().default(false),
+});
+export type AdminCreateDelivery = z.infer<typeof AdminCreateDeliverySchema>;
 
 export type AdminUpdateReservation = z.infer<typeof AdminUpdateReservationSchema>;
 export type AdminCreateAddon = z.infer<typeof AdminCreateAddonSchema>;

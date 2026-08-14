@@ -321,6 +321,38 @@ export const adminUpdateReservationAddon = (
     { method: "PATCH", body: JSON.stringify(data) }
   );
 
+/**
+ * Agrega el servicio a domicilio a una reserva existente. El backend recalcula
+ * la tarifa server-side desde lat/lng; el `fee` que regresa es el ya cobrado.
+ */
+export const adminAddReservationDelivery = (
+  reservationId: string,
+  data: {
+    address: string;
+    lat: number;
+    lng: number;
+    placeId?: string;
+    isCourtesy?: boolean;
+  }
+) =>
+  apiFetch<{
+    success: boolean;
+    totalAmount: number;
+    addedToTotal: number;
+    distanceKm: number;
+    fee: number;
+  }>(`/admin/reservations/${reservationId}/delivery`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+/** Quita el servicio a domicilio de una reserva (resta del total lo cobrado). */
+export const adminRemoveReservationDelivery = (reservationId: string) =>
+  apiFetch<{ success: boolean; totalAmount: number; removedFromTotal: number }>(
+    `/admin/reservations/${reservationId}/delivery`,
+    { method: "DELETE" }
+  );
+
 export const adminAdjustCredit = (userId: string, amount: number, description: string) =>
   apiFetch<{ creditBalance: number }>(`/admin/users/${userId}/credit-adjust`, {
     method: "POST",

@@ -39,6 +39,7 @@ import {
   completeStaffBath,
   adminUpdateReservation,
   adminUpdateReservationAddon,
+  adminRemoveReservationDelivery,
 } from "@/lib/api";
 import {
   AmountEditModal,
@@ -427,6 +428,20 @@ export default function AdminReservationDetail() {
       showSuccess("Nota del servicio guardada");
     },
     onError: (e: Error) => Alert.alert("No se pudo guardar la nota", e.message),
+  });
+
+  // Quitar el domicilio: toca el total, así que va sin optimismo y con banner.
+  const removeDeliveryMutation = useMutation({
+    mutationFn: () => adminRemoveReservationDelivery(id!),
+    onSuccess: (res) => {
+      invalidateReservationScope(queryClient, id);
+      showSuccess(
+        res.removedFromTotal > 0
+          ? `Domicilio quitado · el total bajó ${formatCurrency(res.removedFromTotal)}`
+          : "Domicilio quitado",
+      );
+    },
+    onError: (e: Error) => Alert.alert("No se pudo quitar el domicilio", e.message),
   });
 
   // Lista de staff activos — solo se carga cuando se abre el modal.
@@ -1168,6 +1183,120 @@ export default function AdminReservationDetail() {
           })}
         </View>
       )}
+
+      {/* Servicio a domicilio — el domicilio ya no se congela al reservar: el
+          equipo puede sumarlo después (el cliente lo pidió tarde) o quitarlo si
+          se capturó mal. Aplica a cualquier tipo de reserva. */}
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionCardHeader}>
+          <Text style={styles.sectionCardTitle}>Servicio a domicilio</Text>
+          {!reservation.homeDelivery && reservation.status !== "CANCELLED" && (
+            <TouchableOpacity
+              style={styles.metaValueRow}
+              onPress={() =>
+                router.push(`/admin/reservation/add-domicilio?id=${id}` as any)
+              }
+              activeOpacity={0.7}
+              testID="admin-reservation-add-delivery"
+            >
+              <Text style={styles.addAddonText}>Agregar</Text>
+              <Ionicons name="add-circle" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {reservation.homeDelivery ? (
+          (() => {
+            const fee = Number(reservation.homeDeliveryFee ?? 0);
+            const km = reservation.homeDeliveryDistanceKm;
+            return (
+              <View style={[styles.addonRow, styles.lastRow]}>
+                <View style={styles.addonIconWrap}>
+                  <Ionicons name="car" size={18} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addonLabel}>
+                    Recoger y entregar a domicilio
+                  </Text>
+                  <View style={styles.addonMetaRow}>
+                    {fee > 0 ? (
+                      <View style={[styles.metaPill, styles.metaPillSuccess]}>
+                        <Text
+                          style={[
+                            styles.metaPillText,
+                            { color: COLORS.successText },
+                          ]}
+                        >
+                          En reserva
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.metaPill, styles.metaPillCourtesy]}>
+                        <Text
+                          style={[
+                            styles.metaPillText,
+                            { color: COLORS.warningText },
+                          ]}
+                        >
+                          Cortesía
+                        </Text>
+                      </View>
+                    )}
+                    {km != null && (
+                      <Text style={styles.addonDate}>
+                        {km} km (ida y vuelta)
+                      </Text>
+                    )}
+                  </View>
+                  {reservation.homeDeliveryAddress ? (
+                    <Text style={styles.addonNote} numberOfLines={2}>
+                      {reservation.homeDeliveryAddress}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ alignItems: "flex-end", gap: 8 }}>
+                  <Text style={styles.addonPrice}>
+                    {fee > 0 ? formatCurrency(fee) : "Gratis"}
+                  </Text>
+                  {reservation.status !== "CANCELLED" && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert(
+                          "Quitar domicilio",
+                          fee > 0
+                            ? `Se restarán ${formatCurrency(fee)} del total.`
+                            : "Se quitará el servicio a domicilio.",
+                          [
+                            { text: "Cancelar", style: "cancel" },
+                            {
+                              text: "Quitar",
+                              style: "destructive",
+                              onPress: () => removeDeliveryMutation.mutate(),
+                            },
+                          ],
+                        )
+                      }
+                      disabled={removeDeliveryMutation.isPending}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      testID="admin-reservation-remove-delivery"
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color={COLORS.dangerText}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })()
+        ) : (
+          <Text style={styles.addonEmpty}>
+            Sin servicio a domicilio. Usa "Agregar" para recoger y entregar la
+            mascota en casa del cliente.
+          </Text>
+        )}
+      </View>
 
       {/* Payments */}
       <View style={styles.sectionCard}>
