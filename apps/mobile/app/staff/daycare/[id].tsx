@@ -12,20 +12,27 @@ import {
   TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
 import {
   getStaffDaycares,
+  getChecklists,
+  createStaffUpdate,
   checkInStaffDaycare,
   checkOutStaffDaycare,
   registerDaycareManualPayment,
   type StaffDaycare,
 } from "@/lib/api";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import { useAuthStore } from "@/store/authStore";
 import {
   formatName,
   formatCurrency,
   formatWeekdayDayShort,
   formatTimeHHmm,
+  utcDayKey,
+  localDayKey,
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -48,9 +55,12 @@ function extraHoursAddon(d: StaffDaycare) {
 
 export default function StaffDaycareDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const qc = useQueryClient();
+  const currentUserId = useAuthStore((s) => s.userId);
   const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
   const [payAmount, setPayAmount] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["staff-daycares", "upcoming"],
@@ -62,8 +72,22 @@ export default function StaffDaycareDetail() {
     [data, id],
   );
 
+  // Reportes del día. La guardería usa el MISMO reporte diario que el
+  // hospedaje (mood, comió/paseó/sanitario, notas y evidencia): el endpoint
+  // solo pide que la reservación esté CHECKED_IN, no que sea una estancia.
+  const { data: checklists } = useQuery({
+    queryKey: ["staff", "checklists", id],
+    queryFn: () => getChecklists(id!),
+    enabled: !!id,
+  });
+
+  const todayChecklist = (checklists ?? []).find(
+    (c) => utcDayKey(c.date) === localDayKey(),
+  );
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["staff-daycares"] });
+    qc.invalidateQueries({ queryKey: ["staff", "daycares"] });
   };
 
   const checkInMutation = useMutation({
@@ -108,6 +132,62 @@ export default function StaffDaycareDetail() {
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  // Evidencia suelta (sin reporte): la foto del momento que el dueño ve en su
+  // reservación. Mismo flujo que el hospedaje, con cámara además de galería
+  // porque en guardería casi siempre se toma en el instante.
+  async function pickEvidence(source: "camera" | "library") {
+    if (!daycare) return;
+    const perm =
+      source === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      Alert.alert(
+        "Permiso requerido",
+        source === "camera"
+          ? "Necesitamos acceso a la cámara."
+          : "Necesitamos acceso a tus fotos.",
+      );
+      return;
+    }
+    const result =
+      source === "camera"
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            quality: 0.8,
+          });
+    if (result.canceled) return;
+
+    setUploadingEvidence(true);
+    try {
+      const cloud = await uploadToCloudinary(result.assets[0].uri, "daycares");
+      await createStaffUpdate({
+        mediaUrl: cloud.secure_url,
+        mediaType: "image",
+        caption: null,
+        reservationId: daycare.id,
+        petId: daycare.pet.id,
+        staffId: currentUserId,
+      });
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["stay-updates", id] });
+      Alert.alert("Listo", "La foto ya está en la reservación del dueño.");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "No se pudo subir la evidencia");
+    } finally {
+      setUploadingEvidence(false);
+    }
+  }
+
+  function promptEvidence() {
+    Alert.alert("Subir evidencia", "¿De dónde tomamos la foto?", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Tomar foto", onPress: () => pickEvidence("camera") },
+      { text: "Elegir de galería", onPress: () => pickEvidence("library") },
+    ]);
+  }
 
   if (isError) return <ErrorState error={error} onRetry={refetch} />;
   if (isLoading || !data) {
@@ -240,6 +320,93 @@ export default function StaffDaycareDetail() {
           </Text>
         </View>
       </View>
+
+      {/* Reporte del día — mismo reporte que el hospedaje. Solo mientras el
+          perro está aquí: el endpoint exige la reservación CHECKED_IN. */}
+      {daycare.status === "CHECKED_IN" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Reporte del día</Text>
+          {todayChecklist ? (
+            <View style={styles.reportDoneRow}>
+              <Ionicons
+                name="checkmark-circle"
+                size={16}
+                color={COLORS.successText}
+              />
+              <Text style={styles.reportDoneText}>
+                Reporte de hoy enviado al dueño
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.missingReportBanner}>
+              <Ionicons
+                name="document-text-outline"
+                size={16}
+                color={COLORS.warningText}
+              />
+              <Text style={styles.missingReportText}>
+                Aún no se ha enviado el reporte de hoy
+              </Text>
+            </View>
+          )}
+          <View style={styles.reportRow}>
+            <TouchableOpacity
+              style={styles.reportBtn}
+              onPress={() => router.push(`/staff/checklist/${daycare.id}` as any)}
+              activeOpacity={0.85}
+              testID="staff-daycare-checklist"
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={16}
+                color={COLORS.white}
+              />
+              <Text style={styles.reportBtnText}>
+                {todayChecklist ? "Ver reporte" : "Llenar reporte"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.reportBtnSecondary}
+              onPress={promptEvidence}
+              disabled={uploadingEvidence}
+              activeOpacity={0.85}
+              testID="staff-daycare-evidence"
+            >
+              {uploadingEvidence ? (
+                <ActivityIndicator color={COLORS.primary} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.reportBtnSecondaryText}>Subir foto</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Historial de reportes de esta guardería */}
+      {(checklists?.length ?? 0) > 0 && (
+        <TouchableOpacity
+          style={styles.historyCard}
+          onPress={() => router.push(`/reservation/checklists/${daycare.id}` as any)}
+          activeOpacity={0.85}
+          testID="staff-daycare-checklists-link"
+        >
+          <View style={styles.historyIcon}>
+            <Ionicons name="images-outline" size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.historyTitle}>Reportes y fotos</Text>
+            <Text style={styles.historySubtitle}>
+              {checklists!.length}{" "}
+              {checklists!.length === 1 ? "reporte" : "reportes"} de{" "}
+              {formatName(daycare.pet?.name ?? "—")}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+      )}
 
       {/* Acciones */}
       {daycare.status === "CONFIRMED" && (
@@ -467,6 +634,78 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     paddingVertical: 12,
+  },
+  reportRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  reportBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  reportBtnText: { color: COLORS.white, fontSize: 14, fontFamily: "PlusJakartaSans_700Bold" },
+  reportBtnSecondary: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  reportBtnSecondaryText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
+  missingReportBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 10,
+    padding: 10,
+  },
+  missingReportText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.warningText,
+  },
+  reportDoneRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  reportDoneText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.successText,
+  },
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+  },
+  historyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyTitle: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  historySubtitle: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
   primaryBtn: {
     flexDirection: "row",

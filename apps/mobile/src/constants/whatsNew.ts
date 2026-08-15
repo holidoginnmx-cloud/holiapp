@@ -34,6 +34,61 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-14-b",
+    title: "Check-in del equipo y reportes de guardería",
+    items: [
+      {
+        icon: "log-in-outline",
+        title: "El check-in ya no depende de quién sea el responsable",
+        body:
+          "Si la estancia tenía a otro compañero como responsable, el botón " +
+          "de check-in no aparecía por ningún lado y quien recibía al perro " +
+          "no podía registrarlo. Ahora cualquiera del equipo puede hacer el " +
+          "check-in (y cobrar el saldo) desde el detalle de la estancia; " +
+          "abajo del botón se ve quién es el responsable, para no perder de " +
+          "vista a quién le toca la estancia.",
+        route: "/(staff)/dashboard",
+        roles: ["STAFF"],
+      },
+      {
+        icon: "grid-outline",
+        title: "El tablero muestra todo el hotel, no solo lo tuyo",
+        body:
+          "Antes el Panel y las listas de hoy solo mostraban las estancias " +
+          "asignadas a ti: si nadie te asignaba nada, veías «No hay " +
+          "estancias activas» con el hotel lleno, y las llegadas del día no " +
+          "te aparecían. Ahora ves los perros hospedados, las llegadas y las " +
+          "salidas de todos.",
+        route: "/(staff)/dashboard",
+        roles: ["STAFF"],
+      },
+      {
+        icon: "sunny-outline",
+        title: "Reportes y fotos para los perros de guardería",
+        body:
+          "La guardería no tenía dónde registrar el día: solo se podía hacer " +
+          "check-in, check-out y cobrar. Ahora, mientras el perro está aquí, " +
+          "el detalle de la guardería tiene «Llenar reporte» —el mismo del " +
+          "hospedaje: ánimo, comió, paseó, sanitario, notas y fotos— y un " +
+          "botón para subir una foto suelta. El dueño recibe el aviso y las " +
+          "ve en su reservación, igual que en hospedaje.",
+        route: "/(staff)/daycares",
+        roles: ["STAFF"],
+      },
+      {
+        icon: "create-outline",
+        title: "Llenar el reporte del día desde el detalle de la reserva",
+        body:
+          "Desde admin solo se podían VER los reportes; para llenar uno " +
+          "había que entrar por el flujo del staff. Ahora, en cualquier " +
+          "reserva con el perro adentro —hospedaje o guardería— aparece " +
+          "«Llenar el reporte de hoy» junto al historial.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-14",
     title: "Domicilio y cierre de baños",
     items: [

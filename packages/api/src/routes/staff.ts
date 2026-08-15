@@ -469,16 +469,11 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       if (reservation.status === "CANCELLED") {
         return reply.status(400).send({ error: "La reservación está cancelada" });
       }
-      // Solo el staff asignado (o admin) puede registrar pagos.
-      if (
-        request.userRole === "STAFF" &&
-        reservation.staffId !== null &&
-        reservation.staffId !== request.userId
-      ) {
-        return reply
-          .status(403)
-          .send({ error: "Esta estancia no está asignada a ti" });
-      }
+      // Cualquier staff puede registrar el pago: el botón "Registrar pago
+      // manual" se le muestra a todos y quien cobra al recoger no siempre es
+      // el responsable de la estancia. La asignación es accountability, no un
+      // permiso — mismo criterio que checkin/checkout, que nunca la pidieron.
+      // El pago queda auditado por su `notes` y su `paidAt`.
 
       const totalPaidBefore = reservation.payments.reduce(
         (sum, p) => sum + Number(p.amount),

@@ -868,20 +868,40 @@ export default function StayDetail() {
         </TouchableOpacity>
       )}
 
-      {stay.status === "CONFIRMED" && isAssignedToMe && (
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: COLORS.successText }]}
-          onPress={() =>
-            Alert.alert("Check-in", "¿Confirmar el ingreso de la mascota?", [
-              { text: "Cancelar", style: "cancel" },
-              { text: "Confirmar", onPress: () => checkinMutation.mutate() },
-            ])
-          }
-          disabled={checkinMutation.isPending}
-        >
-          <Ionicons name="log-in-outline" size={20} color={COLORS.white} />
-          <Text style={styles.actionButtonText}>Hacer check-in</Text>
-        </TouchableOpacity>
+      {/* Check-in: lo puede hacer CUALQUIER staff, esté o no asignado. La
+          asignación es accountability (quién es el responsable), no un
+          permiso: exigirla dejaba sin botón a quien recibe al perro cuando la
+          estancia ya tenía otro responsable, y el backend nunca la pidió. */}
+      {stay.status === "CONFIRMED" && (
+        <>
+          {stay.staff && !isAssignedToMe && (
+            <View style={styles.responsibleRow}>
+              <Ionicons
+                name="person-circle-outline"
+                size={16}
+                color={COLORS.textTertiary}
+              />
+              <Text style={styles.responsibleText}>
+                Responsable: {formatName(stay.staff.firstName)}{" "}
+                {formatName(stay.staff.lastName)}
+              </Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: COLORS.successText }]}
+            onPress={() =>
+              Alert.alert("Check-in", "¿Confirmar el ingreso de la mascota?", [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Confirmar", onPress: () => checkinMutation.mutate() },
+              ])
+            }
+            disabled={checkinMutation.isPending}
+            testID="staff-stay-checkin"
+          >
+            <Ionicons name="log-in-outline" size={20} color={COLORS.white} />
+            <Text style={styles.actionButtonText}>Hacer check-in</Text>
+          </TouchableOpacity>
+        </>
       )}
 
       {/* Comportamiento + Alertas — lado a lado */}

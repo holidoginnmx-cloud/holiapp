@@ -82,8 +82,10 @@ export default function StaffListScreen() {
     isRefetching: refetchingActive,
     refetch: refetchActive,
   } = useQuery({
-    queryKey: ["staff", "stays", "CHECKED_IN"],
-    queryFn: () => getStaffStays("CHECKED_IN"),
+    // Mismas keys que el dashboard staff: todo el hotel, no solo lo asignado
+    // a mí (ver comentario en (staff)/dashboard).
+    queryKey: ["staff", "stays", "hotel", "CHECKED_IN"],
+    queryFn: () => getStaffStays("CHECKED_IN", { all: true }),
   });
 
   const {
@@ -94,8 +96,8 @@ export default function StaffListScreen() {
     isRefetching: refetchingConfirmed,
     refetch: refetchConfirmed,
   } = useQuery({
-    queryKey: ["staff", "stays", "CONFIRMED"],
-    queryFn: () => getStaffStays("CONFIRMED"),
+    queryKey: ["staff", "stays", "hotel", "CONFIRMED"],
+    queryFn: () => getStaffStays("CONFIRMED", { all: true }),
   });
 
   const isLoading = loadingActive || loadingConfirmed;

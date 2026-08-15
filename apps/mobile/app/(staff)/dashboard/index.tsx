@@ -46,6 +46,10 @@ export default function StaffDashboard() {
   const toggleSection = (key: SectionKey) =>
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  // Todas las estancias del hotel, no solo las asignadas a mí: el tablero es
+  // la foto del día para quien esté en turno. Antes, un staff sin
+  // asignaciones veía "No hay estancias activas" con el hotel lleno, y las
+  // llegadas de hoy de un compañero no le aparecían para hacerles check-in.
   const {
     data: activeStaysRaw,
     isLoading: loadingActive,
@@ -53,8 +57,8 @@ export default function StaffDashboard() {
     error: activeError,
     refetch: refetchActive,
   } = useQuery({
-    queryKey: ["staff", "stays", "CHECKED_IN"],
-    queryFn: () => getStaffStays("CHECKED_IN"),
+    queryKey: ["staff", "stays", "hotel", "CHECKED_IN"],
+    queryFn: () => getStaffStays("CHECKED_IN", { all: true }),
     refetchInterval: 60_000,
   });
 
@@ -65,8 +69,8 @@ export default function StaffDashboard() {
     error: confirmedError,
     refetch: refetchConfirmed,
   } = useQuery({
-    queryKey: ["staff", "stays", "CONFIRMED"],
-    queryFn: () => getStaffStays("CONFIRMED"),
+    queryKey: ["staff", "stays", "hotel", "CONFIRMED"],
+    queryFn: () => getStaffStays("CONFIRMED", { all: true }),
     refetchInterval: 60_000,
   });
 

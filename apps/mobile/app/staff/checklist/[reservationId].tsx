@@ -26,6 +26,8 @@ import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { MoodLevel } from "@holidoginn/shared";
 import { formatName, utcDayKey, localDayKey, formatDateLong } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
+import { reservationHref } from "@/lib/reservationHref";
+import { useAuthStore } from "@/store/authStore";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -42,6 +44,7 @@ export default function ChecklistForm() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.role);
 
   // Form state — campos visibles
   const [mood, setMood] = useState<MoodLevel>("HAPPY");
@@ -198,11 +201,27 @@ export default function ChecklistForm() {
         queryClient.refetchQueries({ queryKey: ["staff", "checklists", reservationId] }),
       ]);
       queryClient.invalidateQueries({ queryKey: ["staff"] });
+      // La guardería vive bajo otra key ("staff-daycares"), que el prefijo
+      // ["staff"] no alcanza.
+      queryClient.invalidateQueries({ queryKey: ["staff-daycares"] });
       setShowSuccess(true);
       setTimeout(() => confettiRef.current?.start(), 150);
       setTimeout(() => {
         setShowSuccess(false);
-        router.replace(`/staff/stay/${reservationId}` as any);
+        // Al detalle del que venía: cada rol y cada tipo tienen el suyo (una
+        // guardería no vive en /staff/stay, y un admin no vuelve al flujo
+        // staff). Antes se volvía siempre a /staff/stay.
+        // A esta pantalla solo entra el equipo: cualquier rol que no sea
+        // ADMIN vuelve por el flujo staff (con `role` null, el helper
+        // mandaría al detalle del dueño).
+        router.replace(
+          reservationHref(
+            role === "ADMIN" ? "ADMIN" : "STAFF",
+            reservationId!,
+            stay?.reservationType,
+            stay?.appointmentAt,
+          ) as any,
+        );
       }, 3000);
     },
     onError: (e: Error) => Alert.alert("Error", e.message),

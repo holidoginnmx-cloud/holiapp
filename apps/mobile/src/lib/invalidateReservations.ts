@@ -27,6 +27,9 @@ export function invalidateReservationScope(
     ["staff", "stays"],
     ["staff-baths"],
     ["staff", "daycares"],
+    // Las guarderías se piden desde dos keys distintas: el calendario usa
+    // ["staff","daycares"] y la lista/detalle ["staff-daycares"].
+    ["staff-daycares"],
     ["reservations"],
   ];
   if (reservationId) {

@@ -90,12 +90,12 @@ export default function StaffMore() {
   // Mismas queries (y mismas keys) que el Panel y /staff-list: los números del
   // día salen de la caché, sin pedirle nada nuevo a la API.
   const { data: activeStays } = useQuery({
-    queryKey: ["staff", "stays", "CHECKED_IN"],
-    queryFn: () => getStaffStays("CHECKED_IN"),
+    queryKey: ["staff", "stays", "hotel", "CHECKED_IN"],
+    queryFn: () => getStaffStays("CHECKED_IN", { all: true }),
   });
   const { data: confirmedStays } = useQuery({
-    queryKey: ["staff", "stays", "CONFIRMED"],
-    queryFn: () => getStaffStays("CONFIRMED"),
+    queryKey: ["staff", "stays", "hotel", "CONFIRMED"],
+    queryFn: () => getStaffStays("CONFIRMED", { all: true }),
   });
 
   // Mismo hook que el layout de tabs: el badge de "Más" y este contador salen

@@ -208,8 +208,17 @@ export type StaffStats = {
 export const getStaffStats = () =>
   apiFetch<StaffStats>("/staff/me/stats");
 
-export const getStaffStays = (status?: string) =>
-  apiFetch<StaffStay[]>(`/staff/stays${status ? `?status=${status}` : ""}`);
+// `all: true` → el staff ve las estancias de TODO el hotel con ese status, no
+// solo las que tiene asignadas (el backend solo filtra por staffId cuando no
+// se pide `all`). El equipo es chico y todos cubren a todos: quien recibe al
+// perro necesita verlo en su tablero aunque el responsable sea otro.
+export const getStaffStays = (status?: string, opts?: { all?: boolean }) => {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (opts?.all) params.set("all", "true");
+  const qs = params.toString();
+  return apiFetch<StaffStay[]>(`/staff/stays${qs ? `?${qs}` : ""}`);
+};
 
 // Todas las estancias (sin filtrar por staffId, todos los status excepto
 // CANCELLED). Para el calendario de staff donde cualquier staff ve agenda

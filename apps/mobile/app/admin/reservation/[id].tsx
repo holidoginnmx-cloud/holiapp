@@ -59,6 +59,8 @@ import {
   formatDateTimeShort,
   formatTime,
   formatTimeHHmm,
+  utcDayKey,
+  localDayKey,
 } from "@/lib/format";
 import { LIVE_OPS } from "@/lib/queryOptions";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
@@ -309,6 +311,12 @@ export default function AdminReservationDetail() {
     enabled: !!id,
     refetchInterval: 30_000,
   });
+
+  // Reporte de hoy: el checklist se guarda con la fecha local del equipo
+  // truncada a medianoche UTC (ver el formulario), por eso se compara así.
+  const todayChecklist = (checklists ?? []).find(
+    (c) => utcDayKey(c.date) === localDayKey(),
+  );
 
   // Esta pantalla no tenía NINGUNA forma de refrescarse: ni intervalo, ni foco,
   // ni pull-to-refresh. Un cambio hecho desde otro teléfono no se veía nunca.
@@ -1603,6 +1611,34 @@ export default function AdminReservationDetail() {
       {/* Reportes diarios + Incidentes — sólo hospedajes */}
       {!isBath && (
         <>
+          {/* Llenar el reporte del día también desde el admin: hasta ahora
+              sólo se podía desde el flujo staff, así que un admin (o una
+              guardería, que no aparece en las listas de estancias) se quedaba
+              sin dónde registrarlo. */}
+          {reservation.status === "CHECKED_IN" && (
+            <TouchableOpacity
+              style={styles.checklistsCard}
+              onPress={() => router.push(`/staff/checklist/${id}` as any)}
+              activeOpacity={0.85}
+              testID="admin-reservation-fill-checklist"
+            >
+              <View style={styles.checklistsIcon}>
+                <Ionicons name="create-outline" size={22} color={COLORS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.checklistsTitle}>
+                  {todayChecklist ? "Ver el reporte de hoy" : "Llenar el reporte de hoy"}
+                </Text>
+                <Text style={styles.checklistsSubtitle}>
+                  {todayChecklist
+                    ? "Ya se envió al dueño; puedes actualizarlo"
+                    : "Ánimo, comida, paseo y fotos del día"}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.checklistsCard}
             onPress={() => router.push(`/reservation/checklists/${id}` as any)}

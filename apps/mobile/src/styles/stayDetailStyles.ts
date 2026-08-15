@@ -385,6 +385,21 @@ export const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
   },
+  // Quién es el responsable, cuando no soy yo: la acción sigue disponible
+  // para todos, pero la estancia tiene dueño y eso se ve.
+  responsibleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: -8,
+  },
+  responsibleText: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
   actionButtonText: {
     color: COLORS.white,
     fontSize: 16,
