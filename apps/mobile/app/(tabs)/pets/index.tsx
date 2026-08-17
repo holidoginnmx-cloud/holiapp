@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  Linking,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -17,6 +18,7 @@ import { getPetsByOwner } from "@/lib/api";
 import { PetCard } from "@/components/PetCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { ErrorState } from "@/components/ErrorState";
+import { buildWhatsappUrl } from "@/constants/business";
 
 export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -98,6 +100,31 @@ export default function PetsScreen() {
               <Ionicons name="add-circle" size={18} color={COLORS.white} />
               <Text style={styles.emptyButtonText}>Registrar mascota</Text>
             </TouchableOpacity>
+
+            {/* Media familia comparte perro: si lo registró la pareja, el perro
+                está en la otra cuenta y esta pantalla se ve igual que la de
+                alguien nuevo. Sin este aviso, el siguiente paso natural es
+                registrarlo otra vez — y quedan dos perros, dos cartillas por
+                revisar y el historial partido. Vincular las cuentas lo hace el
+                equipo, así que aquí lo mandamos con ellos. */}
+            <TouchableOpacity
+              style={styles.emptyLink}
+              onPress={() =>
+                Linking.openURL(
+                  buildWhatsappUrl(
+                    "Hola 👋 Mi perro ya está registrado en la cuenta de alguien de mi familia y quiero verlo también en la mía."
+                  )
+                )
+              }
+              testID="pets-empty-shared-help"
+              activeOpacity={0.7}
+            >
+              <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
+              <Text style={styles.emptyLinkText}>
+                ¿Tu perro ya lo registró alguien de tu familia? Escríbenos y lo
+                vinculamos a tu cuenta.
+              </Text>
+            </TouchableOpacity>
           </View>
         }
       />
@@ -173,6 +200,25 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 15,
+  },
+  emptyLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 18,
+    marginHorizontal: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryLight,
+    maxWidth: 330,
+  },
+  emptyLinkText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
+    lineHeight: 18,
   },
   errorText: {
     fontSize: 16,

@@ -11,6 +11,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,6 +25,7 @@ import {
   type ClaimCandidate,
 } from "@/lib/api";
 import { formatPhoneInput } from "@/lib/format";
+import { buildWhatsappUrl } from "@/constants/business";
 
 export const CLAIM_SEEN_KEY = "welcome-claim-seen";
 
@@ -254,6 +256,33 @@ export default function ClaimAccountScreen() {
           </View>
         )}
 
+        {/* Esta búsqueda solo encuentra fichas de clientes que TODAVÍA no
+            tienen la app. Si el perro ya está en la cuenta de la pareja, aquí
+            nunca va a salir por más que el teléfono sea el correcto — y el
+            siguiente paso natural sería registrarlo otra vez. Compartir una
+            mascota entre dos cuentas lo hace el equipo, así que ofrecemos el
+            atajo justo en el momento en que la búsqueda falla. */}
+        {searched && candidates.length === 0 && (
+          <TouchableOpacity
+            style={styles.sharedHelp}
+            onPress={() =>
+              Linking.openURL(
+                buildWhatsappUrl(
+                  "Hola 👋 Mi perro ya está registrado en la cuenta de alguien de mi familia y quiero verlo también en la mía."
+                )
+              )
+            }
+            testID="claim-shared-help"
+            activeOpacity={0.7}
+          >
+            <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
+            <Text style={styles.sharedHelpText}>
+              ¿Tu perro ya lo registró tu pareja o alguien de tu familia?
+              Escríbenos y lo vinculamos a tu cuenta.
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {allCandidatePets.length > 0 && (
           <View style={styles.candidateCard}>
             <Text style={styles.candidateName}>¿Cuáles son tuyas?</Text>
@@ -439,6 +468,22 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 14,
     fontFamily: "PlusJakartaSans_600SemiBold",
+  },
+  sharedHelp: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 10,
+    padding: 14,
+  },
+  sharedHelpText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
+    lineHeight: 18,
   },
   noResult: {
     flexDirection: "row",

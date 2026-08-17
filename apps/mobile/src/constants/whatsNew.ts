@@ -97,6 +97,19 @@ export const WHATS_NEW: WhatsNewRelease[] = [
           "y le aparece solo.",
         roles: ["STAFF"],
       },
+      {
+        icon: "logo-whatsapp",
+        title: "Van a llegar mensajes de «mi perro ya está con mi pareja»",
+        body:
+          "La app ahora se los sugiere: cuando alguien instala la app y no " +
+          "encuentra a su perro, ve un aviso que dice «¿Tu perro ya lo " +
+          "registró alguien de tu familia? Escríbenos y lo vinculamos», con " +
+          "el WhatsApp del negocio. Sale en dos lugares: al buscar su cuenta " +
+          "al instalar la app y en Mis Mascotas cuando está vacía. Cuando " +
+          "llegue uno de esos mensajes, la respuesta es vincularlo desde la " +
+          "ficha del perro (botón «Dueños»), NO capturar al perro otra vez.",
+        roles: ["ADMIN", "STAFF"],
+      },
     ],
   },
   {
