@@ -22,6 +22,8 @@ export type VaccineWithCatalog = Vaccine & {
 export type PetWithVaccines = Pet & {
   vaccines: VaccineWithCatalog[];
   owner: { id: string; firstName: string; lastName: string; email: string };
+  // Quiénes más tienen a este perro en su cuenta (pareja/familia).
+  coOwners?: { user: { id: string; firstName: string; lastName?: string | null } }[];
 };
 
 export type ReservationListItem = Reservation & {

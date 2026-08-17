@@ -132,6 +132,25 @@ export async function claimPetsIntoAccount(
       where: { userId: fresh.id },
       data: { userId: primaryId },
     });
+    // Co-propiedades de la cuenta nueva: se re-apuntan al primario. Puede
+    // chocar con el único (petId,userId) si el primario ya era co-dueño de esa
+    // misma mascota, así que primero se limpian las que ya existen.
+    const freshCoOwned = await tx.petCoOwner.findMany({
+      where: { userId: fresh.id },
+      select: { petId: true },
+    });
+    if (freshCoOwned.length > 0) {
+      await tx.petCoOwner.deleteMany({
+        where: {
+          userId: primaryId,
+          petId: { in: freshCoOwned.map((c) => c.petId) },
+        },
+      });
+      await tx.petCoOwner.updateMany({
+        where: { userId: fresh.id },
+        data: { userId: primaryId },
+      });
+    }
     // Consentimientos legales de `fresh`: se descartan (el gate legal los re-pide
     // si faltan) para no chocar con el único (userId, documentType, version).
     await tx.legalAcceptance.deleteMany({ where: { userId: fresh.id } });
@@ -169,6 +188,11 @@ export async function claimPetsIntoAccount(
       await tx.reservation.updateMany({
         where: { petId: { in: movedPetIds } },
         data: { ownerId: primaryId },
+      });
+      // Si el primario era co-dueño de una mascota que acaba de reclamar como
+      // suya, esa fila sobra (nadie es co-dueño de sí mismo).
+      await tx.petCoOwner.deleteMany({
+        where: { petId: { in: movedPetIds }, userId: primaryId },
       });
     }
 

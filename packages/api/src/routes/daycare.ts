@@ -9,7 +9,8 @@ import {
   createAuthMiddleware,
   createStaffMiddleware,
 } from "../middleware/auth";
-import { notifyUser } from "../lib/notify";
+import { notifyPetAudience } from "../lib/notify";
+import { sharedPetIds } from "../lib/petAccess";
 import { requestReview } from "../lib/reviewRequest";
 import { quoteDelivery } from "../lib/delivery";
 import { resolveDiscount } from "../lib/discounts";
@@ -160,11 +161,18 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
       }
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      const ownerId = pets[0].ownerId;
-      if (
-        pets.some((p) => p.ownerId !== ownerId) ||
-        (!isStaffOrAdmin && ownerId !== request.userId)
-      ) {
+      // Regla del pagador: la guardería queda a nombre de quien la reserva y la
+      // paga, no del dueño de la ficha. Sin esto, un co-dueño pagaría con su
+      // tarjeta una reserva atribuida al otro, se le ofrecería el saldo a favor
+      // ajeno y un reembolso caería en la cuenta equivocada.
+      const ownerId = isStaffOrAdmin ? pets[0].ownerId : request.userId!;
+      const sharedForBooker = isStaffOrAdmin
+        ? []
+        : await sharedPetIds(prisma, ownerId);
+      const allAccessible = pets.every(
+        (p) => p.ownerId === ownerId || sharedForBooker.includes(p.id)
+      );
+      if (!allAccessible) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -384,13 +392,18 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         if (pets.length !== petIds.length) {
           return reply.status(404).send({ error: "Mascota no encontrada" });
         }
-        ownerId = pets[0].ownerId;
         const isStaffOrAdmin =
           request.userRole === "ADMIN" || request.userRole === "STAFF";
-        if (
-          pets.some((p) => p.ownerId !== ownerId) ||
-          (!isStaffOrAdmin && ownerId !== request.userId)
-        ) {
+        // Misma regla del pagador que en create-intent: el crédito que se
+        // aplica es el de quien confirma, así que la reserva es suya.
+        ownerId = isStaffOrAdmin ? pets[0].ownerId : request.userId!;
+        const sharedForBooker = isStaffOrAdmin
+          ? []
+          : await sharedPetIds(prisma, ownerId);
+        const allAccessible = pets.every(
+          (p) => p.ownerId === ownerId || sharedForBooker.includes(p.id)
+        );
+        if (!allAccessible) {
           return reply.status(403).send({ error: "No autorizado" });
         }
 
@@ -537,8 +550,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         data: { status: "CHECKED_IN", staffId: request.userId },
       });
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "CHECK_IN",
         title: "¡Ya está con nosotros! 🐾",
         body: `${reservation.pet.name} entró a guardería. Te avisamos cualquier cosa.`,
@@ -661,8 +674,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           where: { id: reservation.id },
           data: { status: "CHECKED_OUT" },
         });
-        await notifyUser(prisma, {
-          userId: reservation.ownerId,
+        await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+          
           type: "CHECK_OUT",
           title: "¡Hasta pronto! 🐾",
           body: `${reservation.pet.name} salió de guardería. ¡Gracias por visitarnos!`,
@@ -770,8 +783,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         await requestReview(prisma, reservation.id);
       }
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Pago recibido",
         body: `Recibimos $${amount.toLocaleString("es-MX")} de la guardería de ${reservation.pet.name}. ¡Gracias!`,

@@ -34,6 +34,72 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-17-b",
+    title: "La etiqueta de Google Ads ya está puesta",
+    items: [
+      {
+        icon: "megaphone-outline",
+        title: "Ya se puede medir la campaña de Google",
+        body:
+          "La etiqueta que dio Google Ads (cuenta AW-18392201884) ya quedó " +
+          "instalada en holidoginn.com.mx, en todas las páginas. Desde ahora " +
+          "Google puede ver qué hace la gente que llega por la pauta: cuántos " +
+          "entran, a qué páginas pasan y cuáles terminan reservando. En Google " +
+          "Ads puede tardar unas horas en marcarse como «etiqueta activa», y " +
+          "no hay que pegar el código otra vez ni instalar nada más. También " +
+          "se cubrió un detalle que el código de Google no trae: como la " +
+          "página no se recarga al pasar de una sección a otra, Google solo " +
+          "habría contado la primera pantalla de cada visita; ya cuenta todas. " +
+          "Si además de las visitas quieres medir una acción concreta como " +
+          "conversión (una reserva terminada o un clic al WhatsApp), avísanos " +
+          "cuál y se conecta.",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "image-outline",
+        title: "Las fotos de Hospedaje ya se ven cuadradas",
+        body:
+          "En la página de reservar, las fotos salían con un marco borroso a " +
+          "los lados. Ahora llenan el cuadro completo, bien centradas, y las " +
+          "que se suban después tampoco necesitan medida especial.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
+    id: "2026-08-17",
+    title: "Un perro puede estar en dos cuentas",
+    items: [
+      {
+        icon: "people-outline",
+        title: "Co-dueños: la pareja ya no tiene que registrar al perro otra vez",
+        body:
+          "Pasaba seguido: uno de los dos registra al perro y el otro baja la " +
+          "app y no ve nada, solo la pantalla de «registra a tu peludito». La " +
+          "salida era registrarlo de nuevo, y quedaban dos perros, dos " +
+          "cartillas por revisar y el historial partido. Ahora, desde la ficha " +
+          "del perro (botón «Dueños»), se agrega a la otra persona como " +
+          "co-dueña: ve la ficha, la cartilla, los reportes y todo el " +
+          "historial, puede reservar y pagar, y le llegan los mismos avisos. " +
+          "Se elige de la lista de clientes, así que la persona ya debe tener " +
+          "su cuenta. Ojo con el dinero: el saldo a favor sigue siendo de cada " +
+          "quien y cada reserva queda a nombre de quien la hizo y la pagó.",
+        route: "/(admin)/clients",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "paw-outline",
+        title: "Si ves un perro repetido, avísale a quien lo pueda vincular",
+        body:
+          "Cuando un cliente diga que no ve a su perro en la app, lo más " +
+          "probable es que esté registrado con su pareja. En vez de " +
+          "capturarlo otra vez, un admin lo comparte desde la ficha del perro " +
+          "y le aparece solo.",
+        roles: ["STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-14-b",
     title: "Check-in del equipo y reportes de guardería",
     items: [

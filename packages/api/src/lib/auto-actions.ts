@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@holidoginn/db";
-import { notifyUser } from "./notify";
+import { notifyUser, notifyPetAudience } from "./notify";
 import { requestReview } from "./reviewRequest";
 import { dayRangeUtc, localYMD } from "./bathAvailability";
 
@@ -58,8 +58,8 @@ export async function notifyExpiringVaccines(
   });
 
   for (const v of window30) {
-    await notifyUser(prisma, {
-      userId: v.pet.ownerId,
+    await notifyPetAudience(prisma, { petId: v.petId, ownerId: v.pet.ownerId }, {
+      
       type: "VACCINE_EXPIRING",
       title: `Vacuna por vencer: ${v.pet.name} 💉`,
       body: `${v.name} de ${v.pet.name} vence en menos de 30 días. Agenda con tu veterinario.`,
@@ -72,8 +72,8 @@ export async function notifyExpiringVaccines(
   }
 
   for (const v of window7) {
-    await notifyUser(prisma, {
-      userId: v.pet.ownerId,
+    await notifyPetAudience(prisma, { petId: v.petId, ownerId: v.pet.ownerId }, {
+      
       type: "VACCINE_EXPIRING",
       title: `Vacuna vence pronto: ${v.pet.name} ⚠️`,
       body: `${v.name} de ${v.pet.name} vence en menos de 7 días. No olvides renovarla.`,
@@ -89,8 +89,8 @@ export async function notifyExpiringVaccines(
   const petsMarkedExpired = new Set<string>();
 
   for (const v of window0) {
-    await notifyUser(prisma, {
-      userId: v.pet.ownerId,
+    await notifyPetAudience(prisma, { petId: v.petId, ownerId: v.pet.ownerId }, {
+      
       type: "VACCINE_EXPIRING",
       title: `Vacuna vencida: ${v.pet.name} 🚨`,
       body: `${v.name} de ${v.pet.name} venció. Sube la cartilla actualizada para que el equipo HDI revise las nuevas vacunas.`,
@@ -112,8 +112,8 @@ export async function notifyExpiringVaccines(
         data: { cartillaStatus: "EXPIRED" },
       });
       petsMarkedExpired.add(v.pet.id);
-      await notifyUser(prisma, {
-        userId: v.pet.ownerId,
+      await notifyPetAudience(prisma, { petId: v.petId, ownerId: v.pet.ownerId }, {
+        
         type: "VACCINE_EXPIRING",
         title: `Cartilla vencida: ${v.pet.name}`,
         body: `Tu cartilla quedó desactualizada. Súbela renovada para volver a reservar.`,
@@ -153,8 +153,8 @@ export async function autoCheckoutOverdueStays(
         data: { status: "CANCELLED", rejectionReason: "Reservación finalizada" },
       });
     });
-    await notifyUser(prisma, {
-      userId: res.ownerId,
+    await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
+      
       type: "CHECK_OUT",
       title: `${res.pet.name} ya salió 🐾`,
       body: `La estancia de ${res.pet.name} ha finalizado. Gracias por confiar en nosotros, nos vemos pronto.`,

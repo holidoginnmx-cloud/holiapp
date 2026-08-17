@@ -107,6 +107,11 @@ export async function processRefund(
   });
 
   // Side-effects post-commit
+  //
+  // Estos dos avisos van SOLO a `reservation.ownerId`, no a la audiencia de la
+  // mascota: el dinero es de quien reservó y pagó. Decirle a un co-dueño "se
+  // acreditaron $X a tu saldo" sería falso — su `creditBalance` es aparte. La
+  // cancelación en sí sí se le avisa a los dos por otro lado.
   if (opts.refundChoice === "STRIPE_REFUND" && lastStripePayment?.stripePaymentIntentId) {
     await notifyUser(prisma, {
       userId: reservation.ownerId,

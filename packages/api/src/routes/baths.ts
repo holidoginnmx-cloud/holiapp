@@ -8,7 +8,13 @@ import {
 import { Prisma, PetSize } from "@holidoginn/db";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
-import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
+import {
+  notifyUser,
+  notifyUsers,
+  notifyPetAudience,
+  notifyTeamReservationUpdated,
+} from "../lib/notify";
+import { canAccessPet, isCoOwner } from "../lib/petAccess";
 import {
   notifyNewReservation,
   type NewReservationSource,
@@ -318,9 +324,18 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
+
+      // Quién reserva y paga. Para un perro sin co-dueños esto es exactamente
+      // `pet.ownerId` (y para el equipo, siempre lo es), así que el flujo de
+      // siempre no se mueve. Importa cuando reserva el co-dueño: el saldo a
+      // favor que se ofrece, el metadata del PaymentIntent y el dueño de la
+      // reserva tienen que ser los de ÉL, no los del dueño de la ficha —
+      // si no, su tarjeta paga algo a nombre del otro y un reembolso caería
+      // en la cuenta equivocada.
+      const bookerId = isStaffOrAdmin ? pet.ownerId : request.userId!;
 
       // El baño no requiere cartilla de vacunación aprobada (solo el hospedaje).
 
@@ -363,7 +378,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           },
         }),
         prisma.user.findUnique({
-          where: { id: pet.ownerId },
+          where: { id: bookerId },
           select: { creditBalance: true },
         }),
       ]);
@@ -457,7 +472,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         currency: "mxn",
         automatic_payment_methods: { enabled: true },
         metadata: {
-          ownerId: pet.ownerId,
+          ownerId: bookerId,
           petId: pet.id,
           type: "bath_appointment",
           variantId: variant.id,
@@ -791,8 +806,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       }
 
       // Notificar al dueño
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "CHECK_OUT",
         title: "¡Baño listo! 🛁",
         body: `${reservation.pet.name} ya está listo${isStandaloneBath ? ". Puedes pasar a recogerlo." : ", ahora a continuar la estancia."}`,
@@ -942,8 +957,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       minute: "2-digit",
     });
     try {
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Cita de baño reagendada 🛁",
         body: `El baño de ${reservation.pet.name} ahora es el ${when}. ¡Te esperamos!`,
@@ -1146,8 +1161,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         reservation.id,
       );
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Pago recibido",
         body: `Recibimos $${amount.toLocaleString("es-MX")} del baño de ${reservation.pet.name}. ¡Gracias!`,
@@ -1227,8 +1242,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         minute: "2-digit",
       });
 
-      await notifyUser(prisma, {
-        userId: res.ownerId,
+      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
+        
         type: "RESERVATION_REMINDER",
         title: "Recordatorio: cita de baño mañana 🛁",
         body: `${res.pet.name} tiene baño el ${when}. ¡Te esperamos!`,
@@ -1255,8 +1270,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         month: "short",
       });
 
-      await notifyUser(prisma, {
-        userId: res.ownerId,
+      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
+        
         type: "RESERVATION_REMINDER",
         title: "Recordatorio: guardería mañana 🐾",
         body: `${res.pet.name} tiene guardería el ${day}${res.checkInTime ? ` a las ${res.checkInTime}` : ""}. ¡Te esperamos!`,
@@ -1337,8 +1352,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         ? `${res.pet.name} tiene cita a las ${when}. ¡Te esperamos!`
         : `${res.pet.name} entra al hotel a las ${when}. Prepara su cartilla y maletita.`;
 
-      await notifyUser(prisma, {
-        userId: res.ownerId,
+      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
+        
         type: "RESERVATION_REMINDER",
         title,
         body,
@@ -1422,8 +1437,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           ? "Mañana es su check-in. Indícanos la hora de entrada en la app para tenerlo todo listo."
           : "Mañana es su check-out. Indícanos la hora de recogida en la app (después de la 1:00 pm aplica guardería, $25/h).";
 
-      await notifyUser(prisma, {
-        userId: first.ownerId,
+      await notifyPetAudience(prisma, { petId: first.petId, ownerId: first.ownerId }, {
+        
         type: "RESERVATION_REMINDER",
         title,
         body,
@@ -1536,10 +1551,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         }
         const pet = await prisma.pet.findUnique({ where: { id: body.petId } });
         if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
-        if (pet.ownerId !== request.userId) {
+        if (
+          pet.ownerId !== request.userId &&
+          !(await isCoOwner(prisma, pet.id, request.userId))
+        ) {
           return reply.status(403).send({ error: "No autorizado" });
         }
-        ownerId = pet.ownerId;
+        // El crédito que se está aplicando es el de quien confirma, así que la
+        // cita queda a su nombre (ver la regla del pagador en create-intent).
+        ownerId = request.userId!;
         petId = body.petId;
         variantId = body.variantId;
         appointmentAtIso = body.appointmentAt;

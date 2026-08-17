@@ -356,10 +356,26 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const pets = await prisma.pet.findMany({
+      const allPets = await prisma.pet.findMany({
         where: { ownerId: userId },
         select: { id: true },
       });
+
+      // Las mascotas COMPARTIDAS no se anonimizan: son también de otra persona,
+      // que las sigue usando. Se le traspasa la propiedad al primer co-dueño y
+      // quedan fuera del borrado de vacunas, evidencias e historial. Sin esto,
+      // que uno de los dos borre su cuenta le desaparecería el perro al otro.
+      const coOwnedRows = await prisma.petCoOwner.findMany({
+        where: { petId: { in: allPets.map((p) => p.id) } },
+        orderBy: { createdAt: "asc" },
+        select: { petId: true, userId: true },
+      });
+      const heirByPet = new Map<string, string>();
+      for (const row of coOwnedRows) {
+        if (!heirByPet.has(row.petId)) heirByPet.set(row.petId, row.userId);
+      }
+
+      const pets = allPets.filter((p) => !heirByPet.has(p.id));
       const petIds = pets.map((p) => p.id);
       const reservations = await prisma.reservation.findMany({
         where: { ownerId: userId },
@@ -369,6 +385,14 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
       // Anonimizar PII pero conservar registros vinculados a pagos/reservaciones por retenci\u00f3n fiscal (5 a\u00f1os LFPDPPP).
       await prisma.$transaction(async (tx) => {
+        // Traspaso de las compartidas antes de tocar nada más: el co-dueño pasa
+        // a ser el dueño y deja de estar en la tabla puente.
+        for (const [petId, heirId] of heirByPet) {
+          await tx.pet.update({ where: { id: petId }, data: { ownerId: heirId } });
+          await tx.petCoOwner.deleteMany({ where: { petId, userId: heirId } });
+        }
+        await tx.petCoOwner.deleteMany({ where: { userId } });
+
         await tx.pushToken.deleteMany({ where: { userId } });
         await tx.notification.deleteMany({ where: { userId } });
         await tx.legalAcceptance.deleteMany({ where: { userId } });

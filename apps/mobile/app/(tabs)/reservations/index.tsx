@@ -47,9 +47,18 @@ type GroupedReservation = {
   reviewRating: number | null;
   hasDeslanado: boolean;
   hasCorte: boolean;
+  /** Quién reservó, cuando no fue quien está viendo (perro compartido). */
+  bookedByName: string | null;
 };
 
-function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
+function groupReservations(
+  list: ReservationListItem[],
+  viewerId?: string | null
+): GroupedReservation[] {
+  // Perro compartido: en la lista aparecen también las reservas que hizo la
+  // otra persona. Sin decir quién reservó, se lee como "yo no hice esto".
+  const bookedBy = (r: ReservationListItem) =>
+    viewerId && r.ownerId !== viewerId ? (r.owner?.firstName ?? null) : null;
   const groups = new Map<string, ReservationListItem[]>();
   const singles: ReservationListItem[] = [];
 
@@ -103,6 +112,7 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       })(),
       hasDeslanado: items.some((i) => i.hasDeslanado),
       hasCorte: items.some((i) => i.hasCorte),
+      bookedByName: bookedBy(items[0]),
     });
   }
 
@@ -130,6 +140,7 @@ function groupReservations(list: ReservationListItem[]): GroupedReservation[] {
       reviewRating: r.reviewRating,
       hasDeslanado: r.hasDeslanado,
       hasCorte: r.hasCorte,
+      bookedByName: bookedBy(r),
     });
   }
 
@@ -243,6 +254,7 @@ const ReservationRow = memo(function ReservationRow({
       reviewRating={item.reviewRating}
       hasDeslanado={item.hasDeslanado}
       hasCorte={item.hasCorte}
+      bookedByName={item.bookedByName}
       onPress={() => onPressItem(item.id)}
     />
   );
@@ -307,8 +319,8 @@ export default function ReservationsScreen() {
   // Derivados memoizados: antes se recalculaban (agrupar, filtrar 4 veces,
   // contar) en CADA render de la pantalla.
   const grouped = useMemo(
-    () => (reservations ? groupReservations(reservations) : []),
-    [reservations]
+    () => (reservations ? groupReservations(reservations, userId) : []),
+    [reservations, userId]
   );
 
   const byType = useMemo(

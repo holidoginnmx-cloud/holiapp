@@ -15,7 +15,12 @@ import {
   AdminUpdateAddonSchema,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
-import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
+import {
+  notifyUser,
+  notifyUsers,
+  notifyPetAudience,
+  notifyTeamReservationUpdated,
+} from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
 import { extraerCartilla } from "../lib/ocr";
 import {
@@ -1092,8 +1097,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       const range = `${fmtDay(newCheckIn)} al ${fmtDay(newCheckOut)}`;
       const nightsLabel = `${preview.newTotalDays} ${preview.newTotalDays === 1 ? "noche" : "noches"}`;
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Fechas de estadía actualizadas 📅",
         body: `La estadía de ${reservation.pet.name} ahora es del ${range} (${nightsLabel}). Nuevo total: $${preview.newTotal.toLocaleString("es-MX")}.`,
@@ -1204,8 +1209,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // los que resuelve.
         if (delta < 0) {
           const motivo = priceChangeReason ? ` (${priceChangeReason})` : "";
-          await notifyUser(prisma, {
-            userId: reservation.ownerId,
+          await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+            
             type: "GENERAL",
             title: "Ajustamos el total de tu reserva 💛",
             body: `El total de ${reservation.pet.name} bajó a $${newTotal.toLocaleString("es-MX")}${motivo}.`,
@@ -1538,8 +1543,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       // Notifica al cliente. Si hay monto pagado, le pedimos elegir cómo
       // recibir el reembolso; si no, solo informamos la cancelación.
       if (refundAmount > 0) {
-        await notifyUser(prisma, {
-          userId: reservation.ownerId,
+        await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+          
           type: "GENERAL",
           title: "Tu reserva fue cancelada",
           body: `Cancelamos la reserva de ${reservation.pet.name}. Toca para elegir cómo recibir tu reembolso de $${refundAmount.toLocaleString("es-MX")}.`,
@@ -1550,8 +1555,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           },
         });
       } else {
-        await notifyUser(prisma, {
-          userId: reservation.ownerId,
+        await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+          
           type: "GENERAL",
           title: "Tu reserva fue cancelada",
           body: `Cancelamos la reserva de ${reservation.pet.name}.`,
@@ -1849,8 +1854,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // mismo endpoint se usa para agregar vacunas a una cartilla YA aprobada
         // (admin/cartillas), y ahí notificar sería spam para el dueño.
         if (pet.cartillaStatus !== "APPROVED") {
-          await notifyUser(prisma, {
-            userId: pet.ownerId,
+          await notifyPetAudience(prisma, { petId: pet.id, ownerId: pet.ownerId }, {
+            
             type: "GENERAL",
             title: `Cartilla aprobada: ${pet.name}`,
             // Sin truncar: este body es también lo que muestra el inbox, y el
@@ -1884,8 +1889,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         },
       });
 
-      await notifyUser(prisma, {
-        userId: pet.ownerId,
+      await notifyPetAudience(prisma, { petId: pet.id, ownerId: pet.ownerId }, {
+        
         type: "GENERAL",
         title: `Cartilla rechazada: ${pet.name}`,
         body: `La cartilla de ${pet.name} fue rechazada${

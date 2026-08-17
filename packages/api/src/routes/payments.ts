@@ -3,7 +3,8 @@ import { CreatePaymentSchema } from "@holidoginn/shared";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
 import { paymentReceivedTemplate, sendEmail } from "../lib/email";
-import { notifyUser } from "../lib/notify";
+import { notifyUser, notifyPetAudience } from "../lib/notify";
+import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
   getLodgingPricing,
@@ -38,7 +39,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -119,6 +120,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       !!homeDelivery &&
       Number.isFinite(homeDelivery.lat) &&
       Number.isFinite(homeDelivery.lng);
+    // Las mascotas que le comparten a quien reserva cuentan como suyas para
+    // este cobro (co-dueño). La reserva y el pago quedan a su nombre.
+    const sharedForBooker = await sharedPetIds(prisma, ownerId);
     const [owner, acceptances, pets, pricingConfig, bathService, deliveryQuote] =
       await Promise.all([
         prisma.user.findUnique({ where: { id: ownerId } }),
@@ -126,7 +130,14 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           where: { userId: ownerId },
           select: { documentType: true, version: true },
         }),
-        prisma.pet.findMany({ where: { id: { in: petIds }, ownerId } }),
+        prisma.pet.findMany({
+          where: {
+            id: { in: petIds },
+            ...(sharedForBooker.length > 0
+              ? { OR: [{ ownerId }, { id: { in: sharedForBooker } }] }
+              : { ownerId }),
+          },
+        }),
         getLodgingPricing(prisma),
         wantsBath
           ? prisma.serviceType.findUnique({ where: { code: "BATH" } })
@@ -414,7 +425,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     if (!reservation) {
       return reply.status(404).send({ error: "Reservación no encontrada" });
     }
-    if (!isStaffOrAdmin(request.userRole) && reservation.ownerId !== request.userId) {
+    if (!(await canAccessReservation(prisma, reservation, request))) {
       return reply.status(403).send({ error: "No autorizado" });
     }
     if (reservation.status === "CANCELLED") {
@@ -463,7 +474,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     if (!reservation) {
       return reply.status(404).send({ error: "Reservación no encontrada" });
     }
-    if (!isStaffOrAdmin(request.userRole) && reservation.ownerId !== request.userId) {
+    if (!(await canAccessReservation(prisma, reservation, request))) {
       return reply.status(403).send({ error: "No autorizado" });
     }
 
@@ -480,7 +491,12 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         stripePaymentIntentId,
         paidAt: new Date(),
         reservationId,
-        userId: reservation.ownerId,
+        // Quién pagó de verdad: puede ser el co-dueño liquidando el saldo de
+        // una reserva que hizo el otro. Si quien registra es del equipo, el
+        // pago sigue colgando del dueño de la reserva.
+        userId: isStaffOrAdmin(request.userRole)
+          ? reservation.ownerId
+          : (request.userId ?? reservation.ownerId),
       },
     });
 
@@ -511,13 +527,16 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
 
     // Notificación + push in-app (fire-and-forget)
     if (pet) {
-      notifyUser(prisma, {
-        userId: reservation.ownerId,
-        type: "PAYMENT_RECEIVED",
-        title: "Pago recibido ✅",
-        body: `Se registró tu pago de $${(paymentIntent.amount / 100).toLocaleString("es-MX")} para la estancia de ${pet.name}.`,
-        data: { reservationId, amount: paymentIntent.amount / 100 },
-      }).catch((err) => fastify.log.error({ err }, "notifyUser(pago saldo) falló"));
+      notifyPetAudience(
+        prisma,
+        { petId: reservation.petId, ownerId: reservation.ownerId },
+        {
+          type: "PAYMENT_RECEIVED",
+          title: "Pago recibido ✅",
+          body: `Se registró el pago de $${(paymentIntent.amount / 100).toLocaleString("es-MX")} para la estancia de ${pet.name}.`,
+          data: { reservationId, amount: paymentIntent.amount / 100 },
+        }
+      ).catch((err) => fastify.log.error({ err }, "notifyPetAudience(pago saldo) falló"));
     }
 
     return reply.send({ success: true });

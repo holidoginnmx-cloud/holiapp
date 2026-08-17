@@ -26,6 +26,8 @@ interface ReservationCardProps {
   hasBath?: boolean;
   totalAmount: number;
   ownerName?: string;
+  /** Perro compartido: quién hizo esta reserva, si no fue quien está viendo. */
+  bookedByName?: string | null;
   staffName?: string | null;
   petCount?: number;
   paymentType?: string | null;
@@ -124,6 +126,7 @@ function ReservationCardBase({
   hasBath,
   totalAmount,
   ownerName,
+  bookedByName,
   staffName,
   petCount,
   paymentType,
@@ -227,7 +230,7 @@ function ReservationCardBase({
           </View>
         </View>
 
-        {(roomName || ownerName) && (
+        {(roomName || ownerName || bookedByName) && (
           <View style={styles.subtitleRow}>
             {roomName && (
               <View style={styles.subtitleItem}>
@@ -250,6 +253,18 @@ function ReservationCardBase({
                 />
                 <Text style={styles.subtitleText} numberOfLines={1}>
                   {formatName(ownerName)}
+                </Text>
+              </View>
+            )}
+            {bookedByName && (
+              <View style={styles.subtitleItem}>
+                <Ionicons
+                  name="people-outline"
+                  size={13}
+                  color={COLORS.textTertiary}
+                />
+                <Text style={styles.subtitleText} numberOfLines={1}>
+                  Reservó {formatName(bookedByName)}
                 </Text>
               </View>
             )}

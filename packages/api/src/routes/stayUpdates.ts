@@ -4,6 +4,7 @@ import {
   createAuthMiddleware,
   createStaffMiddleware,
 } from "../middleware/auth";
+import { canAccessReservation } from "../lib/petAccess";
 
 export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -21,9 +22,7 @@ export default async function stayUpdatesRoutes(fastify: FastifyInstance) {
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      const isStaffOrAdmin =
-        request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 

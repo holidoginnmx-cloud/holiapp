@@ -32,6 +32,10 @@ export default function AdminPetsLayout() {
         name="owner"
         options={{ title: "Nueva mascota", headerLeft: backButton }}
       />
+      <Stack.Screen
+        name="co-owners"
+        options={{ title: "Dueños", headerLeft: backButton }}
+      />
     </Stack>
   );
 }

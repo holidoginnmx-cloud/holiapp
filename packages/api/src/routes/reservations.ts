@@ -13,6 +13,12 @@ import { randomUUID } from "crypto";
 import Stripe from "stripe";
 import { notifyBathContracted } from "./services";
 import { createAuthMiddleware } from "../middleware/auth";
+import {
+  canAccessReservation,
+  isCoOwner,
+  linkedPetIds,
+  sharedPetIds,
+} from "../lib/petAccess";
 import { resolveDiscount } from "../lib/discounts";
 import {
   reservationConfirmedTemplate,
@@ -94,9 +100,29 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     const isStaffOrAdmin =
       request.userRole === "ADMIN" || request.userRole === "STAFF";
     const effectiveOwnerId = isStaffOrAdmin ? queryOwnerId : request.userId;
+
+    // El cliente ve las reservas que él hizo MÁS las de las mascotas
+    // vinculadas, en las dos direcciones: las que le comparten y las suyas que
+    // tienen co-dueño (la reserva se guarda a nombre de quien la hizo, así que
+    // filtrar solo por `ownerId` le escondería al dueño lo que reservó el
+    // otro). Mismo patrón de dos caminos que GET /pets: sin ningún vínculo la
+    // consulta es la de siempre y usa (ownerId, status).
+    const sharedPets = isStaffOrAdmin
+      ? []
+      : await linkedPetIds(prisma, request.userId!);
+
     const reservations = await prisma.reservation.findMany({
       where: {
-        ...(effectiveOwnerId ? { ownerId: effectiveOwnerId } : {}),
+        ...(sharedPets.length > 0
+          ? {
+              OR: [
+                { ownerId: request.userId! },
+                { petId: { in: sharedPets } },
+              ],
+            }
+          : effectiveOwnerId
+            ? { ownerId: effectiveOwnerId }
+            : {}),
         ...(status ? { status } : {}),
       },
       include: {
@@ -204,7 +230,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       // El `include` (no `select`) devuelve la fila completa: sin este filtro la
@@ -249,7 +275,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (reservation.status === "CANCELLED" || reservation.status === "CHECKED_OUT") {
@@ -471,7 +497,15 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     if (foundPets.length !== petIdList.length) {
       return reply.status(404).send({ error: "Mascota no encontrada" });
     }
-    if (foundPets.some((p) => p.ownerId !== ownerId)) {
+    // Basta con que la mascota sea suya O se la hayan compartido: quien reserva
+    // puede ser el co-dueño. La reserva se guarda a nombre de quien reserva
+    // (`ownerId`), que es también quien paga y a quien se le abona un reembolso.
+    const sharedForBooker = await sharedPetIds(prisma, ownerId);
+    if (
+      foundPets.some(
+        (p) => p.ownerId !== ownerId && !sharedForBooker.includes(p.id)
+      )
+    ) {
       return reply.status(400).send({ error: "La mascota no pertenece al dueño indicado" });
     }
     const groupPets = petIdList.map((id) => foundPets.find((p) => p.id === id)!);
@@ -959,7 +993,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -1226,8 +1260,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // igual se demote la cartilla a EXPIRED y se bloquee la reservación aquí.
     await notifyExpiringVaccines(prisma);
 
-    // Verify all pets belong to owner (re-fetch para tener el cartillaStatus fresco)
-    const pets = await prisma.pet.findMany({ where: { id: { in: petIds }, ownerId } });
+    // Verify all pets belong to owner (re-fetch para tener el cartillaStatus
+    // fresco). Cuentan también las compartidas: quien reserva puede ser el
+    // co-dueño de la mascota.
+    const sharedForBooker = await sharedPetIds(prisma, ownerId);
+    const pets = await prisma.pet.findMany({
+      where: {
+        id: { in: petIds },
+        ...(sharedForBooker.length > 0
+          ? { OR: [{ ownerId }, { id: { in: sharedForBooker } }] }
+          : { ownerId }),
+      },
+    });
     if (pets.length !== petIds.length) {
       return reply.status(400).send({ error: "Una o más mascotas no pertenecen al dueño" });
     }
@@ -1673,7 +1717,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -1703,12 +1747,17 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
       const reservation = await prisma.reservation.findUnique({
         where: { id: request.params.id },
-        select: { id: true, ownerId: true, status: true },
+        select: { id: true, ownerId: true, petId: true, status: true },
       });
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      if (reservation.ownerId !== request.userId) {
+      // Cancela quien reservó o quien comparte la mascota (staff no, a
+      // propósito: el equipo cancela por otra ruta).
+      if (
+        reservation.ownerId !== request.userId &&
+        !(await isCoOwner(prisma, reservation.petId, request.userId))
+      ) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (reservation.status !== "CONFIRMED") {
@@ -1755,7 +1804,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      if (reservation.ownerId !== request.userId) {
+      if (
+        reservation.ownerId !== request.userId &&
+        !(await isCoOwner(prisma, reservation.petId, request.userId))
+      ) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (reservation.status !== "CANCELLED") {

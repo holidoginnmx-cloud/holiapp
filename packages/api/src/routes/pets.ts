@@ -5,12 +5,20 @@ import {
   CreateVaccineSchema,
   CreateDewormingSchema,
 } from "@holidoginn/shared";
-import { createAuthMiddleware } from "../middleware/auth";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import { notifyUser, notifyUsers, notifyPetAudience } from "../lib/notify";
+import {
+  canAccessPet,
+  isCoOwner,
+  sharedPetIds,
+  accessiblePetFilter,
+  invalidatePetAccessCache,
+} from "../lib/petAccess";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
+  const adminMiddleware = createAdminMiddleware();
 
   const isStaffOrAdmin = (role?: string) => role === "ADMIN" || role === "STAFF";
   const isAdmin = (role?: string) => role === "ADMIN";
@@ -48,13 +56,36 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         ? queryOwnerId
         : request.userId;
 
+      // El cliente ve las suyas MÁS las que le comparten (pareja/familia que
+      // comparte perro). Dos caminos a propósito: sin nada compartido —el caso
+      // de casi todos— la consulta es idéntica a la de siempre y sigue usando
+      // el índice (ownerId, isActive). Un OR con subconsulta correlacionada
+      // degradaría a seq scan para TODOS.
+      const shared = isStaffOrAdmin(request.userRole)
+        ? []
+        : await sharedPetIds(prisma, request.userId!);
+
+      const where =
+        shared.length > 0
+          ? {
+              isActive: true,
+              OR: [{ ownerId: request.userId! }, { id: { in: shared } }],
+            }
+          : {
+              ...(filterOwnerId ? { ownerId: filterOwnerId } : {}),
+              isActive: true,
+            };
+
       const pets = await prisma.pet.findMany({
-        where: {
-          ...(filterOwnerId ? { ownerId: filterOwnerId } : {}),
-          isActive: true,
-        },
+        where,
         include: {
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
+          // Para pintar "Compartida con X" en ambas cuentas.
+          coOwners: {
+            select: {
+              user: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
           vaccines: {
             orderBy: { appliedAt: "desc" },
             include: {
@@ -115,12 +146,17 @@ export default async function petsRoutes(fastify: FastifyInstance) {
             },
           },
           owner: { select: { id: true, firstName: true, lastName: true, email: true } },
+          coOwners: {
+            select: {
+              user: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
         },
       });
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       return pet;
@@ -166,9 +202,13 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         (request.body as { allowDuplicateName?: unknown })
           ?.allowDuplicateName === true;
       if (!allowDuplicateName) {
+        // Cuenta también las mascotas COMPARTIDAS: si la pareja ya tiene a Nala
+        // registrada y a esta persona se la compartieron, registrarla de nuevo
+        // es justo el duplicado que queremos evitar.
+        const accessible = await accessiblePetFilter(prisma, ownerId);
         const dup = await prisma.pet.findFirst({
           where: {
-            ownerId,
+            ...accessible,
             isActive: true,
             name: { equals: parsed.data.name, mode: "insensitive" },
           },
@@ -248,7 +288,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
       // Staff y admin pueden editar cualquier mascota; owner solo la suya.
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -329,8 +369,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         data.cartillaStatus === "APPROVED" &&
         pet.cartillaStatus !== "APPROVED"
       ) {
-        await notifyUser(prisma, {
-          userId: pet.ownerId,
+        await notifyPetAudience(prisma, { petId: pet.id, ownerId: pet.ownerId }, {
           type: "GENERAL",
           title: `Cartilla aprobada: ${updated.name}`,
           body: `La cartilla de ${updated.name} fue aprobada. Ya puedes reservar estancias.`,
@@ -353,8 +392,12 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet || !pet.isActive) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      // Solo el dueño o un admin pueden eliminar (staff no).
-      if (!isAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      // Solo el dueño (o co-dueño) o un admin pueden eliminar (staff no).
+      if (
+        !isAdmin(request.userRole) &&
+        pet.ownerId !== request.userId &&
+        !(await isCoOwner(prisma, pet.id, request.userId))
+      ) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -393,7 +436,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -426,7 +469,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       const dewormings = await prisma.deworming.findMany({
@@ -451,7 +494,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -477,7 +520,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       await prisma.deworming.delete({ where: { id: deworming.id } });
@@ -496,7 +539,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -541,7 +584,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!pet) {
         return reply.status(404).send({ error: "Mascota no encontrada" });
       }
-      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+      if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
 
@@ -568,6 +611,140 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         },
       });
       return alerts;
+    }
+  );
+
+  // ─── Co-dueños ───────────────────────────────────────────
+  // Un perro puede estar en dos cuentas (pareja/familia). El vínculo lo hace
+  // SOLO el equipo: no hay autoservicio ni invitación desde la app del cliente.
+
+  // GET /pets/:id/co-owners — quiénes comparten esta mascota
+  fastify.get<{ Params: { id: string } }>(
+    "/pets/:id/co-owners",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const pet = await prisma.pet.findUnique({
+        where: { id: request.params.id },
+        select: {
+          id: true,
+          name: true,
+          owner: {
+            select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+          },
+        },
+      });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      const coOwners = await prisma.petCoOwner.findMany({
+        where: { petId: pet.id },
+        orderBy: { createdAt: "asc" },
+        select: {
+          createdAt: true,
+          createdByEmail: true,
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          user: {
+            select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+          },
+        },
+      });
+      return { pet: { id: pet.id, name: pet.name }, owner: pet.owner, coOwners };
+    }
+  );
+
+  // POST /pets/:id/co-owners — vincular a alguien más
+  fastify.post<{ Params: { id: string }; Body: { userId?: string } }>(
+    "/pets/:id/co-owners",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const userId = request.body?.userId;
+      if (!userId) {
+        return reply.status(400).send({ error: "Falta userId" });
+      }
+      const pet = await prisma.pet.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, name: true, ownerId: true },
+      });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      if (pet.ownerId === userId) {
+        return reply
+          .status(409)
+          .send({ error: "ALREADY_OWNER", message: "Esa persona ya es la dueña." });
+      }
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, isActive: true, firstName: true },
+      });
+      if (!user || !user.isActive) {
+        return reply.status(404).send({ error: "Cliente no encontrado" });
+      }
+      if (user.role !== "OWNER") {
+        return reply.status(400).send({
+          error: "NOT_OWNER_ROLE",
+          message: "Solo se puede compartir con una cuenta de cliente.",
+        });
+      }
+
+      const existing = await prisma.petCoOwner.findUnique({
+        where: { petId_userId: { petId: pet.id, userId } },
+      });
+      if (existing) {
+        return reply.status(409).send({
+          error: "ALREADY_CO_OWNER",
+          message: `${user.firstName} ya es co-dueño de ${pet.name}.`,
+        });
+      }
+
+      const link = await prisma.petCoOwner.create({
+        data: {
+          petId: pet.id,
+          userId,
+          createdById: request.userId,
+          createdByEmail: request.dbUser?.email ?? null,
+        },
+      });
+      // Los dos lados cambian de vista: el co-dueño gana la mascota y el dueño
+      // empieza a ver las reservas que haga el otro.
+      invalidatePetAccessCache(userId);
+      invalidatePetAccessCache(pet.ownerId);
+
+      // Sin este aviso la app del co-dueño no se enteraría: la lista de
+      // mascotas tiene staleTime de 5 min y no refetchea al volver a la
+      // pestaña, así que el estado vacío se quedaría pegado. El push la
+      // invalida (kind PET_SHARED) y de paso avisa a la persona.
+      await notifyUser(prisma, {
+        userId,
+        type: "GENERAL",
+        title: `${pet.name} ya está en tu cuenta 🐾`,
+        body: `Ya puedes ver su cartilla, sus reportes y reservar por tu cuenta.`,
+        data: { petId: pet.id, kind: "PET_SHARED" },
+      });
+
+      return { ok: true, id: link.id };
+    }
+  );
+
+  // DELETE /pets/:id/co-owners/:userId — quitar el vínculo
+  fastify.delete<{ Params: { id: string; userId: string } }>(
+    "/pets/:id/co-owners/:userId",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const { id: petId, userId } = request.params;
+      const pet = await prisma.pet.findUnique({
+        where: { id: petId },
+        select: { ownerId: true },
+      });
+      const deleted = await prisma.petCoOwner.deleteMany({
+        where: { petId, userId },
+      });
+      if (deleted.count === 0) {
+        return reply.status(404).send({ error: "Ese vínculo no existe" });
+      }
+      invalidatePetAccessCache(userId);
+      invalidatePetAccessCache(pet?.ownerId);
+      return { ok: true };
     }
   );
 }

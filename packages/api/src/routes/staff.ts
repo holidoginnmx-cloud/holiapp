@@ -11,7 +11,7 @@ import {
   CreateStaffAlertSchema,
   CreateStayUpdateSchema,
 } from "@holidoginn/shared";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { notifyUser, notifyUsers, notifyPetAudience } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
 import { requestReview } from "../lib/reviewRequest";
 import { maybeConcludeStandaloneBath } from "./baths";
@@ -346,8 +346,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       });
 
       // Notificación al dueño (in-app + push)
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "CHECK_IN",
         title: "Tu mascota ya está hospedada",
         body: `${reservation.pet.name} ya se encuentra en HolidogInn. Estamos al pendiente, te enviaremos actualizaciones diarias 🐾`,
@@ -413,8 +413,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       });
 
       // Notificación al dueño (in-app + push)
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "CHECK_OUT",
         title: `${reservation.pet.name} ya salió 🐾`,
         body: `La estancia de ${reservation.pet.name} ha finalizado. Gracias por confiar en nosotros, nos vemos pronto.`,
@@ -513,8 +513,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         },
       });
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Pago recibido",
         body: `Recibimos $${amount.toLocaleString("es-MX")} de la estancia de ${reservation.pet.name}. ¡Gracias!`,
@@ -682,8 +682,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         ? `${ownerNote} Hay ${evidenceLabel} ${evidenceIcon}`
         : `Sube a la app para ver ${evidenceLabel} del día ${evidenceIcon}`;
 
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "DAILY_REPORT",
         title: `Reporte de ${reservation.pet.name}`,
         body: `${m.emoji} Hoy está ${m.label}. ${tail}`,
@@ -819,8 +819,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       // para baños sueltos.
       const mediaWord = data.mediaType === "video" ? "video" : "foto";
       const context = reservation.reservationType === "BATH" ? "baño" : "estancia";
-      await notifyUser(prisma, {
-        userId: reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {
+        
         type: "NEW_UPDATE",
         title: `Nueva ${mediaWord} de ${pet?.name ?? "tu mascota"}`,
         body:
@@ -1017,6 +1017,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
             select: {
               id: true,
               ownerId: true,
+              petId: true,
               pet: { select: { name: true } },
             },
           },
@@ -1097,8 +1098,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
       // Solo notificar cuando el desglose esté completo (owner puede pagar).
       if (isComplete) {
-        await notifyUser(prisma, {
-          userId: addon.reservation.ownerId,
+        await notifyPetAudience(prisma, { petId: addon.reservation.petId, ownerId: addon.reservation.ownerId }, {
+          
           type: "GENERAL",
           title: `Saldo del baño de ${addon.reservation.pet.name}`,
           body: `${description} (total $${total.toLocaleString("es-MX")}). Elige cómo pagarlo en la app.`,
@@ -1154,7 +1155,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           reservation: {
-            select: { id: true, ownerId: true, pet: { select: { name: true } } },
+            select: { id: true, ownerId: true, petId: true, pet: { select: { name: true } } },
           },
         },
       });
@@ -1197,8 +1198,8 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       // Si era baño suelto y ya quedó todo saldado, concluirlo.
       await maybeConcludeStandaloneBath(prisma, addon.reservation.id);
 
-      await notifyUser(prisma, {
-        userId: addon.reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: addon.reservation.petId, ownerId: addon.reservation.ownerId }, {
+        
         type: "GENERAL",
         title: "Pago de extras confirmado",
         body: `Recibimos el pago de los extras del baño de ${addon.reservation.pet.name}. ¡Gracias!`,

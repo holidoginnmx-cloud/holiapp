@@ -27,6 +27,7 @@ import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear } from "
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { PetPhotoViewer } from "@/components/PetPhotoViewer";
+import { sharedLabel } from "@/components/PetCard";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -214,9 +215,14 @@ export default function PetDetailScreen() {
   };
 
   const confirmDelete = () => {
+    // Si el perro está en dos cuentas, eliminarlo lo quita para los dos: hay que
+    // decirlo antes, no después.
+    const shared = sharedLabel(pet as any, userId);
     Alert.alert(
       "Eliminar mascota",
-      `¿Seguro que quieres eliminar a ${formatName(pet?.name ?? "tu mascota")}? Esta acción no se puede deshacer.`,
+      `¿Seguro que quieres eliminar a ${formatName(pet?.name ?? "tu mascota")}? ${
+        shared ? "Esta mascota está compartida: se va a eliminar para ambos. " : ""
+      }Esta acción no se puede deshacer.`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -241,6 +247,7 @@ export default function PetDetailScreen() {
   }
 
   const petAny = pet as any;
+  const sharedSummary = sharedLabel(petAny, userId);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -319,6 +326,14 @@ export default function PetDetailScreen() {
         </View>
       </View>
 
+      {/* Compartida: la ficha tiene dos editores, más vale decirlo. */}
+      {sharedSummary && (
+        <View style={styles.sharedRow}>
+          <Ionicons name="people-outline" size={16} color={COLORS.infoText} />
+          <Text style={styles.sharedText}>{sharedSummary}</Text>
+        </View>
+      )}
+
       {/* Action buttons */}
       <View style={styles.actionsRow}>
         <TouchableOpacity
@@ -345,6 +360,22 @@ export default function PetDetailScreen() {
           <Ionicons name="time-outline" size={18} color={COLORS.primary} />
           <Text style={styles.actionButtonText}>Historial</Text>
         </TouchableOpacity>
+        {/* Compartir el perro con otra cuenta (pareja/familia). Solo admin. */}
+        {role === "ADMIN" && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              router.push({
+                pathname: "/admin/pets/co-owners",
+                params: { petId: id! },
+              } as any)
+            }
+            testID="pet-co-owners-button"
+          >
+            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.actionButtonText}>Dueños</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Info grid */}
@@ -1018,6 +1049,23 @@ const styles = StyleSheet.create({
     gap: 10,
     marginHorizontal: 16,
     marginTop: 14,
+  },
+  sharedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.infoBg,
+  },
+  sharedText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.infoText,
   },
   actionButton: {
     flex: 1,

@@ -14,8 +14,13 @@ import type { VaccineWithCatalog, PetWithVaccines } from "./types";
 
 // ─── Pets ────────────────────────────────────────────────
 
+export type PetPerson = { id: string; firstName: string; lastName?: string | null };
+
 export type PetForBooking = Pet & {
   vaccines: VaccineWithCatalog[];
+  // Un perro puede vivir en dos cuentas (pareja/familia que lo comparte).
+  owner?: PetPerson | null;
+  coOwners?: { user: PetPerson }[];
   reservations: {
     id: string;
     checkIn: string;
@@ -47,6 +52,47 @@ export const updatePet = (id: string, data: Record<string, unknown>) =>
 
 export const deletePet = (id: string) =>
   apiFetch<void>(`${ENDPOINTS.pets}/${id}`, {
+    method: "DELETE",
+  });
+
+// ─── Co-dueños (solo admin) ─────────────────────────────
+// Un perro puede estar en dos cuentas (pareja/familia que lo comparte). El
+// vínculo lo hace el equipo; no hay autoservicio desde la app del cliente.
+
+export type PetCoOwnersResponse = {
+  pet: { id: string; name: string };
+  owner: {
+    id: string;
+    firstName: string;
+    lastName: string | null;
+    phone: string | null;
+    email: string;
+  } | null;
+  coOwners: {
+    createdAt: string;
+    createdByEmail: string | null;
+    createdBy: { id: string; firstName: string; lastName: string | null } | null;
+    user: {
+      id: string;
+      firstName: string;
+      lastName: string | null;
+      phone: string | null;
+      email: string;
+    };
+  }[];
+};
+
+export const getPetCoOwners = (petId: string) =>
+  apiFetch<PetCoOwnersResponse>(`${ENDPOINTS.pets}/${petId}/co-owners`);
+
+export const addPetCoOwner = (petId: string, userId: string) =>
+  apiFetch<{ ok: true; id: string }>(`${ENDPOINTS.pets}/${petId}/co-owners`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+
+export const removePetCoOwner = (petId: string, userId: string) =>
+  apiFetch<{ ok: true }>(`${ENDPOINTS.pets}/${petId}/co-owners/${userId}`, {
     method: "DELETE",
   });
 

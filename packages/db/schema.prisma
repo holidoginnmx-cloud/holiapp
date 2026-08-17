@@ -207,6 +207,10 @@ model User {
 
   // Relaciones
   pets            Pet[]
+  // Mascotas de alguien más que también son suyas (pareja/familia que comparte
+  // perro). `petCoOwnerLinks` son los vínculos que ESTA persona creó como admin.
+  petCoOwnerships PetCoOwner[]     @relation("PetCoOwnerships")
+  petCoOwnerLinks PetCoOwner[]     @relation("PetCoOwnerLinker")
   reservations    Reservation[]
   payments        Payment[]
   notifications   Notification[]
@@ -304,6 +308,7 @@ model Pet {
   // Relaciones
   ownerId      String
   owner        User          @relation(fields: [ownerId], references: [id])
+  coOwners     PetCoOwner[]
   vaccines     Vaccine[]
   dewormings   Deworming[]
   reservations Reservation[]
@@ -313,6 +318,45 @@ model Pet {
 
   @@index([ownerId, isActive]) // GET /pets
   @@map("pets")
+}
+
+// =============================================================
+//  PET_CO_OWNER — Una mascota, dos cuentas
+// =============================================================
+
+// Una pareja/familia comparte perro pero cada quien tiene su cuenta: el que lo
+// registró queda como `Pet.ownerId` y el otro no ve NADA (le sale el estado
+// vacío de "registra a tu peludito"), así que termina registrando al mismo
+// perro otra vez — perro duplicado, cartilla duplicada e historial partido.
+//
+// Esta tabla es ADITIVA: `Pet.ownerId` no se toca nunca, solo se amplía quién
+// puede ver y hacer cosas con la mascota. El co-dueño tiene permisos idénticos
+// al dueño, pero el dinero NO se junta: `creditBalance` sigue siendo de cada
+// persona y una reserva se guarda a nombre de quien la hizo y la pagó.
+//
+// El vínculo lo crea SOLO el equipo desde su panel; no hay autoservicio.
+model PetCoOwner {
+  id String @id @default(cuid())
+
+  petId  String
+  userId String
+
+  createdAt DateTime @default(now())
+
+  // Auditoría de quién del equipo lo vinculó — es lo primero que se pregunta
+  // cuando un cliente reclama. Son dos columnas porque hay dos paneles: la app
+  // admin conoce el `users.id` del operador; el web solo conoce su correo
+  // aprobado en `app_access`, no tiene un usuario de la app detrás.
+  createdById    String?
+  createdByEmail String?
+
+  pet       Pet   @relation(fields: [petId], references: [id], onDelete: Cascade)
+  user      User  @relation("PetCoOwnerships", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("PetCoOwnerLinker", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([petId, userId]) // idempotencia + índice de petId -> usuarios (audiencia de avisos)
+  @@index([userId]) // GET /pets y GET /reservations del co-dueño
+  @@map("pet_co_owners")
 }
 
 // =============================================================
@@ -514,6 +558,7 @@ model Reservation {
   @@index([roomId, status]) // countOverlappingForRoom / ocupación
   @@index([reservationType, status, appointmentAt]) // listas diarias de baños/guarderías (staff)
   @@index([ownerId, status, reviewRequestedAt]) // GET /reviews/pending + barrido de reseñas
+  @@index([petId, status]) // reservas del co-dueño, overlap guard y GET /pets/:id/history
   @@map("reservations")
 }
 
@@ -802,18 +847,18 @@ model ServiceVariant {
 // =============================================================
 
 model ReservationAddon {
-  id          String             @id @default(cuid())
-  unitPrice   Decimal            @db.Decimal(10, 2) // Snapshot del precio al momento de compra
+  id            String             @id @default(cuid())
+  unitPrice     Decimal            @db.Decimal(10, 2) // Snapshot del precio al momento de compra
   // Cantidad para addons cobrados por unidad (EXTRA_HOURS: nº de horas;
   // unitPrice = monto TOTAL, no por unidad). Null = 1 implícito (baño, etc.).
-  quantity    Int?
-  paidWith    AddonPaymentSource
-  completedAt DateTime? // Fecha en que el staff completó el servicio
+  quantity      Int?
+  paidWith      AddonPaymentSource
+  completedAt   DateTime? // Fecha en que el staff completó el servicio
   // Quién lo completó. Antes solo se sabía por el StayUpdate de la foto; desde
   // que la foto es opcional, este es el registro de accountability.
   completedById String?
-  completedBy   User?    @relation("AddonCompleter", fields: [completedById], references: [id])
-  createdAt   DateTime           @default(now())
+  completedBy   User?              @relation("AddonCompleter", fields: [completedById], references: [id])
+  createdAt     DateTime           @default(now())
 
   // Agenda del baño de un perro HOSPEDADO (addon BATH colgado de un STAY).
   // Antes la agenda lo colgaba de la hora de checkout, que no es cuando se

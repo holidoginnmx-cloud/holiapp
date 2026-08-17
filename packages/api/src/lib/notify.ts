@@ -1,5 +1,6 @@
 import type { PrismaClient, NotificationType, Notification, Prisma } from "@holidoginn/db";
 import { sendPushToUser, sendPushToUsers } from "./push";
+import { petAudienceIds } from "./petAccess";
 
 type NotifyData = {
   userId: string;
@@ -75,6 +76,52 @@ export async function notifyUsers(
       ...(typeof payload.data === "object" && payload.data !== null ? payload.data : {}),
     },
   });
+}
+
+/**
+ * Avisa a TODOS los que les toca esta mascota: el dueño y sus co-dueños (una
+ * pareja que comparte perro, cada quien con su cuenta).
+ *
+ * Úsalo en lugar de `notifyUser(prisma, { userId: reservation.ownerId, ... })`
+ * en todo aviso dirigido al CLIENTE: reportes, check-in/out, cartilla, pagos,
+ * recordatorios. Si la mascota no tiene co-dueños se comporta exactamente
+ * igual que antes.
+ *
+ * NO lo uses para avisos del equipo (cartilla pendiente de revisión, reserva
+ * nueva, cambios de reserva entre staff): esos llevan copy interno y no deben
+ * salir hacia el cliente. Para eso siguen `notifyUsers` y
+ * `notifyTeamReservationUpdated`.
+ */
+export async function notifyPetAudience(
+  prisma: PrismaClient,
+  target: { petId: string; ownerId?: string },
+  payload: Omit<NotifyData, "userId"> & { excludeUserId?: string }
+): Promise<number> {
+  const { excludeUserId, ...rest } = payload;
+  let ids = await petAudienceIds(prisma, target.petId, target.ownerId);
+  if (excludeUserId) ids = ids.filter((id) => id !== excludeUserId);
+  return await notifyUsers(prisma, ids, rest);
+}
+
+/**
+ * Igual, partiendo de una reserva: resuelve la mascota y su audiencia. Cae de
+ * vuelta al dueño de la reserva si la reserva ya no existe.
+ */
+export async function notifyReservationAudience(
+  prisma: PrismaClient,
+  reservationId: string,
+  payload: Omit<NotifyData, "userId"> & { excludeUserId?: string }
+): Promise<number> {
+  const res = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    select: { petId: true, ownerId: true },
+  });
+  if (!res) return 0;
+  return await notifyPetAudience(
+    prisma,
+    { petId: res.petId, ownerId: res.ownerId },
+    payload
+  );
 }
 
 /**

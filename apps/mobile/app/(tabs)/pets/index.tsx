@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  RefreshControl,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -21,7 +22,7 @@ export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
   const router = useRouter();
 
-  const { data: pets, isLoading, error, refetch } = useQuery({
+  const { data: pets, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ["pets", userId],
     queryFn: () => getPetsByOwner(userId!),
     enabled: !!userId,
@@ -48,11 +49,22 @@ export default function PetsScreen() {
         style={styles.container}
         contentInsetAdjustmentBehavior="automatic"
         testID="pets-list"
+        // Escotilla manual: la lista se queda fresca 5 min y no refetchea al
+        // volver a la pestaña, así que cuando el equipo comparte una mascota
+        // esto es lo que la trae al momento (el push PET_SHARED hace el resto).
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={COLORS.primary}
+          />
+        }
         data={pets ?? []}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <PetCard
             pet={item}
+            viewerId={userId}
             onPress={() => router.push(`/pet/${item.id}`)}
             onReserveHotel={() => router.push("/reservation/create")}
             onReserveBath={() =>

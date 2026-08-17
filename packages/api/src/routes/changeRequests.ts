@@ -11,7 +11,7 @@ import {
   createAdminMiddleware,
 } from "../middleware/auth";
 import { computeChangeTotal, getLodgingPricing } from "../lib/pricing";
-import { notifyUser } from "../lib/notify";
+import { notifyUser, notifyPetAudience } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -463,8 +463,8 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
           approvedAt: new Date(),
         },
       });
-      await notifyUser(prisma, {
-        userId: cr.reservation.ownerId,
+      await notifyPetAudience(prisma, { petId: cr.reservation.petId, ownerId: cr.reservation.ownerId }, {
+        
         type: "RESERVATION_CHANGE_REJECTED",
         title: "Solicitud de cambio rechazada",
         body: parsed.data.reason,

@@ -24,14 +24,21 @@ type PetReservationSummary = {
   hasBalance?: boolean;
 };
 
+type PetPerson = { id: string; firstName: string; lastName?: string | null };
+
 type PetWithContext = Pet & {
   vaccines?: Vaccine[];
   reservations?: PetReservationSummary[];
+  // Un perro puede estar en dos cuentas (pareja/familia que lo comparte).
+  owner?: PetPerson | null;
+  coOwners?: { user: PetPerson }[];
 };
 
 interface PetCardProps {
   pet: PetWithContext;
   ownerName?: string;
+  /** Id del usuario que está viendo, para saber con quién se comparte. */
+  viewerId?: string | null;
   onPress?: () => void;
   onReserveHotel?: () => void;
   onReserveBath?: () => void;
@@ -45,8 +52,38 @@ type Chip = {
   fg: string;
 };
 
-function buildStatusChips(pet: PetWithContext): Chip[] {
+/**
+ * "Compartida con X" / "Compartida por X". La ficha tiene dos editores: sin
+ * esta etiqueta, ver un cambio que uno no hizo se siente como un error.
+ */
+export function sharedLabel(
+  pet: PetWithContext,
+  viewerId?: string | null
+): string | null {
+  if (!viewerId) return null;
+  if (pet.ownerId !== viewerId) {
+    return pet.owner?.firstName
+      ? `Compartida por ${formatName(pet.owner.firstName)}`
+      : "Compartida contigo";
+  }
+  const others = (pet.coOwners ?? []).map((c) => c.user).filter((u) => u.id !== viewerId);
+  if (others.length === 0) return null;
+  if (others.length === 1) return `Compartida con ${formatName(others[0].firstName)}`;
+  return `Compartida con ${others.length} personas`;
+}
+
+function buildStatusChips(pet: PetWithContext, viewerId?: string | null): Chip[] {
   const chips: Chip[] = [];
+
+  const shared = sharedLabel(pet, viewerId);
+  if (shared) {
+    chips.push({
+      icon: "people-outline",
+      label: shared,
+      bg: COLORS.infoBg,
+      fg: COLORS.infoText,
+    });
+  }
 
   const reservations = pet.reservations ?? [];
   const checkedIn = reservations.find((r) => r.status === "CHECKED_IN");
@@ -125,13 +162,14 @@ function buildStatusChips(pet: PetWithContext): Chip[] {
 function PetCardBase({
   pet,
   ownerName,
+  viewerId,
   onPress,
   onReserveHotel,
   onReserveBath,
   onAddCartilla,
 }: PetCardProps) {
   const showAddCartilla = !!onAddCartilla && !pet.cartillaUrl;
-  const chips = buildStatusChips(pet);
+  const chips = buildStatusChips(pet, viewerId);
   const sizeLabel = SIZE_LABELS[pet.size] || pet.size;
 
   return (
