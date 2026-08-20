@@ -1,21 +1,15 @@
 import { COLORS } from "@/constants/colors";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
+import { useTeamBack } from "@/hooks/useTeamBack";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 export default function AdminRootLayout() {
-  const router = useRouter();
-
   // Como las pantallas viven a nivel root (sobre el Tabs container del admin),
   // router.back() pop al tab de origen y anima naturalmente con slide-from-right.
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(admin)/dashboard" as any);
-    }
-  };
+  // Varias las comparte el staff, de ahí useTeamBack.
+  const handleBack = useTeamBack("/(admin)/dashboard");
 
   const backButton = () => <HeaderBackButton onPress={handleBack} />;
 

@@ -1,7 +1,11 @@
 import { FastifyInstance } from "fastify";
 import { CreatePaymentSchema } from "@holidoginn/shared";
 import Stripe from "stripe";
-import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createAdminMiddleware,
+  createStaffMiddleware,
+} from "../middleware/auth";
 import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser, notifyPetAudience } from "../lib/notify";
 import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
@@ -23,6 +27,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
   const adminMiddleware = createAdminMiddleware();
+  const staffMiddleware = createStaffMiddleware();
 
   const isStaffOrAdmin = (role?: string) =>
     role === "ADMIN" || role === "STAFF";
@@ -543,6 +548,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
   });
 
   // ─── POST /admin/payments/manual — registro de pago manual ────
+  // Abierto al equipo: no es poder nuevo (el staff ya cobra por
+  // /staff/stays/:id/register-manual-payment desde el detalle de la estancia),
+  // es la misma capacidad para el cobro que ocurre al momento de registrar la
+  // reserva del walk-in, que puede ser guardería o baño y no solo estancia.
   fastify.post<{
     Body: {
       reservationId: string;
@@ -552,7 +561,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     };
   }>(
     "/admin/payments/manual",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
       const { reservationId, amount, method, notes } = request.body;
 

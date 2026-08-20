@@ -203,11 +203,16 @@ export default function CreatePetScreen() {
               // Cerramos el flujo entero (selector de dueño incluido) en vez de
               // apilar la pestaña otra vez: `replace` montaría un segundo tab
               // navigator y dejaría el selector debajo, atrapado en el back.
+              // El staff también captura mascotas (walk-in) y no tiene la
+              // pestaña Clientes: aterrizarlo ahí lo expulsaría a la vista de
+              // cliente, así que vuelve a su propio panel.
               onPress: () => {
+                const destino =
+                  role === "STAFF" ? "/(staff)/dashboard" : "/(admin)/clients";
                 try {
-                  router.dismissTo("/(admin)/clients" as any);
+                  router.dismissTo(destino as any);
                 } catch {
-                  router.replace("/(admin)/clients" as any);
+                  router.replace(destino as any);
                 }
               },
             },

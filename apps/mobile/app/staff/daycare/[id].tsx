@@ -10,6 +10,7 @@ import {
   Alert,
   Linking,
   TextInput,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,7 +25,8 @@ import {
   registerDaycareManualPayment,
   type StaffDaycare,
 } from "@/lib/api";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { uploadToCloudinary, cloudinaryResized } from "@/lib/cloudinary";
+import { usePetPhoto } from "@/hooks/usePetPhoto";
 import { useAuthStore } from "@/store/authStore";
 import {
   formatName,
@@ -89,6 +91,14 @@ export default function StaffDaycareDetail() {
     qc.invalidateQueries({ queryKey: ["staff-daycares"] });
     qc.invalidateQueries({ queryKey: ["staff", "daycares"] });
   };
+
+  // Foto del perro: mismo hook que la estancia y el baño.
+  const { changePhoto: changePetPhoto, busy: petPhotoBusy } = usePetPhoto({
+    petId: daycare?.pet?.id,
+    petName: daycare?.pet?.name,
+    currentPhotoUrl: daycare?.pet?.photoUrl,
+    onSaved: invalidate,
+  });
 
   const checkInMutation = useMutation({
     mutationFn: () => checkInStaffDaycare(id),
@@ -221,9 +231,35 @@ export default function StaffDaycareDetail() {
       {/* Encabezado */}
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <View style={styles.petIconWrap}>
-            <Ionicons name="sunny" size={20} color={COLORS.primary} />
-          </View>
+          {/* La foto del perro, no el icono genérico de guardería: en el patio
+              hay varios a la vez y el equipo necesita saber cuál es cuál sin
+              agacharse a leerle la placa. Si no hay foto, el tap la captura. */}
+          <TouchableOpacity
+            onPress={changePetPhoto}
+            disabled={petPhotoBusy}
+            activeOpacity={0.8}
+            testID="staff-daycare-pet-photo"
+          >
+            {daycare.pet?.photoUrl ? (
+              <Image
+                source={{ uri: cloudinaryResized(daycare.pet.photoUrl, 120, "fill") }}
+                style={styles.petIconWrap}
+              />
+            ) : (
+              <View style={styles.petIconWrap}>
+                <Ionicons name="paw" size={20} color={COLORS.primary} />
+              </View>
+            )}
+            {petPhotoBusy ? (
+              <View style={styles.petPhotoOverlay}>
+                <ActivityIndicator size="small" color={COLORS.white} />
+              </View>
+            ) : (
+              <View style={styles.petPhotoBadge}>
+                <Ionicons name="camera" size={10} color={COLORS.white} />
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.petName}>{formatName(daycare.pet?.name ?? "—")}</Text>
             <Text style={styles.petMeta}>
@@ -385,6 +421,32 @@ export default function StaffDaycareDetail() {
         </View>
       )}
 
+      {/* Agregar servicio — el caso de todos los días: el perro entra a
+          guardería y en el mostrador piden el baño. Antes había que buscar a un
+          admin; quien lo recibe es quien lo anota. La misma pantalla del admin,
+          sin el toggle de cortesía (eso sigue siendo decisión de admin). */}
+      {daycare.status !== "CANCELLED" && daycare.status !== "CHECKED_OUT" && (
+        <TouchableOpacity
+          style={styles.historyCard}
+          onPress={() =>
+            router.push(`/admin/reservation/add-addon?id=${daycare.id}` as any)
+          }
+          activeOpacity={0.85}
+          testID="staff-daycare-add-addon"
+        >
+          <View style={styles.historyIcon}>
+            <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.historyTitle}>Agregar servicio</Text>
+            <Text style={styles.historySubtitle}>
+              Súmale un baño o un desparasitante a esta guardería
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+      )}
+
       {/* Historial de reportes de esta guardería */}
       {(checklists?.length ?? 0) > 0 && (
         <TouchableOpacity
@@ -543,6 +605,30 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  petPhotoOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  petPhotoBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.primary,
+    borderWidth: 2,
+    borderColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
   },

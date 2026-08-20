@@ -1,17 +1,12 @@
 import { COLORS } from "@/constants/colors";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
+import { useTeamBack } from "@/hooks/useTeamBack";
 
 export default function AdminReservationLayout() {
-  const router = useRouter();
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(admin)/reservations" as any);
-    }
-  };
+  // Compartida con el staff: ver useTeamBack.
+  const handleBack = useTeamBack("/(admin)/reservations");
 
   const backButton = () => <HeaderBackButton onPress={handleBack} />;
 

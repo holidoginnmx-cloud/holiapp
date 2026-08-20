@@ -6,6 +6,7 @@ import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
 import {
   createAuthMiddleware,
   createAdminMiddleware,
+  createStaffMiddleware,
   invalidateAuthCache,
 } from "../middleware/auth";
 import { normalizePhone } from "../lib/phone";
@@ -20,10 +21,19 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   const authMiddleware = createAuthMiddleware(prisma);
   const adminMiddleware = createAdminMiddleware();
   const adminAuth = [authMiddleware, adminMiddleware];
+  // El equipo de piso da de alta al cliente que llega sin cita. Es lo único
+  // que se abre a STAFF aquí: listar, editar y desactivar clientes siguen
+  // siendo de admin.
+  const staffAuth = [authMiddleware, createStaffMiddleware()];
 
-  // GET /users — listar todos (solo admin)
-  fastify.get("/users", { preHandler: adminAuth }, async (request) => {
+  // GET /users — listar (admin: todos; staff: solo clientes activos).
+  // El staff la necesita para decir de quién es el perro que está capturando;
+  // no para ver la plantilla ni las cuentas dadas de baja, así que el filtro
+  // se aplica en la query, no en el cliente.
+  fastify.get("/users", { preHandler: staffAuth }, async (request) => {
+    const soloClientes = request.userRole !== "ADMIN";
     const users = await prisma.user.findMany({
+      where: soloClientes ? { role: "OWNER", isActive: true } : undefined,
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { pushTokens: true } } },
     });
@@ -531,15 +541,21 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // POST /users — crear (solo admin). Pensado para dar de alta clientes
-  // walk-in desde el admin: el email es opcional (se genera el mismo
+  // POST /users — crear (admin y staff). Pensado para dar de alta clientes
+  // walk-in desde el mostrador: el email es opcional (se genera el mismo
   // placeholder @holidoginn.local que usa el admin web) y el teléfono se
   // checa contra duplicados con la normalización del claim (últimos 10
   // dígitos) para no repetir el problema de clientes duplicados.
-  fastify.post("/users", { preHandler: adminAuth }, async (request, reply) => {
+  fastify.post("/users", { preHandler: staffAuth }, async (request, reply) => {
     const raw = { ...((request.body ?? {}) as Record<string, unknown>) };
     if (typeof raw.email !== "string" || !raw.email.trim()) {
       raw.email = `walkin+${randomUUID()}@holidoginn.local`;
+    }
+    // `role` viaja en el body y el schema lo acepta (default OWNER). Ahora que
+    // STAFF puede llegar aquí, ignorarlo sería dejarle crearse un ADMIN: solo
+    // un admin decide el rol de quien se da de alta.
+    if (request.userRole !== "ADMIN") {
+      raw.role = "OWNER";
     }
 
     const parsed = CreateUserSchema.safeParse(raw);

@@ -501,9 +501,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   );
 
   // ─── GET /admin/lodging-pricing — tarifas de hospedaje (singleton) ─
+  // Lectura abierta al equipo: el staff necesita la tarifa por hora para
+  // cotizar una guardería al registrarla. Editarlas (PUT, más abajo) sigue
+  // siendo de admin.
   fastify.get(
     "/admin/lodging-pricing",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware, staffMiddleware] },
     async () => {
       const row = await prisma.lodgingPricing.upsert({
         where: { id: "singleton" },
@@ -1272,9 +1275,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   // que ya existe, sin pasar por Stripe. NO confundir con
   // POST /reservations/:id/addons/bath (routes/services.ts), que es la ruta del
   // CLIENTE pagando con tarjeta.
+  //
+  // Abierto al equipo: el perro entra a guardería y en el mostrador piden el
+  // baño; quien lo recibe es quien lo anota. Lo que NO se abre es el dinero —
+  // cambiar el precio o regalar el servicio sigue siendo decisión de admin
+  // (ver el 403 de abajo).
   fastify.post<{ Params: { id: string } }>(
     "/admin/reservations/:id/addons",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
       const parsed = AdminCreateAddonSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -1290,6 +1298,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         scheduledAt,
         addToTotal,
       } = parsed.data;
+
+      // `addToTotal: false` deja el servicio fuera del cobro igual que una
+      // cortesía, así que va en el mismo candado: si no, el 403 de arriba se
+      // esquivaría por la puerta de al lado.
+      if (
+        request.userRole !== "ADMIN" &&
+        (unitPriceOverride != null || isCourtesy === true || addToTotal === false)
+      ) {
+        return reply.status(403).send({
+          error: "Solo un administrador puede cambiar el precio o marcarlo como cortesía",
+        });
+      }
 
       const reservation = await prisma.reservation.findUnique({
         where: { id: request.params.id },

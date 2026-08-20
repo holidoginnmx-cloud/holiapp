@@ -1,19 +1,14 @@
 import { COLORS } from "@/constants/colors";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { HeaderBackButton } from "@/components/HeaderBackButton";
+import { useTeamBack } from "@/hooks/useTeamBack";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 export default function AdminPetsLayout() {
-  const router = useRouter();
 
-  const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(admin)/clients" as any);
-    }
-  };
+  // Compartida con el staff: ver useTeamBack.
+  const handleBack = useTeamBack("/(admin)/clients");
 
   const backButton = () => <HeaderBackButton onPress={handleBack} />;
 

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/store/authStore";
 import { DateTimeField } from "@/components/DateTimeField";
 import { SelectField } from "@/components/SelectField";
 import { SwitchRow } from "@/components/SwitchRow";
@@ -97,6 +98,10 @@ export default function AdminCreateReservation() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  // Esta pantalla la usan admin y staff: el staff registra al perro que acaba
+  // de llegar. Lo que cambia entre ambos es el selector de responsable, que
+  // sale de GET /users (solo-admin) y no le sirve a quien está en el mostrador.
+  const esAdmin = useAuthStore((s) => s.role) === "ADMIN";
 
   const [reservationType, setReservationType] = useState<ReservationType>("STAY");
   const [clientSearch, setClientSearch] = useState("");
@@ -125,6 +130,13 @@ export default function AdminCreateReservation() {
   // termina después de que sale la estilista. La operación real tiene
   // excepciones, pero quedan marcadas para verlas distinto en la agenda.
   const [forceSchedule, setForceSchedule] = useState(false);
+
+  // "Registrar de todos modos": el perro ya está en la casa y nadie alcanzó a
+  // capturar la reserva (llegó sin avisar, o entró de noche). Mismo trato que
+  // los baños que ya ocurrieron: el picker no pone tope, el aviso + este switch
+  // son el gate. Sin esto la salida era inventar fechas y pedirle a alguien que
+  // las corrigiera después, que es como se ensucian ocupación e ingresos.
+  const [forceBackdate, setForceBackdate] = useState(false);
 
   // DAYCARE (guardería): día + horas estimadas ("HH:mm").
   const [dcDate, setDcDate] = useState<Date | null>(null);
@@ -296,10 +308,12 @@ export default function AdminCreateReservation() {
     return { hours, total: hours * daycareHourPrice * selectedPets.length };
   }, [reservationType, dcInTime, dcOutTime, daycareHourPrice, selectedPets.length]);
 
-  // Staff (rol STAFF) para asignación opcional.
+  // Staff (rol STAFF) para asignación opcional. Solo admin: GET /users es
+  // la lista completa de clientes y sigue siendo solo-admin.
   const { data: allUsers } = useQuery({
     queryKey: ["admin", "users"],
     queryFn: getUsers,
+    enabled: esAdmin,
   });
   const staffList = useMemo(
     () => (allUsers ?? []).filter((u) => u.role === "STAFF"),
@@ -415,6 +429,14 @@ export default function AdminCreateReservation() {
     return d;
   }, []);
 
+  // ¿La reserva se está registrando después de que el perro llegó? `today` está
+  // a medianoche, así que esto es "de un día anterior", no "hace un rato".
+  const stayBackdated = checkIn != null && checkIn < today;
+  const daycareBackdated = dcDate != null && dcDate < today;
+  const backdated =
+    (reservationType === "STAY" && stayBackdated) ||
+    (reservationType === "DAYCARE" && daycareBackdated);
+
   function selectOwner(id: string, matchedPetId?: string) {
     setOwnerId(id);
     // Si la búsqueda coincidió por mascota, se preselecciona directamente.
@@ -487,6 +509,16 @@ export default function AdminCreateReservation() {
           }
         : {}),
     };
+
+    // El switch es el gate de lo retroactivo: sin él, un mal tap en el
+    // calendario crearía una estancia de la semana pasada sin que nadie lo note.
+    if (backdated && !forceBackdate) {
+      Alert.alert(
+        reservationType === "STAY" ? "La entrada ya pasó" : "Ese día ya pasó",
+        "Activa «Registrar de todos modos» para guardarla con esa fecha.",
+      );
+      return;
+    }
 
     let payload: Record<string, unknown>;
     if (reservationType === "STAY") {
@@ -791,7 +823,9 @@ export default function AdminCreateReservation() {
                   empty={!checkIn}
                   mode="date"
                   pickerValue={checkIn ?? today}
-                  minimumDate={today}
+                  // Sin minimumDate a propósito, igual que la cita de baño: el
+                  // equipo registra estancias que ya empezaron. El aviso "ya
+                  // pasó" + "Registrar de todos modos" hacen el gate.
                   onChange={(date) => {
                     setCheckIn(date);
                     if (checkOut && date >= checkOut) setCheckOut(null);
@@ -811,6 +845,19 @@ export default function AdminCreateReservation() {
                 />
               </View>
             </View>
+
+            {stayBackdated && (
+              <>
+                <Text style={styles.estimateWarn}>
+                  La entrada ya pasó: se registra como llegada retroactiva.
+                </Text>
+                <SwitchRow
+                  label="Registrar de todos modos"
+                  value={forceBackdate}
+                  onValueChange={setForceBackdate}
+                />
+              </>
+            )}
 
             <Text style={styles.label}>Horario estimado (opcional)</Text>
             <View style={styles.dateRow}>
@@ -1043,9 +1090,23 @@ export default function AdminCreateReservation() {
               empty={!dcDate}
               mode="date"
               pickerValue={dcDate ?? today}
-              minimumDate={today}
+              // Sin minimumDate: la guardería de ayer se cobra hoy si nadie
+              // alcanzó a registrarla. Ver `daycareBackdated`.
               onChange={setDcDate}
             />
+
+            {daycareBackdated && (
+              <>
+                <Text style={styles.estimateWarn}>
+                  Ese día ya pasó: se registra como guardería retroactiva.
+                </Text>
+                <SwitchRow
+                  label="Registrar de todos modos"
+                  value={forceBackdate}
+                  onValueChange={setForceBackdate}
+                />
+              </>
+            )}
 
             <Text style={styles.label}>Horario estimado</Text>
             <View style={styles.dateRow}>
@@ -1088,8 +1149,8 @@ export default function AdminCreateReservation() {
           </>
         )}
 
-        {/* ── Staff (opcional) ── */}
-        {petIds.length > 0 && (
+        {/* ── Staff (opcional) — solo admin: ver `esAdmin` ── */}
+        {petIds.length > 0 && esAdmin && (
           <>
             <Text style={styles.label}>Asignar staff (opcional)</Text>
             <SelectField

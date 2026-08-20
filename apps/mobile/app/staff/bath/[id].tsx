@@ -27,6 +27,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePetPhoto } from "@/hooks/usePetPhoto";
 import * as ImagePicker from "expo-image-picker";
 import {
   getStaffBaths,
@@ -102,6 +103,16 @@ export default function StaffBathDetail() {
     () => data?.baths.find((b) => b.id === id) ?? null,
     [data, id],
   );
+
+  // Foto del perro: mismo hook que la estancia y la guardería.
+  const { changePhoto: changePetPhoto, busy: petPhotoBusy } = usePetPhoto({
+    petId: bath?.pet?.id,
+    petName: bath?.pet?.name,
+    currentPhotoUrl: bath?.pet?.photoUrl,
+    onSaved: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
+    },
+  });
 
   const confirmPickupMutation = useMutation({
     mutationFn: (vars: { addonId: string; method: "CASH" | "TRANSFER" }) =>
@@ -325,18 +336,36 @@ export default function StaffBathDetail() {
         <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
       }
     >
-      {/* Hero: foto + nombre */}
+      {/* Hero: foto + nombre. La foto se puede capturar aquí mismo: el perro
+          que llega a baño muchas veces es la primera vez que lo vemos, y sin
+          foto la única forma de saber quién es es leerle la placa. */}
       <View style={styles.hero}>
-        {bath.pet?.photoUrl ? (
-          <Image
-            source={{ uri: cloudinaryResized(bath.pet.photoUrl, 216, "fill") }}
-            style={styles.heroPhoto}
-          />
-        ) : (
-          <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
-            <Ionicons name="paw" size={36} color={COLORS.primary} />
-          </View>
-        )}
+        <TouchableOpacity
+          onPress={changePetPhoto}
+          disabled={petPhotoBusy}
+          activeOpacity={0.8}
+          testID="staff-bath-pet-photo"
+        >
+          {bath.pet?.photoUrl ? (
+            <Image
+              source={{ uri: cloudinaryResized(bath.pet.photoUrl, 216, "fill") }}
+              style={styles.heroPhoto}
+            />
+          ) : (
+            <View style={[styles.heroPhoto, styles.heroPhotoPlaceholder]}>
+              <Ionicons name="paw" size={36} color={COLORS.primary} />
+            </View>
+          )}
+          {petPhotoBusy ? (
+            <View style={styles.heroPhotoOverlay}>
+              <ActivityIndicator size="small" color={COLORS.white} />
+            </View>
+          ) : (
+            <View style={styles.heroPhotoBadge}>
+              <Ionicons name="camera" size={11} color={COLORS.white} />
+            </View>
+          )}
+        </TouchableOpacity>
         <View style={styles.heroInfo}>
           <Text style={styles.petName} numberOfLines={1}>
             {formatName(bath.pet?.name ?? "—")}

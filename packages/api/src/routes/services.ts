@@ -2,7 +2,11 @@ import { FastifyInstance } from "fastify";
 import { CreateBathAddonSchema, ConfirmBathAddonSchema } from "@holidoginn/shared";
 import { Prisma, PetSize, PrismaClient } from "@holidoginn/db";
 import Stripe from "stripe";
-import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createAdminMiddleware,
+  createStaffMiddleware,
+} from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
 import { maybeConcludeStandaloneBath } from "./baths";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
@@ -53,6 +57,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
   const authMiddleware = createAuthMiddleware(prisma);
   const adminMiddleware = createAdminMiddleware();
   const adminAuth = [authMiddleware, adminMiddleware];
+  const staffAuth = [authMiddleware, createStaffMiddleware()];
 
   // GET /services/bath/variants — matriz completa de precios de baño
   fastify.get(
@@ -418,8 +423,11 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
   //  ADMIN — gestión de servicios y precios
   // ═══════════════════════════════════════════════════════════
 
-  // GET /admin/services — listar todos los tipos de servicio con variantes
-  fastify.get("/admin/services", { preHandler: adminAuth }, async () => {
+  // GET /admin/services — listar todos los tipos de servicio con variantes.
+  // Lectura del catálogo abierta al equipo: es lo que llena el selector al
+  // agregarle un baño a una reserva en curso. Crear o editar servicios y
+  // precios (POST/PUT de abajo) sigue siendo de admin.
+  fastify.get("/admin/services", { preHandler: staffAuth }, async () => {
     const types = await prisma.serviceType.findMany({
       include: {
         variants: { orderBy: [{ petSize: "asc" }, { deslanado: "asc" }, { corte: "asc" }] },

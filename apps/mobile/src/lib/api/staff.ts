@@ -318,3 +318,10 @@ export const completeAddon = (addonId: string, mediaUrl?: string) =>
     method: "PATCH",
     body: JSON.stringify(mediaUrl ? { mediaUrl } : {}),
   });
+
+/** Comentario del equipo sobre la app; llega a la bandeja de Avisos del admin. */
+export const sendTeamFeedback = (payload: { message: string; screen?: string }) =>
+  apiFetch<{ success: boolean; notified: number }>("/staff/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

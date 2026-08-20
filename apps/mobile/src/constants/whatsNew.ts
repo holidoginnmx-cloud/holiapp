@@ -34,6 +34,73 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-19",
+    title: "El equipo ya puede registrar lo que llega",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "Registrar un perro que llegó ayer",
+        body:
+          "El calendario no dejaba elegir una fecha pasada, así que cuando un " +
+          "perro llegaba sin avisar y nadie alcanzaba a capturarlo, la salida " +
+          "era inventarle fechas y pedir que alguien las corrigiera después. " +
+          "Ahora, en hospedaje y guardería, se puede poner la fecha real: sale " +
+          "el aviso de que ya pasó y se activa «Registrar de todos modos». " +
+          "Igual que ya funcionaba con las citas de baño.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "add-circle-outline",
+        title: "Registrar reservas, clientes y mascotas desde Más",
+        body:
+          "Hasta ahora esto era solo del admin: si llegaba alguien preguntando " +
+          "y no había un admin cerca, el perro se quedaba adentro sin existir " +
+          "en el sistema. En «Más» hay una sección nueva, Registrar, con Nueva " +
+          "reserva, Nuevo cliente y Nueva mascota. Es el mismo formulario del " +
+          "admin; lo único que no aparece es asignar responsable, porque el " +
+          "check-in ya no depende de eso.",
+        route: "/(staff)/more",
+        roles: ["STAFF"],
+      },
+      {
+        icon: "water-outline",
+        title: "Agregarle un baño a un perro que ya está aquí",
+        body:
+          "El caso de todos los días: el perro entra a guardería y en el " +
+          "mostrador piden el baño. Antes había que buscar a un admin. Ahora, " +
+          "en el detalle de la guardería o de la estancia, toca «Agregar " +
+          "servicio» y elige el baño o el desparasitante; el precio sale del " +
+          "catálogo y se suma al saldo. Regalarlo (cortesía) o cambiarle el " +
+          "precio sigue siendo del admin.",
+        route: "/(staff)/daycares",
+        roles: ["STAFF"],
+      },
+      {
+        icon: "camera-outline",
+        title: "La foto del perro, también en guardería y baño",
+        body:
+          "En la estancia ya se podía subir; en guardería salía un icono " +
+          "genérico y en baño no se podía cambiar. Ahora en las tres pantallas " +
+          "el tap sobre la foto abre la cámara. Además, en el Panel los perros " +
+          "sin foto traen una marca de cámara: sin foto, la única forma de " +
+          "saber quién es quién es agacharse a leerle la placa.",
+        route: "/(staff)/dashboard",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "chatbubble-ellipses-outline",
+        title: "Manda tu comentario desde la app",
+        body:
+          "Lo que antes era «cuando lo uses, anótalo y me lo pasas». En «Más» " +
+          "(o en Ajustes, si eres admin) hay «Enviar un comentario»: escribe " +
+          "qué te falta, qué te estorba o qué te confundió y le llega al " +
+          "equipo a sus Avisos. Entre más concreto, más rápido se arregla.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-17-b",
     title: "La etiqueta de Google Ads ya está puesta",
     items: [

@@ -890,6 +890,56 @@ export default async function staffRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── POST /staff/feedback — comentario del equipo sobre la app ─
+  //
+  // Lo que se pedía a mano ("cuando lo uses, anótalo y me lo pasas"): quien
+  // está en el piso ve los huecos de la app mientras trabaja, y si en ese
+  // momento no hay dónde escribirlo se pierde. Aterriza en la bandeja de
+  // Avisos de los admins como una notificación normal, así que no hace falta
+  // tabla nueva ni pantalla que revisar aparte.
+  //
+  // Sin reservationId ni petId a propósito: `notificationRoute` no le encuentra
+  // destino y el aviso se queda en la bandeja, que es justo lo que queremos
+  // (no manda a nadie a una pantalla al azar).
+  fastify.post<{ Body: { message?: string; screen?: string } }>(
+    "/staff/feedback",
+    { preHandler },
+    async (request, reply) => {
+      const message = (request.body?.message ?? "").trim();
+      if (message.length < 3) {
+        return reply.status(400).send({ error: "Escribe tu comentario" });
+      }
+      // Tope defensivo: el cuerpo del push no da para más y evita que un pegado
+      // accidental llene la bandeja.
+      const texto = message.slice(0, 1000);
+      const screen = (request.body?.screen ?? "").trim().slice(0, 120) || null;
+
+      const autor = request.dbUser;
+      const nombre =
+        `${autor?.firstName ?? ""} ${autor?.lastName ?? ""}`.trim() || "El equipo";
+
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN", isActive: true },
+        select: { id: true },
+      });
+      // Si quien escribe es admin, no se manda el push a sí mismo.
+      const destinatarios = admins
+        .map((a) => a.id)
+        .filter((id) => id !== request.userId);
+
+      if (destinatarios.length > 0) {
+        await notifyUsers(prisma, destinatarios, {
+          type: "STAFF_ALERT" as const,
+          title: `💬 Comentario de ${nombre}`,
+          body: screen ? `${texto}\n\n(desde ${screen})` : texto,
+          data: { kind: "TEAM_FEEDBACK", screen, authorId: request.userId },
+        });
+      }
+
+      return reply.status(201).send({ success: true, notified: destinatarios.length });
+    }
+  );
+
   // ─── PATCH /staff/alerts/:id/resolve — resolver alerta ─────────
 
   fastify.patch<{ Params: { id: string } }>(

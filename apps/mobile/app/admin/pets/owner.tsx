@@ -26,12 +26,13 @@ import {
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 /**
- * Paso 1 del alta de mascota desde el admin: ¿de quién es el perro?
+ * Paso 1 del alta de mascota desde el equipo: ¿de quién es el perro?
  *
  * Se elige un cliente que ya existe o se crea uno nuevo (que al terminar
  * regresa aquí mismo, encadenado al paso 2). El paso 2 es la pantalla de
- * mascota de siempre (`/pet/create`), a la que le pasamos el ownerId: solo
- * un ADMIN puede crear una mascota para otro dueño (lo valida el backend).
+ * mascota de siempre (`/pet/create`), a la que le pasamos el ownerId: solo el
+ * equipo (admin o staff) puede crear una mascota para otro dueño; lo valida el
+ * backend, y a un STAFF la lista le llega ya filtrada a clientes activos.
  */
 export default function AdminPetOwnerScreen() {
   const router = useRouter();

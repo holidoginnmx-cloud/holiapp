@@ -3,6 +3,7 @@ import { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { TeamFeedbackModal } from "@/components/TeamFeedbackModal";
 import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
@@ -87,6 +88,7 @@ export default function AdminSettings() {
 
   const { unreadCount } = useUnreadNotifications();
   const [novedadesVisible, setNovedadesVisible] = useState(false);
+  const [comentarioVisible, setComentarioVisible] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Cerrar sesion", "¿Estas seguro?", [
@@ -233,6 +235,14 @@ export default function AdminSettings() {
           label="Novedades"
           subtitle="Todo lo que se ha ido agregando"
           onPress={() => setNovedadesVisible(true)}
+        />
+        {/* Espejo del comentario del staff: un admin también trabaja en piso y
+            ve los mismos huecos. Le llega al resto de los admins, no a sí mismo. */}
+        <MenuItem
+          icon="chatbubble-ellipses-outline"
+          label="Enviar un comentario"
+          subtitle="Qué te falta, qué te estorba o qué te confundió"
+          onPress={() => setComentarioVisible(true)}
           isLast
         />
       </View>
@@ -251,6 +261,12 @@ export default function AdminSettings() {
         role="ADMIN"
         open={novedadesVisible}
         onClose={() => setNovedadesVisible(false)}
+      />
+
+      <TeamFeedbackModal
+        open={comentarioVisible}
+        onClose={() => setComentarioVisible(false)}
+        screen="Ajustes (admin)"
       />
     </ScrollView>
   );

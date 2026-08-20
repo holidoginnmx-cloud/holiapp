@@ -532,14 +532,24 @@ function StayCard({
       <View style={styles.stayBody}>
         {/* Top row */}
         <View style={styles.stayTopRow}>
-          <Image
-            source={
-              stay.pet?.photoUrl
-                ? { uri: stay.pet.photoUrl }
-                : require("../../../assets/pet-placeholder.png")
-            }
-            style={styles.petPhoto}
-          />
+          {/* El placeholder es mudo: un perro sin foto se ve igual que uno con
+              foto genérica, y nadie sabe que falta capturarla. El badge lo
+              vuelve una tarea visible — la foto se sube desde el detalle. */}
+          <View>
+            <Image
+              source={
+                stay.pet?.photoUrl
+                  ? { uri: stay.pet.photoUrl }
+                  : require("../../../assets/pet-placeholder.png")
+              }
+              style={styles.petPhoto}
+            />
+            {!stay.pet?.photoUrl && (
+              <View style={styles.noPhotoBadge}>
+                <Ionicons name="camera" size={9} color={COLORS.white} />
+              </View>
+            )}
+          </View>
           <View style={styles.stayInfo}>
             <View style={styles.stayHeader}>
               <Text style={styles.stayPetName} numberOfLines={1}>
@@ -933,6 +943,20 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: COLORS.bgSection,
+  },
+  // "A este perro le falta la foto" — ver el comentario de la tarjeta.
+  noPhotoBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.textTertiary,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
   },
   stayInfo: {
     flex: 1,

@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { formatName } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { TeamFeedbackModal } from "@/components/TeamFeedbackModal";
 
 // ── "Más" del staff, hecha en casa ───────────────────────────────────────────
 // Con 6 pestañas visibles el tab bar de Apple mostraba 5 y generaba él solo una
@@ -86,6 +87,7 @@ export default function StaffMore() {
   const lastName = useAuthStore((s) => s.lastName);
   const email = useAuthStore((s) => s.email);
   const [novedadesVisible, setNovedadesVisible] = useState(false);
+  const [comentarioVisible, setComentarioVisible] = useState(false);
 
   // Mismas queries (y mismas keys) que el Panel y /staff-list: los números del
   // día salen de la caché, sin pedirle nada nuevo a la API.
@@ -171,6 +173,33 @@ export default function StaffMore() {
         />
       </View>
 
+      {/* Registrar — lo que llega sin cita. El equipo de piso es quien recibe
+          al perro, así que es quien tiene que poder capturarlo: antes había
+          que buscar a un admin y mientras tanto el perro estaba en la casa sin
+          existir en el sistema. Las tres pantallas son las mismas del admin. */}
+      <Text style={styles.sectionTitle}>Registrar</Text>
+      <View style={styles.menuSection}>
+        <MenuItem
+          icon="add-circle-outline"
+          label="Nueva reserva"
+          subtitle="Hospedaje, baño o guardería que llega sin cita"
+          onPress={() => router.push("/admin/reservation/create" as any)}
+        />
+        <MenuItem
+          icon="person-add-outline"
+          label="Nuevo cliente"
+          subtitle="Da de alta a quien llega por primera vez"
+          onPress={() => router.push("/admin/users/create" as any)}
+        />
+        <MenuItem
+          icon="paw-outline"
+          label="Nueva mascota"
+          subtitle="Agrega el perro a la cuenta de su dueño"
+          onPress={() => router.push("/admin/pets/owner" as any)}
+          isLast
+        />
+      </View>
+
       <Text style={styles.sectionTitle}>Hoy</Text>
       <View style={styles.menuSection}>
         <MenuItem
@@ -229,6 +258,15 @@ export default function StaffMore() {
           label="Novedades"
           subtitle="Todo lo que se ha ido agregando"
           onPress={() => setNovedadesVisible(true)}
+        />
+        {/* El canal que hasta ahora era de palabra ("cuando lo uses, anótalo y
+            me lo pasas"): lo que se ve trabajando se pierde si no hay dónde
+            escribirlo en ese momento. Cae en la bandeja de Avisos del admin. */}
+        <MenuItem
+          icon="chatbubble-ellipses-outline"
+          label="Enviar un comentario"
+          subtitle="Qué te falta, qué te estorba o qué te confundió"
+          onPress={() => setComentarioVisible(true)}
           isLast
         />
       </View>
@@ -237,6 +275,12 @@ export default function StaffMore() {
         role="STAFF"
         open={novedadesVisible}
         onClose={() => setNovedadesVisible(false)}
+      />
+
+      <TeamFeedbackModal
+        open={comentarioVisible}
+        onClose={() => setComentarioVisible(false)}
+        screen="Más (staff)"
       />
     </ScrollView>
   );

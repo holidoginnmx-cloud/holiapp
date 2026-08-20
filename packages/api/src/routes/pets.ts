@@ -22,6 +22,10 @@ export default async function petsRoutes(fastify: FastifyInstance) {
 
   const isStaffOrAdmin = (role?: string) => role === "ADMIN" || role === "STAFF";
   const isAdmin = (role?: string) => role === "ADMIN";
+  // El equipo (admin + staff) captura mascotas a nombre del cliente cuando
+  // llega un walk-in. Deliberadamente NO es lo mismo que `isAdmin`: borrar una
+  // mascota sigue siendo solo del dueño o de un admin.
+  const isEquipo = (role?: string) => role === "ADMIN" || role === "STAFF";
 
   // Notifica a todos los admins que hay una cartilla pendiente de revisión.
   async function notifyAdminsNewCartilla(
@@ -163,7 +167,7 @@ export default async function petsRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // POST /pets — crear (solo para sí mismo, salvo ADMIN)
+  // POST /pets — crear (solo para sí mismo, salvo el equipo)
   fastify.post(
     "/pets",
     { preHandler: [authMiddleware] },
@@ -175,12 +179,14 @@ export default async function petsRoutes(fastify: FastifyInstance) {
 
       // El dueño se deriva del usuario autenticado (el auth middleware siempre
       // setea request.userId, autoprovisionando el registro de la BD). Para un
-      // OWNER se ignora cualquier ownerId que mande el cliente; solo un ADMIN
-      // puede crear para otro dueño pasando ownerId explícito. Esto evita el
-      // 400 cuando el cliente aún no sincronizó su userId (carrera con
-      // /users/me tras el login) y previene crear mascotas para terceros.
+      // OWNER se ignora cualquier ownerId que mande el cliente; el equipo
+      // (admin o staff) sí puede crear para otro dueño pasando ownerId
+      // explícito. Esto evita el 400 cuando el cliente aún no sincronizó su
+      // userId (carrera con /users/me tras el login) y previene crear mascotas
+      // para terceros. Si el staff no pudiera pasar ownerId, la mascota del
+      // walk-in quedaría colgando de la cuenta de quien la capturó.
       const ownerId =
-        isAdmin(request.userRole) && parsed.data.ownerId
+        isEquipo(request.userRole) && parsed.data.ownerId
           ? parsed.data.ownerId
           : request.userId;
       if (!ownerId) {

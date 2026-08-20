@@ -24,6 +24,7 @@ import { SwitchRow } from "@/components/SwitchRow";
 import { SelectField } from "@/components/SelectField";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import { bathSizeKey, sizeFromWeight } from "@holidoginn/shared/src/pricing";
+import { useAuthStore } from "@/store/authStore";
 
 /**
  * Agrega un servicio a una reserva que ya existe: el caso que faltaba para
@@ -55,6 +56,12 @@ export default function AdminAddAddonScreen() {
     queryKey: ["admin", "services"],
     queryFn: getAdminServices,
   });
+
+  // La pantalla la comparten admin y staff (el staff llega desde el detalle de
+  // la estancia o la guardería, cuando en el mostrador piden el baño). Regalar
+  // el servicio es decisión de admin: el backend devuelve 403 si un STAFF manda
+  // isCourtesy, así que aquí ni se ofrece.
+  const esAdmin = useAuthStore((st) => st.role) === "ADMIN";
 
   const [serviceCode, setServiceCode] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -197,15 +204,17 @@ export default function AdminAddAddonScreen() {
         </>
       )}
 
-      <SwitchRow
-        label="Cortesía"
-        hint="Se agenda y se ejecuta, pero no se cobra ni suma al total."
-        value={isCourtesy}
-        onValueChange={setIsCourtesy}
-        testID="admin-add-addon-courtesy"
-      />
+      {esAdmin && (
+        <SwitchRow
+          label="Cortesía"
+          hint="Se agenda y se ejecuta, pero no se cobra ni suma al total."
+          value={isCourtesy}
+          onValueChange={setIsCourtesy}
+          testID="admin-add-addon-courtesy"
+        />
+      )}
 
-      {isCourtesy && (
+      {esAdmin && isCourtesy && (
         <>
           <Text style={styles.label}>Motivo de la cortesía (opcional)</Text>
           <TextInput
