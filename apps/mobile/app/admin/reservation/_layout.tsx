@@ -24,6 +24,7 @@ export default function AdminReservationLayout() {
       <Stack.Screen name="[id]" options={{ title: "Detalle de reservación", headerLeft: backButton }} />
       <Stack.Screen name="edit-dates" options={{ title: "Modificar fechas", headerLeft: backButton }} />
       <Stack.Screen name="edit-appointment" options={{ title: "Reagendar baño", headerLeft: backButton }} />
+      <Stack.Screen name="edit-daycare-schedule" options={{ title: "Editar horario", headerLeft: backButton }} />
       <Stack.Screen name="add-addon" options={{ title: "Agregar servicio", headerLeft: backButton }} />
     </Stack>
   );

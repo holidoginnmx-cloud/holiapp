@@ -127,6 +127,28 @@ export const styles = StyleSheet.create({
   bathHeroWrap: {
     gap: 10,
   },
+  // Daycare hero — el día encima de las horas (entrada → salida), porque la
+  // guardería es de un solo día y lo que se mueve es el horario.
+  daycareHeroWrap: {
+    gap: 8,
+  },
+  daycareDayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  daycareDayText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textSecondary,
+    textTransform: "capitalize",
+  },
+  // Como datePillDay pero SIN capitalize: "1:00 pm" se volvería "1:00 Pm".
+  daycareTime: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
   bathHero: {
     flexDirection: "row",
     alignItems: "center",

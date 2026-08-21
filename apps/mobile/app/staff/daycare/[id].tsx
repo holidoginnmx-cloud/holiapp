@@ -208,10 +208,16 @@ export default function StaffDaycareDetail() {
     );
   }
   if (!daycare) {
+    // El detalle se saca de la lista de guarderías (hoy + 30 días): si se movió
+    // a un día fuera de ese rango, deja de aparecer aquí y hay que buscarla en
+    // el tablero por su día.
     return (
       <View style={styles.center}>
         <Ionicons name="sunny-outline" size={40} color={COLORS.border} />
-        <Text style={styles.emptyText}>Guardería no encontrada</Text>
+        <Text style={styles.emptyText}>
+          Guardería no encontrada. Si le cambiaste el día, búscala en el tablero
+          de guarderías.
+        </Text>
       </View>
     );
   }
@@ -221,6 +227,10 @@ export default function StaffDaycareDetail() {
   const paid = daycare.payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const extra = extraHoursAddon(daycare);
   const phone = daycare.owner?.phone;
+  // Concluida ya cobró sus horas extra al recoger: moverle el horario después
+  // descuadraría ese cobro.
+  const canEditSchedule =
+    daycare.status === "CONFIRMED" || daycare.status === "CHECKED_IN";
 
   return (
     <ScrollView
@@ -276,24 +286,38 @@ export default function StaffDaycareDetail() {
 
         <View style={styles.divider} />
 
-        {/* Día + horas */}
-        <View style={styles.infoRow}>
-          <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.infoText}>
-            {daycare.appointmentAt
-              ? formatWeekdayDayShort(daycare.appointmentAt)
-              : "—"}
-          </Text>
-        </View>
-        {daycare.checkInTime && daycare.checkOutTime && (
+        {/* Día + horas — tocable para moverlos mientras la guardería siga
+            viva. Es la petición más común del cliente ("me lo recogen hasta
+            las 7") y hasta ahora había que cancelar y volver a capturar. */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          disabled={!canEditSchedule}
+          onPress={() =>
+            router.push(`/staff/daycare/edit-schedule?id=${daycare.id}` as any)
+          }
+          testID="staff-daycare-edit-schedule"
+        >
           <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+            <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              {formatTimeHHmm(daycare.checkInTime)} –{" "}
-              {formatTimeHHmm(daycare.checkOutTime)} (estimado)
+              {daycare.appointmentAt
+                ? formatWeekdayDayShort(daycare.appointmentAt)
+                : "—"}
             </Text>
+            {canEditSchedule && (
+              <Ionicons name="pencil" size={12} color={COLORS.primary} />
+            )}
           </View>
-        )}
+          {daycare.checkInTime && daycare.checkOutTime && (
+            <View style={styles.infoRow}>
+              <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.infoText}>
+                {formatTimeHHmm(daycare.checkInTime)} –{" "}
+                {formatTimeHHmm(daycare.checkOutTime)} (estimado)
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
         {daycare.notes ? (
           <View style={styles.infoRow}>
             <Ionicons name="document-text-outline" size={16} color={COLORS.warningText} />
@@ -590,9 +614,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.bgPage,
+    paddingHorizontal: 32,
     gap: 10,
   },
-  emptyText: { fontSize: 14, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    textAlign: "center",
+  },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 16,

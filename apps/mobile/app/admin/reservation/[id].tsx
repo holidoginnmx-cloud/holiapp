@@ -56,12 +56,14 @@ import {
   formatDayLongYear,
   formatDayShort as fmtDayShort,
   formatWeekdayShort,
+  formatWeekdayDayShort,
   formatDateTimeShort,
   formatTime,
   formatTimeHHmm,
   utcDayKey,
   localDayKey,
 } from "@/lib/format";
+import { computeDaycareHours } from "@holidoginn/shared/src/pricing";
 import { LIVE_OPS } from "@/lib/queryOptions";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
@@ -615,6 +617,17 @@ export default function AdminReservationDetail() {
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
   // Reagendar la cita (appointmentAt) solo aplica a baños sueltos confirmados.
   const canEditAppointment = isBath && reservation.status === "CONFIRMED";
+  // La guardería se mueve mientras siga viva: con el perro adentro es cuando
+  // más se pide ("me lo recogen hasta las 7"). Concluida ya cobró sus horas
+  // extra, así que ahí se cierra.
+  const canEditDaycareSchedule =
+    isDaycare &&
+    (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
+  // Horas facturables del horario estimado (las mismas que dan el precio).
+  const daycareHours =
+    isDaycare && reservation.checkInTime && reservation.checkOutTime
+      ? computeDaycareHours(reservation.checkInTime, reservation.checkOutTime)
+      : 0;
   // El domicilio se puede tocar mientras la reserva siga viva (el equipo también
   // con la estancia en curso).
   const canEditDelivery =
@@ -895,6 +908,75 @@ export default function AdminReservationDetail() {
           </View>
         )}
 
+        {/* Daycare hero — día + entrada → salida con las horas al centro.
+            Antes la guardería no mostraba NI el día NI el horario aquí (el
+            hero de fechas se salta las reservas sin checkIn/checkOut), así que
+            no había dónde verlo ni cómo corregirlo desde la app. */}
+        {isDaycare && (
+          <TouchableOpacity
+            style={styles.daycareHeroWrap}
+            activeOpacity={0.7}
+            disabled={!canEditDaycareSchedule}
+            onPress={() =>
+              router.push(
+                `/admin/reservation/edit-daycare-schedule?id=${id}` as any,
+              )
+            }
+            testID="admin-reservation-edit-daycare-schedule"
+          >
+            <View style={styles.daycareDayRow}>
+              <Ionicons
+                name="calendar-outline"
+                size={13}
+                color={COLORS.textTertiary}
+              />
+              <Text style={styles.daycareDayText}>
+                {reservation.appointmentAt
+                  ? formatWeekdayDayShort(reservation.appointmentAt, {
+                      timeZone: "UTC",
+                    })
+                  : "Sin día"}
+              </Text>
+            </View>
+
+            <View style={styles.dateHero}>
+              <View style={styles.datePill}>
+                <Text style={styles.datePillLabel}>ENTRADA</Text>
+                <Text style={styles.daycareTime}>
+                  {reservation.checkInTime
+                    ? formatTimeHHmm(reservation.checkInTime)
+                    : "—"}
+                </Text>
+              </View>
+
+              <View style={styles.dateConnector}>
+                <View style={styles.connectorLine} />
+                <View style={styles.nightsBadge}>
+                  <Ionicons name="time" size={12} color={COLORS.primary} />
+                  <Text style={styles.nightsBadgeText}>
+                    {daycareHours > 0
+                      ? `${daycareHours} ${daycareHours === 1 ? "hora" : "horas"}`
+                      : "Sin horario"}
+                  </Text>
+                  {canEditDaycareSchedule && (
+                    <Ionicons name="pencil" size={11} color={COLORS.primary} />
+                  )}
+                </View>
+                <View style={styles.connectorLine} />
+              </View>
+
+              <View style={styles.datePill}>
+                <Text style={styles.datePillLabel}>SALIDA</Text>
+                <Text style={styles.daycareTime}>
+                  {reservation.checkOutTime
+                    ? formatTimeHHmm(reservation.checkOutTime)
+                    : "—"}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Date hero — entrada → salida con noches al centro. Tocable para
             modificar fechas mientras la estadía siga activa. */}
         {!isBath && reservation.checkIn && reservation.checkOut && (
@@ -954,9 +1036,13 @@ export default function AdminReservationDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Cuarto + Staff lado a lado (sólo hospedajes) */}
+        {/* Cuarto + Staff lado a lado (sólo hospedajes). En guardería el perro
+            pasa el día, no duerme: el cuarto nunca se asigna y salía siempre
+            como "Por asignar". */}
         {!isBath && (
         <View style={styles.metaRow}>
+          {!isDaycare && (
+          <>
           <TouchableOpacity
             style={styles.metaItem}
             onPress={() => setRoomModalVisible(true)}
@@ -988,6 +1074,8 @@ export default function AdminReservationDetail() {
           </TouchableOpacity>
 
           <View style={styles.metaDivider} />
+          </>
+          )}
 
           <TouchableOpacity
             style={styles.metaItem}

@@ -568,6 +568,24 @@ export const UpdateReservationTimesSchema = z
     { message: "Indica al menos una hora" },
   );
 
+// ── Horario de una guardería YA creada (STAFF/ADMIN) ─────────────────────────
+// En guardería las horas SON el precio (horas × tarifa), así que mover el
+// horario no es lo mismo que indicar una hora estimada de llegada: por eso
+// tiene su propio contrato y no reusa UpdateReservationTimesSchema.
+export const UpdateDaycareScheduleSchema = z.object({
+  /** Día nuevo ("YYYY-MM-DD", fecha local del hotel). Ausente = no se mueve. */
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)")
+    .optional(),
+  checkInTime: TimeHHmmSchema,
+  checkOutTime: TimeHHmmSchema,
+  /** Ajustar el total por la diferencia de horas. false = precio pactado. */
+  updateTotal: z.boolean().default(true),
+  /** Guardar aunque el día ya pasó o el cupo esté lleno. */
+  force: z.boolean().optional(),
+});
+
 // ── Edición de una reserva YA creada (solo ADMIN) ────────────────────────────
 // Hasta ahora no había forma de corregir el precio ni las notas después de
 // crear: si se capturaba sin el descuento, quedaba mal para siempre.

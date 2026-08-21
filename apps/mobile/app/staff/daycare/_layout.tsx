@@ -29,6 +29,10 @@ export default function DaycareLayout() {
         name="[id]"
         options={{ title: "Detalle de guardería", headerLeft: backButton }}
       />
+      <Stack.Screen
+        name="edit-schedule"
+        options={{ title: "Editar horario", headerLeft: backButton }}
+      />
     </Stack>
   );
 }

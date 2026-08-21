@@ -147,6 +147,38 @@ export const checkOutStaffDaycare = (id: string, pickupTime?: string) =>
     body: JSON.stringify(pickupTime ? { pickupTime } : {}),
   });
 
+/**
+ * Mueve el día y/o el horario de una guardería ya creada (STAFF/ADMIN). En
+ * guardería las horas SON el precio, así que el servidor ajusta el total por la
+ * DIFERENCIA de horas; `updateTotal: false` lo deja intacto (precio pactado).
+ */
+export const updateDaycareSchedule = (
+  reservationId: string,
+  payload: {
+    /** "YYYY-MM-DD" — omitir para dejar el día como está. */
+    date?: string;
+    checkInTime: string;
+    checkOutTime: string;
+    updateTotal: boolean;
+    /** Guardar aunque el día ya pasó o el cupo esté lleno. */
+    force?: boolean;
+  },
+) =>
+  apiFetch<{
+    success: boolean;
+    hours: number;
+    previousHours: number | null;
+    newTotal: number;
+    previousTotal: number;
+    delta: number;
+    balance: number;
+    overpaid: number;
+    warning: string | null;
+  }>(`/staff/daycares/${reservationId}/schedule`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
 export const registerDaycareManualPayment = (
   reservationId: string,
   payload: { amount: number; method?: "CASH" | "TRANSFER"; notes?: string },

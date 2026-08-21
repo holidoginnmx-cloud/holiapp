@@ -2,14 +2,15 @@ import { FastifyInstance } from "fastify";
 import {
   CreateDaycareIntentSchema,
   ConfirmDaycareSchema,
+  UpdateDaycareScheduleSchema,
 } from "@holidoginn/shared";
-import { Prisma } from "@holidoginn/db";
+import { Prisma, ReservationStatus } from "@holidoginn/db";
 import Stripe from "stripe";
 import {
   createAuthMiddleware,
   createStaffMiddleware,
 } from "../middleware/auth";
-import { notifyPetAudience } from "../lib/notify";
+import { notifyPetAudience, notifyTeamReservationUpdated } from "../lib/notify";
 import { sharedPetIds } from "../lib/petAccess";
 import { requestReview } from "../lib/reviewRequest";
 import { quoteDelivery } from "../lib/delivery";
@@ -29,6 +30,7 @@ import {
   createDaycareGroup,
   countDaycareOccupancy,
   daycareDayRange,
+  daycareDayAnchor,
 } from "../lib/daycareCreate";
 import { TZ_OFFSET_HOURS, isValidDateYMD } from "./baths";
 
@@ -40,6 +42,15 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 export function todayYMDLocal(): string {
   const local = new Date(Date.now() - TZ_OFFSET_HOURS * 3600 * 1000);
   return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * "YYYY-MM-DD" del día de una guardería. El `appointmentAt` se ancla a MEDIODÍA
+ * UTC (convención de daycareDayAnchor), así que el día se lee en UTC — leerlo
+ * en local correría la fecha un día.
+ */
+export function ymdFromDayAnchor(anchor: Date): string {
+  return `${anchor.getUTCFullYear()}-${String(anchor.getUTCMonth() + 1).padStart(2, "0")}-${String(anchor.getUTCDate()).padStart(2, "0")}`;
 }
 
 /** Minutos desde medianoche AHORA en hora local del hotel. */
@@ -792,6 +803,230 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ success: true, amount, concluded });
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  PATCH /staff/daycares/:id/schedule — mover el día y/o el horario
+  //  de una guardería ya creada (STAFF/ADMIN).
+  //
+  //  En guardería las horas SON el precio (horas × tarifa), así que
+  //  esto no es el `/reservations/:id/times` del dueño: ajusta el
+  //  total por la DIFERENCIA de horas (como el cambio de fechas de
+  //  una estancia), revalida el cupo si cambia de día y avisa.
+  //
+  //  A propósito NO usa `validateDaycareWindow`: esa es la ventana
+  //  del flujo del cliente. El equipo captura lo que pasa en la vida
+  //  real ("me lo recogen hasta las 7"), igual que al crear desde la
+  //  app; el horario fuera de 9-18 sale como aviso, no como error.
+  // ────────────────────────────────────────────────────────────
+  fastify.patch<{ Params: { id: string } }>(
+    "/staff/daycares/:id/schedule",
+    { preHandler: staffAuth },
+    async (request, reply) => {
+      const parsed = UpdateDaycareScheduleSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { date, checkInTime, checkOutTime, updateTotal, force } = parsed.data;
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+        include: {
+          pet: { select: { name: true } },
+          payments: {
+            where: { status: { in: ["PAID", "PARTIAL"] } },
+            select: { amount: true },
+          },
+        },
+      });
+      if (!reservation || reservation.reservationType !== "DAYCARE") {
+        return reply.status(404).send({ error: "Guardería no encontrada" });
+      }
+      // Una guardería concluida ya cobró sus horas extra al recoger: moverle
+      // el horario después descuadraría ese cobro.
+      if (reservation.status !== "CONFIRMED" && reservation.status !== "CHECKED_IN") {
+        return reply.status(400).send({
+          error:
+            reservation.status === "CANCELLED"
+              ? "La guardería está cancelada"
+              : "La guardería ya concluyó",
+        });
+      }
+
+      const newHours = computeDaycareHours(checkInTime, checkOutTime);
+      if (newHours <= 0) {
+        return reply
+          .status(400)
+          .send({ error: "La hora de salida debe ser posterior a la de entrada" });
+      }
+
+      const oldYMD = reservation.appointmentAt
+        ? ymdFromDayAnchor(reservation.appointmentAt)
+        : null;
+      const newYMD = date ?? oldYMD;
+      if (!newYMD) {
+        return reply.status(400).send({ error: "La guardería no tiene día" });
+      }
+      const newAnchor = daycareDayAnchor(newYMD);
+      if (!newAnchor) {
+        return reply.status(400).send({ error: "Fecha inválida (YYYY-MM-DD)" });
+      }
+      const dayChanged = newYMD !== oldYMD;
+
+      // Mover a un día que ya pasó solo con "Registrar de todos modos" (mismo
+      // gate que al crear). Si el día NO cambia no aplica: una guardería
+      // retroactiva se sigue pudiendo corregir de horas.
+      if (dayChanged && newYMD < todayYMDLocal() && !force) {
+        return reply.status(400).send({
+          error: "Ese día ya pasó",
+          code: "DATE_IN_PAST",
+        });
+      }
+
+      // Todas las mascotas del grupo se mueven juntas (entran y salen juntas).
+      const groupWhere = reservation.groupId
+        ? {
+            groupId: reservation.groupId,
+            reservationType: "DAYCARE" as const,
+            status: { in: ["CONFIRMED", "CHECKED_IN"] as ReservationStatus[] },
+          }
+        : { id: reservation.id };
+
+      const pricing = await getLodgingPricing(prisma);
+      // Sin horas previas (guardería vieja o capturada a medias) no hay
+      // diferencia que cobrar: se corrige el horario sin tocar el dinero.
+      const previousHours =
+        reservation.checkInTime && reservation.checkOutTime
+          ? computeDaycareHours(reservation.checkInTime, reservation.checkOutTime)
+          : null;
+      const delta =
+        updateTotal && previousHours != null && previousHours > 0
+          ? (newHours - previousHours) * pricing.daycareHourPrice
+          : 0;
+
+      const previousTotal = Number(reservation.totalAmount);
+      const outcome = await prisma.$transaction(async (tx) => {
+        const rows = await tx.reservation.findMany({
+          where: groupWhere,
+          select: { id: true, totalAmount: true },
+        });
+
+        if (dayChanged) {
+          // Mismo lock por día del cupo (namespace 43) que la creación. Se
+          // toman el día viejo y el nuevo en orden fijo para que dos cambios
+          // cruzados no se deadlockeen.
+          const days = [...new Set([oldYMD, newYMD].filter(Boolean))].sort();
+          for (const ymd of days) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(43, hashtext(${ymd}))`;
+          }
+          // El grupo entero sale del día viejo, así que ninguna de sus filas
+          // está contada en el día nuevo: no hace falta excluirlas.
+          const { occupied, maxCapacity } = await countDaycareOccupancy(tx, newYMD);
+          if (occupied + rows.length > maxCapacity && !force) {
+            return { ok: false as const, occupied, maxCapacity };
+          }
+        }
+
+        for (const row of rows) {
+          await tx.reservation.update({
+            where: { id: row.id },
+            data: {
+              appointmentAt: newAnchor,
+              checkInTime,
+              checkOutTime,
+              ...(delta !== 0
+                ? {
+                    totalAmount: new Prisma.Decimal(
+                      Math.max(0, Number(row.totalAmount) + delta)
+                    ),
+                  }
+                : {}),
+            },
+          });
+
+          // El recordatorio de 24 h deduplica por la existencia de una
+          // Notification previa de esta reserva: sin borrarla, una guardería
+          // movida después del recordatorio nunca anunciaría el día u hora
+          // nuevos (ver /internal/bath-reminders).
+          if (dayChanged || checkInTime !== reservation.checkInTime) {
+            await tx.notification.deleteMany({
+              where: {
+                userId: reservation.ownerId,
+                type: "RESERVATION_REMINDER",
+                data: { path: ["reservationId"], equals: row.id },
+              },
+            });
+          }
+        }
+
+        return { ok: true as const };
+      });
+
+      if (!outcome.ok) {
+        return reply.status(409).send({
+          error: `No hay cupo de guardería ese día (${outcome.occupied}/${outcome.maxCapacity} ocupado).`,
+          code: "DAYCARE_FULL",
+        });
+      }
+
+      const newTotal = delta !== 0 ? Math.max(0, previousTotal + delta) : previousTotal;
+      const totalPaid = reservation.payments.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0
+      );
+      const balance = Math.max(0, Number((newTotal - totalPaid).toFixed(2)));
+      const overpaid = Math.max(0, Number((totalPaid - newTotal).toFixed(2)));
+
+      const dayLabel = newAnchor.toLocaleDateString("es-MX", {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      });
+      const horario = `${checkInTime} a ${checkOutTime}`;
+
+      // Avisos best-effort: nunca tumban el cambio ya escrito.
+      await notifyPetAudience(
+        prisma,
+        { petId: reservation.petId, ownerId: reservation.ownerId },
+        {
+          type: "GENERAL",
+          title: "Horario de guardería actualizado 🕘",
+          body:
+            `${reservation.pet.name}: ${dayLabel}, de ${horario}.` +
+            (delta !== 0
+              ? ` Nuevo total: $${newTotal.toLocaleString("es-MX")}.`
+              : ""),
+          data: { reservationId: reservation.id, kind: "DAYCARE_RESCHEDULED" },
+        }
+      );
+      await notifyTeamReservationUpdated(prisma, {
+        reservationId: reservation.id,
+        petName: reservation.pet.name,
+        body:
+          `Guardería del ${dayLabel}, de ${horario}.` +
+          (delta !== 0 ? ` Total: $${newTotal.toLocaleString("es-MX")}.` : ""),
+        actorUserId: request.userId,
+        assignedStaffId: reservation.staffId,
+      });
+
+      const outOfWindow =
+        !isWithinDaycareHours(checkInTime) || !isWithinDaycareHours(checkOutTime);
+
+      return reply.send({
+        success: true,
+        hours: newHours,
+        previousHours,
+        newTotal,
+        previousTotal,
+        delta: Number(delta.toFixed(2)),
+        balance,
+        overpaid,
+        warning: outOfWindow
+          ? `El horario queda fuera de ${DAYCARE_OPEN_HOUR}:00 a ${DAYCARE_CLOSE_HOUR}:00.`
+          : null,
+      });
     }
   );
 }

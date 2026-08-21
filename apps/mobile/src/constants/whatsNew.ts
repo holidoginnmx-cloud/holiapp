@@ -34,6 +34,44 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-21",
+    title: "Cambiar el horario de una guardería",
+    items: [
+      {
+        icon: "time-outline",
+        title: "«Me lo recogen hasta las 7» ya se puede",
+        body:
+          "El detalle de guardería no mostraba ni el día ni el horario, así " +
+          "que cuando el cliente cambiaba la hora no había dónde corregirlo. " +
+          "Ahora el día y las horas salen arriba: tócalos y muévelos, incluso " +
+          "con el perro ya adentro. Sirve también para pasarlo a otro día (te " +
+          "avisa si ese día ya está lleno) y para horarios fuera de 9 a 6.",
+        route: "/(staff)/daycares",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "cash-outline",
+        title: "El total se ajusta solo con las horas",
+        body:
+          "Como la guardería se cobra por hora, al cambiar el horario el " +
+          "total sube o baja por la diferencia, y se ve al momento cuánto " +
+          "falta cobrar (o cuánto se pagó de más). Si el precio fue pactado a " +
+          "mano, apaga «Actualizar el total» y se queda como está. Y al " +
+          "recoger ya no salen horas extra que en realidad no fueron.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "notifications-outline",
+        title: "El dueño se entera solito",
+        body:
+          "Al guardar, al dueño le llega el aviso con el día y el horario " +
+          "nuevos (y el total, si cambió), y su recordatorio de un día antes " +
+          "se reprograma con la información correcta.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-19",
     title: "El equipo ya puede registrar lo que llega",
     items: [
