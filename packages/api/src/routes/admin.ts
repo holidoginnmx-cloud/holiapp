@@ -13,6 +13,7 @@ import {
   AdminUpdateReservationSchema,
   AdminCreateAddonSchema,
   AdminUpdateAddonSchema,
+  totalPaymentFees,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
 import {
@@ -407,6 +408,16 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       );
       const total = gross - refunded;
 
+      // Comisión que absorbe el negocio: Stripe (pagos desde la app) + terminal
+      // Getnet (tarjeta en mostrador). `total`/`gross` siguen en BRUTO — es lo
+      // que cobró y contra lo que cuadra la cobranza —; `net` es lo que de
+      // verdad le queda. Solo cuentan los cobros (kind PAYMENT), igual que las
+      // vistas del dashboard, que filtran status PAID/PARTIAL.
+      const fees = totalPaymentFees(
+        enriched.filter((p) => p.kind === "PAYMENT")
+      );
+      const net = total - fees;
+
       const byMethod = enriched.reduce<Record<string, number>>((acc, p) => {
         const sign = p.kind === "REFUND" ? -1 : 1;
         acc[p.method] = (acc[p.method] ?? 0) + sign * Number(p.amount);
@@ -428,6 +439,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         total,
         gross,
         refunded,
+        fees,
+        net,
         byMethod,
         byCategory,
         payments: enriched,

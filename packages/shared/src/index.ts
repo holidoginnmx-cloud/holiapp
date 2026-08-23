@@ -762,14 +762,26 @@ export const PaymentSchema = z.object({
   stripePaymentIntentId: z.string().nullable(),
   paidAt: z.coerce.date().nullable(),
   notes: z.string().nullable(),
+  // Lo que la pasarela se queda de ESTE cobro: Stripe en los pagos hechos
+  // desde la app, terminal Getnet en los cobros con tarjeta en mostrador.
+  // `amount` sigue siendo el BRUTO (lo que entregó el cliente, y contra lo que
+  // se mide el saldo); el neto que le queda al negocio = amount - ambas.
+  // null = no aplica (efectivo/transferencia) o Stripe aún no lo concilia.
+  stripeFeeAmount: z.coerce.number().nullable().optional(),
+  cardFeeAmount: z.coerce.number().nullable().optional(),
   reservationId: z.string(),
   userId: z.string(),
   createdAt: z.coerce.date(),
 });
 
+// Las comisiones NO se capturan al registrar un pago: las escribe el webhook de
+// Stripe (o el admin web, en la terminal). Fuera del schema de creación para
+// que un cliente no pueda inventarlas.
 export const CreatePaymentSchema = PaymentSchema.omit({
   id: true,
   createdAt: true,
+  stripeFeeAmount: true,
+  cardFeeAmount: true,
 }).extend({
   status: PaymentStatusEnum.default("PAID"),
   paidAt: z.coerce.date().default(() => new Date()),
@@ -1200,3 +1212,6 @@ export type CreateProductReview = z.infer<typeof CreateProductReviewSchema>;
 // rutas ni pantallas.
 // ========================
 export * from "./pricing";
+
+// Comisión de pasarela — re-exportado desde ./paymentFees (puro, SIN zod).
+export * from "./paymentFees";

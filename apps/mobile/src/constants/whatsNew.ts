@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-23",
+    title: "Cuánto se queda la tarjeta",
+    items: [
+      {
+        icon: "trending-down-outline",
+        title: "La comisión, a la vista en cada cobro",
+        body:
+          "Un cobro de $1,050 con tarjeta no son $1,050 en la cuenta: Stripe " +
+          "se queda su parte. El monto grande sigue siendo lo que pagó el " +
+          "cliente (es contra eso que se mide el saldo), pero debajo ahora " +
+          "dice cuánto se fue en comisión y cuánto quedó neto. Solo en " +
+          "efectivo y transferencia no aparece: ahí no hay comisión.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "calculator-outline",
+        title: "Ingresos del mes: bruto y neto",
+        body:
+          "Arriba del total del mes salen la comisión que absorbió el " +
+          "negocio y el neto real. Es el mismo neto con el que ya cuadraban " +
+          "las gráficas, que hasta ahora no aparecía en esta pantalla.",
+        route: "/admin/revenue",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-21",
     title: "Cambiar el horario de una guardería",
     items: [

@@ -47,6 +47,7 @@ import {
 } from "@/components/AmountEditModal";
 import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
 import { NoteEditModal } from "@/components/NoteEditModal";
+import { PaymentFeeNote } from "@/components/PaymentFeeNote";
 import { MediaViewer } from "@/components/MediaViewer";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
 import * as ImagePicker from "expo-image-picker";
@@ -1670,6 +1671,7 @@ export default function AdminReservationDetail() {
                     {p.method} ·{" "}
                     {p.paidAt ? formatDateTime(p.paidAt) : "Pendiente"}
                   </Text>
+                  <PaymentFeeNote payment={p} />
                 </View>
                 <View
                   style={[styles.paymentBadge, { backgroundColor: badgeStyle.bg }]}

@@ -15,10 +15,12 @@ import { getAdminRevenueBreakdown } from "@/lib/api";
 import {
   formatName,
   formatCurrency,
+  formatCurrencyExact,
   formatDayShortYear,
   formatMonthYear,
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { PaymentFeeNote } from "@/components/PaymentFeeNote";
 
 function methodLabel(m: string): string {
   switch (m) {
@@ -98,6 +100,10 @@ export default function AdminRevenue() {
   const total = data?.total ?? 0;
   const gross = data?.gross ?? 0;
   const refunded = data?.refunded ?? 0;
+  // Lo que se quedó la pasarela y lo que de verdad entró. El total de arriba
+  // sigue en bruto: es lo que se cobró, y es contra eso que cuadra la cobranza.
+  const fees = data?.fees ?? 0;
+  const net = data?.net ?? 0;
   const hotelTotal = data?.byCategory?.hotel ?? 0;
   const bathTotal = data?.byCategory?.bath ?? 0;
   // Para los porcentajes usamos el bruto positivo (categorías pueden ser
@@ -150,6 +156,22 @@ export default function AdminRevenue() {
                 style={[styles.totalSplitStrong, { color: COLORS.dangerText }]}
               >
                 −{formatCurrency(refunded)}
+              </Text>
+            </Text>
+          </View>
+        ) : null}
+        {fees > 0 ? (
+          <View style={styles.netBlock}>
+            <Text style={styles.feeLine}>
+              Comisión de tarjeta que absorbió el negocio{" "}
+              <Text style={styles.feeLineStrong}>
+                −{formatCurrencyExact(fees)}
+              </Text>
+            </Text>
+            <Text style={styles.netLine}>
+              Neto real{" "}
+              <Text style={styles.netLineStrong}>
+                {formatCurrencyExact(net)}
               </Text>
             </Text>
           </View>
@@ -361,6 +383,7 @@ export default function AdminRevenue() {
                   {methodLabel(item.method)}
                   {item.paidAt ? ` · ${formatDate(item.paidAt)}` : ""}
                 </Text>
+                {!isRefund && <PaymentFeeNote payment={item} />}
                 <View style={styles.paymentOriginRow}>
                   <View
                     style={[
@@ -487,6 +510,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textDisabled,
+  },
+  netBlock: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    gap: 2,
+  },
+  feeLine: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    textAlign: "center",
+  },
+  feeLineStrong: {
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.dangerText,
+    fontVariant: ["tabular-nums"],
+  },
+  netLine: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
+  netLineStrong: {
+    fontSize: 17,
+    fontFamily: "Outfit_600SemiBold",
+    color: COLORS.textPrimary,
+    fontVariant: ["tabular-nums"],
   },
   // Hotel vs Baño card
   sectionCard: {

@@ -63,6 +63,10 @@ export type AdminRevenueBreakdown = {
   total: number;
   gross: number;
   refunded: number;
+  // Comisión de pasarela (Stripe + terminal) que absorbió el negocio, y el
+  // neto real (`total - fees`). `total`/`gross` siguen en bruto.
+  fees: number;
+  net: number;
   byMethod: Record<string, number>;
   byCategory: { hotel: number; bath: number };
   payments: {
@@ -75,6 +79,10 @@ export type AdminRevenueBreakdown = {
     createdAt: string;
     // true = importado del Excel/web histórico; false = registrado en la app.
     originLegacy: boolean;
+    // Comisión de ESTE cobro; null en efectivo/transferencia o si Stripe
+    // todavía no lo concilia.
+    stripeFeeAmount: string | null;
+    cardFeeAmount: string | null;
     category: "HOTEL" | "BATH" | "MIXED";
     hotelAmount: number;
     bathAmount: number;
