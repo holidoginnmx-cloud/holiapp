@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getReservationById,
   getAdminServices,
+  getAdminLodgingPricing,
   adminCreateReservationAddon,
 } from "@/lib/api";
 import { formatName, formatCurrency } from "@/lib/format";
@@ -65,15 +66,39 @@ export default function AdminAddAddonScreen() {
 
   const [serviceCode, setServiceCode] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<string | null>(null);
+  const [horas, setHoras] = useState("1");
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [courtesyReason, setCourtesyReason] = useState("");
   const [internalNote, setInternalNote] = useState("");
 
+  // En guardería las horas extra NO se agregan a mano: el check-out las
+  // calcula solo contra la hora de salida (ver routes/daycare.ts); ofrecer el
+  // chip aquí las cobraría doble.
   const activeServices = useMemo(
-    () => (services ?? []).filter((s) => s.isActive),
-    [services],
+    () =>
+      (services ?? []).filter(
+        (s) =>
+          s.isActive &&
+          !(
+            s.code === "EXTRA_HOURS" &&
+            reservation?.reservationType === "DAYCARE"
+          ),
+      ),
+    [services, reservation?.reservationType],
   );
   const selectedService = activeServices.find((s) => s.code === serviceCode);
+  const isExtraHours = selectedService?.code === "EXTRA_HOURS";
+
+  // Tarifa por hora extra (Config → Tarifas): el catálogo de EXTRA_HOURS es un
+  // ancla a $0, así que el precio se arma aquí como horas × tarifa — el mismo
+  // cálculo que hará el servidor, que es la autoridad.
+  const { data: pricing } = useQuery({
+    queryKey: ["admin", "lodging-pricing"],
+    queryFn: getAdminLodgingPricing,
+    enabled: isExtraHours,
+  });
+  const tarifaHora = pricing?.daycareHourPrice ?? 0;
+  const horasNum = Math.max(0, Math.min(24, parseInt(horas, 10) || 0));
 
   // Talla del perro para preseleccionar la variante correcta: el catálogo de
   // baño tiene una fila por talla × combinación de corte/deslanado, y elegir a
@@ -103,10 +128,17 @@ export default function AdminAddAddonScreen() {
     return `${v.petSize}${sufijo} — ${formatCurrency(v.price)}`;
   }
 
+  // Lo que va a costar: en horas extra es horas × tarifa; en lo demás, el
+  // precio de catálogo de la variante elegida.
+  const addonPrice = isExtraHours
+    ? Number((tarifaHora * horasNum).toFixed(2))
+    : selectedVariant?.price ?? 0;
+
   const mutation = useMutation({
     mutationFn: () =>
       adminCreateReservationAddon(id!, {
         variantId: variantId!,
+        ...(isExtraHours ? { quantity: horasNum } : {}),
         isCourtesy,
         ...(isCourtesy && courtesyReason.trim()
           ? { courtesyReason: courtesyReason.trim() }
@@ -143,7 +175,10 @@ export default function AdminAddAddonScreen() {
     );
   }
 
-  const canSubmit = !!variantId && !mutation.isPending;
+  const canSubmit =
+    !!variantId &&
+    !mutation.isPending &&
+    (!isExtraHours || (horasNum >= 1 && tarifaHora > 0));
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -166,7 +201,13 @@ export default function AdminAddAddonScreen() {
               ]}
               onPress={() => {
                 setServiceCode(s.code);
-                setVariantId(null);
+                // Horas extra tiene UNA variante ancla ($0): se elige sola y
+                // en su lugar la pantalla pide el número de horas.
+                const ancla =
+                  s.code === "EXTRA_HOURS"
+                    ? (s.variants ?? []).find((v) => v.isActive)
+                    : null;
+                setVariantId(ancla?.id ?? null);
               }}
             >
               <Text
@@ -182,7 +223,7 @@ export default function AdminAddAddonScreen() {
         </View>
       )}
 
-      {selectedService && (
+      {selectedService && !isExtraHours && (
         <>
           <SelectField
             title="Opción"
@@ -201,6 +242,27 @@ export default function AdminAddAddonScreen() {
               Filtrado por la talla del perro ({petSizeKey}).
             </Text>
           ) : null}
+        </>
+      )}
+
+      {isExtraHours && (
+        <>
+          <Text style={styles.label}>¿Cuántas horas extra?</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="number-pad"
+            value={horas}
+            onChangeText={setHoras}
+            maxLength={2}
+            placeholder="1"
+            placeholderTextColor={COLORS.textDisabled}
+            testID="admin-add-addon-hours"
+          />
+          <Text style={styles.hint}>
+            {tarifaHora > 0
+              ? `Tarifa: ${formatCurrency(tarifaHora)} por hora (se edita en Config → Tarifas).`
+              : "Falta la tarifa de hora extra: un admin debe capturarla en Config → Tarifas."}
+          </Text>
         </>
       )}
 
@@ -240,7 +302,7 @@ export default function AdminAddAddonScreen() {
 
       {/* Vista previa del impacto en el total: el equipo tiene que ver qué va a
           pasar con el dinero ANTES de guardar. */}
-      {selectedVariant && (
+      {selectedVariant && (!isExtraHours || addonPrice > 0) && (
         <View style={styles.previewBox}>
           <Ionicons
             name={isCourtesy ? "gift-outline" : "cash-outline"}
@@ -249,9 +311,9 @@ export default function AdminAddAddonScreen() {
           />
           <Text style={styles.previewText}>
             {isCourtesy
-              ? `No suma al total. Se registra que se regalaron ${formatCurrency(selectedVariant.price)}.`
-              : `Se sumarán ${formatCurrency(selectedVariant.price)} al total: ${formatCurrency(
-                  Number(reservation.totalAmount) + selectedVariant.price,
+              ? `No suma al total. Se registra que se regalaron ${formatCurrency(addonPrice)}.`
+              : `Se sumarán ${formatCurrency(addonPrice)} al total: ${formatCurrency(
+                  Number(reservation.totalAmount) + addonPrice,
                 )}.`}
           </Text>
         </View>

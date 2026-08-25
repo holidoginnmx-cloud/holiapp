@@ -1350,10 +1350,33 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
       // El precio es autoridad del servidor (igual que en el flujo del cliente):
       // el override solo aplica cuando se pactó otro monto y no es cortesía.
-      const unitPrice =
+      let unitPrice =
         !isCourtesy && unitPriceOverride != null
           ? unitPriceOverride
           : Number(variant.price);
+
+      // Horas extra: la variante del catálogo es un ancla a $0 (solo satisface
+      // el FK); el precio real es horas × la tarifa de Config → Tarifas. Sin
+      // este cálculo el add-on se agregaría en $0 — y el staff no puede
+      // corregirlo porque el override le da 403.
+      if (variant.serviceType.code === "EXTRA_HOURS") {
+        if (!quantity || quantity < 1 || quantity > 24) {
+          return reply
+            .status(400)
+            .send({ error: "Indica cuántas horas extra (1 a 24)" });
+        }
+        if (isCourtesy || unitPriceOverride == null) {
+          const pricing = await prisma.lodgingPricing.findFirst();
+          const tarifa = Number(pricing?.daycareExtraHourPrice ?? 0);
+          if (tarifa <= 0) {
+            return reply.status(400).send({
+              error:
+                "Configura la tarifa de hora extra en Config → Tarifas antes de cobrarla",
+            });
+          }
+          unitPrice = Number((tarifa * quantity).toFixed(2));
+        }
+      }
 
       // `unitPrice` ya es el monto total del add-on (ver addonContribution).
       const contribution = isCourtesy || !addToTotal ? 0 : unitPrice;
@@ -1395,10 +1418,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       });
 
       const etiqueta = isCourtesy ? " de CORTESÍA" : "";
+      const detalleHoras =
+        variant.serviceType.code === "EXTRA_HOURS" && quantity
+          ? ` (${quantity} h)`
+          : "";
       await notifyTeamReservationUpdated(prisma, {
         reservationId: reservation.id,
         petName: reservation.pet.name,
-        body: `Se agregó ${variant.serviceType.name}${etiqueta} a la reserva.`,
+        body: `Se agregó ${variant.serviceType.name}${detalleHoras}${etiqueta} a la reserva.`,
         actorUserId: request.userId,
         assignedStaffId: reservation.staffId,
       });

@@ -34,6 +34,27 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-25-c",
+    title: "Las horas extra ya se cobran desde la app",
+    items: [
+      {
+        icon: "hourglass-outline",
+        title: "Agregar horas extra a una estancia o baño",
+        body:
+          "El caso de siempre: el perro ya iba de salida y el dueño avisa que " +
+          "pasa por él horas después. El baño y el desparasitante ya se " +
+          "podían agregar desde «Agregar servicio»; ahora ahí mismo está " +
+          "«Horas extra»: pones cuántas horas fueron y la app calcula el " +
+          "monto con la tarifa de Config → Tarifas y lo suma al saldo. " +
+          "Funciona para admin y staff (regalarlo o cambiar el precio sigue " +
+          "siendo del admin). En guardería no aparece a propósito: ahí las " +
+          "horas de más se cobran solas al hacer el check-out.",
+        route: "/(staff)/dashboard",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-25-b",
     title: "Lo que de verdad entra de cada pago por Stripe",
     items: [
