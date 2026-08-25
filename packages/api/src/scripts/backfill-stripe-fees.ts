@@ -25,7 +25,9 @@ async function main() {
     where: {
       method: "STRIPE",
       stripePaymentIntentId: { not: null },
-      stripeFeeAmount: null,
+      // También los que ya tienen comisión pero les falta la fecha en que
+      // Stripe libera el dinero (columna agregada después).
+      OR: [{ stripeFeeAmount: null }, { stripeAvailableOn: null }],
     },
     orderBy: { createdAt: "desc" },
   });
@@ -53,7 +55,12 @@ async function main() {
         const fee = new Prisma.Decimal(bt.fee / 100);
         await prisma.payment.update({
           where: { id: p.id },
-          data: { stripeFeeAmount: fee },
+          data: {
+            stripeFeeAmount: fee,
+            stripeAvailableOn: bt.available_on
+              ? new Date(bt.available_on * 1000)
+              : null,
+          },
         });
         updated++;
         console.log(

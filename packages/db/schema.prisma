@@ -727,6 +727,11 @@ model Payment {
   // resta del ingreso global (ver packages/db/sql/dashboard_views.sql). NULL =
   // no aplica (efectivo/transferencia/terminal) o aún no conciliado con Stripe.
   stripeFeeAmount       Decimal?      @db.Decimal(10, 2)
+  // Cuándo Stripe libera el dinero de este pago (balance_transaction.available_on):
+  // con el depósito automático diario, el SPEI sale ese día y cae ese mismo día o
+  // el siguiente hábil. Una vez conciliado el depósito real, manda la arrivalDate
+  // del StripePayout enlazado vía payoutLines. NULL = no aplica o aún sin dato.
+  stripeAvailableOn     DateTime?
   // Recargo por pago con tarjeta en la terminal física (Getnet). Snapshot de la
   // tasa aplicada al momento del cobro; las escribe el admin web (Config →
   // Tarifas define las tasas vigentes en LodgingPricing.cardFee*).

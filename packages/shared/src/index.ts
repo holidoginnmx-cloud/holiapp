@@ -760,16 +760,39 @@ export const PaymentSchema = z.object({
   status: PaymentStatusEnum,
   reference: z.string().nullable(),
   stripePaymentIntentId: z.string().nullable(),
+  // Comisión que Stripe descuenta (solo pagos STRIPE). `amount` SIEMPRE es
+  // bruto: el neto que entra al negocio es amount − stripeFeeAmount.
+  stripeFeeAmount: z.coerce.number().nullable().optional(),
+  // Cuándo Stripe libera el dinero para el depósito automático (≈ cuándo cae
+  // al banco). Si el depósito real ya se concilió, manda payoutLines.
+  stripeAvailableOn: z.coerce.date().nullable().optional(),
   paidAt: z.coerce.date().nullable(),
   notes: z.string().nullable(),
   reservationId: z.string(),
   userId: z.string(),
   createdAt: z.coerce.date(),
+  // Presente solo donde la API incluye la relación (detalle de reservación):
+  // el depósito de Stripe ya conciliado al que pertenece este pago.
+  payoutLines: z
+    .array(
+      z.object({
+        payout: z.object({
+          arrivalDate: z.coerce.date(),
+          status: z.string(),
+        }),
+      }),
+    )
+    .optional(),
 });
 
 export const CreatePaymentSchema = PaymentSchema.omit({
   id: true,
   createdAt: true,
+  // Solo lectura: los escribe el webhook de Stripe / la conciliación de
+  // depósitos, nunca el que registra un pago.
+  stripeFeeAmount: true,
+  stripeAvailableOn: true,
+  payoutLines: true,
 }).extend({
   status: PaymentStatusEnum.default("PAID"),
   paidAt: z.coerce.date().default(() => new Date()),

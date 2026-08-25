@@ -34,6 +34,28 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-25-b",
+    title: "Lo que de verdad entra de cada pago por Stripe",
+    items: [
+      {
+        icon: "card-outline",
+        title: "Comisión, neto y cuándo cae al banco",
+        body:
+          "Cuando un cliente paga con tarjeta desde su app, Stripe se queda " +
+          "una comisión antes de depositar, pero el detalle de la reserva " +
+          "mostraba el monto completo como si todo entrara. Ahora, en los " +
+          "Pagos de cualquier reserva —hospedaje, baño o guardería—, cada " +
+          "pago por Stripe muestra su comisión, el neto que entra al negocio " +
+          "y cuándo cae ese dinero al banco: la fecha exacta del depósito si " +
+          "ya salió, o el día estimado si viene en camino. Ojo: lo que el " +
+          "cliente debe se sigue calculando con lo que él pagó; la comisión " +
+          "es costo del negocio, no deuda de él.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-25",
     title: "Las evidencias se ven de corrido",
     items: [

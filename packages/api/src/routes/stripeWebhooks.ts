@@ -155,7 +155,14 @@ async function handlePaymentIntentSucceeded(
       if (bt && typeof bt !== "string" && bt.fee != null) {
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { stripeFeeAmount: new Prisma.Decimal(bt.fee / 100) },
+          data: {
+            stripeFeeAmount: new Prisma.Decimal(bt.fee / 100),
+            // Día en que Stripe libera el dinero: con depósito automático
+            // diario es cuando el SPEI sale al banco ("¿cuándo me cae?").
+            stripeAvailableOn: bt.available_on
+              ? new Date(bt.available_on * 1000)
+              : null,
+          },
         });
       }
     } catch (err) {

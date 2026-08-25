@@ -202,7 +202,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         include: {
           pet: true,
           room: true,
-          payments: { orderBy: { createdAt: "desc" } },
+          payments: {
+            orderBy: { createdAt: "desc" },
+            // El depósito real de Stripe (si ya se concilió): con él el admin
+            // ve cuándo cayó (o cae) al banco el dinero de cada pago.
+            include: {
+              payoutLines: {
+                select: {
+                  payout: { select: { arrivalDate: true, status: true } },
+                },
+              },
+            },
+          },
           updates: {
             orderBy: { createdAt: "desc" },
             include: {

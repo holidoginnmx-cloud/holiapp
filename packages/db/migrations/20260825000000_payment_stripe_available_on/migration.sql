@@ -1,0 +1,12 @@
+-- Cuándo cae al banco un pago hecho por Stripe.
+--
+-- El pop-up del admin (web y móvil) ya desglosa bruto/comisión/neto, pero para
+-- contestar "¿y cuándo me llega ese dinero?" hacía falta el
+-- balance_transaction.available_on de Stripe: el día en que el dinero se
+-- libera y el depósito automático diario lo manda al banco (cae ese día o el
+-- siguiente hábil). El webhook lo captura junto con la comisión; una vez que
+-- el depósito real existe (stripe_payouts), manda su arrivalDate exacta.
+--
+-- Nullable: efectivo/transferencia/terminal no aplican, y los pagos Stripe
+-- viejos quedan en NULL hasta que el backfill los recoja.
+ALTER TABLE "payments" ADD COLUMN "stripeAvailableOn" TIMESTAMP(3);

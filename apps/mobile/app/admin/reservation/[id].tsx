@@ -94,6 +94,29 @@ function formatDateTime(date: string | Date): string {
   return formatDateTimeShort(date);
 }
 
+// ¿Cuándo cae (o cayó) al banco el dinero de un pago por Stripe? Si el
+// depósito ya se concilió (payoutLines → StripePayout) manda su arrivalDate
+// exacta; si no, el estimado es stripeAvailableOn: el día en que Stripe libera
+// el dinero y el depósito automático diario lo manda al banco.
+function stripeDepositLabel(p: {
+  method: string;
+  payoutLines?: { payout: { arrivalDate: string | Date; status: string } }[];
+  stripeAvailableOn?: string | Date | null;
+}): string | null {
+  if (p.method !== "STRIPE") return null;
+  const payout = p.payoutLines?.[0]?.payout;
+  if (payout) {
+    const fecha = formatDate(payout.arrivalDate);
+    if (payout.status === "paid") return `Depositado al banco el ${fecha}`;
+    if (payout.status === "failed") return `Depósito al banco fallido (${fecha})`;
+    return `Cae al banco el ${fecha}`;
+  }
+  if (p.stripeAvailableOn) {
+    return `Se deposita alrededor del ${formatDate(p.stripeAvailableOn)}`;
+  }
+  return null;
+}
+
 type StatusAction = {
   label: string;
   status: string;
@@ -1670,6 +1693,22 @@ export default function AdminReservationDetail() {
                     {p.method} ·{" "}
                     {p.paidAt ? formatDateTime(p.paidAt) : "Pendiente"}
                   </Text>
+                  {/* Pagos por Stripe: la comisión que se queda Stripe, el
+                      neto que entra al negocio y cuándo cae al banco. */}
+                  {p.method === "STRIPE" && p.stripeFeeAmount != null && (
+                    <Text style={styles.paymentMeta}>
+                      Comisión Stripe −
+                      {formatCurrency(Number(p.stripeFeeAmount))} · Neto{" "}
+                      {formatCurrency(
+                        Number(p.amount) - Number(p.stripeFeeAmount),
+                      )}
+                    </Text>
+                  )}
+                  {stripeDepositLabel(p) && (
+                    <Text style={styles.paymentMeta}>
+                      {stripeDepositLabel(p)}
+                    </Text>
+                  )}
                 </View>
                 <View
                   style={[styles.paymentBadge, { backgroundColor: badgeStyle.bg }]}
