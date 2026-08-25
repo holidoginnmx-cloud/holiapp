@@ -1,14 +1,18 @@
 -- ============================================================================
--- Holidog Inn — Vistas de dashboard, triggers updated_at, RLS y Storage
+-- Holidog Inn — Vistas de dashboard, funciones RPC, triggers updated_at, RLS y Storage
 -- ============================================================================
 -- Esquema unificado: las tablas/columnas las posee Prisma (camelCase, inglés).
--- Prisma NO gestiona vistas, triggers de DB, RLS ni buckets de Storage, así que
--- esos objetos viven aquí.
+-- Prisma NO gestiona vistas, funciones, triggers de DB, RLS ni buckets de
+-- Storage, así que esos objetos viven aquí.
 --
 -- ORDEN DE APLICACIÓN:
 --   1) `prisma migrate deploy`  (crea/actualiza tablas: payments, expenses,
 --      sponsors, hotel_config, reservations, pets, users, ...)
 --   2) Este archivo  (psql / supabase db execute / SQL Editor)
+--
+-- ⚠️ El paso 2 es MANUAL: Railway solo corre `prisma migrate deploy`. Si una
+-- entrega toca vistas o funciones y nadie corre este archivo, no hay error —
+-- los números simplemente dejan de cuadrar en silencio.
 --
 -- Es IDEMPOTENTE: se puede re-ejecutar sin efectos colaterales.
 --
@@ -80,6 +84,9 @@ drop view if exists vw_ingresos_por_perro    cascade;
 drop view if exists vw_ocupacion_hoy         cascade;
 
 -- --- Resumen mensual de ingresos -------------------------------------------
+-- Incluye TODO lo cobrado: hospedaje, estética, guardería y las ventas de
+-- tienda (mostrador y en línea). No hace join a `reservations`, así que los
+-- pagos de pedido —que tienen "reservationId" NULL— entran solos.
 create or replace view vw_ingresos_mensuales as
 with base as (
   select
@@ -219,6 +226,32 @@ pagos as (
   left join extra_por_reserva   ex on ex.rid = r.id
   where p.status in ('PAID', 'PARTIAL')
 ),
+pagos_tienda as (
+  -- Ingresos que NO cuelgan de una reservación. Hoy son exclusivamente ventas de
+  -- tienda: pedido en línea confirmado por el webhook de Stripe, o venta de
+  -- mostrador capturada desde Movimientos (ver crear_venta_mostrador abajo).
+  --
+  -- Hace falta un CTE aparte porque `pagos` hace INNER JOIN a reservations y los
+  -- descartaría: la suma de las bandas no cuadraría contra vw_ingresos_mensuales,
+  -- que sí los cuenta. Tampoco se pueden meter en `pagos` con un LEFT JOIN: su
+  -- window function particiona por "reservationId", y con NULLs todas las ventas
+  -- caerían en una sola partición y el waterfall de baño/desparasitante correría
+  -- entre bolsas de croquetas.
+  --
+  -- El predicado es "sin reservación" y no "con orderId" a propósito: así el
+  -- invariante SUM(vw_ingresos_por_servicio.total) = total_ingresos se sostiene
+  -- estructuralmente aunque mañana aparezca otro ingreso sin reserva.
+  --
+  -- No hay waterfall aquí (no hay add-ons que repartir): el monto neto entero es
+  -- la banda.
+  select
+    extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
+    extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+    (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) as monto
+  from payments p
+  where p.status in ('PAID', 'PARTIAL')
+    and p."reservationId" is null
+),
 atribuido as (
   select
     anio, mes_num, tipo, monto, bano_base, deworm_estetica, extra_base, hotel_base,
@@ -254,6 +287,10 @@ desglosado as (
     greatest(0, least(running_after, hotel_base + bano_base + deworm_estetica + extra_base) - greatest(running_before, hotel_base)) as total
   from atribuido
   where tipo = 'STAY' and (bano_base + deworm_estetica + extra_base) > 0
+  union all
+  -- Ventas de tienda (mostrador y en línea) → banda TIENDA.
+  select anio, mes_num, 'TIENDA' as servicio, monto as total
+  from pagos_tienda
 )
 select
   anio,
@@ -266,6 +303,9 @@ where total > 0
 group by 1, 2, 3;
 
 -- --- Ingresos del mes por perro (Top 10 facturado) -------------------------
+-- OJO: el INNER JOIN a reservations descarta A PROPÓSITO los pagos de tienda
+-- (un pedido de croquetas no es de ningún perro en particular). Por eso la suma
+-- de este Top NO cuadra con vw_ingresos_mensuales, y está bien.
 create or replace view vw_ingresos_por_perro as
 select
   extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
@@ -311,7 +351,199 @@ where r.status in ('CONFIRMED', 'CHECKED_IN')
 
 
 -- ============================================================================
--- 3) ROW LEVEL SECURITY  (permisiva para `authenticated`, por hábito)
+-- 3) FUNCIONES RPC  (las llama el admin web con supabase.rpc())
+-- ============================================================================
+-- Prisma no gestiona funciones; viven aquí por la misma razón que las vistas.
+-- Precedente en el admin web: aplicar_migracion_legacy(payload jsonb).
+
+-- --- Venta de mostrador -----------------------------------------------------
+-- PROBLEMA: registrar una venta presencial toca CUATRO tablas —orders,
+-- order_items, inventory y payments— y @supabase/supabase-js no tiene
+-- transacciones multi-sentencia. Hacerlo por pasos deja, en la mitad de los
+-- fallos, una orden sin ingreso o stock descontado sin venta. El cuerpo de una
+-- función plpgsql corre en UNA transacción: si algo revienta, no queda nada.
+--
+-- Contrato del payload:
+--   { fecha: "YYYY-MM-DD", metodo_pago: "CASH"|"CARD"|..., email?, notas?,
+--     card_brand?, card_fee_pct?, card_fee_amount?, total_esperado,
+--     lineas: [ {tipo:"VARIANTE", variante_id, cantidad}
+--             | {tipo:"LIBRE",    concepto, monto, cantidad} ] }
+--
+-- El PRECIO de una línea de catálogo NO viaja en el payload: se lee de
+-- product_variants, así que el cliente nunca fija precios. `total_esperado` es
+-- el total con el que la Server Action calculó la comisión de tarjeta; si no
+-- coincide con el que sale de la base (alguien cambió un precio entremedias),
+-- la función aborta en vez de guardar una comisión inconsistente.
+--
+-- El recargo de tarjeta sí viaja ya calculado: la tasa vigente la resuelve
+-- snapshotComisionPago() en el servidor de Next (lib/comision-tarjeta-server.ts)
+-- y no vale la pena duplicar esa lógica en SQL.
+--
+-- El stock NUNCA bloquea la venta: la venta ya ocurrió, y negarse a registrarla
+-- porque el conteo está desfasado es peor que registrarla. Se descuenta con el
+-- mismo SQL atómico que handleStoreOrderPaid (piso en 0) y se devuelven las
+-- variantes que quedaron en 0 para que la UI avise.
+
+create or replace function crear_venta_mostrador(payload jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_order_id     text          := gen_random_uuid()::text;
+  v_payment_id   text          := gen_random_uuid()::text;
+  v_order_number int;
+  v_paid_at      timestamp     := (payload->>'fecha')::timestamp;
+  v_email        text          := nullif(btrim(payload->>'email'), '');
+  v_notas        text          := nullif(btrim(payload->>'notas'), '');
+  v_metodo       text          := payload->>'metodo_pago';
+  v_esperado     numeric(10,2) := nullif(payload->>'total_esperado', '')::numeric;
+  v_total        numeric(10,2) := 0;
+  v_agotadas     jsonb         := '[]'::jsonb;
+  l              jsonb;
+  v_qty          int;
+  v_unit         numeric(10,2);
+  v_name         text;
+  v_var_title    text;
+  v_var_id       text;
+  v_left         int;
+begin
+  if jsonb_typeof(payload->'lineas') <> 'array'
+     or jsonb_array_length(payload->'lineas') = 0 then
+    raise exception 'La venta necesita al menos una línea';
+  end if;
+
+  insert into orders (id, email, status, "fulfillmentType", channel,
+                      subtotal, "discountTotal", "shippingTotal", total,
+                      notes, "paidAt", "createdAt", "updatedAt")
+  values (v_order_id, v_email, 'PAID', 'PICKUP', 'COUNTER',
+          0, 0, 0, 0, v_notas, v_paid_at, now(), now())
+  returning "orderNumber" into v_order_number;
+
+  for l in select * from jsonb_array_elements(payload->'lineas')
+  loop
+    v_qty := greatest(coalesce((l->>'cantidad')::int, 1), 1);
+
+    if (l->>'tipo') = 'VARIANTE' then
+      v_var_id := l->>'variante_id';
+      select v.title, v.price, p.name
+        into v_var_title, v_unit, v_name
+        from product_variants v
+        join products p on p.id = v."productId"
+       where v.id = v_var_id;
+      if not found then
+        raise exception 'La variante % ya no existe', v_var_id;
+      end if;
+
+      -- Decremento atómico con piso en 0, igual que handleStoreOrderPaid.
+      update inventory
+         set quantity = greatest(quantity - v_qty, 0), "updatedAt" = now()
+       where "variantId" = v_var_id and "trackInventory" = true
+      returning quantity into v_left;
+
+      -- `found` es false si la variante no lleva control de inventario (en ese
+      -- caso v_left ni siquiera se asigna).
+      if found and v_left = 0 then
+        v_agotadas := v_agotadas || jsonb_build_array(v_name);
+      end if;
+    else
+      v_var_id    := null;
+      v_var_title := null;
+      v_name      := coalesce(nullif(btrim(l->>'concepto'), ''), 'Venta de mostrador');
+      v_unit      := round(coalesce((l->>'monto')::numeric, 0), 2);
+      if v_unit <= 0 then
+        raise exception 'La línea "%" necesita un monto mayor a 0', v_name;
+      end if;
+    end if;
+
+    insert into order_items (id, "productNameSnapshot", "variantTitleSnapshot",
+                             "unitPrice", quantity, "lineTotal", "orderId", "variantId")
+    values (gen_random_uuid()::text, v_name, v_var_title,
+            v_unit, v_qty, v_unit * v_qty, v_order_id, v_var_id);
+
+    v_total := v_total + v_unit * v_qty;
+  end loop;
+
+  if v_total <= 0 then
+    raise exception 'El total de la venta debe ser mayor a 0';
+  end if;
+
+  -- La comisión de tarjeta se calculó contra `total_esperado`; si el total real
+  -- difiere, la comisión guardada estaría mal. Mejor abortar que mentir.
+  if v_esperado is not null and abs(v_total - v_esperado) > 0.01 then
+    raise exception 'El total cambió (esperado %, calculado %). Vuelve a intentar.',
+      v_esperado, v_total;
+  end if;
+
+  update orders set subtotal = v_total, total = v_total, "updatedAt" = now()
+   where id = v_order_id;
+
+  insert into payments (id, amount, kind, method, status,
+                        "reservationId", "orderId", "userId", "paidAt", notes,
+                        "cardBrand", "cardFeePct", "cardFeeAmount", "createdAt")
+  values (v_payment_id, v_total, 'FULL', v_metodo::"PaymentMethod", 'PAID',
+          null, v_order_id, null, v_paid_at,
+          coalesce(v_notas, 'Venta de mostrador #' || v_order_number),
+          nullif(payload->>'card_brand', ''),
+          nullif(payload->>'card_fee_pct', '')::numeric,
+          nullif(payload->>'card_fee_amount', '')::numeric,
+          now());
+
+  return jsonb_build_object(
+    'order_id',     v_order_id,
+    'order_number', v_order_number,
+    'payment_id',   v_payment_id,
+    'total',        v_total,
+    'agotadas',     v_agotadas
+  );
+end;
+$$;
+
+-- --- Deshacer una venta de mostrador ----------------------------------------
+-- Contraparte honesta del alta: borrar solo el pago dejaría un pedido pagado sin
+-- ingreso y el stock descontado. Restaura inventario, borra pago y pedido (los
+-- items caen por CASCADE). Solo funciona sobre channel = 'COUNTER': un pedido de
+-- la tienda web se cancela o se reembolsa, no se borra.
+create or replace function eliminar_venta_mostrador(p_order_id text)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_channel text;
+  it        record;
+begin
+  select channel::text into v_channel from orders where id = p_order_id;
+  if v_channel is null then
+    raise exception 'El pedido no existe';
+  end if;
+  if v_channel <> 'COUNTER' then
+    raise exception 'Solo se pueden borrar ventas de mostrador';
+  end if;
+
+  for it in
+    select "variantId", quantity from order_items
+     where "orderId" = p_order_id and "variantId" is not null
+  loop
+    update inventory
+       set quantity = quantity + it.quantity, "updatedAt" = now()
+     where "variantId" = it."variantId" and "trackInventory" = true;
+  end loop;
+
+  delete from payments where "orderId" = p_order_id;
+  delete from orders   where id = p_order_id;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function crear_venta_mostrador(jsonb)   to service_role;
+grant execute on function eliminar_venta_mostrador(text) to service_role;
+
+
+-- ============================================================================
+-- 4) ROW LEVEL SECURITY  (permisiva para `authenticated`, por hábito)
 -- ============================================================================
 -- El acceso real lo gobiernan: la API Fastify (conexión directa Postgres) y el
 -- admin (SERVICE_ROLE_KEY) — ambos ignoran RLS. Estas policies permiten además
@@ -339,7 +571,7 @@ end $$;
 
 
 -- ============================================================================
--- 4) STORAGE  (buckets + policies unificados en Supabase Storage)
+-- 5) STORAGE  (buckets + policies unificados en Supabase Storage)
 -- ============================================================================
 -- `fotos-perros`: fotos de perros y cartillas (reutilizado de la web, público).
 -- `stay-updates`: evidencias de estancia (fotos/videos), público para servirse

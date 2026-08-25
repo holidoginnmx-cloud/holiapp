@@ -66,10 +66,20 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
+      // Este endpoint es el alta manual de un pago sobre una reservación (lo usa
+      // el admin móvil). Los pagos de pedidos de tienda no se crean aquí: los
+      // genera el webhook de Stripe o la RPC de venta de mostrador.
+      const { reservationId } = parsed.data;
+      if (reservationId == null) {
+        return reply
+          .status(400)
+          .send({ error: "Este endpoint solo registra pagos de reservación" });
+      }
+
       // Checks de existencia en paralelo (antes eran 2 round-trips seriales).
       const [reservation, user] = await Promise.all([
         prisma.reservation.findUnique({
-          where: { id: parsed.data.reservationId },
+          where: { id: reservationId },
         }),
         prisma.user.findUnique({
           where: { id: parsed.data.userId },

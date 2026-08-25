@@ -34,6 +34,28 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-26",
+    title: "Las ventas de la tienda ya están en los ingresos",
+    items: [
+      {
+        icon: "bag-handle-outline",
+        title: "Lo que vende la tienda ya cuenta como ingreso",
+        body:
+          "Los pedidos que se pagaban por Stripe desde la página nunca " +
+          "aparecían en los ingresos del mes: el dinero sí caía al banco, " +
+          "pero el resumen no lo contaba. Ya cuenta, y los pedidos viejos " +
+          "que ya estaban pagados los acomodamos en el mes en que se " +
+          "cobraron — así que puede que veas subir meses pasados. " +
+          "En el desglose de ingresos hay una categoría nueva, Tienda, para " +
+          "distinguirla de hotel y baños. " +
+          "Las ventas que se hacen en el mostrador se registran desde el " +
+          "panel web, en Movimientos, y también entran aquí.",
+        route: "/admin/revenue",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-25-c",
     title: "Las horas extra ya se cobran desde la app",
     items: [

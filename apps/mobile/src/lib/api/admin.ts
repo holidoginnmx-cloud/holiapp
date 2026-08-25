@@ -64,7 +64,7 @@ export type AdminRevenueBreakdown = {
   gross: number;
   refunded: number;
   byMethod: Record<string, number>;
-  byCategory: { hotel: number; bath: number };
+  byCategory: { hotel: number; bath: number; store: number };
   payments: {
     id: string;
     amount: string;
@@ -75,12 +75,16 @@ export type AdminRevenueBreakdown = {
     createdAt: string;
     // true = importado del Excel/web histórico; false = registrado en la app.
     originLegacy: boolean;
-    category: "HOTEL" | "BATH" | "MIXED";
+    // El servidor puede agregar categorías nuevas (STORE llegó después): la
+    // pantalla indexa CATEGORY_STYLE con un fallback, no con una unión cerrada.
+    category: "HOTEL" | "BATH" | "MIXED" | "STORE" | (string & {});
     hotelAmount: number;
     bathAmount: number;
+    // Venta de tienda: el pago cuelga de un pedido en vez de una reservación.
+    order: { id: string; orderNumber: number; channel: "ONLINE" | "COUNTER" } | null;
     reservation: {
       id: string;
-      reservationType: "STAY" | "BATH";
+      reservationType: "STAY" | "BATH" | "DAYCARE";
       status: string;
       pet: { name: string };
       owner: { firstName: string; lastName: string };

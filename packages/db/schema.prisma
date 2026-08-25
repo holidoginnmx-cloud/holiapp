@@ -745,8 +745,22 @@ model Payment {
   createdAt             DateTime      @default(now())
 
   // Relaciones
-  reservationId String
-  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  // Nullable desde la entrega de ventas de tienda: un pago cuelga de una
+  // reserva O de un pedido (orderId), nunca de los dos. Antes era NOT NULL, y
+  // por eso el dinero de la tienda no podía existir como pago — quedaba fuera
+  // de los ingresos aunque sí cayera al banco.
+  // onDelete Restrict EXPLÍCITO: al volverse opcional, el default de Prisma
+  // pasaría a SetNull, y un pago huérfano de una reserva borrada se vería como
+  // venta de tienda (la vista de ingresos clasifica por `reservationId is null`).
+  // Restrict conserva el comportamiento que ya había: primero se borran los
+  // pagos, luego la reserva (ver reservaciones/actions.ts en el admin web).
+  reservationId String?
+  reservation   Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  // Venta de tienda (mostrador o en línea). Un pedido pagado genera exactamente
+  // un Payment PAID: es lo que hace que ese dinero entre a los ingresos.
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   // Nullable: los pagos legacy de clientes walk-in pueden no tener cuenta de
   // usuario asociada (se atan a la reservación). Pagos nuevos siempre traen user.
@@ -763,6 +777,7 @@ model Payment {
   payoutLines StripePayoutLine[]
 
   @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
+  @@index([orderId]) // ingresos de tienda por pedido (FK no indexada)
   @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
   @@map("payments")
 }
@@ -1317,6 +1332,11 @@ enum FulfillmentType {
   NATIONAL_SHIPPING // Envío nacional (reservado para fase futura)
 }
 
+enum OrderChannel {
+  ONLINE // Checkout de la tienda web (lo confirma el webhook de Stripe)
+  COUNTER // Venta presencial capturada desde Movimientos en el admin web
+}
+
 enum DiscountType {
   PERCENT // Porcentaje sobre el subtotal
   FIXED // Monto fijo en MXN
@@ -1459,12 +1479,18 @@ model CartItem {
   @@map("cart_items")
 }
 
-// ORDEN — checkout de productos. userId opcional (compra como invitado), email siempre.
+// ORDEN — productos vendidos, por checkout en línea o en el mostrador.
+// userId opcional (compra como invitado). email opcional: en línea siempre se
+// exige (routes/orders.ts lo valida), pero una venta de mostrador en efectivo
+// puede no tener cliente identificado.
 model Order {
   id                    String          @id @default(cuid())
   // Número legible y secuencial para el cliente/admin (ej. #1042).
   orderNumber           Int             @unique @default(autoincrement())
-  email                 String
+  email                 String?
+  // De dónde vino la venta. Distingue el pedido de mostrador del de la tienda
+  // web sin tener que adivinarlo por `stripePaymentIntentId is null`.
+  channel               OrderChannel    @default(ONLINE)
   status                OrderStatus     @default(PENDING)
   fulfillmentType       FulfillmentType @default(PICKUP)
   subtotal              Decimal         @db.Decimal(10, 2)
@@ -1494,8 +1520,14 @@ model Order {
 
   items OrderItem[]
 
-  // Los pedidos de tienda NO generan filas en `payments`, pero sí viajan en los
-  // depósitos de Stripe. Sin esta relación aparecerían como "no identificados".
+  // Un pedido pagado genera exactamente un Payment PAID (lo crea el webhook de
+  // Stripe para las ventas en línea, y la RPC crear_venta_mostrador para las
+  // presenciales). Es lo que mete ese dinero a los ingresos del mes. Un
+  // reembolso agrega un segundo Payment con status REFUNDED.
+  payments Payment[]
+
+  // Además, los pedidos viajan en los depósitos de Stripe. Sin esta relación
+  // aparecerían como "no identificados" en la conciliación.
   payoutLines StripePayoutLine[]
 
   @@index([userId])

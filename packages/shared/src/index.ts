@@ -768,7 +768,10 @@ export const PaymentSchema = z.object({
   stripeAvailableOn: z.coerce.date().nullable().optional(),
   paidAt: z.coerce.date().nullable(),
   notes: z.string().nullable(),
-  reservationId: z.string(),
+  // Un pago cuelga de una reserva O de un pedido de tienda, nunca de los dos.
+  // `reservationId` es null en las ventas de tienda (mostrador y en línea).
+  reservationId: z.string().nullable(),
+  orderId: z.string().nullable().optional(),
   userId: z.string(),
   createdAt: z.coerce.date(),
   // Presente solo donde la API incluye la relación (detalle de reservación):
@@ -793,10 +796,15 @@ export const CreatePaymentSchema = PaymentSchema.omit({
   stripeFeeAmount: true,
   stripeAvailableOn: true,
   payoutLines: true,
-}).extend({
-  status: PaymentStatusEnum.default("PAID"),
-  paidAt: z.coerce.date().default(() => new Date()),
-});
+})
+  .extend({
+    status: PaymentStatusEnum.default("PAID"),
+    paidAt: z.coerce.date().default(() => new Date()),
+  })
+  .refine((d) => (d.reservationId != null) !== (d.orderId != null), {
+    message: "Un pago pertenece a una reservación o a un pedido, no a ambos",
+    path: ["reservationId"],
+  });
 
 export type Payment = z.infer<typeof PaymentSchema>;
 export type CreatePayment = z.infer<typeof CreatePaymentSchema>;

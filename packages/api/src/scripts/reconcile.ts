@@ -18,7 +18,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 type Issue = {
   paymentId: string;
   paymentIntentId: string;
-  reservationId: string;
+  // null en los pagos de tienda: cuelgan de un pedido, no de una reservación.
+  reservationId: string | null;
   kind:
     | "STRIPE_MISSING"
     | "STATUS_MISMATCH"

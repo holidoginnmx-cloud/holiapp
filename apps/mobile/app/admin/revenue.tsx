@@ -49,10 +49,18 @@ function formatDate(iso: string): string {
   return formatDayShortYear(iso);
 }
 
-const CATEGORY_STYLE: Record<
-  "HOTEL" | "BATH" | "MIXED",
-  { label: string; bg: string; color: string; icon: keyof typeof import("@expo/vector-icons").Ionicons.glyphMap }
-> = {
+type CategoryStyle = {
+  label: string;
+  bg: string;
+  color: string;
+  icon: keyof typeof import("@expo/vector-icons").Ionicons.glyphMap;
+};
+
+// Record<string, …> y no una unión cerrada a propósito: este mapa lo indexa
+// `item.category`, que viene del backend. Con una unión cerrada, un valor nuevo
+// del servidor (pasó con STORE) daba `undefined` y tumbaba la pantalla al leer
+// `cat.bg`. Con el fallback de abajo, lo peor que pasa es que se vea "Otro".
+const CATEGORY_STYLE: Record<string, CategoryStyle> = {
   HOTEL: {
     label: "Hotel",
     bg: COLORS.primaryLight,
@@ -71,6 +79,20 @@ const CATEGORY_STYLE: Record<
     color: COLORS.successText,
     icon: "sparkles",
   },
+  // Venta de la tienda (mostrador o en línea): no cuelga de una reservación.
+  STORE: {
+    label: "Tienda",
+    bg: COLORS.warningBg,
+    color: COLORS.warningText,
+    icon: "bag-handle",
+  },
+};
+
+const CATEGORY_FALLBACK: CategoryStyle = {
+  label: "Otro",
+  bg: COLORS.bgSection,
+  color: COLORS.textTertiary,
+  icon: "ellipse-outline",
 };
 
 export default function AdminRevenue() {
@@ -100,17 +122,18 @@ export default function AdminRevenue() {
   const refunded = data?.refunded ?? 0;
   const hotelTotal = data?.byCategory?.hotel ?? 0;
   const bathTotal = data?.byCategory?.bath ?? 0;
+  // Ventas de la tienda (mostrador y en línea): no cuelgan de una reservación,
+  // así que son su propia banda y no reparten entre hotel y baño.
+  const storeTotal = data?.byCategory?.store ?? 0;
   // Para los porcentajes usamos el bruto positivo (categorías pueden ser
   // negativas si hubo más reembolsos que cobros, lo cual evitamos en la barra).
-  const categoriesPositive = Math.max(0, hotelTotal) + Math.max(0, bathTotal);
-  const hotelPct =
-    categoriesPositive > 0
-      ? Math.round((Math.max(0, hotelTotal) / categoriesPositive) * 100)
-      : 0;
-  const bathPct =
-    categoriesPositive > 0
-      ? Math.round((Math.max(0, bathTotal) / categoriesPositive) * 100)
-      : 0;
+  const categoriesPositive =
+    Math.max(0, hotelTotal) + Math.max(0, bathTotal) + Math.max(0, storeTotal);
+  const pctDe = (v: number) =>
+    categoriesPositive > 0 ? Math.round((Math.max(0, v) / categoriesPositive) * 100) : 0;
+  const hotelPct = pctDe(hotelTotal);
+  const bathPct = pctDe(bathTotal);
+  const storePct = pctDe(storeTotal);
   const paymentsCount =
     data?.payments.filter((p) => p.kind === "PAYMENT").length ?? 0;
   const refundsCount =
@@ -216,6 +239,44 @@ export default function AdminRevenue() {
                 </Text>
               </View>
             </View>
+
+            {storeTotal > 0 && (
+              <View style={styles.categoryItem}>
+                <View
+                  style={[
+                    styles.categoryIconWrap,
+                    { backgroundColor: COLORS.warningBg },
+                  ]}
+                >
+                  <Ionicons
+                    name="bag-handle"
+                    size={20}
+                    color={COLORS.warningText}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.categoryLabel}>Tienda</Text>
+                  <Text style={styles.categoryAmount}>
+                    {formatCurrency(storeTotal)}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.categoryPctPill,
+                    { backgroundColor: COLORS.warningBg },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.categoryPctText,
+                      { color: COLORS.warningText },
+                    ]}
+                  >
+                    {storePct}%
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
 
           <View style={styles.barWrap}>
@@ -233,6 +294,14 @@ export default function AdminRevenue() {
                   style={[
                     styles.barSegment,
                     { flex: bathTotal, backgroundColor: COLORS.infoText },
+                  ]}
+                />
+              )}
+              {storeTotal > 0 && (
+                <View
+                  style={[
+                    styles.barSegment,
+                    { flex: storeTotal, backgroundColor: COLORS.warningText },
                   ]}
                 />
               )}
@@ -311,7 +380,7 @@ export default function AdminRevenue() {
           const pet = item.reservation
             ? formatName(item.reservation.pet?.name ?? "—")
             : "—";
-          const cat = CATEGORY_STYLE[item.category];
+          const cat = CATEGORY_STYLE[item.category] ?? CATEGORY_FALLBACK;
           const isRefund = item.kind === "REFUND";
           return (
             <TouchableOpacity

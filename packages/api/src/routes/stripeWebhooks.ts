@@ -104,6 +104,44 @@ export default async function stripeWebhookRoutes(fastify: FastifyInstance) {
   );
 }
 
+// Guarda la comisión de Stripe (bruto − neto) para que los ingresos cuenten el
+// neto real que cae a la cuenta, sin tocar `amount` (que sigue siendo bruto).
+// El balance_transaction puede estar `pending` en pagos con tarjeta MXN y aún no
+// traer `fee`; por eso el llamador filtra por stripeFeeAmount null (idempotente)
+// y el script backfill-stripe-fees.ts recoge los que queden pendientes.
+// Lo usan los pagos de reservación y los de pedido de tienda por igual.
+async function guardarComisionStripe(
+  prisma: FastifyInstance["prisma"],
+  paymentId: string,
+  piId: string
+) {
+  try {
+    const full = await stripe.paymentIntents.retrieve(piId, {
+      expand: ["latest_charge.balance_transaction"],
+    });
+    const charge = full.latest_charge as Stripe.Charge | null;
+    const bt = charge?.balance_transaction;
+    if (bt && typeof bt !== "string" && bt.fee != null) {
+      await prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          stripeFeeAmount: new Prisma.Decimal(bt.fee / 100),
+          // Día en que Stripe libera el dinero: con depósito automático
+          // diario es cuando el SPEI sale al banco ("¿cuándo me cae?").
+          stripeAvailableOn: bt.available_on
+            ? new Date(bt.available_on * 1000)
+            : null,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn(
+      `[webhook] no se pudo obtener la comisión de Stripe del PI ${piId}:`,
+      err
+    );
+  }
+}
+
 async function handlePaymentIntentSucceeded(
   prisma: FastifyInstance["prisma"],
   pi: Stripe.PaymentIntent
@@ -140,37 +178,8 @@ async function handlePaymentIntentSucceeded(
     });
   }
 
-  // Guardar la comisión de Stripe (bruto - neto) para que los ingresos globales
-  // cuenten el neto real que cae a la cuenta, sin tocar `amount` (que sigue
-  // bruto). El balance_transaction puede estar `pending` en pagos con tarjeta
-  // MXN y aún no traer `fee`; el guard por null hace esto idempotente y el
-  // script backfill-stripe-fees.ts recoge los que queden pendientes.
   if (payment.stripeFeeAmount == null) {
-    try {
-      const full = await stripe.paymentIntents.retrieve(pi.id, {
-        expand: ["latest_charge.balance_transaction"],
-      });
-      const charge = full.latest_charge as Stripe.Charge | null;
-      const bt = charge?.balance_transaction;
-      if (bt && typeof bt !== "string" && bt.fee != null) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            stripeFeeAmount: new Prisma.Decimal(bt.fee / 100),
-            // Día en que Stripe libera el dinero: con depósito automático
-            // diario es cuando el SPEI sale al banco ("¿cuándo me cae?").
-            stripeAvailableOn: bt.available_on
-              ? new Date(bt.available_on * 1000)
-              : null,
-          },
-        });
-      }
-    } catch (err) {
-      console.warn(
-        `[webhook] no se pudo obtener la comisión de Stripe del PI ${pi.id}:`,
-        err
-      );
-    }
+    await guardarComisionStripe(prisma, payment.id, pi.id);
   }
 
   // Si el PI es de tipo extension-balance, marcar la change request como pagada.
@@ -189,7 +198,9 @@ async function handlePaymentIntentSucceeded(
   // Email de pago recibido (no es el de reservación confirmada — ese va en /multi).
   // Solo enviamos si este pago es de "balance" (no es el depósito inicial, que ya
   // tiene su email en la creación de la reserva).
-  if (pi.metadata?.type === "balance" && payment.user?.email) {
+  // `payment.reservation` puede ser null (pago de pedido de tienda): el correo
+  // habla de la estancia de un perro, así que sin reserva no hay nada que enviar.
+  if (pi.metadata?.type === "balance" && payment.user?.email && payment.reservation) {
     const tpl = paymentReceivedTemplate({
       ownerFirstName: payment.user.firstName,
       amount: Number(payment.amount),
@@ -240,6 +251,30 @@ async function handleStoreOrderPaid(
       data: { status: "PAID", paidAt: new Date(), stripePaymentIntentId: pi.id },
     });
 
+    // El pedido pagado ES un ingreso. Sin esta fila el dinero cae al banco pero
+    // el negocio no lo ve en su mes: los ingresos salen exclusivamente de
+    // `payments` (ver packages/db/sql/dashboard_views.sql).
+    // `amount` = total bruto que pagó el cliente (incluye envío); la comisión de
+    // Stripe se guarda aparte más abajo y las vistas restan el neto real.
+    // upsert por stripePaymentIntentId (UNIQUE): si Stripe reintenta el webhook,
+    // no duplica el ingreso.
+    await tx.payment.upsert({
+      where: { stripePaymentIntentId: pi.id },
+      create: {
+        amount: order.total,
+        kind: "FULL",
+        method: "STRIPE",
+        status: "PAID",
+        stripePaymentIntentId: pi.id,
+        paidAt: new Date(),
+        orderId: order.id,
+        reservationId: null,
+        userId: order.userId,
+        notes: `Pedido de tienda #${order.orderNumber}`,
+      },
+      update: {},
+    });
+
     // Decremento ATÓMICO con piso en 0: `SET quantity = GREATEST(quantity - n, 0)`
     // es una sola sentencia con lock de fila, así que no sufre lost-update ante
     // webhooks concurrentes y nunca deja el inventario negativo (sobreventa rara
@@ -268,6 +303,16 @@ async function handleStoreOrderPaid(
       });
     }
   });
+
+  // Comisión de Stripe del ingreso recién creado. Fuera de la transacción
+  // porque llama a la API de Stripe (no se sostiene una tx abierta sobre red).
+  const ingreso = await prisma.payment.findUnique({
+    where: { stripePaymentIntentId: pi.id },
+    select: { id: true, stripeFeeAmount: true },
+  });
+  if (ingreso && ingreso.stripeFeeAmount == null) {
+    await guardarComisionStripe(prisma, ingreso.id, pi.id);
+  }
 
   // Email de confirmación (tolerante a fallos). Va al email del pedido.
   if (order.email) {
@@ -356,14 +401,19 @@ async function handleChargeRefunded(
     return;
   }
 
-  // Si ya hay un Payment REFUNDED para esta reservación con el mismo monto, saltar
-  // (el flujo de /cancel ya lo creó).
+  // Si ya hay un Payment REFUNDED del mismo monto para esta reservación (o para
+  // este pedido), saltar — el flujo de /cancel ya lo creó.
+  // El filtro se elige según de qué cuelga el pago original: con `reservationId`
+  // NULL (venta de tienda), filtrar por esa columna matchearía CUALQUIER
+  // reembolso sin reserva del mismo monto y se saltaría uno legítimo.
   const refundAmount = charge.amount_refunded / 100;
   const existingRefund = await prisma.payment.findFirst({
     where: {
-      reservationId: originalPayment.reservationId,
       status: "REFUNDED",
       amount: { equals: new Prisma.Decimal(refundAmount) },
+      ...(originalPayment.reservationId
+        ? { reservationId: originalPayment.reservationId }
+        : { orderId: originalPayment.orderId }),
     },
   });
   if (existingRefund) return;
@@ -376,10 +426,21 @@ async function handleChargeRefunded(
       stripePaymentIntentId: `${piId}_refund_${charge.id}`,
       paidAt: new Date(),
       reservationId: originalPayment.reservationId,
+      orderId: originalPayment.orderId,
       userId: originalPayment.userId,
       notes: `Reembolso Stripe (webhook) — charge ${charge.id}`,
     },
   });
+
+  // Reembolso de un pedido de tienda: además de registrar el movimiento, el
+  // pedido queda REFUNDED. Antes no se hacía porque no había forma de llegar
+  // del charge a la orden.
+  if (originalPayment.orderId) {
+    await prisma.order.updateMany({
+      where: { id: originalPayment.orderId, status: { in: ["PAID", "FULFILLED"] } },
+      data: { status: "REFUNDED" },
+    });
+  }
 
   // Pagos legacy walk-in pueden no tener usuario asociado → sin notificación.
   if (originalPayment.userId) {
@@ -388,11 +449,20 @@ async function handleChargeRefunded(
       type: "REFUND_ISSUED",
       title: "Reembolso procesado 💳",
       body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")}.`,
-      data: { reservationId: originalPayment.reservationId, amount: refundAmount },
+      data: {
+        reservationId: originalPayment.reservationId,
+        orderId: originalPayment.orderId,
+        amount: refundAmount,
+      },
     });
   }
 
-  if (originalPayment.user?.email) {
+  // El correo habla de "la cancelación de la estancia de <perro>", así que solo
+  // aplica a reembolsos de reservación. Un reembolso de pedido de tienda queda
+  // registrado y notificado in-app, pero sin este correo: mandarlo diría que se
+  // canceló una estancia que nunca existió. (Si algún día se quiere avisar por
+  // correo del reembolso de un pedido, necesita su propio template.)
+  if (originalPayment.user?.email && originalPayment.reservation) {
     const tpl = refundIssuedTemplate({
       ownerFirstName: originalPayment.user.firstName,
       amount: refundAmount,

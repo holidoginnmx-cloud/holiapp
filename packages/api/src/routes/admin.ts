@@ -96,7 +96,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           select: { roomId: true },
         }),
 
-        // Ingresos del mes (brutos): suma PAID + PARTIAL en el mes calendario completo
+        // Ingresos del mes (brutos): suma PAID + PARTIAL en el mes calendario
+        // completo. Sin join a reservations, así que incluye TODO lo cobrado:
+        // hospedaje, estética, guardería y las ventas de tienda (mostrador y en
+        // línea, que desde la entrega de ventas de tienda sí generan Payment).
         prisma.payment.aggregate({
           where: {
             status: { in: ["PAID", "PARTIAL"] },
@@ -341,6 +344,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               owner: { select: { firstName: true, lastName: true } },
             },
           },
+          order: { select: { id: true, orderNumber: true, channel: true } },
           addons: {
             select: {
               unitPrice: true,
@@ -366,11 +370,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .filter((a) => a.variant.serviceType.code === "BATH")
           .reduce((sum, a) => sum + Number(a.unitPrice), 0);
 
-        let category: "HOTEL" | "BATH" | "MIXED";
+        let category: "HOTEL" | "BATH" | "MIXED" | "STORE";
         let hotelAmount: number;
         let bathAmount: number;
 
-        if (p.reservation?.reservationType === "BATH") {
+        // Venta de tienda (mostrador o en línea): no cuelga de una reserva, así
+        // que no es hotel ni estética. Va primero porque sin esta rama caería en
+        // el `else` final y se reportaría como HOTEL.
+        if (p.orderId) {
+          category = "STORE";
+          hotelAmount = 0;
+          bathAmount = 0;
+        } else if (p.reservation?.reservationType === "BATH") {
           category = "BATH";
           hotelAmount = 0;
           bathAmount = amount;
@@ -417,9 +428,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           const sign = p.kind === "REFUND" ? -1 : 1;
           acc.hotel += sign * p.hotelAmount;
           acc.bath += sign * p.bathAmount;
+          // Las ventas de tienda no reparten entre hotel/estética: el monto
+          // entero es su propia banda (hotelAmount y bathAmount quedan en 0).
+          if (p.category === "STORE") acc.store += sign * Number(p.amount);
           return acc;
         },
-        { hotel: 0, bath: 0 }
+        { hotel: 0, bath: 0, store: 0 }
       );
 
       return reply.send({

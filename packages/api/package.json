@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "reconcile": "tsx --env-file=.env src/scripts/reconcile.ts",
-    "backfill:stripe-fees": "tsx --env-file=.env src/scripts/backfill-stripe-fees.ts"
+    "backfill:stripe-fees": "tsx --env-file=.env src/scripts/backfill-stripe-fees.ts",
+    "backfill:store-payments": "tsx --env-file=.env src/scripts/backfill-store-order-payments.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",
