@@ -43,8 +43,9 @@ export default function ChecklistsScreen() {
   const [orphansExpanded, setOrphansExpanded] = useState(false);
   const initRef = useRef(false);
 
-  // Evidencia abierta: se guarda el grupo entero (el bloque del día) para poder
-  // deslizar entre las fotos de ese reporte sin volver a la lista.
+  // Evidencia abierta: se guarda la lista COMPLETA de la estancia (todos los
+  // días, en el orden en que se ven en pantalla) para poder deslizar de un día
+  // al siguiente sin cerrar el visor; el índice apunta a la que se tocó.
   const [viewer, setViewer] = useState<{
     items: MediaViewerItem[];
     index: number;
@@ -131,16 +132,28 @@ export default function ChecklistsScreen() {
     return { updatesByDay: byDay, orphans: orphan };
   }, [updates, sorted]);
 
-  const openItem = (u: StayUpdate, group: StayUpdate[]) =>
+  // Mismo orden en que se pintan abajo: los días de reporte (ascendente) con
+  // sus evidencias, y al final las que no caen en ningún reporte. Así deslizar
+  // en el visor recorre la estancia igual que la lista.
+  const allUpdates = useMemo(() => {
+    const seq: StayUpdate[] = [];
+    for (const c of sorted) {
+      seq.push(...(updatesByDay.get(utcDayKey(c.date)) ?? []));
+    }
+    seq.push(...orphans);
+    return seq;
+  }, [sorted, updatesByDay, orphans]);
+
+  const openItem = (u: StayUpdate) =>
     setViewer({
-      items: group.map((g) => ({
+      items: allUpdates.map((g) => ({
         url: g.mediaUrl,
         type: g.mediaType === "video" ? ("video" as const) : ("image" as const),
         caption: formatDateLong(g.createdAt),
       })),
       index: Math.max(
         0,
-        group.findIndex((g) => g.id === u.id),
+        allUpdates.findIndex((g) => g.id === u.id),
       ),
     });
 

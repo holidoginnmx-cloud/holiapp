@@ -34,6 +34,26 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-25",
+    title: "Las evidencias se ven de corrido",
+    items: [
+      {
+        icon: "images-outline",
+        title: "Desliza entre las fotos y videos de toda la estancia",
+        body:
+          "Antes el visor se quedaba encerrado en el día que abriste: para " +
+          "ver las evidencias de otro día había que cerrar, buscar el reporte " +
+          "y volver a abrir. Y si el día mezclaba fotos con videos, el video " +
+          "ni siquiera entraba al carrusel. Ahora abres cualquiera y deslizas " +
+          "por todas las de la estancia, fotos y videos revueltos, de un día " +
+          "al siguiente; arriba se ve de qué día es cada una y en cuál vas " +
+          "(«4 de 12»). Los videos arrancan solos al llegar a ellos y se " +
+          "pausan al pasar al siguiente.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-21",
     title: "Cambiar el horario de una guardería",
     items: [
