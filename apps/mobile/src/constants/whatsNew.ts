@@ -41,15 +41,14 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         icon: "bag-handle-outline",
         title: "Lo que vende la tienda ya cuenta como ingreso",
         body:
-          "Los pedidos que se pagaban por Stripe desde la página nunca " +
-          "aparecían en los ingresos del mes: el dinero sí caía al banco, " +
-          "pero el resumen no lo contaba. Ya cuenta, y los pedidos viejos " +
-          "que ya estaban pagados los acomodamos en el mes en que se " +
-          "cobraron — así que puede que veas subir meses pasados. " +
-          "En el desglose de ingresos hay una categoría nueva, Tienda, para " +
-          "distinguirla de hotel y baños. " +
-          "Las ventas que se hacen en el mostrador se registran desde el " +
-          "panel web, en Movimientos, y también entran aquí.",
+          "Vender un producto no tenía dónde registrarse: el dinero entraba " +
+          "a la caja y no aparecía por ningún lado. Ahora las ventas de " +
+          "mostrador se capturan desde el panel web, en Movimientos, y " +
+          "entran a los ingresos como cualquier otro cobro — las vas a ver " +
+          "aquí, en el desglose, bajo una categoría nueva: Tienda. " +
+          "Lo mismo va a pasar cuando alguien compre por la página: ese " +
+          "pedido tampoco habría contado, y ya quedó resuelto. " +
+          "Ninguna cifra de meses pasados cambia.",
         route: "/admin/revenue",
         roles: ["ADMIN"],
       },
