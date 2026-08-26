@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { DateTimeField } from "@/components/DateTimeField";
@@ -36,6 +36,7 @@ import {
   deliveryQuote,
   getAdminLodgingPricing,
   getBathSlots,
+  getQuote,
   type PetWithOwner,
 } from "@/lib/api";
 import {
@@ -102,6 +103,9 @@ export default function AdminCreateReservation() {
   // de llegar. Lo que cambia entre ambos es el selector de responsable, que
   // sale de GET /users (solo-admin) y no le sirve a quien está en el mostrador.
   const esAdmin = useAuthStore((s) => s.role) === "ADMIN";
+  // Se llegó aquí desde una cotización: el formulario se precarga con lo que ya
+  // se le prometió al cliente. Ver la hidratación más abajo.
+  const { quoteId } = useLocalSearchParams<{ quoteId?: string }>();
 
   const [reservationType, setReservationType] = useState<ReservationType>("STAY");
   const [clientSearch, setClientSearch] = useState("");
@@ -170,6 +174,18 @@ export default function AdminCreateReservation() {
   const [depositAgreed, setDepositAgreed] = useState("");
   const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
 
+  // Cotización de origen (si la hay): folio y total prometido, para el banner y
+  // para el switch de "respetar el precio cotizado".
+  const [desdeCotizacion, setDesdeCotizacion] = useState<{
+    folio: number;
+    total: number;
+    isExpired: boolean;
+    // Conceptos que el total ya cobra pero que esta pantalla no crea: hay que
+    // agregarlos después desde el detalle, SIN volver a cobrarlos.
+    pendientes: { label: string; amount: number }[];
+  } | null>(null);
+  const [respetarPrecio, setRespetarPrecio] = useState(true);
+
   const {
     data: pets,
     isLoading: petsLoading,
@@ -180,6 +196,85 @@ export default function AdminCreateReservation() {
     queryKey: ["admin", "all-pets"],
     queryFn: getAllPets,
   });
+
+  // ── Prefill desde una cotización ──────────────────────────────────────────
+  // La cotización no aparta cuarto ni horario, así que aquí se precarga TODO lo
+  // demás y el operador solo decide lo que faltaba. La hidratación corre UNA
+  // sola vez: después de eso el formulario es suyo y no se debe pisar lo que
+  // vaya escribiendo.
+  const { data: cotizacion } = useQuery({
+    queryKey: ["quotes", "detail", quoteId],
+    queryFn: () => getQuote(quoteId!),
+    enabled: Boolean(quoteId),
+  });
+  const yaHidratado = useRef(false);
+
+  useEffect(() => {
+    if (!cotizacion || yaHidratado.current) return;
+    const p = cotizacion.prefill;
+    yaHidratado.current = true;
+
+    setReservationType(p.reservationType);
+    if (p.ownerId) setOwnerId(p.ownerId);
+    if (p.petIds.length > 0) setPetIds(p.petIds);
+
+    // Las fechas vienen como "YYYY-MM-DD" y se reconstruyen en hora LOCAL: un
+    // new Date("2026-09-01") lo interpreta como UTC y en Hermosillo mostraría
+    // el 31 de agosto.
+    const desdeYMD = (ymd: string | null): Date | null => {
+      if (!ymd) return null;
+      const [y, m, d] = ymd.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+    if (p.checkIn) setCheckIn(desdeYMD(p.checkIn));
+    if (p.checkOut) setCheckOut(desdeYMD(p.checkOut));
+    // En BATH se deja SIN hora a propósito: la cotización no aparta agenda, y
+    // precargar el día a medianoche se vería como una cita ya elegida a las
+    // 12:00 am. El operador elige el horario real de los que sí caben.
+    if (p.reservationType === "DAYCARE") {
+      if (p.date) setDcDate(desdeYMD(p.date));
+      if (p.checkInTime) setDcInTime(p.checkInTime);
+      if (p.checkOutTime) setDcOutTime(p.checkOutTime);
+    }
+
+    if (p.bath) {
+      if (p.reservationType === "BATH") {
+        setDeslanado(p.bath.deslanado);
+        setCorte(p.bath.corte);
+      } else {
+        setStayBathEnabled(true);
+        setStayDeslanado(p.bath.deslanado);
+        setStayCorte(p.bath.corte);
+      }
+    }
+    if (p.hasMedication) {
+      setMedEnabled(true);
+      if (p.medicationNotes) setMedNotes(p.medicationNotes);
+    }
+    if (p.homeDelivery) {
+      setDeliveryEnabled(true);
+      setDeliveryAddress({
+        address: p.homeDelivery.address,
+        lat: p.homeDelivery.lat,
+        lng: p.homeDelivery.lng,
+        placeId: p.homeDelivery.placeId ?? undefined,
+      });
+    }
+    // El campo de "nota interna" de esta pantalla escribe en internalNotes; se
+    // precarga con el aviso de qué incluye el total, para que quien atienda el
+    // día del servicio no re-cobre lo que ya está pagado.
+    if (p.internalNotesSugeridas) setNotes(p.internalNotesSugeridas);
+    else if (p.notes) setNotes(p.notes);
+    // El precio prometido manda por defecto: si las tarifas subieron entre
+    // cotizar y cerrar, se cobra lo que se prometió.
+    setTotalOverride(String(p.quotedTotal));
+    setDesdeCotizacion({
+      folio: p.folio,
+      total: p.quotedTotal,
+      isExpired: p.isExpired,
+      pendientes: p.pendientes ?? [],
+    });
+  }, [cotizacion]);
 
   // Clientes derivados de las mascotas (solo dueños con mascota activa).
   // La búsqueda coincide por nombre de cliente o de mascota (sin acentos);
@@ -498,6 +593,10 @@ export default function AdminCreateReservation() {
       ...overrideFields,
       ...(staffId ? { staffId } : {}),
       ...(depositAgreed.trim() ? { depositAgreed: Number(depositAgreed) } : {}),
+      // Enlaza la reserva con la cotización que la originó: el servidor la
+      // marca CONVERTED. No afecta al cálculo — el precio prometido ya viaja,
+      // como cualquier otro, en totalAmountOverride.
+      ...(quoteId ? { quoteId } : {}),
       ...(deliveryEnabled && deliveryAddress
         ? {
             homeDelivery: {
@@ -675,6 +774,47 @@ export default function AdminCreateReservation() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* Viene de una cotización: se recuerda cuánto se prometió y con qué
+            folio, para que quien confirma sepa que ese número ya salió. */}
+        {desdeCotizacion && (
+          <View style={styles.cotizacionBanner}>
+            <Ionicons name="document-text" size={16} color={COLORS.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cotizacionTexto}>
+                Desde la cotización COT-
+                {String(desdeCotizacion.folio).padStart(6, "0")} ·{" "}
+                {formatCurrency(desdeCotizacion.total)}
+              </Text>
+              {desdeCotizacion.isExpired && (
+                <Text style={styles.cotizacionVencida}>
+                  Estaba vencida: revisa el precio antes de confirmar.
+                </Text>
+              )}
+              {desdeCotizacion.pendientes.length > 0 && (
+                <Text style={styles.cotizacionPendientes}>
+                  Ya cobrado en el total:{" "}
+                  {desdeCotizacion.pendientes.map((p) => p.label).join(", ")}.
+                  Agrégalo desde el detalle SIN volver a cobrarlo.
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+        {desdeCotizacion && (
+          <SwitchRow
+            label="Respetar el precio cotizado"
+            hint="Apágalo para recalcular con las tarifas de hoy"
+            value={respetarPrecio}
+            onValueChange={(v) => {
+              setRespetarPrecio(v);
+              // El precio prometido vive en el mismo campo de "total pactado"
+              // que ya existía: encenderlo lo repone, apagarlo lo vacía para
+              // que el servidor recalcule.
+              setTotalOverride(v ? String(desdeCotizacion.total) : "");
+            }}
+          />
+        )}
+
         <LevelSelector
           label="Tipo de reservación"
           options={[
@@ -1412,6 +1552,33 @@ const styles = StyleSheet.create({
   },
   estimateWarn: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.errorText, marginTop: 8 },
   hint: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 4, marginBottom: 2 },
+  cotizacionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  cotizacionTexto: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textPrimary,
+  },
+  cotizacionVencida: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.errorText,
+    marginTop: 2,
+  },
+  cotizacionPendientes: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.warningText,
+    marginTop: 3,
+  },
   totalRow: {
     flexDirection: "row",
     alignItems: "center",

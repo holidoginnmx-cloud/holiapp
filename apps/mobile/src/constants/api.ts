@@ -29,4 +29,5 @@ export const ENDPOINTS = {
   legal: "/legal",
   baths: "/baths",
   daycare: "/daycare",
+  quotes: "/quotes",
 } as const;

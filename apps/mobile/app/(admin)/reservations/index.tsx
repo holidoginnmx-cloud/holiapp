@@ -8,7 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
-} from "react-native";
+  Alert,} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -137,9 +137,23 @@ export default function AdminReservations() {
         onRefresh={refetch}
       />
 
+      {/* El "+" abre las dos altas que arrancan aquí: reservar de una vez, o
+          cotizarle primero a quien todavía está preguntando. */}
       <TabFab
         style={styles.fab}
-        onPress={() => router.push("/admin/reservation/create" as any)}
+        onPress={() =>
+          Alert.alert("¿Qué quieres crear?", undefined, [
+            {
+              text: "Reservación",
+              onPress: () => router.push("/admin/reservation/create" as any),
+            },
+            {
+              text: "Cotización",
+              onPress: () => router.push("/admin/quotes/create" as any),
+            },
+            { text: "Cancelar", style: "cancel" },
+          ])
+        }
         testID="admin-reservations-create-fab"
       >
         <Ionicons name="add" size={28} color={COLORS.white} />

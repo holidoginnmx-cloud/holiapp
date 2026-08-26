@@ -147,6 +147,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/notifications" as any)}
         />
         <MenuItem
+          icon="document-text-outline"
+          iconTint={COLORS.primary}
+          label="Cotizaciones"
+          subtitle="Historial y seguimiento de lo cotizado"
+          onPress={() => router.push("/admin/quotes" as any)}
+        />
+        <MenuItem
           icon="people-outline"
           iconTint={COLORS.primary}
           label="Gestionar usuarios"

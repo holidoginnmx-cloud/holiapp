@@ -26,6 +26,7 @@ import {
 } from "../lib/email";
 import { notifyUser, notifyTeamReservationUpdated } from "../lib/notify";
 import { notifyNewReservation } from "../lib/notifyNewReservation";
+import { markQuoteConverted } from "../lib/quotes";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -450,6 +451,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       homeDelivery,
       totalAmountOverride,
       scheduleOverride,
+      quoteId,
     } = parsed.data;
 
     // OWNER solo puede reservar para sí mismo; STAFF/ADMIN pueden reservar en nombre de cualquiera.
@@ -594,6 +596,18 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
         createdByUserId: request.userId ?? null,
       });
+
+      // La reserva vino de una cotización: se cierra el círculo. También
+      // fire-and-forget — que falle marcarla NUNCA debe tumbar la creación de
+      // la reserva, que es lo que de verdad importa.
+      if (quoteId) {
+        void markQuoteConverted(
+          prisma,
+          quoteId,
+          { id: rows[0].id, groupId: rows[0].groupId },
+          request.userId ?? null,
+        );
+      }
 
       return reply.status(201).send(
         rows.length > 1

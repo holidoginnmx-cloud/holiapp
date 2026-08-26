@@ -65,6 +65,42 @@ export function computeDays(checkIn: Date, checkOut: Date): number {
   return Math.round((co - ci) / 86_400_000);
 }
 
+/**
+ * Noches entre dos fechas "YYYY-MM-DD". No construye Date: opera sobre los
+ * componentes de la cadena, así que no hay zona horaria que la pueda correr un
+ * día. Es la forma que usan las cotizaciones, donde el usuario elige DÍAS y no
+ * instantes.
+ *
+ * Da el mismo número que `computeDays` y que el `Math.ceil(diffMs/86_400_000)`
+ * de POST /reservations SIEMPRE QUE ambas fechas vayan ancladas a medianoche
+ * UTC. Con horas del día distintas, el `ceil` de la ruta cuenta una noche de
+ * más (check-in 09:00 → check-out 18:00 son 6 y no 5) — por eso una cotización
+ * convertida en reserva DEBE mandar las fechas a las 00:00 UTC.
+ *
+ * Devuelve NaN si alguna cadena no es una fecha válida.
+ */
+export function nightsBetweenYMD(checkIn: string, checkOut: string): number {
+  const ci = parseYMD(checkIn);
+  const co = parseYMD(checkOut);
+  if (ci == null || co == null) return NaN;
+  return Math.round((co - ci) / 86_400_000);
+}
+
+/** "YYYY-MM-DD" → epoch ms a medianoche UTC. null si el formato es inválido. */
+function parseYMD(ymd: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const ms = Date.UTC(year, month - 1, day);
+  // Rebota fechas que Postgres aceptaría pero no existen (31 de febrero).
+  const back = new Date(ms);
+  if (back.getUTCMonth() !== month - 1 || back.getUTCDate() !== day) return null;
+  return ms;
+}
+
 // Tarifas de hospedaje por defecto. La fila singleton editable por admin
 // (LodgingPricing) toma precedencia en el backend; estas constantes son el
 // fallback del servidor y la base del estimado del cliente.

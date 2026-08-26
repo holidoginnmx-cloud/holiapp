@@ -245,6 +245,12 @@ model User {
   orders         Order[]
   productReviews ProductReview[]
 
+  // Cotizaciones. `quotesOwned` son las que se le hicieron a ESTA persona;
+  // las otras dos son las que hizo/convirtió como parte del equipo.
+  quotesOwned     Quote[] @relation("QuoteOwner")
+  quotesCreated   Quote[] @relation("QuoteCreator")
+  quotesConverted Quote[] @relation("QuoteConverter")
+
   @@map("users")
 }
 
@@ -315,6 +321,7 @@ model Pet {
   updates      StayUpdate[]
   behaviorTags BehaviorTag[]
   staffAlerts  StaffAlert[]
+  quotePets    QuotePet[]
 
   @@index([ownerId, isActive]) // GET /pets
   @@map("pets")
@@ -864,7 +871,8 @@ model ServiceVariant {
   serviceTypeId String
   serviceType   ServiceType @relation(fields: [serviceTypeId], references: [id])
 
-  addons ReservationAddon[]
+  addons     ReservationAddon[]
+  quoteItems QuoteItem[]
 
   @@unique([serviceTypeId, petSize, deslanado, corte])
   @@map("service_variants")
@@ -1580,6 +1588,7 @@ model DiscountCode {
 
   orders       Order[]
   reservations Reservation[]
+  quotes       Quote[]
 
   @@map("discount_codes")
 }
@@ -1682,4 +1691,258 @@ model ProductReview {
 
   @@index([productId, isApproved])
   @@map("product_reviews")
+}
+
+// =============================================================
+//  QUOTES — Cotizaciones (a un cliente existente o a un prospecto)
+//
+//  Una cotización es lo que se le PROMETE a alguien que todavía no reserva.
+//  Vive en tablas aparte a propósito: no toca `reservations`, no aparta cupo ni
+//  cuarto, no entra a los ingresos y no le notifica nada al cliente. Su único
+//  efecto sobre la operación ocurre al convertirse, y eso pasa por el mismo
+//  POST /reservations de siempre (ver packages/api/src/lib/quoteToReservation.ts).
+//
+//  Todo el dinero se congela al cotizar: si mañana suben las tarifas, la
+//  cotización vigente sigue diciendo lo que se prometió.
+// =============================================================
+
+enum QuoteStatus {
+  DRAFT // Capturada, aún no se le mandó al cliente
+  SENT // Ya se compartió el link/PDF (sentAt != null)
+  CONVERTED // Generó reserva(s)
+  CANCELLED // Descartada por el equipo (el cliente no cerró)
+  // NO existe EXPIRED: la vigencia se DERIVA de `validUntil` en cada lectura.
+  // Un estado persistido exigiría un cron que lo moviera y quedaría
+  // desincronizado cada vez que alguien edite la fecha de vigencia.
+}
+
+// Tipo de concepto de una línea. Espeja los cobros que ya sabe generar la API
+// (POST /reservations y reservation_addons) para que la conversión sea un mapeo
+// 1:1 y no una reinterpretación.
+enum QuoteItemKind {
+  LODGING // Hospedaje: tarifa/noche × noches
+  DAYCARE // Guardería: horas × daycareHourPrice
+  BATH // Baño/estética: fila de service_variants
+  DEWORMING // Desparasitante: variante por dewormSizeFromWeight
+  EXTRA_HOURS // Horas extra: tarifa única × horas
+  MEDICATION_SURCHARGE // Recargo por administrar medicamento
+  HOME_DELIVERY // Servicio a domicilio
+  DISCOUNT // Código de descuento (amount NEGATIVO)
+  CUSTOM // Concepto libre capturado por el operador
+}
+
+model Quote {
+  id     String      @id @default(cuid())
+  // Folio humano para el PDF y el WhatsApp ("COT-000123"). La secuencia la
+  // maneja Postgres: dos personas cotizando al mismo tiempo no pueden
+  // colisionar, cosa que un MAX(folio)+1 en la app sí haría.
+  folio  Int         @unique @default(autoincrement())
+  // Capability del link público: 32 hex de randomBytes(16). No es adivinable
+  // por fuerza bruta y, a diferencia del folio, no revela el orden de creación.
+  // Es lo ÚNICO que protege la página pública, de ahí que el DTO público se
+  // construya por allowlist (buildPublicQuote) y no borrando campos.
+  token  String      @unique
+  status QuoteStatus @default(DRAFT)
+
+  // ── Qué se cotiza ──────────────────────────────────────────
+  // Reusa el enum de reservas: el mapeo a la reserva real es 1:1.
+  reservationType ReservationType
+
+  // Misma semántica que en `reservations`:
+  //   STAY    → checkIn/checkOut (día a 00:00 UTC), totalDays
+  //   BATH    → appointmentAt (inicio de la cita)
+  //   DAYCARE → appointmentAt a MEDIODÍA UTC + checkInTime/checkOutTime
+  // Opcionales incluso dentro de su tipo: se puede cotizar "cinco noches en
+  // diciembre" sin fechas cerradas, que es como llega media la gente por
+  // WhatsApp. En ese caso `totalDays` es la única fuente de la cantidad.
+  checkIn       DateTime? @db.Timestamptz(6)
+  checkOut      DateTime? @db.Timestamptz(6)
+  appointmentAt DateTime? @db.Timestamptz(6)
+  checkInTime   String? // "HH:mm" hora local del hotel
+  checkOutTime  String? // "HH:mm" hora local del hotel
+  // Unidades facturadas, congeladas.
+  totalDays     Int? // noches (STAY)
+  daycareHours  Int? // horas facturables (DAYCARE)
+
+  // ── A quién se le cotiza ───────────────────────────────────
+  // Cliente EXISTENTE. Null = prospecto sin cuenta.
+  ownerId               String?
+  owner                 User?   @relation("QuoteOwner", fields: [ownerId], references: [id])
+  // SNAPSHOT del contacto, SIEMPRE poblado (también cuando hay ownerId): el
+  // PDF no debe depender de un join, y si el cliente se renombra la cotización
+  // histórica sigue diciendo a quién se le mandó.
+  clientName            String
+  clientPhone           String?
+  // Últimos 10 dígitos (normalizePhone de packages/api/src/lib/phone.ts). Es
+  // lo que permite responder "¿ya le cotizamos a este número?" y detectar que
+  // un prospecto ya se registró como cliente.
+  clientPhoneNormalized String?
+  clientEmail           String?
+
+  // ── Dinero (todo congelado al cotizar) ─────────────────────
+  subtotal             Decimal       @db.Decimal(10, 2) // servicios, antes de descuento y domicilio
+  discountTotal        Decimal       @default(0) @db.Decimal(10, 2)
+  deliveryFee          Decimal       @default(0) @db.Decimal(10, 2)
+  total                Decimal       @db.Decimal(10, 2) // subtotal − descuento + domicilio
+  // Anticipo SUGERIDO. Espeja `reservations.depositAgreed`: es lo que se le
+  // pide al cliente, no lo que pagó (una cotización nunca tiene pagos).
+  depositSuggested     Decimal?      @db.Decimal(10, 2)
+  // Código aplicado. NO se incrementa `usesCount` al cotizar (quemaría usos de
+  // códigos que nunca cierran): eso ocurre al convertir, revalidando antes.
+  discountCodeId       String?
+  discountCode         DiscountCode? @relation(fields: [discountCodeId], references: [id])
+  discountCodeSnapshot String? // el código tal cual, por si después se borra
+
+  // ── Servicio a domicilio ───────────────────────────────────
+  // Se guardan lat/lng además de la dirección porque el fee se RECALCULA al
+  // convertir (quoteDelivery lo resuelve server-side desde coordenadas) y las
+  // tarifas de DeliveryConfig cambian.
+  homeDelivery           Boolean @default(false)
+  homeDeliveryAddress    String?
+  homeDeliveryLat        Float?
+  homeDeliveryLng        Float?
+  homeDeliveryPlaceId    String?
+  homeDeliveryDistanceKm Float?
+
+  // ── Vigencia ───────────────────────────────────────────────
+  // Pasada esta fecha la página pública SIGUE abriendo, marcada como vencida:
+  // un 404 sobre un link que el cliente guardó hace dos semanas parece un
+  // negocio caído. Lo que se bloquea es convertirla sin recotizar.
+  validUntil DateTime @db.Timestamptz(6)
+
+  // ── Notas ──────────────────────────────────────────────────
+  // La ve el cliente en el link y en el PDF (condiciones, "incluye transporte").
+  notes         String?
+  // NUNCA sale por la ruta pública ni en el PDF. Mismo criterio que
+  // reservations.internalNotes, pero la protección aquí NO es stripInternal:
+  // /public/quotes/:token es anónima, así que el DTO se arma por allowlist.
+  internalNotes String?
+
+  // ── Auditoría ──────────────────────────────────────────────
+  // Foto de las tarifas usadas (LodgingPricing + ids/precios de las variantes).
+  // Sin esto, en tres meses nadie puede explicar por qué esa cotización decía
+  // $350 por noche. No se usa para calcular: es evidencia.
+  pricingSnapshot Json?
+  createdById     String
+  createdBy       User    @relation("QuoteCreator", fields: [createdById], references: [id])
+  source          String? // "APP_ADMIN" | "WEB_ADMIN"
+
+  // ── Envío y lectura ────────────────────────────────────────
+  sentAt        DateTime? @db.Timestamptz(6)
+  sentCount     Int       @default(0)
+  // Señal de venta: "la abrió tres veces y no ha contestado" es accionable.
+  // OJO: el scraper de WhatsApp abre el link para armar el preview — la ruta
+  // pública filtra bots por User-Agent antes de contar la visita.
+  firstViewedAt DateTime? @db.Timestamptz(6)
+  lastViewedAt  DateTime? @db.Timestamptz(6)
+  viewCount     Int       @default(0)
+
+  // ── Conversión ─────────────────────────────────────────────
+  convertedAt        DateTime? @db.Timestamptz(6)
+  // Se guardan los DOS: con una sola mascota no hay groupId (ver la creación
+  // de grupos en POST /reservations).
+  reservationId      String?
+  reservationGroupId String?
+  convertedById      String?
+  convertedBy        User?     @relation("QuoteConverter", fields: [convertedById], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  pets  QuotePet[]
+  items QuoteItem[]
+
+  @@index([status, createdAt]) // bandeja del equipo: pendientes por seguir
+  @@index([ownerId, createdAt]) // cotizaciones de un cliente
+  @@index([clientPhoneNormalized]) // "¿ya le cotizamos a este número?"
+  @@index([status, validUntil]) // por vencer / vencidas sin cerrar
+  @@map("quotes")
+}
+
+// Foto de cada perro cotizado. Es una TABLA y no un Json dentro de `quotes`
+// porque (a) la conversión lee de aquí el peso y la talla que produjeron el
+// precio, sin re-derivarlos; (b) es el único lugar donde existen los datos del
+// perro de un prospecto; y (c) el subtotal por perro se lee en vez de
+// recalcularse.
+model QuotePet {
+  id       String @id @default(cuid())
+  quoteId  String
+  quote    Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  // Orden de captura. Es el mismo en que se mandan `petIds`/`roomIds` a
+  // POST /reservations, que es posicional.
+  position Int
+
+  // Mascota REAL si el cliente ya existe. Null = perro de un prospecto.
+  petId String?
+  pet   Pet?    @relation(fields: [petId], references: [id])
+
+  // Snapshot SIEMPRE poblado (también con petId): el peso de un perro cambia y
+  // el precio cotizado no debe moverse retroactivamente.
+  name     String
+  weightKg Float?
+  // Talla FACTURABLE resuelta al cotizar. Guardarla evita que un cambio de
+  // criterio de tallas reinterprete cotizaciones viejas.
+  size     PetSize?
+  breed    String?
+
+  // Recargo por medicamento: es POR PERRO, igual que en la reserva.
+  hasMedication   Boolean @default(false)
+  medicationNotes String?
+
+  // Suma de SUS líneas. El domicilio y el descuento son del grupo.
+  subtotal Decimal @db.Decimal(10, 2)
+
+  items QuoteItem[]
+
+  @@unique([quoteId, position])
+  @@index([petId])
+  @@map("quote_pets")
+}
+
+// Una línea del desglose. Vive por separado del total para que el cliente vea
+// de dónde sale el número — que es justo lo que se está vendiendo.
+model QuoteItem {
+  id         String    @id @default(cuid())
+  quoteId    String
+  quote      Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  // Null = la línea es del GRUPO (domicilio, descuento, concepto libre).
+  quotePetId String?
+  quotePet   QuotePet? @relation(fields: [quotePetId], references: [id], onDelete: Cascade)
+
+  kind     QuoteItemKind
+  position Int
+  // Texto ya listo para el PDF ("Hospedaje · 5 noches"). Se congela porque
+  // depende de las tarifas y del criterio de talla del momento.
+  label    String
+  detail   String? // segunda línea: "Perro grande (24 kg) · $450 por noche"
+
+  // ⚠️ CONVENCIÓN DISTINTA A reservation_addons.unitPrice.
+  // Allá `unitPrice` es el monto TOTAL de la línea (ver el comentario de
+  // ReservationAddon.quantity). Aquí `unitPrice` es de verdad por unidad y
+  // `amount` es el total. Quien mapee QuoteItem → ReservationAddon debe
+  // escribir `unitPrice: item.amount`, NO `item.unitPrice`.
+  quantity  Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice Decimal @db.Decimal(10, 2)
+  // Total de la línea. Negativo solo en kind = DISCOUNT. 0 si es cortesía.
+  amount    Decimal @db.Decimal(10, 2)
+  // Precio de catálogo, para tacharlo en el PDF cuando la línea es cortesía.
+  listPrice Decimal @db.Decimal(10, 2)
+
+  // Servicio REGALADO. Mismo criterio que ReservationAddon.isCourtesy: la línea
+  // se IMPRIME con su precio (el cliente debe ver el valor de lo que se le
+  // regaló) pero aporta 0 al total. Un amount de 0 no distingue "regalado" de
+  // "mal capturado", por eso es una bandera.
+  isCourtesy     Boolean @default(false)
+  // El MOTIVO es interno (igual que ReservationAddon.courtesyReason): nunca
+  // sale en el DTO público ni en el PDF.
+  courtesyReason String?
+
+  // Qué fila de service_variants produjo el precio. Es lo que permite que la
+  // conversión cree el add-on correcto sin re-resolver la variante.
+  serviceVariantId String?
+  serviceVariant   ServiceVariant? @relation(fields: [serviceVariantId], references: [id])
+
+  @@index([quoteId, position])
+  @@index([quotePetId])
+  @@map("quote_items")
 }

@@ -22,6 +22,7 @@ import {
   notifyTeamReservationUpdated,
 } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
+import { invalidateQuoteCatalog } from "../lib/quoteCatalog";
 import { extraerCartilla } from "../lib/ocr";
 import {
   getLodgingPricing,

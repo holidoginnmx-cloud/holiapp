@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { invalidateQuoteCatalog } from "../lib/quoteCatalog";
 import { CreateBathAddonSchema, ConfirmBathAddonSchema } from "@holidoginn/shared";
 import { Prisma, PetSize, PrismaClient } from "@holidoginn/db";
 import Stripe from "stripe";
@@ -487,6 +488,8 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       const variant = await prisma.serviceVariant.findUnique({ where: { id: request.params.id } });
       if (!variant) return reply.status(404).send({ error: "Variante no encontrada" });
 
+      // La matriz de precios alimenta las cotizaciones, que la leen de una
+      // caché de 60 s: se invalida al tocarla.
       const updated = await prisma.serviceVariant.update({
         where: { id: request.params.id },
         data: {
@@ -494,6 +497,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
           ...(isActive !== undefined ? { isActive } : {}),
         },
       });
+      invalidateQuoteCatalog();
       return { ...updated, price: Number(updated.price) };
     }
   );
@@ -514,6 +518,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Campos requeridos: serviceTypeId, petSize, price" });
       }
 
+      // Ver arriba: la caché de cotizaciones se invalida al tocar la matriz.
       const variant = await prisma.serviceVariant.create({
         data: {
           serviceTypeId,
@@ -523,6 +528,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
           price: new Prisma.Decimal(price),
         },
       });
+      invalidateQuoteCatalog();
       return reply.status(201).send({ ...variant, price: Number(variant.price) });
     }
   );

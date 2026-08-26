@@ -34,6 +34,37 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-27",
+    title: "Ya puedes cotizar antes de reservar",
+    items: [
+      {
+        icon: "document-text-outline",
+        title: "Cotizaciones con link para WhatsApp",
+        body:
+          "Cuando alguien preguntaba «¿cuánto sale dejar a mi perro cinco días " +
+          "con baño?», había que sacar el número a mano y escribirlo en un " +
+          "mensaje: no quedaba registro de qué se cotizó ni a qué precio, y si " +
+          "el cliente decía que sí tres días después, había que capturar todo " +
+          "otra vez. Ahora el «+» de Reservaciones ofrece «Cotización»: eliges " +
+          "el servicio, las mascotas y las fechas, y el total lo calcula el " +
+          "sistema con las tarifas de verdad. " +
+          "Se puede cotizar a un cliente registrado O a un prospecto que apenas " +
+          "pregunta (solo nombre, WhatsApp y los datos del perro — no se crea " +
+          "cuenta ni expediente). Al guardar sale un link con la cotización " +
+          "hecha página, con la marca del hotel, y el botón de WhatsApp la manda " +
+          "al cliente con el mensaje ya escrito. Él la abre desde el celular y " +
+          "la puede guardar como PDF. " +
+          "Si acepta, «Convertir en reservación» abre el formulario de siempre " +
+          "ya lleno: solo eliges cuarto u hora y listo, cobrando el precio que " +
+          "se prometió aunque las tarifas hayan subido. Cotizar NO aparta cuarto " +
+          "ni horario, y el historial te dice cuántas veces abrió el cliente su " +
+          "cotización — buena señal para saber a quién vale la pena marcarle.",
+        route: "/admin/quotes/create",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-26-d",
     title: "Deshacer un check-out equivocado",
     items: [

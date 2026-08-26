@@ -535,6 +535,10 @@ export const CreateReservationSchema = z.object({
   medicationNotes: z.string().nullable().optional(),
   depositAgreed: z.number().nonnegative().optional(),
   homeDelivery: HomeDeliveryInputSchema.optional(),
+  // Cotización de la que salió esta reserva. Solo cierra el círculo (la marca
+  // CONVERTED y la enlaza); NO cambia nada del cálculo ni de la validación —
+  // el precio prometido viaja, como cualquier otro, en totalAmountOverride.
+  quoteId: z.string().optional(),
 });
 
 export const CreateMultiReservationSchema = z.object({
@@ -1233,9 +1237,127 @@ export const CreateProductReviewSchema = z.object({
 export type CreateProductReview = z.infer<typeof CreateProductReviewSchema>;
 
 // ========================
+// Cotizaciones
+// ========================
+
+export const QuoteStatusEnum = z.enum(["DRAFT", "SENT", "CONVERTED", "CANCELLED"]);
+export type QuoteStatus = z.infer<typeof QuoteStatusEnum>;
+
+export const QuoteItemKindEnum = z.enum([
+  "LODGING",
+  "DAYCARE",
+  "BATH",
+  "DEWORMING",
+  "EXTRA_HOURS",
+  "MEDICATION_SURCHARGE",
+  "HOME_DELIVERY",
+  "DISCOUNT",
+  "CUSTOM",
+]);
+
+// Día como "YYYY-MM-DD". Las cotizaciones NUNCA viajan con Date ni con ISO
+// completo: el usuario elige DÍAS, y un instante serializado desde un picker
+// local se corre de día al pasar a UTC (ver nightsBetweenYMD en ./pricing).
+export const DateYMDSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (formato YYYY-MM-DD)");
+
+// Perro a cotizar. `petId` cuando ya existe en la base; los demás campos son el
+// snapshot que se congela en `quote_pets` (y la ÚNICA fuente de datos cuando se
+// le cotiza a un prospecto sin cuenta).
+export const QuotePetInputSchema = z.object({
+  petId: z.string().optional(),
+  name: z.string().trim().min(1).max(60),
+  weightKg: z.number().positive().max(120).nullable().optional(),
+  size: PetSizeEnum.nullable().optional(),
+  breed: z.string().trim().max(80).nullable().optional(),
+  hasMedication: z.boolean().optional(),
+  medicationNotes: z.string().trim().max(500).nullable().optional(),
+});
+
+export const QuoteCustomItemSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  detail: z.string().trim().max(160).nullable().optional(),
+  quantity: z.number().positive().max(999).default(1),
+  unitPrice: z.number().nonnegative(),
+});
+
+// Lo que hace falta para CALCULAR. Es el cuerpo de POST /quotes/preview y el
+// núcleo de POST /quotes.
+export const QuotePreviewSchema = z.object({
+  serviceType: z.enum(["STAY", "BATH", "DAYCARE"]),
+  pets: z.array(QuotePetInputSchema).min(1).max(10),
+  checkIn: DateYMDSchema.nullable().optional(),
+  checkOut: DateYMDSchema.nullable().optional(),
+  date: DateYMDSchema.nullable().optional(),
+  checkInTime: TimeHHmmSchema.nullable().optional(),
+  checkOutTime: TimeHHmmSchema.nullable().optional(),
+  // Noches pactadas a mano cuando el cliente aún no tiene fechas cerradas.
+  nightsOverride: z.number().int().positive().max(365).nullable().optional(),
+  bath: BathSelectionSchema.nullable().optional(),
+  deworming: z.boolean().optional(),
+  probarf: z.boolean().optional(),
+  extraHours: z.number().int().min(1).max(24).nullable().optional(),
+  // Dirección + coordenadas; la TARIFA la recotiza siempre el servidor con
+  // quoteDelivery (nunca se acepta un fee del cliente).
+  homeDelivery: HomeDeliveryInputSchema.nullable().optional(),
+  discountCode: z.string().trim().max(40).nullable().optional(),
+  // Conceptos regalados: se imprimen con su precio de catálogo pero no suman.
+  courtesy: z.array(QuoteItemKindEnum).optional(),
+  customItems: z.array(QuoteCustomItemSchema).max(10).optional(),
+  // Total pactado del GRUPO. El domicilio siempre se suma aparte.
+  totalOverride: z.number().nonnegative().nullable().optional(),
+});
+export type QuotePreviewInput = z.infer<typeof QuotePreviewSchema>;
+
+// POST /quotes — lo de arriba más a quién se le cotiza y cómo se presenta.
+export const CreateQuoteSchema = QuotePreviewSchema.extend({
+  // Cliente existente. Si falta, es un prospecto y `clientName` es obligatorio
+  // (el CHECK de la tabla exige uno de los dos).
+  ownerId: z.string().nullable().optional(),
+  clientName: z.string().trim().min(1).max(120),
+  clientPhone: z.string().trim().max(30).nullable().optional(),
+  clientEmail: z.string().trim().email().max(160).nullable().optional(),
+  // Nota VISIBLE para el cliente: sale en el link y en el PDF.
+  notes: z.string().trim().max(1000).nullable().optional(),
+  // Nota del EQUIPO: nunca sale por la ruta pública ni en el PDF.
+  internalNotes: z.string().trim().max(1000).nullable().optional(),
+  validUntil: DateYMDSchema.optional(),
+  depositSuggested: z.number().nonnegative().nullable().optional(),
+  source: z.enum(["APP_ADMIN", "WEB_ADMIN"]).optional(),
+  // Correo de quien cotiza. Lo manda SOLO el admin web: su Clerk es otra
+  // instancia, así que la API no puede resolver al autor desde el token y lo
+  // busca por email (ver resolveActor en routes/quotes.ts). La app móvil no lo
+  // manda: ahí el actor sale del token.
+  actorEmail: z.string().trim().email().max(160).optional(),
+});
+export type CreateQuote = z.infer<typeof CreateQuoteSchema>;
+
+// PATCH /quotes/:id — solo lo editable sin recotizar. Cambiar los servicios o
+// las fechas exige recalcular, así que va por otro camino (recrear/duplicar).
+export const UpdateQuoteSchema = z.object({
+  status: QuoteStatusEnum.optional(),
+  validUntil: DateYMDSchema.optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  internalNotes: z.string().trim().max(1000).nullable().optional(),
+  clientPhone: z.string().trim().max(30).nullable().optional(),
+  clientEmail: z.string().trim().email().max(160).nullable().optional(),
+  depositSuggested: z.number().nonnegative().nullable().optional(),
+});
+export type UpdateQuote = z.infer<typeof UpdateQuoteSchema>;
+
+// ========================
 // Pricing & sizing — re-exportado desde ./pricing (módulo puro, SIN zod).
 // Vive en un archivo aparte para que la app móvil pueda importar estas
 // funciones sin arrastrar zod al bundle. FUENTE ÚNICA: no redefinir en
 // rutas ni pantallas.
 // ========================
 export * from "./pricing";
+
+// Cotizaciones — cálculo del desglose. Mismo criterio que ./pricing: módulo
+// puro y sin zod, para que el preview del móvil no arrastre el bundle.
+export * from "./quote";
+
+// Plantilla del documento que ve el cliente (página pública y PDF). El tipo
+// PublicQuote que recibe es la allowlist de lo que puede salir hacia afuera.
+export * from "./quoteHtml";
