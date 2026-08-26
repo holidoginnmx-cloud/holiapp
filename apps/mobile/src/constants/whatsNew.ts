@@ -34,6 +34,28 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-26-c",
+    title: "El detalle de una estancia ya explica el total",
+    items: [
+      {
+        icon: "receipt-outline",
+        title: "Desglose del cobro en la reserva",
+        body:
+          "El cliente sí veía su desglose al reservar (hospedaje por noches, " +
+          "medicamento, el 20% por reservar el mismo día…), pero a ustedes " +
+          "solo les llegaba el total y no había forma de saber de dónde " +
+          "salió. Ahora el detalle de la reserva muestra «Desglose del " +
+          "cobro»: hospedaje con su tarifa por noche, medicamento (+10%), " +
+          "servicios (baño, desparasitante, horas extra), descuento, recargo " +
+          "por reserva del mismo día (+20%) y domicilio. Si el total se " +
+          "editó a mano después, la diferencia sale como «Otros ajustes». " +
+          "Aplica a las estancias reservadas de hoy en adelante.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-26-b",
     title: "Arreglo en la revisión de cartillas",
     items: [

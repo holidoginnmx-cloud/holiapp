@@ -421,6 +421,14 @@ export const ReservationSchema = z.object({
   homeDeliveryAddress: z.string().nullable().optional(),
   homeDeliveryDistanceKm: z.number().nullable().optional(),
   homeDeliveryFee: z.union([z.string(), z.number()]).nullable().optional(),
+  // Desglose del precio ORIGINAL de una estancia (Decimal → string, como la
+  // fee de domicilio). NULL/ausente en reservas viejas, otros tipos o total
+  // manual: sin datos, el desglose no se muestra.
+  lodgingAmount: z.union([z.string(), z.number()]).nullable().optional(),
+  medicationFee: z.union([z.string(), z.number()]).nullable().optional(),
+  sameDayFee: z.union([z.string(), z.number()]).nullable().optional(),
+  // Descuento aplicado al reservar (código compartido con la tienda).
+  discountTotal: z.union([z.string(), z.number()]).nullable().optional(),
   ownerId: z.string(),
   petId: z.string(),
   roomId: z.string().nullable(),

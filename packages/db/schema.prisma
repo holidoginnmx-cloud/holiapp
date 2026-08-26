@@ -470,6 +470,14 @@ model Reservation {
   status                 ReservationStatus @default(CONFIRMED)
   totalDays              Int? // solo STAY
   totalAmount            Decimal           @db.Decimal(10, 2)
+  // Desglose del precio al momento de CREAR la reserva (STAY): de dónde salió
+  // el total, para que el equipo entienda el cobro sin adivinar. NULL en
+  // reservas viejas, en otros tipos y en las capturadas con total manual.
+  // OJO: totalAmount muta después (add-ons, ediciones de precio, extensiones)
+  // — estos campos NO se recalculan: son la foto del cobro original.
+  lodgingAmount          Decimal?          @db.Decimal(10, 2) // hospedaje: tarifa/día × noches
+  medicationFee          Decimal?          @db.Decimal(10, 2) // recargo por medicamento (+10% del hospedaje)
+  sameDayFee             Decimal?          @db.Decimal(10, 2) // recargo por reservar <24h antes del check-in (+20%)
   // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
   // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
   depositAgreed          Decimal?          @db.Decimal(10, 2)

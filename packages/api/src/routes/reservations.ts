@@ -954,6 +954,20 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             totalAmount: new Prisma.Decimal(amounts[i]).add(
               isFirst ? deliveryFee : 0,
             ),
+            // Desglose del cobro original (solo cuando el precio salió del
+            // cálculo automático; con total manual no hay desglose que contar).
+            ...(totalAmountOverride == null
+              ? {
+                  lodgingAmount: new Prisma.Decimal(lodgingByPet[i]),
+                  ...(trimmedMedication
+                    ? {
+                        medicationFee: new Prisma.Decimal(
+                          (lodgingByPet[i] * 0.1).toFixed(2),
+                        ),
+                      }
+                    : {}),
+                }
+              : {}),
             notes,
             internalNotes: internalNotes ?? null,
             legalAccepted,
@@ -1553,6 +1567,19 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             checkOutTime: checkOutTime ?? null,
             totalDays,
             totalAmount: new Prisma.Decimal(reservationAmount),
+            // Desglose del cobro original — la misma foto que el cliente vio
+            // al reservar. totalAmount muta después; esto no se recalcula.
+            lodgingAmount: new Prisma.Decimal(a.amount),
+            ...(medSurcharge > 0
+              ? { medicationFee: new Prisma.Decimal(medSurcharge.toFixed(2)) }
+              : {}),
+            ...(sameDaySurcharge
+              ? {
+                  sameDayFee: new Prisma.Decimal(
+                    ((rowBase - rowDiscount) * 0.2).toFixed(2),
+                  ),
+                }
+              : {}),
             ...(discountCodeId
               ? { discountCodeId, discountTotal: new Prisma.Decimal(rowDiscount) }
               : {}),

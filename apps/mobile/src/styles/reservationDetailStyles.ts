@@ -441,6 +441,42 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   // Total footer
+  // Desglose del cobro original (arriba del Total)
+  breakdownBox: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+    paddingTop: 12,
+    marginTop: 12,
+    gap: 6,
+  },
+  breakdownTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  breakdownLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  breakdownValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+    fontVariant: ["tabular-nums"],
+  },
+  breakdownNegative: {
+    color: COLORS.successText,
+  },
   totalFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
