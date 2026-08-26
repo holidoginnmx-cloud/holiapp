@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-26-b",
+    title: "Arreglo en la revisión de cartillas",
+    items: [
+      {
+        icon: "chatbox-ellipses-outline",
+        title: "El teclado ya no tapa las observaciones",
+        body:
+          "Al revisar una cartilla y tocar el cuadro de «Observaciones para " +
+          "el cliente» (o el motivo de rechazo), el teclado se abría encima " +
+          "del cuadro y no se veía lo que ibas escribiendo. Ahora la pantalla " +
+          "se recorre sola y el texto queda siempre a la vista.",
+        route: "/admin/cartillas",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-26",
     title: "Las ventas de la tienda ya están en los ingresos",
     items: [

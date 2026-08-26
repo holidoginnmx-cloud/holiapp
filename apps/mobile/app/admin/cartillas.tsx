@@ -626,7 +626,17 @@ export default function AdminCartillas() {
             </TouchableOpacity>
 
             {selectedPet && (
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              // automaticallyAdjustKeyboardInsets: los inputs de hasta abajo
+              // (observaciones al cliente, motivo de rechazo) quedaban TAPADOS
+              // por el teclado al enfocarlos — iOS solo hace scroll-to-input
+              // si el ScrollView ajusta sus insets. Mismo arreglo que en
+              // reservation/create.tsx con el campo Notas.
+              <ScrollView
+                contentContainerStyle={{ paddingBottom: 20 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                automaticallyAdjustKeyboardInsets
+              >
                 <Text style={styles.modalTitle}>
                   Cartilla de {formatName(selectedPet.name)}
                 </Text>
