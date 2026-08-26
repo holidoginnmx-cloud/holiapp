@@ -1086,6 +1086,16 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     "/reservations/:id/status",
     { preHandler: [authMiddleware] },
     async (request, reply) => {
+      // Solo el equipo mueve estados (check-in/out, reabrir). El endpoint no
+      // validaba rol NI dueño: cualquier usuario autenticado podía cambiarle
+      // el estado a cualquier reserva. El dueño cancela por su propia ruta
+      // (/reservations/:id/cancel), nunca por aquí.
+      if (request.userRole !== "ADMIN" && request.userRole !== "STAFF") {
+        return reply
+          .status(403)
+          .send({ error: "Solo el equipo puede cambiar el estado" });
+      }
+
       const parsed = UpdateReservationStatusSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });

@@ -8,6 +8,7 @@ import {
   type ManualPaymentValues,
 } from "@/components/PaymentManualModal";
 import { styles } from "@/styles/reservationDetailStyles";
+import { useAuthStore } from "@/store/authStore";
 import {
   View,
   Text,
@@ -170,6 +171,8 @@ export default function AdminReservationDetail() {
   const [addonActionId, setAddonActionId] = useState<string | null>(null);
   const [addonNoteId, setAddonNoteId] = useState<string | null>(null);
   const { banner, showSuccess } = useSuccessBanner();
+  // Reabrir una reserva finalizada es corrección de errores: solo admin.
+  const isAdminRole = useAuthStore((s) => s.role) === "ADMIN";
 
   const closePaymentModal = () => setPaymentModalVisible(false);
 
@@ -369,6 +372,8 @@ export default function AdminReservationDetail() {
         showSuccess("Check-out realizado correctamente");
       } else if (newStatus === "CHECKED_IN") {
         showSuccess("Check-in realizado correctamente");
+      } else if (newStatus === "CONFIRMED") {
+        showSuccess("Reserva reabierta");
       }
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
@@ -586,6 +591,33 @@ export default function AdminReservationDetail() {
     onSuccess: () => showSuccess("Cuarto asignado"),
     errorTitle: "No se pudo asignar el cuarto",
   });
+
+  // Deshacer un check-out equivocado (pasa: querían cancelar o era otro
+  // perro). Nadie recibe avisos: el estado simplemente regresa, y desde ahí
+  // se puede cancelar por el camino normal o retomar la estancia.
+  const handleReopen = () => {
+    const buttons = [
+      { text: "No, dejarla así", style: "cancel" as const },
+      {
+        text: "A Confirmada",
+        onPress: () => statusMutation.mutate({ newStatus: "CONFIRMED" }),
+      },
+      ...(!isBath
+        ? [
+            {
+              text: isDaycare ? "A En guardería" : "A Hospedado",
+              onPress: () =>
+                statusMutation.mutate({ newStatus: "CHECKED_IN" }),
+            },
+          ]
+        : []),
+    ];
+    Alert.alert(
+      "Reabrir reserva",
+      "Para corregir un check-out hecho por error. No se avisa al cliente ni se mueve ningún pago: solo regresa el estado. ¿A cuál?",
+      buttons,
+    );
+  };
 
   const handleStatusChange = (action: StatusAction) => {
     if (action.status === "CANCELLED") {
@@ -1976,6 +2008,23 @@ export default function AdminReservationDetail() {
         >
           <Ionicons name="close-circle-outline" size={18} color={COLORS.errorText} />
           <Text style={styles.cancelButtonText}>Cancelar reservación</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Reabrir una reserva finalizada (deshacer un check-out equivocado).
+          Solo admin: es corrección de errores, no operación del día. */}
+      {reservation.status === "CHECKED_OUT" && isAdminRole && (
+        <TouchableOpacity
+          style={styles.reopenButton}
+          onPress={handleReopen}
+          disabled={statusMutation.isPending}
+          activeOpacity={0.8}
+          testID="admin-reservation-reopen"
+        >
+          <Ionicons name="refresh-circle-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.reopenButtonText}>
+            Reabrir reserva (deshacer check-out)
+          </Text>
         </TouchableOpacity>
       )}
 

@@ -34,6 +34,27 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-26-d",
+    title: "Deshacer un check-out equivocado",
+    items: [
+      {
+        icon: "refresh-circle-outline",
+        title: "Reabrir una reserva finalizada",
+        body:
+          "Pasaba y no tenía salida: le hacías check-out a la reserva que no " +
+          "era (o querías cancelarla) y quedaba «Finalizada» sin ningún botón " +
+          "para corregirlo. Ahora, en el detalle de una reserva finalizada, " +
+          "abajo aparece «Reabrir reserva»: eliges si regresa a Confirmada " +
+          "(el perro no había entrado) o a Hospedado/En guardería (sigue " +
+          "aquí). No se avisa al cliente ni se mueve ningún pago — solo " +
+          "regresa el estado, y desde ahí cancelas o continúas normal. Solo " +
+          "para admins.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-26-c",
     title: "El detalle de una estancia ya explica el total",
     items: [

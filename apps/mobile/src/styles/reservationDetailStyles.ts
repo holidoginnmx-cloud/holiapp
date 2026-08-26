@@ -601,6 +601,24 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  // Reabrir una reserva finalizada (deshacer un check-out equivocado)
+  reopenButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+    marginBottom: 24,
+  },
+  reopenButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   // Section card (servicios + pagos)
   sectionCard: {
     backgroundColor: COLORS.white,
