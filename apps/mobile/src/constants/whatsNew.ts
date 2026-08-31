@@ -34,6 +34,50 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-31",
+    title: "Los depósitos de Stripe dejaron de atorarse",
+    items: [
+      {
+        icon: "business-outline",
+        title: "Los depósitos ahora entran solos",
+        body:
+          "Depósitos se había quedado callada desde el 18 de agosto: dependía por " +
+          "completo de que Stripe nos avisara en el momento exacto, y si ese aviso " +
+          "no llegaba, ese depósito no entraba nunca y nada lo advertía. Ahora se " +
+          "revisa solo todos los días a las 8:30 a.m., y además tienes «Actualizar " +
+          "desde Stripe» arriba de la lista (o jala hacia abajo) para traerlos al " +
+          "momento. Si alguno no cuadra con su desglose, te avisa.",
+        route: "/admin/payouts",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "add-circle-outline",
+        title: "Los cobros que Stripe cobró pero nadie registró, con un botón",
+        body:
+          "Dentro de cada depósito, el bloque «Cobros sin registrar» ya no es solo " +
+          "un aviso: cada uno trae «Registrar como pago de la reserva». Ese dinero " +
+          "entró al banco pero la reserva seguía apareciendo como si debiera. Se " +
+          "registra con el monto correcto —el bruto que pagó el cliente— y la " +
+          "comisión de Stripe guardada aparte, que es como los ingresos la saben " +
+          "restar. Tocarlo dos veces no duplica nada.",
+        route: "/admin/payouts",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "cash-outline",
+        title: "En los pagos ya ves cuánto te quedó a ti",
+        body:
+          "En el detalle de una reservación, un pago hecho por la app mostraba en " +
+          "grande lo que pagó el cliente, y lo que de verdad te quedó después de la " +
+          "comisión iba en letra chica. Ahora es al revés: el número grande es el " +
+          "neto que recibió Holidog Inn, y debajo dice cuánto pagó el cliente y " +
+          "cuánto se llevó Stripe. Los pagos en efectivo o transferencia no cambian: " +
+          "ahí no hay comisión que descontar.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-27",
     title: "Ya puedes cotizar antes de reservar",
     items: [

@@ -1816,34 +1816,54 @@ export default function AdminReservationDetail() {
                 <View style={styles.addonIconWrap}>
                   <Ionicons name={methodIcon} size={18} color={COLORS.primary} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.paymentAmount}>
-                    {isBath ? "Anticipo · " : ""}
-                    <Text style={isBath ? styles.extraPriceInline : undefined}>
-                      {formatCurrency(p.amount)}
-                    </Text>
-                  </Text>
-                  <Text style={styles.paymentMeta}>
-                    {p.method} ·{" "}
-                    {p.paidAt ? formatDateTime(p.paidAt) : "Pendiente"}
-                  </Text>
-                  {/* Pagos por Stripe: la comisión que se queda Stripe, el
-                      neto que entra al negocio y cuándo cae al banco. */}
-                  {p.method === "STRIPE" && p.stripeFeeAmount != null && (
-                    <Text style={styles.paymentMeta}>
-                      Comisión Stripe −
-                      {formatCurrency(Number(p.stripeFeeAmount))} · Neto{" "}
-                      {formatCurrency(
-                        Number(p.amount) - Number(p.stripeFeeAmount),
+                {(() => {
+                  // Cuando Stripe se quedó una comisión, el número grande es lo
+                  // que REALMENTE recibió el hotel y el bruto baja a la línea de
+                  // abajo. Es la pregunta que se hace el dueño al ver un pago:
+                  // "¿cuánto me quedó?". Lo que el cliente pagó sigue a la
+                  // vista porque es lo que abona a su saldo.
+                  //
+                  // La condición mira la comisión, no el método: un cobro de
+                  // Stripe reetiquetado a mano como transferencia sigue teniendo
+                  // su comisión, y seguiría siendo dinero que no entró completo.
+                  //
+                  // Sin comisión (efectivo, transferencia real, terminal) no
+                  // cambia nada: mostrar un "neto" ahí haría creer que el
+                  // cliente pagó menos de lo que pagó.
+                  const bruto = Number(p.amount);
+                  const comision =
+                    p.stripeFeeAmount != null ? Number(p.stripeFeeAmount) : 0;
+                  const hayComision = comision > 0;
+                  const principal = hayComision ? bruto - comision : bruto;
+                  return (
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.paymentAmount}>
+                        {isBath ? "Anticipo · " : ""}
+                        <Text
+                          style={isBath ? styles.extraPriceInline : undefined}
+                        >
+                          {formatCurrency(principal)}
+                        </Text>
+                      </Text>
+                      <Text style={styles.paymentMeta}>
+                        {hayComision ? "Neto al negocio · " : ""}
+                        {p.method} ·{" "}
+                        {p.paidAt ? formatDateTime(p.paidAt) : "Pendiente"}
+                      </Text>
+                      {hayComision && (
+                        <Text style={styles.paymentMeta}>
+                          Pagó el cliente {formatCurrency(bruto)} · Comisión
+                          Stripe −{formatCurrency(comision)}
+                        </Text>
                       )}
-                    </Text>
-                  )}
-                  {stripeDepositLabel(p) && (
-                    <Text style={styles.paymentMeta}>
-                      {stripeDepositLabel(p)}
-                    </Text>
-                  )}
-                </View>
+                      {stripeDepositLabel(p) && (
+                        <Text style={styles.paymentMeta}>
+                          {stripeDepositLabel(p)}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })()}
                 <View
                   style={[styles.paymentBadge, { backgroundColor: badgeStyle.bg }]}
                 >

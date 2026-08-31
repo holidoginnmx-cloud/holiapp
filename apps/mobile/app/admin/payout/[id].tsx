@@ -14,12 +14,17 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
+  Alert,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { COLORS } from "@/constants/colors";
-import { getAdminPayoutBreakdown, type PayoutLine } from "@/lib/api";
+import {
+  getAdminPayoutBreakdown,
+  registrarCobroDeDeposito,
+  type PayoutLine,
+} from "@/lib/api";
 import { formatCurrencyExact, formatArrivalDate } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -52,6 +57,48 @@ export default function PayoutDetailScreen() {
     queryFn: () => getAdminPayoutBreakdown(String(id)),
     enabled: !!id,
   });
+
+  const queryClient = useQueryClient();
+
+  // Dar de alta un cobro que Stripe depositó pero que nunca llegó a `payments`.
+  // El servidor es el que decide monto (bruto), comisión y tipo de pago: aquí
+  // sólo se manda el id de la línea. Es idempotente allá, así que un doble toque
+  // no duplica el ingreso.
+  const registrar = useMutation({
+    mutationFn: (linea: PayoutLine) =>
+      registrarCobroDeDeposito(linea.id, linea.match?.reservationId ?? undefined),
+    onSuccess: async (res) => {
+      // Todo lo del admin depende de este pago: el desglose del depósito, la
+      // reserva, los ingresos del mes.
+      await queryClient.invalidateQueries({ queryKey: ["admin"] });
+      Alert.alert(
+        res.creado ? "Pago registrado" : "Ya estaba registrado",
+        res.creado
+          ? `Se registró el cobro de ${formatCurrencyExact(res.amount)} en su reserva. El saldo pendiente ya lo toma en cuenta.`
+          : "Este cobro ya existía como pago; no se duplicó nada.",
+      );
+    },
+    onError: (e) =>
+      Alert.alert(
+        "No se pudo registrar",
+        e instanceof Error ? e.message : "Intenta de nuevo en un momento.",
+      ),
+  });
+
+  const confirmarRegistro = (l: PayoutLine) => {
+    const quien = l.match?.petNames.length ? l.match.petNames.join(", ") : (l.match?.ownerName ?? "esta reserva");
+    Alert.alert(
+      "¿Registrar este cobro?",
+      `Se agregará un pago de ${formatCurrencyExact(l.gross)} a la reserva de ${quien}` +
+        (l.fee > 0
+          ? `. La comisión de Stripe (${formatCurrencyExact(l.fee)}) se guarda aparte, así que los ingresos cuentan el neto.`
+          : "."),
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Registrar", onPress: () => registrar.mutate(l) },
+      ],
+    );
+  };
 
   if (isError) return <ErrorState error={error} onRetry={refetch} />;
 
@@ -216,7 +263,48 @@ export default function PayoutDetailScreen() {
               : ""}
             .
           </Text>
-          {sinRegistrar.map(renderLinea)}
+          {sinRegistrar.map((l) => {
+            // Sin reserva identificada no hay dónde colgar el pago: se dice, en
+            // vez de ofrecer un botón que sólo puede fallar.
+            const puedeRegistrar = !!l.match?.reservationId && l.gross > 0;
+            return (
+              <View key={`sr-${l.id}`}>
+                {renderLinea(l)}
+                {puedeRegistrar ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.registrarBtn,
+                      pressed && styles.lineaPressed,
+                    ]}
+                    onPress={() => confirmarRegistro(l)}
+                    disabled={registrar.isPending}
+                  >
+                    {/* El spinner va sólo en la fila que se está registrando.
+                        `isPending` a secas es de la mutación, no de la línea:
+                        ponerlo en todas parecía que se estaban registrando
+                        todos los cobros a la vez. */}
+                    {registrar.isPending && registrar.variables?.id === l.id ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={15}
+                        color={COLORS.primary}
+                      />
+                    )}
+                    <Text style={styles.registrarBtnText}>
+                      Registrar como pago de la reserva
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.registrarNota}>
+                    No pudimos saber a qué reserva pertenece. Regístralo a mano
+                    desde la reserva del cliente.
+                  </Text>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -283,6 +371,34 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 4,
+  },
+  registrarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 6,
+    marginBottom: 4,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+  },
+  registrarBtnText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+  },
+  registrarNota: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.textTertiary,
+    fontFamily: "PlusJakartaSans_400Regular",
+    marginTop: 4,
+    marginBottom: 6,
+    paddingHorizontal: 4,
   },
   sectionHint: {
     fontSize: 12,

@@ -30,7 +30,14 @@ import {
   pricePerDayForWeight,
   dewormSizeFromWeight,
 } from "../lib/pricing";
-import { listPayouts, getPayoutBreakdown, syncRecentPayouts } from "../lib/payouts";
+import {
+  listPayouts,
+  getPayoutBreakdown,
+  syncRecentPayouts,
+  listarCobrosSinRegistrar,
+  registrarCobroDeLinea,
+  avisarPayoutSincronizado,
+} from "../lib/payouts";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -450,6 +457,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // Más depósitos nuevos que esto en una sola corrida y el aviso se agrupa:
+  // la primera vez que corre el cron trae todo el rezago de golpe.
+  const AVISOS_INDIVIDUALES_MAX = 3;
+
   // ─── Depósitos de Stripe (SPEI) ──────────────────────────────────
   // Contestan "me llegó una transferencia de $X, ¿de qué reservas es?".
   // Leen de stripe_payouts/stripe_payout_lines, que el webhook payout.paid
@@ -503,15 +514,216 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         : 10;
       try {
         const results = await syncRecentPayouts(prisma, { limit });
+        // Un depósito que no se pudo bajar de Stripe NO es un descuadre: el
+        // desglose no existe todavía. Mezclarlos haría que la app avisara "no
+        // cuadra" de algo que ni siquiera alcanzó a conciliarse.
         return reply.send({
-          synced: results.length,
-          descuadrados: results.filter((r) => !r.cuadra).map((r) => r.payoutId),
+          synced: results.filter((r) => !r.error).length,
+          descuadrados: results.filter((r) => !r.error && !r.cuadra).map((r) => r.payoutId),
+          fallidos: results.filter((r) => r.error).map((r) => r.payoutId),
           results,
         });
       } catch (err) {
         request.log.error({ err }, "Falló el sync de depósitos de Stripe");
         return reply.status(502).send({ error: "No se pudo consultar Stripe" });
       }
+    }
+  );
+
+  // GET /admin/payouts/sin-registrar — cobros que Stripe depositó pero que
+  // nunca llegaron a `payments`. Es dinero que entró y que los ingresos no
+  // cuentan; sin esta lista había que abrir depósito por depósito para verlos.
+  // Va ANTES de /admin/payouts/:id sólo por claridad: Fastify da prioridad a la
+  // ruta estática sobre la paramétrica, no depende del orden.
+  fastify.get<{ Querystring: { limit?: string } }>(
+    "/admin/payouts/sin-registrar",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const limitRaw = Number(request.query.limit);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 60)
+        : 30;
+      return reply.send(await listarCobrosSinRegistrar(prisma, { limit }));
+    }
+  );
+
+  // POST /admin/payouts/lines/:lineId/register-payment — dar de alta ese cobro.
+  // Sólo admin: crea un ingreso, y el staff no toca dinero.
+  fastify.post<{
+    Params: { lineId: string };
+    Body?: { reservationId?: string };
+  }>(
+    "/admin/payouts/lines/:lineId/register-payment",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const res = await registrarCobroDeLinea(prisma, {
+        lineId: request.params.lineId,
+        reservationId: request.body?.reservationId ?? null,
+      });
+      if (!res.ok) return reply.status(400).send({ error: res.error });
+      return reply.status(res.data.creado ? 201 : 200).send(res.data);
+    }
+  );
+
+  // POST /internal/payouts/lines/:lineId/register-payment
+  // El mismo alta que la ruta de arriba, para el admin web. Se autentica como
+  // los crons (x-cron-secret) porque el Clerk del panel web es otra instancia y
+  // esta API no puede validar sus tokens. La lógica NO se duplica allá: guardar
+  // el bruto, la comisión aparte y re-conciliar el depósito tiene demasiadas
+  // formas de salir mal como para tenerlo escrito dos veces.
+  fastify.post<{
+    Params: { lineId: string };
+    Body?: { reservationId?: string };
+  }>("/internal/payouts/lines/:lineId/register-payment", async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+    const res = await registrarCobroDeLinea(prisma, {
+      lineId: request.params.lineId,
+      reservationId: request.body?.reservationId ?? null,
+    });
+    if (!res.ok) return reply.status(400).send({ error: res.error });
+    return reply.status(res.data.creado ? 201 : 200).send(res.data);
+  });
+
+  // ────────────────────────────────────────────────────────────
+  //  POST /internal/payouts-sync — cron diario
+  //  Trae de Stripe los depósitos recientes y los concilia.
+  //
+  //  Existe porque el webhook `payout.paid` era el ÚNICO camino: si se
+  //  desconfigura, si Stripe agota sus reintentos (3 días y desiste) o si la API
+  //  estaba caída, el depósito no entra NUNCA y nadie se entera — la pantalla
+  //  simplemente se queda en la última fecha que alcanzó a llegar.
+  //
+  //  Protegido por x-cron-secret, igual que los demás /internal. Si el secreto
+  //  falta, el endpoint queda cerrado (401) en vez de abierto.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{ Body?: { limit?: number } }>(
+    "/internal/payouts-sync",
+    async (request, reply) => {
+      const secret = process.env.CRON_SECRET;
+      if (!secret || request.headers["x-cron-secret"] !== secret) {
+        return reply.status(401).send({ error: "No autorizado" });
+      }
+
+      const limitRaw = Number(request.body?.limit);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 50)
+        : 15;
+
+      let results;
+      try {
+        results = await syncRecentPayouts(prisma, { limit });
+      } catch (err) {
+        request.log.error({ err }, "[payouts-sync] no se pudo consultar Stripe");
+        return reply.status(502).send({ error: "No se pudo consultar Stripe" });
+      }
+
+      // Sólo se avisa de los que NO existían: el cron corre todos los días sobre
+      // la misma ventana, y notificar los ya conocidos sería un push diario
+      // repetido del mismo depósito.
+      const nuevos = results.filter((r) => r.esNuevo && !r.error);
+      if (nuevos.length > 0) {
+        const fechas = new Map(
+          (
+            await prisma.stripePayout.findMany({
+              where: { id: { in: nuevos.map((r) => r.payoutId) } },
+              select: { id: true, arrivalDate: true },
+            })
+          ).map((p) => [p.id, p.arrivalDate])
+        );
+
+        // La PRIMERA corrida trae de golpe todo lo que el webhook nunca metió:
+        // un push por depósito serían diez notificaciones seguidas de cosas que
+        // pasaron hace semanas. A partir de tres, un solo aviso con el total.
+        if (nuevos.length > AVISOS_INDIVIDUALES_MAX) {
+          const total = nuevos.reduce((a, r) => a + r.amount, 0);
+          const admins = await prisma.user.findMany({
+            where: { role: "ADMIN", isActive: true },
+            select: { id: true },
+          });
+          if (admins.length > 0) {
+            await notifyUsers(
+              prisma,
+              admins.map((a) => a.id),
+              {
+                type: "PAYOUT_PAID",
+                title: `🏦 ${nuevos.length} depósitos nuevos — $${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                body: "Se pusieron al día los depósitos de Stripe. Toca para ver de qué reservas vienen.",
+                data: { kind: "STRIPE_PAYOUT_BATCH", count: nuevos.length, amount: total },
+              }
+            );
+          }
+        } else {
+          for (const r of nuevos) {
+            await avisarPayoutSincronizado(prisma, {
+              payoutId: r.payoutId,
+              amount: r.amount,
+              lineCount: r.lineCount,
+              arrivalDate: fechas.get(r.payoutId) ?? new Date(),
+            });
+          }
+        }
+      }
+
+      const fallidos = results.filter((r) => r.error);
+      const descuadrados = results.filter((r) => !r.error && !r.cuadra);
+
+      // Sólo se avisa de los problemas que APARECEN hoy, no de los que siguen
+      // ahí. El cron reevalúa la misma ventana de depósitos todos los días y un
+      // descuadre no se corrige solo (hay que mirarlo en Stripe a mano): avisar
+      // por estado y no por novedad manda la misma alerta de prioridad alta a
+      // todos los admins cada mañana durante semanas, hasta que ese depósito
+      // salga de la ventana. Los que siguen mal quedan en el log y con su
+      // "No cuadra" a la vista en la pantalla.
+      const problemasNuevos = [...fallidos, ...descuadrados].filter((r) => r.esNuevo);
+      if (problemasNuevos.length > 0) {
+        const fallidosNuevos = problemasNuevos.filter((r) => r.error);
+        const descuadradosNuevos = problemasNuevos.filter((r) => !r.error);
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: "ADMIN", isActive: true },
+            select: { id: true },
+          });
+          if (admins.length > 0) {
+            await notifyUsers(
+              prisma,
+              admins.map((a) => a.id),
+              {
+                type: "STAFF_ALERT",
+                title: "⚠️ Depósitos de Stripe con problemas",
+                body:
+                  fallidosNuevos.length > 0
+                    ? `${fallidosNuevos.length} depósito(s) no se pudieron conciliar. Revisa Depósitos de Stripe.`
+                    : `${descuadradosNuevos.length} depósito(s) no cuadran con el desglose. Revisa Depósitos de Stripe.`,
+                priority: "high",
+              }
+            );
+          }
+        } catch (err) {
+          request.log.warn({ err }, "[payouts-sync] no se pudo avisar del problema");
+        }
+      }
+
+      // Railway solo guarda logs: sin esto no hay forma de saber si el cron corrió.
+      request.log.info(
+        {
+          sincronizados: results.length,
+          nuevos: nuevos.map((r) => r.payoutId),
+          descuadrados: descuadrados.map((r) => r.payoutId),
+          fallidos: fallidos.map((r) => r.payoutId),
+        },
+        "[payouts-sync]"
+      );
+
+      return reply.send({
+        synced: results.length,
+        nuevos: nuevos.length,
+        descuadrados: descuadrados.map((r) => r.payoutId),
+        fallidos: fallidos.map((r) => r.payoutId),
+        results,
+      });
     }
   );
 

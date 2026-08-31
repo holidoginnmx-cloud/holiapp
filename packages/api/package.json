@@ -11,7 +11,10 @@
     "test": "vitest run",
     "reconcile": "tsx --env-file=.env src/scripts/reconcile.ts",
     "backfill:stripe-fees": "tsx --env-file=.env src/scripts/backfill-stripe-fees.ts",
-    "backfill:store-payments": "tsx --env-file=.env src/scripts/backfill-store-order-payments.ts"
+    "backfill:store-payments": "tsx --env-file=.env src/scripts/backfill-store-order-payments.ts",
+    "backfill:payouts": "tsx --env-file=.env src/scripts/backfill-payouts.ts",
+    "audit:stripe-charges": "tsx --env-file=.env src/scripts/audit-stripe-charges.ts",
+    "repair:stripe-payments": "tsx --env-file=.env src/scripts/repair-stripe-payments.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.4",

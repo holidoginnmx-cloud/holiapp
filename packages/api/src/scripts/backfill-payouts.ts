@@ -37,6 +37,13 @@ async function main() {
   console.log(`\n   ${results.length} depósitos sincronizados\n`);
 
   for (const r of results) {
+    // Un depósito que ni se pudo bajar de Stripe no es un descuadre: no tiene
+    // desglose que sumar. Decir "DESCUADRE de $0.00" ahí sería mentir sobre lo
+    // que pasó y esconder el error real.
+    if (r.error) {
+      console.log(`   ✖ ${r.payoutId}  ${money(r.amount).padStart(12)}  NO SE PUDO CONCILIAR: ${r.error}`);
+      continue;
+    }
     const estado = r.cuadra ? "✔" : "✖";
     const partes = [`${r.lineCount} líneas`, `${r.matched} con pago`];
     if (r.porMetadata > 0) partes.push(`${r.porMetadata} solo por metadata`);
@@ -47,7 +54,8 @@ async function main() {
     );
   }
 
-  const descuadrados = results.filter((r) => !r.cuadra);
+  const fallidos = results.filter((r) => r.error);
+  const descuadrados = results.filter((r) => !r.error && !r.cuadra);
   const porMetadata = results.reduce((a, r) => a + r.porMetadata, 0);
   const sinIdentificar = results.reduce((a, r) => a + r.unmatched, 0);
 
@@ -58,6 +66,9 @@ async function main() {
   console.log(`   Solo por metadata:${String(porMetadata).padStart(2)}  (COBRADOS pero sin registrar como pago)`);
   console.log(`   Ajustes:          ${sinIdentificar}  (comisiones y movimientos de Stripe)`);
   console.log(`   Descuadrados:     ${descuadrados.length}`);
+  if (fallidos.length > 0) {
+    console.log(`   Sin conciliar:    ${fallidos.length}  (no se pudieron bajar de Stripe)`);
+  }
 
   if (porMetadata > 0) {
     console.log(

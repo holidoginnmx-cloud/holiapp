@@ -16,12 +16,18 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { COLORS } from "@/constants/colors";
-import { getAdminPayouts, type PayoutSummary } from "@/lib/api";
+import {
+  getAdminPayouts,
+  getCobrosSinRegistrar,
+  syncAdminPayouts,
+  type PayoutSummary,
+} from "@/lib/api";
 import { formatCurrencyExact, formatArrivalDate } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -54,6 +60,50 @@ export default function PayoutsScreen() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "payouts", amount ?? "todos"],
     queryFn: () => getAdminPayouts({ limit: 30, amount }),
+  });
+
+  const queryClient = useQueryClient();
+
+  // Cobros que Stripe depositó y que nunca llegaron a `payments`: dinero que
+  // entró al banco y que los ingresos no cuentan. Estaban repartidos dentro de
+  // cada depósito, así que para saber si había alguno pendiente había que
+  // abrirlos uno por uno. No depende del filtro por monto: es un pendiente del
+  // negocio, no un resultado de búsqueda.
+  const { data: pendientes } = useQuery({
+    queryKey: ["admin", "payouts", "sin-registrar"],
+    queryFn: () => getCobrosSinRegistrar(30),
+    staleTime: 60_000,
+  });
+
+  // Traer de Stripe lo que todavía no está en la base. El refetch de arriba solo
+  // relee lo ya guardado: si el webhook `payout.paid` no llegó (endpoint mal
+  // configurado, API caída, Stripe agotó sus reintentos), jalar la lista mil
+  // veces seguiría mostrando la misma última fecha. Hay un cron diario que hace
+  // esto solo; el botón es para no esperarlo.
+  const sync = useMutation({
+    mutationFn: () => syncAdminPayouts(15),
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "payouts"] });
+      // Un depósito que no se pudo bajar NO aparece en la lista: sin avisarlo,
+      // la pantalla se veía al día cuando en realidad faltaba dinero por
+      // conciliar.
+      if (res.fallidos?.length > 0) {
+        Alert.alert(
+          "Faltaron depósitos por traer",
+          `${res.fallidos.length} depósito(s) no se pudieron consultar en Stripe, así que todavía no aparecen aquí. Intenta de nuevo en un momento.`,
+        );
+      } else if (res.descuadrados?.length > 0) {
+        Alert.alert(
+          "Revisa estos depósitos",
+          `${res.descuadrados.length} depósito(s) no cuadran con su desglose. El total del banco es correcto, pero el detalle no suma — conviene revisarlo en Stripe.`,
+        );
+      }
+    },
+    onError: () =>
+      Alert.alert(
+        "No se pudo actualizar",
+        "No pudimos consultar Stripe en este momento. Intenta de nuevo en un minuto.",
+      ),
   });
 
   // OJO: el error NO se renderiza con un `return` temprano. Eso desmontaría el
@@ -127,6 +177,59 @@ export default function PayoutsScreen() {
           />
         )}
       </View>
+      {pendientes && pendientes.cobros.length > 0 && (
+        <View style={styles.pendientesCard}>
+          <View style={styles.pendientesHeader}>
+            <Ionicons name="alert-circle" size={16} color={COLORS.warningText} />
+            <Text style={styles.pendientesTitle}>
+              {pendientes.cobros.length} cobro
+              {pendientes.cobros.length !== 1 ? "s" : ""} sin registrar ·{" "}
+              {formatCurrencyExact(pendientes.total)} cobrados
+            </Text>
+          </View>
+          <Text style={styles.pendientesHint}>
+            Es lo que pagaron los clientes (a tu cuenta llegó eso menos la
+            comisión de Stripe). No está en tus ingresos y esas reservas siguen
+            apareciendo como si debieran. Ábrelos en su depósito para
+            registrarlos.
+          </Text>
+          {pendientes.cobros.slice(0, 5).map((c) => (
+            <Pressable
+              key={c.lineId}
+              style={({ pressed }) => [styles.pendienteRow, pressed && styles.cardPressed]}
+              onPress={() => router.push(`/admin/payout/${c.payoutId}` as any)}
+            >
+              <Text style={styles.pendienteQuien} numberOfLines={1}>
+                {c.petNames.length > 0
+                  ? c.petNames.join(", ")
+                  : (c.ownerName ?? "Sin identificar")}
+                <Text style={styles.pendienteServicio}> · {c.serviceLabel}</Text>
+              </Text>
+              <Text style={styles.pendienteMonto}>{formatCurrencyExact(c.gross)}</Text>
+              <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} />
+            </Pressable>
+          ))}
+          {pendientes.cobros.length > 5 && (
+            <Text style={styles.pendientesHint}>
+              y {pendientes.cobros.length - 5} más en sus depósitos.
+            </Text>
+          )}
+        </View>
+      )}
+      <Pressable
+        style={({ pressed }) => [styles.syncBtn, pressed && styles.cardPressed]}
+        onPress={() => !sync.isPending && sync.mutate()}
+        disabled={sync.isPending}
+      >
+        {sync.isPending ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Ionicons name="cloud-download-outline" size={16} color={COLORS.primary} />
+        )}
+        <Text style={styles.syncBtnText}>
+          {sync.isPending ? "Buscando en Stripe…" : "Actualizar desde Stripe"}
+        </Text>
+      </Pressable>
       {!isLoading && !isError && (
         <Text style={styles.countLabel}>
           {amount
@@ -147,8 +250,8 @@ export default function PayoutsScreen() {
       ListHeaderComponent={listHeader}
       refreshControl={
         <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={refetch}
+          refreshing={isRefetching || sync.isPending}
+          onRefresh={() => !sync.isPending && sync.mutate()}
           tintColor={COLORS.primary}
         />
       }
@@ -172,7 +275,7 @@ export default function PayoutsScreen() {
             <Text style={styles.emptyHint}>
               {amount
                 ? "Revisa el monto o busca por fecha borrando el filtro."
-                : "Aparecerán aquí en cuanto Stripe mande el siguiente."}
+                : "Toca «Actualizar desde Stripe» para traer los que ya te depositó."}
             </Text>
           </View>
         )
@@ -208,6 +311,71 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontFamily: "PlusJakartaSans_400Regular",
     padding: 0,
+  },
+  pendientesCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.warningText,
+    backgroundColor: COLORS.warningBg,
+  },
+  pendientesHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pendientesTitle: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.warningText,
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
+  pendientesHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.warningText,
+    fontFamily: "PlusJakartaSans_400Regular",
+    marginTop: 4,
+  },
+  pendienteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.06)",
+  },
+  pendienteQuien: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+  },
+  pendienteServicio: {
+    color: COLORS.textTertiary,
+    fontFamily: "PlusJakartaSans_400Regular",
+  },
+  pendienteMonto: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontFamily: "PlusJakartaSans_700Bold",
+    fontVariant: ["tabular-nums"],
+  },
+  syncBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
+    backgroundColor: COLORS.white,
+  },
+  syncBtnText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   countLabel: {
     fontSize: 12,

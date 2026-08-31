@@ -7,7 +7,7 @@
  * dan un número mal sumado o marcan cobros legítimos como "no identificados",
  * que es peor que un crash porque el dueño confiaría en el resultado.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import Stripe from "stripe";
 import {
   extractRefs,
@@ -15,6 +15,7 @@ import {
   isRefundType,
   excluirTransaccionDelPayout,
   elegirReserva,
+  registrarCobroDeLinea,
   type MatchMaps,
   type ReservaCandidata,
 } from "./payouts";
@@ -422,5 +423,366 @@ describe("cuadre del depósito", () => {
 
     const netCents = excluirTransaccionDelPayout(txns).reduce((a, t) => a + t.net, 0);
     expect(netCents).toBe(46000);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  registrarCobroDeLinea
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Lo que se prueba aquí falla EN SILENCIO, que es lo peligroso: guardar el neto
+// en vez del bruto no revienta nada, sólo hace que los ingresos descuenten la
+// comisión dos veces y que la reserva arrastre un saldo fantasma. Ya pasó.
+
+vi.mock("stripe", () => {
+  // Stripe nunca se toca en estos tests: las llamadas rechazan y el código cae a
+  // sus caminos de respaldo (la fecha del depósito, el re-sync que no ocurre).
+  const fail = () => Promise.reject(new Error("sin red en tests"));
+  return {
+    default: class {
+      paymentIntents = { retrieve: fail };
+      payouts = { retrieve: fail, list: fail };
+      balanceTransactions = { list: fail };
+    },
+  };
+});
+
+type UpsertArgs = {
+  where: { stripePaymentIntentId: string };
+  create: Record<string, unknown>;
+  update: Record<string, unknown>;
+};
+
+function prismaFake(opts: {
+  linea?: Record<string, unknown> | null;
+  reserva?: Record<string, unknown> | null;
+  pagoExistente?: { id: string } | null;
+  onUpsert?: (args: UpsertArgs) => void;
+}) {
+  const {
+    linea = {
+      id: "txn_1",
+      type: "charge",
+      gross: 610,
+      fee: 28.95,
+      net: 581.05,
+      paymentId: null,
+      orderId: null,
+      stripePaymentIntentId: "pi_1",
+      metaReservationId: null,
+      metaOwnerId: "usr_1",
+      metaPetIds: "pet_1",
+      payout: { id: "po_1", stripeCreatedAt: new Date("2026-08-30T00:00:00Z") },
+    },
+    reserva = {
+      id: "res_1",
+      ownerId: "usr_1",
+      petId: "pet_1",
+      totalAmount: 3048.46,
+      payments: [],
+    },
+    pagoExistente = null,
+    onUpsert,
+  } = opts;
+
+  return {
+    stripePayoutLine: { findUnique: async () => linea },
+    reservation: { findUnique: async () => reserva, count: async () => 1 },
+    payment: {
+      findUnique: async () => pagoExistente,
+      upsert: async (args: UpsertArgs) => {
+        onUpsert?.(args);
+        return { id: "pay_nuevo" };
+      },
+    },
+    stripePayout: { findUnique: async () => null },
+  } as unknown as Parameters<typeof registrarCobroDeLinea>[0];
+}
+
+describe("registrarCobroDeLinea", () => {
+  it("guarda el BRUTO en amount y la comisión aparte", async () => {
+    let args: UpsertArgs | null = null;
+    const res = await registrarCobroDeLinea(
+      prismaFake({ onUpsert: (a) => (args = a) }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+
+    expect(res.ok).toBe(true);
+    const creado = (args as unknown as UpsertArgs).create;
+    // $610 es lo que pagó el cliente; $581.05 es lo que llegó al banco. En
+    // `amount` va SIEMPRE el primero: las vistas de ingresos restan la comisión
+    // ellas mismas, así que guardar el neto la descuenta dos veces.
+    expect(Number(creado.amount)).toBe(610);
+    expect(Number(creado.stripeFeeAmount)).toBe(28.95);
+    expect(creado.method).toBe("STRIPE");
+    expect(creado.stripePaymentIntentId).toBe("pi_1");
+  });
+
+  it("el alta es un upsert vacío: repetirla no pisa ni duplica el pago", async () => {
+    let args: UpsertArgs | null = null;
+    const res = await registrarCobroDeLinea(
+      prismaFake({ pagoExistente: { id: "pay_previo" }, onUpsert: (a) => (args = a) }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.creado).toBe(false);
+    // `update: {}` es lo que hace inofensivo el segundo toque: si el webhook ya
+    // había registrado el cobro, sus datos mandan.
+    expect((args as unknown as UpsertArgs).update).toEqual({});
+  });
+
+  it("un cobro parcial queda como ANTICIPO/PARTIAL y uno que liquida como RESTANTE/PAID", async () => {
+    let parcial: UpsertArgs | null = null;
+    await registrarCobroDeLinea(prismaFake({ onUpsert: (a) => (parcial = a) }), {
+      lineId: "txn_1",
+      reservationId: "res_1",
+    });
+    expect((parcial as unknown as UpsertArgs).create.kind).toBe("ANTICIPO");
+    expect((parcial as unknown as UpsertArgs).create.status).toBe("PARTIAL");
+
+    let liquida: UpsertArgs | null = null;
+    await registrarCobroDeLinea(
+      prismaFake({
+        reserva: { id: "res_1", ownerId: "usr_1", petId: "pet_1", totalAmount: 610, payments: [] },
+        onUpsert: (a) => (liquida = a),
+      }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect((liquida as unknown as UpsertArgs).create.kind).toBe("RESTANTE");
+    expect((liquida as unknown as UpsertArgs).create.status).toBe("PAID");
+  });
+
+  it("el saldo cuenta los anticipos ya pagados, no sólo los PAID", async () => {
+    // Un anticipo vive como PARTIAL. Ignorarlo haría ver la reserva como si no
+    // hubiera pagado nada y el segundo cobro nacería otra vez como ANTICIPO.
+    let args: UpsertArgs | null = null;
+    await registrarCobroDeLinea(
+      prismaFake({
+        reserva: {
+          id: "res_1",
+          ownerId: "usr_1",
+          petId: "pet_1",
+          totalAmount: 1220,
+          payments: [{ amount: 610, status: "PARTIAL" }],
+        },
+        onUpsert: (a) => (args = a),
+      }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect((args as unknown as UpsertArgs).create.kind).toBe("RESTANTE");
+  });
+
+  it("no registra un reembolso como ingreso", async () => {
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        linea: {
+          id: "txn_r",
+          type: "refund",
+          gross: -350,
+          fee: 0,
+          net: -350,
+          paymentId: null,
+          orderId: null,
+          stripePaymentIntentId: "pi_9",
+          metaReservationId: null,
+          metaOwnerId: "usr_1",
+          metaPetIds: "pet_1",
+          payout: { id: "po_1", stripeCreatedAt: new Date() },
+        },
+      }),
+      { lineId: "txn_r", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("no registra un ajuste de Stripe (sin PaymentIntent no hay nada que vincular)", async () => {
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        linea: {
+          id: "txn_f",
+          type: "stripe_fee",
+          gross: -12,
+          fee: 0,
+          net: -12,
+          paymentId: null,
+          orderId: null,
+          stripePaymentIntentId: null,
+          metaReservationId: null,
+          metaOwnerId: "usr_1",
+          metaPetIds: "pet_1",
+          payout: { id: "po_1", stripeCreatedAt: new Date() },
+        },
+      }),
+      { lineId: "txn_f", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("no vuelve a registrar una línea que ya cruzó con un pago", async () => {
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        linea: {
+          id: "txn_1",
+          type: "charge",
+          gross: 610,
+          fee: 28.95,
+          net: 581.05,
+          paymentId: "pay_ya",
+          orderId: null,
+          stripePaymentIntentId: "pi_1",
+          metaReservationId: null,
+          metaOwnerId: "usr_1",
+          metaPetIds: "pet_1",
+          payout: { id: "po_1", stripeCreatedAt: new Date() },
+        },
+      }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("no reparte a ciegas un cobro de una reserva de varias mascotas", async () => {
+    // El cobro cubre a todo el grupo pero cada mascota tiene su propia fila:
+    // colgarle el bruto entero a una la dejaría sobrepagada y a las demás
+    // debiendo todo. Preferimos no registrar nada y decirlo.
+    const prisma = prismaFake({
+      reserva: {
+        id: "res_1",
+        ownerId: "usr_1",
+        petId: "pet_1",
+        groupId: "grp_1",
+        totalAmount: 3048.46,
+        payments: [],
+      },
+    }) as unknown as { reservation: { count: () => Promise<number> } };
+    prisma.reservation.count = async () => 3;
+
+    const res = await registrarCobroDeLinea(
+      prisma as unknown as Parameters<typeof registrarCobroDeLinea>[0],
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("3 mascotas");
+  });
+
+  it("una reserva con groupId pero de una sola mascota sí se registra", async () => {
+    const prisma = prismaFake({
+      reserva: {
+        id: "res_1",
+        ownerId: "usr_1",
+        petId: "pet_1",
+        groupId: "grp_1",
+        totalAmount: 3048.46,
+        payments: [],
+      },
+    }) as unknown as { reservation: { count: () => Promise<number> } };
+    prisma.reservation.count = async () => 1;
+
+    const res = await registrarCobroDeLinea(
+      prisma as unknown as Parameters<typeof registrarCobroDeLinea>[0],
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("rechaza colgar el cobro en la reserva de OTRO cliente", async () => {
+    // El id de reserva lo manda la pantalla. Sin contrastarlo con la metadata
+    // que Stripe guardó, un id equivocado asienta el dinero de un cliente en la
+    // cuenta de otro: el que pagó sigue debiendo y el otro queda con un saldo
+    // que nunca pagó.
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        reserva: {
+          id: "res_ajena",
+          ownerId: "usr_OTRO",
+          petId: "pet_9",
+          totalAmount: 5000,
+          payments: [],
+        },
+      }),
+      { lineId: "txn_1", reservationId: "res_ajena" }
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("no corresponde");
+  });
+
+  it("rechaza una mascota que el cobro no menciona, aunque el dueño coincida", async () => {
+    // Mismo cliente, otro perro: el cobro era de una reserva distinta.
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        reserva: {
+          id: "res_otra",
+          ownerId: "usr_1",
+          petId: "pet_DISTINTO",
+          totalAmount: 900,
+          payments: [],
+        },
+      }),
+      { lineId: "txn_1", reservationId: "res_otra" }
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("cuando la metadata trae el reservationId literal, manda ese", async () => {
+    const linea = (id: string | null) => ({
+      id: "txn_1",
+      type: "charge",
+      gross: 610,
+      fee: 28.95,
+      net: 581.05,
+      paymentId: null,
+      orderId: null,
+      stripePaymentIntentId: "pi_1",
+      metaReservationId: id,
+      metaOwnerId: null,
+      metaPetIds: null,
+      payout: { id: "po_1", stripeCreatedAt: new Date() },
+    });
+
+    const ok = await registrarCobroDeLinea(prismaFake({ linea: linea("res_1") }), {
+      lineId: "txn_1",
+      reservationId: "res_1",
+    });
+    expect(ok.ok).toBe(true);
+
+    const mal = await registrarCobroDeLinea(prismaFake({ linea: linea("res_otra") }), {
+      lineId: "txn_1",
+      reservationId: "res_1",
+    });
+    expect(mal.ok).toBe(false);
+  });
+
+  it("sin metadata no se da el beneficio de la duda", async () => {
+    // No es que la reserva esté mal: es que no hay con qué afirmar que esté
+    // bien, y asentar dinero en la cuenta de alguien no es lugar para suponer.
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        linea: {
+          id: "txn_1",
+          type: "charge",
+          gross: 610,
+          fee: 28.95,
+          net: 581.05,
+          paymentId: null,
+          orderId: null,
+          stripePaymentIntentId: "pi_1",
+          metaReservationId: null,
+          metaOwnerId: null,
+          metaPetIds: null,
+          payout: { id: "po_1", stripeCreatedAt: new Date() },
+        },
+      }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("sin reserva identificada no inventa dónde colgar el dinero", async () => {
+    const res = await registrarCobroDeLinea(prismaFake({ reserva: null }), {
+      lineId: "txn_1",
+      reservationId: "res_borrada",
+    });
+    expect(res.ok).toBe(false);
   });
 });

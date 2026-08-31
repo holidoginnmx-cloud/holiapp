@@ -180,9 +180,50 @@ export const getAdminPayoutBreakdown = (payoutId: string) =>
   apiFetch<PayoutBreakdown>(`/admin/payouts/${payoutId}`);
 
 export const syncAdminPayouts = (limit = 10) =>
-  apiFetch<{ synced: number; descuadrados: string[] }>("/admin/payouts/sync", {
+  // `fallidos` son depósitos que ni se pudieron bajar de Stripe; `descuadrados`,
+  // los que sí bajaron pero cuyo desglose no suma lo que llegó al banco. Son
+  // cosas distintas y la pantalla tiene que poder decirlo.
+  apiFetch<{ synced: number; descuadrados: string[]; fallidos: string[] }>("/admin/payouts/sync", {
     method: "POST",
     body: JSON.stringify({ limit }),
+  });
+
+/**
+ * Cobros que Stripe depositó pero que nunca se registraron como pago: dinero
+ * que entró al banco y que los ingresos no cuentan.
+ */
+export type CobroSinRegistrar = {
+  lineId: string;
+  payoutId: string;
+  payoutArrivalDate: string;
+  /** Bruto que pagó el cliente. */
+  gross: number;
+  fee: number;
+  net: number;
+  stripePaymentIntentId: string | null;
+  /** null = la metadata no alcanzó para señalar una reserva concreta. */
+  reservationId: string | null;
+  petNames: string[];
+  ownerName: string | null;
+  serviceLabel: string;
+};
+
+export const getCobrosSinRegistrar = (limit = 30) =>
+  apiFetch<{ cobros: CobroSinRegistrar[]; total: number }>(
+    `/admin/payouts/sin-registrar?limit=${limit}`,
+  );
+
+/** Da de alta el cobro como pago de su reserva. Idempotente en el servidor. */
+export const registrarCobroDeDeposito = (lineId: string, reservationId?: string) =>
+  apiFetch<{
+    paymentId: string;
+    creado: boolean;
+    reservationId: string;
+    amount: number;
+    fee: number;
+  }>(`/admin/payouts/lines/${lineId}/register-payment`, {
+    method: "POST",
+    body: JSON.stringify(reservationId ? { reservationId } : {}),
   });
 
 export type AdminAlert = {

@@ -8,7 +8,7 @@ import {
   sendEmail,
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
-import { syncPayout, getPayoutBreakdown } from "../lib/payouts";
+import { syncPayout, avisarPayoutSincronizado } from "../lib/payouts";
 import { Prisma } from "@holidoginn/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -506,65 +506,27 @@ async function handlePayoutPaid(
   // es justo lo que queremos: sin el sync no hay desglose que mostrar.
   const result = await syncPayout(prisma, payout.id);
 
-  // El aviso, en cambio, es best-effort: el desglose ya quedó guardado y el
-  // dueño puede consultarlo aunque el push falle.
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: "ADMIN", isActive: true },
-      select: { id: true },
-    });
-    if (admins.length === 0) return;
+  // El aviso es best-effort y vive en lib/payouts.ts porque el cron diario
+  // descubre depósitos por su cuenta y tiene que avisar igual (ver
+  // `avisarPayoutSincronizado`). Nunca lanza.
+  await avisarPayoutSincronizado(prisma, {
+    payoutId: payout.id,
+    amount: result.amount,
+    lineCount: result.lineCount,
+    arrivalDate: new Date(payout.arrival_date * 1000),
+  });
 
-    const monto = result.amount.toLocaleString("es-MX", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
-    // `arrival_date` es cuándo el banco abona, no cuándo Stripe emite: el push
-    // suele llegar horas antes que el SPEI y decir "ya llegó" sería mentira.
-    const yaLlego = payout.arrival_date * 1000 <= Date.now();
-
-    const detalle = await getPayoutBreakdown(prisma, payout.id);
-    const mascotas = [
-      ...new Set((detalle?.lines ?? []).flatMap((l) => l.match?.petNames ?? [])),
-    ];
-    const quienes =
-      mascotas.length === 0
-        ? `${result.lineCount} ${result.lineCount === 1 ? "movimiento" : "movimientos"}`
-        : mascotas.length <= 3
-          ? mascotas.join(", ")
-          : `${mascotas.slice(0, 3).join(", ")} y ${mascotas.length - 3} más`;
-
-    await notifyUsers(
-      prisma,
-      admins.map((a) => a.id),
-      {
-        type: "PAYOUT_PAID",
-        title: yaLlego ? `🏦 Depósito recibido — $${monto}` : `🏦 Depósito en camino — $${monto}`,
-        body: `${quienes}. Toca para ver de qué reservas viene.`,
-        data: {
-          kind: "STRIPE_PAYOUT",
-          payoutId: payout.id,
-          amount: result.amount,
-          lineCount: result.lineCount,
-        },
-      }
-    );
-
-    // Railway solo guarda logs: sin esta línea no hay forma de saber si un
-    // depósito se concilió bien ni si cuadró.
-    console.info("[handlePayoutPaid]", {
-      payoutId: payout.id,
-      amount: result.amount,
-      lines: result.lineCount,
-      matched: result.matched,
-      unmatched: result.unmatched,
-      cuadra: result.cuadra,
-      diferencia: result.diferencia,
-    });
-  } catch (err) {
-    console.error("[handlePayoutPaid] el sync quedó, pero el aviso falló:", err);
-  }
+  // Railway solo guarda logs: sin esta línea no hay forma de saber si un
+  // depósito se concilió bien ni si cuadró.
+  console.info("[handlePayoutPaid]", {
+    payoutId: payout.id,
+    amount: result.amount,
+    lines: result.lineCount,
+    matched: result.matched,
+    unmatched: result.unmatched,
+    cuadra: result.cuadra,
+    diferencia: result.diferencia,
+  });
 }
 
 /** El depósito rebotó (cuenta CLABE mal, banco rechazó). El dueño debe saberlo. */

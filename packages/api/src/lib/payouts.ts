@@ -19,6 +19,7 @@
 import Stripe from "stripe";
 import { Prisma } from "@holidoginn/db";
 import type { PrismaClient } from "@holidoginn/db";
+import { notifyUsers } from "./notify";
 
 /**
  * Cliente Stripe perezoso. Instanciarlo al importar tumbaría el módulo en
@@ -214,6 +215,13 @@ export type SyncPayoutResult = {
   /** |SUM(net) − amount| < 0.01 */
   cuadra: boolean;
   diferencia: number;
+  /**
+   * El depósito no existía en la base antes de este sync. Sólo lo llena
+   * `syncRecentPayouts`, que es quien puede saberlo (ver el comentario allí).
+   */
+  esNuevo?: boolean;
+  /** El sync de ESTE depósito falló; el resto sí se procesó. */
+  error?: string;
 };
 
 /**
@@ -434,12 +442,39 @@ export async function syncRecentPayouts(
   opts: { limit?: number } = {}
 ): Promise<SyncPayoutResult[]> {
   const list = await getStripe().payouts.list({ limit: opts.limit ?? 10 });
+
+  // Cuáles ya conocíamos ANTES de sincronizar. `syncPayout` hace upsert, así que
+  // después de correrlo todos existen y ya no hay forma de distinguir el
+  // depósito que acaba de aparecer del que sólo se refrescó — y es justo esa
+  // diferencia la que decide a quién se le avisa.
+  const conocidos = new Set(
+    (
+      await prisma.stripePayout.findMany({
+        where: { id: { in: list.data.map((p) => p.id) } },
+        select: { id: true },
+      })
+    ).map((p) => p.id)
+  );
+
   const results: SyncPayoutResult[] = [];
   for (const p of list.data) {
     try {
-      results.push(await syncPayout(prisma, p.id));
+      const r = await syncPayout(prisma, p.id);
+      results.push({ ...r, esNuevo: !conocidos.has(p.id) });
     } catch (err) {
       console.error(`[payouts] falló el sync de ${p.id}:`, err);
+      results.push({
+        payoutId: p.id,
+        amount: p.amount / 100,
+        lineCount: 0,
+        matched: 0,
+        porMetadata: 0,
+        unmatched: 0,
+        cuadra: false,
+        diferencia: 0,
+        esNuevo: !conocidos.has(p.id),
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
   return results;
@@ -985,4 +1020,382 @@ export async function listPayouts(
       preview: names.slice(0, 4),
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Aviso al equipo
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Avisa a los admins que un depósito quedó conciliado.
+ *
+ * Vive aquí y no en el webhook porque ya no hay un solo camino de entrada: el
+ * webhook `payout.paid` y el cron diario (`/internal/payouts-sync`) descubren
+ * depósitos por su cuenta, y el aviso tiene que salir igual por los dos. Cuando
+ * el webhook era el único, esta lógica vivía dentro de él — y un depósito que
+ * sólo apareciera por el cron entraba a la base sin que nadie se enterara.
+ *
+ * Best-effort a propósito: el desglose ya quedó guardado y se puede consultar
+ * aunque el push falle. Nunca lanza.
+ */
+export async function avisarPayoutSincronizado(
+  prisma: PrismaClient,
+  args: {
+    payoutId: string;
+    amount: number;
+    lineCount: number;
+    /** Cuándo abona el banco. Si ya pasó, el aviso dice "recibido". */
+    arrivalDate: Date;
+  }
+): Promise<void> {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    if (admins.length === 0) return;
+
+    const monto = args.amount.toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    // `arrivalDate` es cuándo el banco abona, no cuándo Stripe emite: el aviso
+    // suele salir horas antes que el SPEI y decir "ya llegó" sería mentira.
+    const yaLlego = args.arrivalDate.getTime() <= Date.now();
+
+    const detalle = await getPayoutBreakdown(prisma, args.payoutId);
+    const mascotas = [
+      ...new Set((detalle?.lines ?? []).flatMap((l) => l.match?.petNames ?? [])),
+    ];
+    const quienes =
+      mascotas.length === 0
+        ? `${args.lineCount} ${args.lineCount === 1 ? "movimiento" : "movimientos"}`
+        : mascotas.length <= 3
+          ? mascotas.join(", ")
+          : `${mascotas.slice(0, 3).join(", ")} y ${mascotas.length - 3} más`;
+
+    await notifyUsers(
+      prisma,
+      admins.map((a) => a.id),
+      {
+        type: "PAYOUT_PAID",
+        title: yaLlego ? `🏦 Depósito recibido — $${monto}` : `🏦 Depósito en camino — $${monto}`,
+        body: `${quienes}. Toca para ver de qué reservas viene.`,
+        data: {
+          kind: "STRIPE_PAYOUT",
+          payoutId: args.payoutId,
+          amount: args.amount,
+          lineCount: args.lineCount,
+        },
+      }
+    );
+  } catch (err) {
+    console.error("[payouts] el sync quedó, pero el aviso falló:", err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Cobros que nunca llegaron a `payments`
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CobroSinRegistrar = {
+  lineId: string;
+  payoutId: string;
+  payoutArrivalDate: string;
+  /** Bruto que pagó el cliente. Es lo que debe quedar en `payments.amount`. */
+  gross: number;
+  fee: number;
+  net: number;
+  stripePaymentIntentId: string | null;
+  /** Null cuando la metadata no alcanzó para señalar una reserva concreta. */
+  reservationId: string | null;
+  petNames: string[];
+  ownerName: string | null;
+  serviceLabel: string;
+};
+
+/**
+ * Cobros que Stripe sí depositó pero que nunca se registraron como pago.
+ *
+ * Existen porque el webhook `payment_intent.succeeded` es la ÚNICA vía por la
+ * que un cobro llega a `payments`: si falla, el dinero cae al banco y la reserva
+ * sigue figurando como no pagada. La conciliación del depósito los detecta (la
+ * línea existe, con su bruto y su comisión) y la metadata de Stripe dice de
+ * quién son; esto sólo los junta de todos los depósitos para poder darlos de
+ * alta sin abrirlos uno por uno.
+ *
+ * Se excluyen reembolsos y ajustes: no son cobros de nadie.
+ */
+export async function listarCobrosSinRegistrar(
+  prisma: PrismaClient,
+  opts: { limit?: number } = {}
+): Promise<{ cobros: CobroSinRegistrar[]; total: number }> {
+  const payouts = await prisma.stripePayout.findMany({
+    orderBy: { arrivalDate: "desc" },
+    take: opts.limit ?? 30,
+    select: { id: true },
+  });
+
+  // Reconstruir el desglose de un depósito cuesta varias consultas, y lo normal
+  // es que ninguno tenga huérfanas. Se pregunta primero cuáles las tienen —una
+  // sola consulta— y solo esos se arman. Sin este filtro, abrir la pantalla
+  // disparaba ~5 consultas × 30 depósitos para casi siempre no encontrar nada.
+  const conHuerfanas = new Set(
+    (
+      await prisma.stripePayoutLine.findMany({
+        where: {
+          payoutId: { in: payouts.map((p) => p.id) },
+          paymentId: null,
+          orderId: null,
+          stripePaymentIntentId: { not: null },
+          OR: [{ metaOwnerId: { not: null } }, { metaReservationId: { not: null } }],
+        },
+        select: { payoutId: true },
+        distinct: ["payoutId"],
+      })
+    ).map((l) => l.payoutId)
+  );
+
+  const cobros: CobroSinRegistrar[] = [];
+  for (const p of payouts.filter((p) => conHuerfanas.has(p.id))) {
+    const detalle = await getPayoutBreakdown(prisma, p.id);
+    if (!detalle) continue;
+    for (const l of detalle.lines) {
+      if (l.match?.kind !== "SIN_REGISTRAR") continue;
+      // Un reembolso o un ajuste no es un cobro pendiente de registrar, y sin
+      // PaymentIntent no hay nada que vincular ni forma de evitar duplicarlo.
+      if (isRefundType(l.type) || !l.stripePaymentIntentId || l.gross <= 0) continue;
+      cobros.push({
+        lineId: l.id,
+        payoutId: detalle.id,
+        payoutArrivalDate: detalle.arrivalDate,
+        gross: l.gross,
+        fee: l.fee,
+        net: l.net,
+        stripePaymentIntentId: l.stripePaymentIntentId,
+        reservationId: l.match.reservationId,
+        petNames: l.match.petNames,
+        ownerName: l.match.ownerName,
+        serviceLabel: l.match.serviceLabel,
+      });
+    }
+  }
+
+  return {
+    cobros,
+    total: Number(cobros.reduce((a, c) => a + c.gross, 0).toFixed(2)),
+  };
+}
+
+/**
+ * ¿La metadata que Stripe guardó con el cobro respalda que sea de esta reserva?
+ *
+ * Los cobros de saldo, extensión y add-ons traen el `reservationId` literal, y
+ * ahí la comprobación es exacta. Los de alta traen `ownerId` + `petIds` (la
+ * reserva todavía no existía cuando se cobró), así que se contrasta contra el
+ * dueño y la mascota.
+ *
+ * Sin ninguna de las dos pistas devuelve false a propósito: no es que la
+ * reserva sea incorrecta, es que no hay con qué afirmar que sea la correcta, y
+ * asentar dinero en la cuenta de alguien no es lugar para el beneficio de la
+ * duda.
+ */
+function respaldadaPorMetadata(
+  linea: { metaReservationId: string | null; metaOwnerId: string | null; metaPetIds: string | null },
+  reserva: { id: string; ownerId: string; petId: string }
+): boolean {
+  if (linea.metaReservationId) return linea.metaReservationId === reserva.id;
+  if (!linea.metaOwnerId) return false;
+  if (linea.metaOwnerId !== reserva.ownerId) return false;
+
+  // `petIds` viene como csv en hospedaje (una reserva por mascota, todas del
+  // mismo cobro) y como un id suelto en baño y guardería.
+  const mascotas = (linea.metaPetIds ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return mascotas.length === 0 || mascotas.includes(reserva.petId);
+}
+
+export type RegistroCobroResult = {
+  paymentId: string;
+  /** false = ya existía (otro camino lo registró antes); no se duplicó nada. */
+  creado: boolean;
+  reservationId: string;
+  amount: number;
+  fee: number;
+};
+
+/**
+ * Da de alta como pago un cobro que Stripe sí depositó pero que nunca llegó a
+ * `payments`.
+ *
+ * Reglas que NO se pueden relajar:
+ *
+ * - `amount` guarda el BRUTO (lo que pagó el cliente) y la comisión va aparte en
+ *   `stripeFeeAmount`. Es la convención de todo el modelo: las vistas de
+ *   ingresos restan la comisión ellas mismas, así que guardar el neto la
+ *   descuenta dos veces. Ya pasó una vez y costó encontrarlo.
+ * - El alta es un UPSERT por `stripePaymentIntentId` (que es UNIQUE): tocar el
+ *   botón dos veces, o que el webhook llegue tarde, no puede duplicar el ingreso.
+ * - La fecha sale del PaymentIntent, no del depósito: el dinero entró cuando el
+ *   cliente pagó, no cuando Stripe lo transfirió días después. Con la fecha del
+ *   depósito, un cobro de fin de mes caería en el mes siguiente y descuadraría
+ *   los ingresos.
+ */
+export async function registrarCobroDeLinea(
+  prisma: PrismaClient,
+  args: { lineId: string; reservationId?: string | null }
+): Promise<{ ok: true; data: RegistroCobroResult } | { ok: false; error: string }> {
+  const linea = await prisma.stripePayoutLine.findUnique({
+    where: { id: args.lineId },
+    include: { payout: { select: { id: true, stripeCreatedAt: true } } },
+  });
+  if (!linea) return { ok: false, error: "Movimiento no encontrado" };
+  if (linea.paymentId || linea.orderId) {
+    return { ok: false, error: "Este cobro ya está registrado como pago" };
+  }
+  if (isRefundType(linea.type)) {
+    return { ok: false, error: "Un reembolso no se registra como ingreso" };
+  }
+  if (!linea.stripePaymentIntentId) {
+    return {
+      ok: false,
+      error: "Este movimiento no es un cobro de un cliente (es un ajuste de Stripe)",
+    };
+  }
+  const gross = Number(linea.gross);
+  if (!(gross > 0)) {
+    return { ok: false, error: "El movimiento no tiene un monto cobrado" };
+  }
+
+  // A qué reserva pertenece. El llamador puede indicarla (la pantalla ya la
+  // muestra), pero si no, se usa la que dedujo la conciliación por la metadata
+  // de Stripe. Sin reserva no hay dónde colgarlo: mejor decirlo que inventar.
+  let reservationId = args.reservationId ?? null;
+  if (!reservationId) {
+    const detalle = await getPayoutBreakdown(prisma, linea.payout.id);
+    reservationId = detalle?.lines.find((l) => l.id === linea.id)?.match?.reservationId ?? null;
+  }
+  if (!reservationId) {
+    return {
+      ok: false,
+      error: "No se pudo identificar la reserva de este cobro. Regístralo a mano desde la reserva.",
+    };
+  }
+
+  const reserva = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    select: {
+      id: true,
+      ownerId: true,
+      petId: true,
+      groupId: true,
+      totalAmount: true,
+      payments: { select: { amount: true, status: true } },
+    },
+  });
+  if (!reserva) return { ok: false, error: "La reserva de este cobro ya no existe" };
+
+  // La reserva la propone la pantalla, pero quien manda es la metadata que
+  // Stripe guardó con el cobro. Sin este contraste, un id equivocado —una
+  // pantalla desfasada, una llamada a mano— asienta el dinero de un cliente en
+  // la cuenta de otro, y el pago se crea con el `userId` del dueño equivocado:
+  // el cobrado sigue debiendo y el otro aparece con un saldo que nunca pagó.
+  if (!respaldadaPorMetadata(linea, reserva)) {
+    return {
+      ok: false,
+      error:
+        "Este cobro no corresponde a esa reserva según los datos que Stripe guardó. " +
+        "Ábrelo desde su depósito, o regístralo a mano en la reserva correcta.",
+    };
+  }
+
+  // Reserva de varias mascotas: un solo cobro cubre a todo el grupo, pero cada
+  // mascota tiene su propia fila con su propio total. Colgar el bruto entero de
+  // una sola la dejaría sobrepagada y a las otras debiendo todo — que es
+  // exactamente el bug que se corrigió al repartir los anticipos.
+  //
+  // Repartirlo aquí tampoco es trivial: `stripePaymentIntentId` es UNIQUE, así
+  // que sólo una de las filas puede quedar vinculada al cobro, y con eso se
+  // pierde la idempotencia que hace inofensivo tocar el botón dos veces. Se
+  // prefiere no registrar nada y decirlo: un dato mal repartido es más difícil
+  // de detectar después que un pendiente a la vista.
+  if (reserva.groupId) {
+    const enGrupo = await prisma.reservation.count({ where: { groupId: reserva.groupId } });
+    if (enGrupo > 1) {
+      return {
+        ok: false,
+        error:
+          `Este cobro cubre una reserva de ${enGrupo} mascotas y hay que repartirlo entre ellas. ` +
+          "Regístralo a mano desde la reserva, con la parte que le toca a cada una.",
+      };
+    }
+  }
+
+  // Fecha real del cobro (ver el comentario del bloque de reglas).
+  let paidAt = linea.payout.stripeCreatedAt;
+  try {
+    const pi = await getStripe().paymentIntents.retrieve(linea.stripePaymentIntentId);
+    if (pi.created) paidAt = fromUnix(pi.created);
+  } catch (err) {
+    console.warn(`[payouts] no se pudo leer el PI ${linea.stripePaymentIntentId}:`, err);
+  }
+
+  // Mismo criterio que POST /admin/payments/manual: RESTANTE si liquida,
+  // ANTICIPO si es el primero, ABONO en los demás. El estado acompaña al tipo
+  // para que el badge de la app diga lo mismo que dicen los pagos de la app.
+  const total = Number(reserva.totalAmount);
+  const pagado = reserva.payments
+    .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
+    .reduce((a, p) => a + Number(p.amount), 0);
+  const saldo = Math.round((total - pagado) * 100) / 100;
+  const liquida = total <= 0 || gross >= saldo;
+  const kind = total <= 0 ? "ABONO" : liquida ? "RESTANTE" : pagado === 0 ? "ANTICIPO" : "ABONO";
+
+  const datos = {
+    amount: new Prisma.Decimal(gross),
+    stripeFeeAmount: Number(linea.fee) > 0 ? new Prisma.Decimal(Number(linea.fee)) : null,
+    method: "STRIPE" as const,
+    status: (liquida ? "PAID" : "PARTIAL") as "PAID" | "PARTIAL",
+    kind: kind as "ANTICIPO" | "ABONO" | "RESTANTE",
+    paidAt,
+    reservationId: reserva.id,
+    userId: reserva.ownerId,
+    notes: "Cobro de Stripe conciliado desde el depósito",
+  };
+
+  const existente = await prisma.payment.findUnique({
+    where: { stripePaymentIntentId: linea.stripePaymentIntentId },
+    select: { id: true },
+  });
+
+  const payment = await prisma.payment.upsert({
+    where: { stripePaymentIntentId: linea.stripePaymentIntentId },
+    create: { ...datos, stripePaymentIntentId: linea.stripePaymentIntentId },
+    update: {},
+    select: { id: true },
+  });
+
+  // Re-conciliar el depósito para que la línea deje de contarse como "sin
+  // registrar": el cruce se hace por `stripePaymentIntentId`, que acaba de
+  // existir. Sin esto, la pantalla sigue mostrando el cobro como huérfano hasta
+  // el próximo sync.
+  try {
+    await syncPayout(prisma, linea.payout.id);
+  } catch (err) {
+    console.warn(`[payouts] el pago quedó, pero no se pudo re-conciliar el depósito:`, err);
+  }
+
+  return {
+    ok: true,
+    data: {
+      paymentId: payment.id,
+      creado: !existente,
+      reservationId: reserva.id,
+      amount: gross,
+      fee: Number(linea.fee),
+    },
+  };
 }
