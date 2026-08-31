@@ -295,6 +295,13 @@ export const styles = StyleSheet.create({
     color: COLORS.primary,
     marginTop: 3,
   },
+  // Hueco de hora todavía sin definir: se pinta solo cuando se puede tocar,
+  // para que se vea que ahí se fija.
+  datePillTimeEmpty: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 3,
+  },
   dateConnector: {
     alignItems: "center",
     justifyContent: "center",

@@ -34,6 +34,69 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-08-31-b",
+    title: "La hora de llegada y de salida, por fin en la app",
+    items: [
+      {
+        icon: "time-outline",
+        title: "Cambia la hora de entrada o de salida cuando quieras",
+        body:
+          "La reserva se hace con días, pero la hora real llega después: el " +
+          "cliente avisa por WhatsApp «se la llevo a las 7» o «paso por ella " +
+          "el domingo hasta las 6». Esa hora solo la podía poner el cliente " +
+          "desde su app, así que terminaba anotada en la agenda del celular " +
+          "de quien contestó, y quien recibía al perro no se enteraba. " +
+          "Ahora, en el detalle de una estancia, toca ENTRADA o SALIDA y " +
+          "eliges la hora. Se puede cambiar las veces que haga falta, " +
+          "incluso con el perro ya adentro, y si no la sabes todavía la " +
+          "dejas en «Sin hora». " +
+          "El horario del hotel (llegadas de 9:00 a 18:00, salidas hasta la " +
+          "1:00) sale como referencia, no como límite: si el cliente viene a " +
+          "las 7 de la tarde, se guarda a las 7 de la tarde. " +
+          "En una reserva de varias mascotas el horario aplica a todas, que " +
+          "entran y salen juntas.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "notifications-outline",
+        title: "Al cambiar la hora, le llega aviso al equipo",
+        body:
+          "Cada vez que alguien mueve la hora de llegada o de recogida, al " +
+          "resto del equipo le entra la notificación con el nombre del perro " +
+          "y la hora nueva. Ya no hace falta reenviar el mensaje ni acordarse " +
+          "de avisar: quien va a recibir al perro se entera solo.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "list-outline",
+        title: "«Check-ins hoy» y «Check-outs hoy» ahora son la agenda del día",
+        body:
+          "Las dos listas del panel salían con la hora equivocada: todas " +
+          "decían 5:00 p.m., que no era la hora de nadie sino un efecto de " +
+          "cómo se guarda la fecha. Ya muestran la hora de verdad —o «Sin " +
+          "hora» cuando falta— y vienen ordenadas de la más temprana a la " +
+          "más tarde, así se leen de corrido para armar el día. La hora " +
+          "también aparece ya en las tarjetas del panel y del calendario, " +
+          "sin abrir la reservación.",
+        route: "/staff-list/checkins",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "lock-closed-outline",
+        title: "La nota interna ya se ve en el detalle de la estancia",
+        body:
+          "«Ya dio el anticipo, cobrar $800 al entregar» y avisos por el " +
+          "estilo se escribían en la nota interna de la reserva, pero solo " +
+          "se veían desde el panel de admin: quien recibía al perro no las " +
+          "tenía enfrente. Ahora salen en el detalle de la estancia, con " +
+          "candado para que quede claro que el cliente no las ve. Se siguen " +
+          "escribiendo desde el detalle de admin.",
+        roles: ["STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-08-31",
     title: "Los depósitos de Stripe dejaron de atorarse",
     items: [

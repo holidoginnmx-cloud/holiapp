@@ -8,6 +8,7 @@ import {
   formatDayShort,
   formatWeekdayShort,
   formatTime,
+  formatTimeHHmm,
 } from "@/lib/format";
 import { PawRating } from "./PawRating";
 
@@ -457,6 +458,12 @@ function ReservationCardBase({
                   Hermosillo — la card mostraba la salida vieja tras editarla. */}
               <Text style={styles.datePillDay}>{formatDayShort(checkIn, { timeZone: "UTC" })}</Text>
               <Text style={styles.datePillSub}>{formatWeekdayShort(checkIn, { timeZone: "UTC" })}</Text>
+              {/* La hora también en hospedaje: hasta ahora solo se pintaba en
+                  guardería, y es justo lo que el equipo busca al abrir el
+                  calendario del día. */}
+              {checkInTime && (
+                <Text style={styles.datePillTime}>{formatTimeHHmm(checkInTime)}</Text>
+              )}
             </View>
 
             <View style={styles.dateConnector}>
@@ -476,6 +483,9 @@ function ReservationCardBase({
               <Text style={styles.datePillLabel}>SALIDA</Text>
               <Text style={styles.datePillDay}>{formatDayShort(checkOut, { timeZone: "UTC" })}</Text>
               <Text style={styles.datePillSub}>{formatWeekdayShort(checkOut, { timeZone: "UTC" })}</Text>
+              {checkOutTime && (
+                <Text style={styles.datePillTime}>{formatTimeHHmm(checkOutTime)}</Text>
+              )}
             </View>
           </View>
         ) : null}
@@ -658,6 +668,12 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     textTransform: "capitalize",
     marginTop: 1,
+  },
+  datePillTime: {
+    fontSize: 10,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.primary,
+    marginTop: 2,
   },
   dateConnector: {
     alignItems: "center",

@@ -17,7 +17,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
-import { formatName, formatTime } from "@/lib/format";
+import { formatName, formatTimeHHmm } from "@/lib/format";
 
 type ListType = "hospedados" | "alertas" | "checkins" | "checkouts" | "reportes";
 
@@ -114,9 +114,21 @@ export default function StaffListScreen() {
     (s) => s.reservationType !== "BATH"
   );
 
+  // Ordena por la hora estimada; las que todavía no la tienen van al final.
+  // Es lo que convierte la lista en una agenda: se lee de arriba abajo en el
+  // orden en que va a pasar el día.
+  const porHora = (campo: "checkInTime" | "checkOutTime") => (
+    a: { checkInTime?: string | null; checkOutTime?: string | null },
+    b: { checkInTime?: string | null; checkOutTime?: string | null }
+  ) => (a[campo] ?? "99:99").localeCompare(b[campo] ?? "99:99");
+
   // Derivados
-  const checkInsToday = confirmed.filter((s) => isSameLocalDay(s.checkIn));
-  const checkOutsToday = active.filter((s) => isSameLocalDay(s.checkOut));
+  const checkInsToday = confirmed
+    .filter((s) => isSameLocalDay(s.checkIn))
+    .sort(porHora("checkInTime"));
+  const checkOutsToday = active
+    .filter((s) => isSameLocalDay(s.checkOut))
+    .sort(porHora("checkOutTime"));
   const staysWithoutChecklist = active.filter((s) => s.checklists.length === 0);
   const staysWithMedication = active.filter(
     (s) => s.medicationNotes && s.medicationNotes.trim().length > 0
@@ -266,6 +278,9 @@ export default function StaffListScreen() {
                       <Text style={styles.metaText}>{stay.room.name}</Text>
                     </View>
                   )}
+                  {/* La hora ESTIMADA, no la del campo de fecha: `checkIn`
+                      guarda el día a las 00:00 UTC, que en Hermosillo son las
+                      5:00 p.m. — la lista entera anunciaba esa hora falsa. */}
                   {t === "checkins" && stay.checkIn && (
                     <View
                       style={[
@@ -279,7 +294,9 @@ export default function StaffListScreen() {
                         color={COLORS.infoText}
                       />
                       <Text style={[styles.metaText, { color: COLORS.infoText }]}>
-                        {formatTime(stay.checkIn)}
+                        {stay.checkInTime
+                          ? formatTimeHHmm(stay.checkInTime)
+                          : "Sin hora"}
                       </Text>
                     </View>
                   )}
@@ -298,7 +315,9 @@ export default function StaffListScreen() {
                       <Text
                         style={[styles.metaText, { color: COLORS.warningText }]}
                       >
-                        {formatTime(stay.checkOut)}
+                        {stay.checkOutTime
+                          ? formatTimeHHmm(stay.checkOutTime)
+                          : "Sin hora"}
                       </Text>
                     </View>
                   )}

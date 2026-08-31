@@ -135,6 +135,25 @@ export async function notifyReservationAudience(
  * Nunca lanza: el push es best-effort y no debe tumbar una edición ya escrita.
  * Nunca incluye texto de notas internas en el cuerpo.
  */
+/**
+ * Ids de TODO el equipo activo (ADMIN + STAFF), menos quien hizo el cambio.
+ *
+ * Fuente única de la audiencia interna. Existe porque cada camino resolvía la
+ * suya con su propio `findMany` copiado, y así fue como los avisos de reserva
+ * nueva terminaron filtrando `role: "STAFF"` cuando el equipo era ADMIN: no le
+ * llegaban a nadie y nadie se enteró hasta que se pasó un check-in.
+ */
+export async function equipoActivoIds(
+  prisma: PrismaClient,
+  excluirUserId?: string | null
+): Promise<string[]> {
+  const team = await prisma.user.findMany({
+    where: { role: { in: ["STAFF", "ADMIN"] }, isActive: true },
+    select: { id: true },
+  });
+  return team.map((u) => u.id).filter((id) => id !== excluirUserId);
+}
+
 export async function notifyTeamReservationUpdated(
   prisma: PrismaClient,
   params: {

@@ -421,6 +421,11 @@ export default function StayDetail() {
   }
 
   const isAssignedToMe = stay.staffId === currentUserId;
+  // La hora estimada se corrige mientras la estancia siga viva. No toca dinero,
+  // así que entra en lo que el staff sí puede cambiar.
+  const canEditTimes =
+    stay.reservationType === "STAY" &&
+    (stay.status === "CONFIRMED" || stay.status === "CHECKED_IN");
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayKey = localDayKey();
@@ -634,34 +639,56 @@ export default function StayDetail() {
           </View>
         )}
 
-        {/* Stay info */}
+        {/* Stay info. Entrada y Salida abren el horario: quien recibe al perro
+            también recibe la llamada de "voy más tarde", y antes tenía que
+            pedirle a un admin que lo cambiara. */}
         <View style={styles.stayInfoRow}>
-          <View style={styles.stayInfoItem}>
+          <TouchableOpacity
+            style={styles.stayInfoItem}
+            onPress={() => router.push(`/staff/stay/edit-times?id=${id}` as any)}
+            activeOpacity={0.7}
+            disabled={!canEditTimes}
+            testID="staff-stay-edit-checkin-time"
+          >
             <Text style={styles.stayInfoLabel}>Entrada</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkIn
                 ? formatDayShort(stay.checkIn, { timeZone: "UTC" })
                 : "—"}
             </Text>
-            {stay.checkInTime && (
+            {stay.checkInTime ? (
               <Text style={styles.stayInfoTime}>
                 {formatTimeHHmm(stay.checkInTime)}
               </Text>
+            ) : (
+              canEditTimes && (
+                <Text style={styles.stayInfoTimeEmpty}>Sin hora</Text>
+              )
             )}
-          </View>
-          <View style={styles.stayInfoItem}>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.stayInfoItem}
+            onPress={() => router.push(`/staff/stay/edit-times?id=${id}` as any)}
+            activeOpacity={0.7}
+            disabled={!canEditTimes}
+            testID="staff-stay-edit-checkout-time"
+          >
             <Text style={styles.stayInfoLabel}>Salida</Text>
             <Text style={styles.stayInfoValue}>
               {stay.checkOut
                 ? formatDayShort(stay.checkOut, { timeZone: "UTC" })
                 : "—"}
             </Text>
-            {stay.checkOutTime && (
+            {stay.checkOutTime ? (
               <Text style={styles.stayInfoTime}>
                 {formatTimeHHmm(stay.checkOutTime)}
               </Text>
+            ) : (
+              canEditTimes && (
+                <Text style={styles.stayInfoTimeEmpty}>Sin hora</Text>
+              )
             )}
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.stayInfoItem}
             onPress={() => setRoomModalVisible(true)}
@@ -680,6 +707,27 @@ export default function StayDetail() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {/* Nota interna del equipo. La escribe un admin al capturar la reserva
+            ("ya dio el anticipo, cobrar $800 al entregar") y hasta ahora no se
+            veía aquí: el dato ya viajaba en la respuesta, faltaba pintarlo.
+            Quien recibe al perro es quien la necesita. Solo lectura: editarla
+            sigue siendo de admin. */}
+        {stay.internalNotes && (
+          <View style={styles.internalNoteBox}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={14}
+              color={COLORS.notesText}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.internalNoteLabel}>
+                Nota interna (solo el equipo)
+              </Text>
+              <Text style={styles.internalNoteText}>{stay.internalNotes}</Text>
+            </View>
+          </View>
+        )}
 
         {/* Baño contratado */}
         {(() => {

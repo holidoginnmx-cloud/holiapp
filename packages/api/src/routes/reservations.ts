@@ -26,6 +26,7 @@ import {
 } from "../lib/email";
 import { notifyUser, notifyTeamReservationUpdated } from "../lib/notify";
 import { notifyNewReservation } from "../lib/notifyNewReservation";
+import { applyReservationTimesUpdate } from "../lib/stayTimes";
 import { markQuoteConverted } from "../lib/quotes";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
@@ -1060,38 +1061,84 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
 
       const { checkInTime, checkOutTime } = parsed.data;
-      // La hora de llegada ya no tiene sentido después del check-in; la de
-      // recogida se puede indicar hasta antes del check-out.
-      if (checkInTime !== undefined && reservation.status !== "CONFIRMED") {
+
+      // Los dos límites de abajo son reglas del flujo del CLIENTE: para él, la
+      // hora de llegada deja de tener sentido una vez que el perro ya entró.
+      // El EQUIPO no vive con esa regla — el cliente avisa por WhatsApp que
+      // pasa por su perro más tarde y eso ocurre con la estancia en curso, que
+      // es justo cuando el guard de CONFIRMED lo bloqueaba.
+      if (!isStaffOrAdmin) {
+        if (checkInTime !== undefined && reservation.status !== "CONFIRMED") {
+          return reply
+            .status(400)
+            .send({ error: "La hora de llegada ya no se puede cambiar" });
+        }
+        if (
+          checkOutTime !== undefined &&
+          !["CONFIRMED", "CHECKED_IN"].includes(reservation.status)
+        ) {
+          return reply
+            .status(400)
+            .send({ error: "La hora de recogida ya no se puede cambiar" });
+        }
+      } else if (!["CONFIRMED", "CHECKED_IN"].includes(reservation.status)) {
+        // Una reserva cancelada o ya cerrada no tiene horario que planear.
         return reply
           .status(400)
-          .send({ error: "La hora de llegada ya no se puede cambiar" });
+          .send({ error: "La reserva ya no está activa" });
       }
-      if (
-        checkOutTime !== undefined &&
-        !["CONFIRMED", "CHECKED_IN"].includes(reservation.status)
-      ) {
+
+      return applyReservationTimesUpdate(prisma, {
+        reservation,
+        checkInTime,
+        checkOutTime,
+        actorUserId: request.userId ?? null,
+        notifyTeam: isStaffOrAdmin,
+      });
+    }
+  );
+
+  // PATCH /internal/reservations/:id/times — la misma edición, para el admin
+  // web. Su Clerk es OTRA instancia y la API no puede validar sus tokens; el
+  // CRON_SECRET compartido es el único puente, igual que en el reagendado de
+  // baños. Sin secreto configurado la ruta no existe en la práctica (401).
+  fastify.patch<{ Params: { id: string } }>(
+    "/internal/reservations/:id/times",
+    async (request, reply) => {
+      const secret = process.env.CRON_SECRET;
+      if (!secret || request.headers["x-cron-secret"] !== secret) {
+        return reply.status(401).send({ error: "No autorizado" });
+      }
+
+      const parsed = UpdateReservationTimesSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      const reservation = await prisma.reservation.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!reservation) {
+        return reply.status(404).send({ error: "Reservación no encontrada" });
+      }
+      if (!["STAY", "DAYCARE"].includes(reservation.reservationType)) {
         return reply
           .status(400)
-          .send({ error: "La hora de recogida ya no se puede cambiar" });
+          .send({ error: "Solo aplica a hospedajes y guarderías" });
+      }
+      if (!["CONFIRMED", "CHECKED_IN"].includes(reservation.status)) {
+        return reply.status(400).send({ error: "La reserva ya no está activa" });
       }
 
-      const data = {
-        ...(checkInTime !== undefined ? { checkInTime } : {}),
-        ...(checkOutTime !== undefined ? { checkOutTime } : {}),
-      };
-
-      await prisma.reservation.updateMany({
-        where: reservation.groupId
-          ? { groupId: reservation.groupId, ownerId: reservation.ownerId }
-          : { id: reservation.id },
-        data,
+      return applyReservationTimesUpdate(prisma, {
+        reservation,
+        checkInTime: parsed.data.checkInTime,
+        checkOutTime: parsed.data.checkOutTime,
+        // El admin web no manda un usuario identificable, así que el aviso va
+        // a todo el equipo sin exclusiones.
+        actorUserId: null,
+        notifyTeam: true,
       });
-
-      const updated = await prisma.reservation.findUnique({
-        where: { id: reservation.id },
-      });
-      return updated;
     }
   );
 

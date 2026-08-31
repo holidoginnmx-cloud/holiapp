@@ -26,6 +26,10 @@ export default function StayLayout() {
       }}
     >
       <Stack.Screen name="[id]" options={{ title: "Detalle de estancia", headerLeft: backButton }} />
+      <Stack.Screen
+        name="edit-times"
+        options={{ title: "Horario", headerLeft: backButton }}
+      />
     </Stack>
   );
 }

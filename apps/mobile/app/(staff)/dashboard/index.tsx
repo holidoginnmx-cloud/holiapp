@@ -27,7 +27,7 @@ import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
-import { formatName, formatDateLong, formatDayShort, formatTime, formatWeekdayDayShort } from "@/lib/format";
+import { formatName, formatDateLong, formatDayShort, formatTime, formatTimeHHmm, formatWeekdayDayShort } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 type SectionKey = "baths" | "active" | "unassigned" | "upcoming";
@@ -457,6 +457,9 @@ type StayCardStay = {
   id: string;
   checkIn: string | Date | null;
   checkOut: string | Date | null;
+  /** Hora estimada de llegada/recogida ("HH:mm" local), la que fija el equipo. */
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   checklists: { id: string }[];
   medicationNotes?: string | null;
   pet: { name: string; photoUrl: string | null };
@@ -605,6 +608,13 @@ function StayCard({
             <View style={styles.dateBlock}>
               <Text style={styles.dateBlockLabel}>ENTRADA</Text>
               <Text style={styles.dateBlockValue}>{shortDate(checkInDate)}</Text>
+              {/* La hora que el cliente confirmó: sin ella hay que abrir la
+                  reserva para saber a qué hora esperar al perro. */}
+              {stay.checkInTime && (
+                <Text style={styles.dateBlockTime}>
+                  {formatTimeHHmm(stay.checkInTime)}
+                </Text>
+              )}
             </View>
             <View style={styles.dateConnector}>
               <View style={styles.connectorLine} />
@@ -626,6 +636,16 @@ function StayCard({
               >
                 {shortDate(checkOutDate)}
               </Text>
+              {stay.checkOutTime && (
+                <Text
+                  style={[
+                    styles.dateBlockTime,
+                    checkOutToday && { color: COLORS.warningText },
+                  ]}
+                >
+                  {formatTimeHHmm(stay.checkOutTime)}
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -1035,6 +1055,12 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
+  },
+  dateBlockTime: {
+    fontSize: 11,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.primary,
+    marginTop: 2,
   },
   dateConnector: {
     flex: 1,

@@ -133,6 +133,28 @@ export const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     lineHeight: 18,
   },
+  // Nota interna: se distingue de la del perro porque no la ve el cliente.
+  internalNoteBox: {
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: COLORS.notesBg,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  internalNoteLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.notesText,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  internalNoteText: {
+    fontSize: 13,
+    color: COLORS.notesText,
+    lineHeight: 18,
+  },
   bathRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -373,6 +395,12 @@ export const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: COLORS.primary,
+    marginTop: 1,
+  },
+  // Hueco de hora sin definir: solo se pinta cuando se puede tocar.
+  stayInfoTimeEmpty: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
     marginTop: 1,
   },
   actionButton: {

@@ -12,7 +12,7 @@
  * `notifyNewReservation`; la audiencia y el formato viven en un solo lugar.
  */
 import type { PrismaClient } from "@holidoginn/db";
-import { notifyUsers } from "./notify";
+import { notifyUsers, equipoActivoIds } from "./notify";
 import { TZ_HOTEL, localYMD } from "./bathAvailability";
 
 /** De dónde vino la reserva. Viaja en el `data` del push para diagnóstico. */
@@ -239,13 +239,7 @@ export async function notifyNewReservation(
     const first = reservations[0];
     if (!first) return;
 
-    const team = await prisma.user.findMany({
-      where: { role: { in: ["STAFF", "ADMIN"] }, isActive: true },
-      select: { id: true },
-    });
-    const targets = team
-      .map((u) => u.id)
-      .filter((id) => id !== createdByUserId);
+    const targets = await equipoActivoIds(prisma, createdByUserId);
     if (targets.length === 0) return;
 
     const msg = buildNewReservationMessage(params);

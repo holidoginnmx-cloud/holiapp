@@ -670,6 +670,14 @@ export default function AdminReservationDetail() {
     !isBath &&
     !isDaycare &&
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
+  // La HORA estimada de llegada/recogida se corrige mientras la estancia siga
+  // viva: con el perro adentro es justo cuando el cliente avisa a qué hora pasa
+  // por él. Va aparte de canEditDates porque son dos cosas distintas — mover el
+  // día recalcula el precio, mover la hora no.
+  const canEditTimes =
+    !isBath &&
+    !isDaycare &&
+    (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
   // Reagendar la cita (appointmentAt) solo aplica a baños sueltos confirmados.
   const canEditAppointment = isBath && reservation.status === "CONFIRMED";
   // La guardería se mueve mientras siga viva: con el perro adentro es cuando
@@ -1032,19 +1040,21 @@ export default function AdminReservationDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Date hero — entrada → salida con noches al centro. Tocable para
-            modificar fechas mientras la estadía siga activa. */}
+        {/* Date hero — entrada → salida con noches al centro. El DÍA y la HORA
+            se editan por separado: tocar una pill abre el horario (lo que el
+            equipo cambia a diario, cuando el cliente avisa a qué hora llega o
+            pasa por su perro) y el badge de noches lleva a mover las fechas. */}
         {!isBath && reservation.checkIn && reservation.checkOut && (
-          <TouchableOpacity
-            style={styles.dateHero}
-            activeOpacity={0.7}
-            disabled={!canEditDates}
-            onPress={() =>
-              router.push(`/admin/reservation/edit-dates?id=${id}` as any)
-            }
-            testID="admin-reservation-edit-dates"
-          >
-            <View style={styles.datePill}>
+          <View style={styles.dateHero}>
+            <TouchableOpacity
+              style={styles.datePill}
+              activeOpacity={0.7}
+              disabled={!canEditTimes}
+              onPress={() =>
+                router.push(`/admin/reservation/edit-times?id=${id}` as any)
+              }
+              testID="admin-reservation-edit-checkin-time"
+            >
               <Text style={styles.datePillLabel}>ENTRADA</Text>
               <Text style={styles.datePillDay}>
                 {fmtDayShort(reservation.checkIn, { timeZone: "UTC" })}
@@ -1052,14 +1062,26 @@ export default function AdminReservationDetail() {
               <Text style={styles.datePillSub}>
                 {formatWeekdayShort(reservation.checkIn, { timeZone: "UTC" })}
               </Text>
-              {reservation.checkInTime && (
+              {reservation.checkInTime ? (
                 <Text style={styles.datePillTime}>
                   {formatTimeHHmm(reservation.checkInTime)}
                 </Text>
+              ) : (
+                canEditTimes && (
+                  <Text style={styles.datePillTimeEmpty}>Sin hora</Text>
+                )
               )}
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.dateConnector}>
+            <TouchableOpacity
+              style={styles.dateConnector}
+              activeOpacity={0.7}
+              disabled={!canEditDates}
+              onPress={() =>
+                router.push(`/admin/reservation/edit-dates?id=${id}` as any)
+              }
+              testID="admin-reservation-edit-dates"
+            >
               <View style={styles.connectorLine} />
               <View style={styles.nightsBadge}>
                 <Ionicons name="moon" size={12} color={COLORS.primary} />
@@ -1072,9 +1094,17 @@ export default function AdminReservationDetail() {
                 )}
               </View>
               <View style={styles.connectorLine} />
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.datePill}>
+            <TouchableOpacity
+              style={styles.datePill}
+              activeOpacity={0.7}
+              disabled={!canEditTimes}
+              onPress={() =>
+                router.push(`/admin/reservation/edit-times?id=${id}` as any)
+              }
+              testID="admin-reservation-edit-checkout-time"
+            >
               <Text style={styles.datePillLabel}>SALIDA</Text>
               <Text style={styles.datePillDay}>
                 {fmtDayShort(reservation.checkOut, { timeZone: "UTC" })}
@@ -1082,13 +1112,17 @@ export default function AdminReservationDetail() {
               <Text style={styles.datePillSub}>
                 {formatWeekdayShort(reservation.checkOut, { timeZone: "UTC" })}
               </Text>
-              {reservation.checkOutTime && (
+              {reservation.checkOutTime ? (
                 <Text style={styles.datePillTime}>
                   {formatTimeHHmm(reservation.checkOutTime)}
                 </Text>
+              ) : (
+                canEditTimes && (
+                  <Text style={styles.datePillTimeEmpty}>Sin hora</Text>
+                )
               )}
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Cuarto + Staff lado a lado (sólo hospedajes). En guardería el perro

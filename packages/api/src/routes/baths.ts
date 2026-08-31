@@ -23,6 +23,7 @@ import { requestReview } from "../lib/reviewRequest";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
+import { instanteDeLlegada } from "../lib/stayTimes";
 import {
   TZ_HOTEL,
   TZ_OFFSET_HOURS,
@@ -1305,6 +1306,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
     const windowStart = new Date(now.getTime() + 60 * 60 * 1000);   // +60 min
     const windowEnd = new Date(now.getTime() + 120 * 60 * 1000);    // +120 min
 
+    // La llegada real de una estancia NO se puede filtrar en SQL: `checkIn`
+    // guarda el DÍA a las 00:00 UTC y la hora vive aparte, en `checkInTime`
+    // ("HH:mm" local). Se traen las estancias cuyo día ronda la ventana y el
+    // instante se resuelve abajo, en memoria.
+    //
+    // Antes se comparaba `checkIn` —o sea, las 00:00 UTC— directamente contra
+    // la ventana: el recordatorio salía a las 5 p.m. del día ANTERIOR y le
+    // anunciaba al cliente esa misma hora inventada.
+    const UN_DIA_MS = 24 * 60 * 60 * 1000;
     const upcoming = await prisma.reservation.findMany({
       where: {
         status: { notIn: ["CANCELLED", "CHECKED_OUT"] },
@@ -1315,7 +1325,11 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           },
           {
             reservationType: "STAY",
-            checkIn: { gte: windowStart, lt: windowEnd },
+            checkInTime: { not: null },
+            checkIn: {
+              gte: new Date(now.getTime() - UN_DIA_MS),
+              lt: new Date(now.getTime() + 2 * UN_DIA_MS),
+            },
           },
         ],
       },
@@ -1336,8 +1350,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       });
       if (alreadyReminded) continue;
 
-      const target = res.reservationType === "BATH" ? res.appointmentAt : res.checkIn;
+      const target = instanteDeLlegada(res);
       if (!target) continue;
+      // Para las estancias el filtro de la ventana se hace aquí (ver arriba).
+      if (target < windowStart || target >= windowEnd) continue;
 
       const when = target.toLocaleString("es-MX", {
         timeZone: TZ_HOTEL,
