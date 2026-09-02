@@ -34,6 +34,29 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-e",
+    title: "Tus reportes y tus fotos ya se ven desde la computadora",
+    items: [
+      {
+        icon: "images-outline",
+        title: "El dueño que no usa la app ahora sí ve la estancia",
+        body:
+          "Los reportes diarios y las evidencias que subes solo se veían en la " +
+          "app del cliente. Quien reserva desde la página web —y son varios— no " +
+          "tenía a dónde entrar: veía su reserva y una cifra, nada más. " +
+          "Ahora, desde la página, cada reserva abre su propia pantalla con la " +
+          "línea de tiempo de la estancia: el reporte de cada día (ánimo, " +
+          "comidas, paseos, sanitario y la nota que escribiste) con las fotos y " +
+          "videos de ese día, y aparte las fotos de los días en que no hubo " +
+          "reporte. " +
+          "Lo que dice esto en la práctica: la nota del día la lee el dueño, " +
+          "no solo el turno siguiente. Lo que le dejas al otro turno con " +
+          "[HANDOFF] sigue siendo interno y no se le muestra a nadie de fuera.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-d",
     title: "Cotizar el traslado solo, e ida / vuelta / redondo",
     items: [
