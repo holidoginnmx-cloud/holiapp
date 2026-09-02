@@ -65,6 +65,13 @@ export function notificationRoute(
     return `/reservation/detail/${reservationId}?action=review`;
   }
 
+  // BALANCE_DUE: la visita cerró con saldo. Va al detalle del cliente, donde
+  // ahora está el botón de pago con el desglose de lo que se cobra. El `type`
+  // es GENERAL (como cartilla o los depósitos), así que se distingue por kind.
+  if (data?.kind === "BALANCE_DUE" && reservationId && isOwner) {
+    return `/reservation/detail/${reservationId}`;
+  }
+
   // --- Depósitos de Stripe (solo admin) -----------------------------------
   // El push del depósito es justo para poder ver, de un tap, de qué reservas
   // venía la transferencia que acaba de caer al banco.

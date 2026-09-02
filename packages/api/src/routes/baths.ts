@@ -20,6 +20,7 @@ import {
   type NewReservationSource,
 } from "../lib/notifyNewReservation";
 import { requestReview } from "../lib/reviewRequest";
+import { notifyBalanceDue } from "../lib/balanceReminder";
 import { quoteDelivery } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
@@ -194,6 +195,11 @@ export async function maybeConcludeStandaloneBath(
   // el equipo cobra al día siguiente el aviso sale entonces. Es lo correcto —
   // antes de pagar la cita todavía puede cambiar.
   await requestReview(prisma, reservationId);
+
+  // Hoy este helper solo cierra baños sin saldo, así que normalmente no hay
+  // nada que avisar; se llama igual para que el aviso no dependa de esa
+  // condición si algún día cambia. Es idempotente y sale por `false`.
+  await notifyBalanceDue(prisma, reservationId);
 
   return true;
 }

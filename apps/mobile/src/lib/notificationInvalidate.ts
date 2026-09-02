@@ -29,6 +29,14 @@ export function notificationInvalidationKeys(
     return [["pets"], ["reservations"]];
   }
 
+  // Saldo pendiente al concluir: el detalle tiene que mostrar el banner de pago
+  // y la lista su indicador, aunque el cliente ya estuviera parado ahí.
+  if (kind === "BALANCE_DUE") {
+    return reservationId
+      ? [["reservations"], ["reservation", reservationId]]
+      : [["reservations"]];
+  }
+
   const touchesReservations =
     type === "NEW_RESERVATION" ||
     kind === "NEW_RESERVATION" ||

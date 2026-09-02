@@ -532,6 +532,12 @@ model Reservation {
   reviewRequestedAt      DateTime? // cuándo se le pidió reseña al dueño
   reviewSnoozedUntil     DateTime? // "Más tarde": no volver a preguntar antes de esto
   reviewPromptCount      Int               @default(0) // cuántas veces se pospuso
+  // Aviso de saldo pendiente al concluir la visita. Misma mecánica y mismos
+  // motivos que `reviewRequestedAt`: se sella por VISITA (todo el groupId) para
+  // no mandar un push por mascota, y es columna y no una búsqueda en el JSON de
+  // `notifications` porque el barrido de mantenimiento la consulta en bucle.
+  // Ver packages/api/src/lib/balanceReminder.ts.
+  balanceReminderAt      DateTime? // cuándo se le avisó del saldo al dueño
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 

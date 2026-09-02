@@ -452,3 +452,27 @@ export function formatTimeHHmm(hhmm: string): string {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
+
+/**
+ * Días de antigüedad del cierre de una visita, para decidir si todavía tiene
+ * sentido pedirle dinero al cliente por ella.
+ *
+ * Hay estancias viejas que se cobraron en efectivo en mostrador sin registrar
+ * el pago en la app: su saldo en la base es falso. Enseñarle a esa persona un
+ * botón de "paga $1,200" es peor que no enseñarle nada, así que el cobro
+ * post-check-out solo se ofrece mientras la visita esté fresca.
+ */
+export function daysSinceVisitEnd(r: {
+  checkOut?: string | Date | null;
+  appointmentAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+}): number | null {
+  const raw = r.checkOut ?? r.appointmentAt ?? r.updatedAt;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((Date.now() - t) / 86_400_000);
+}
+
+/** Ventana en la que el cliente todavía puede liquidar una visita concluida. */
+export const BALANCE_AFTER_CHECKOUT_MAX_DAYS = 30;

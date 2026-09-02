@@ -14,6 +14,7 @@ import {
 import { notifyUser, notifyUsers, notifyPetAudience } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
 import { requestReview } from "../lib/reviewRequest";
+import { notifyBalanceDue } from "../lib/balanceReminder";
 import { maybeConcludeStandaloneBath } from "./baths";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
@@ -424,6 +425,10 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       // Solicitud de reseña (in-app + push). Por VISITA, no por reservación:
       // en un grupo multi-mascota sale un solo aviso, cuando cierra la última.
       await requestReview(prisma, id);
+
+      // Y si la estancia se cierra debiendo dinero, avisarlo: el cliente ya
+      // puede pagarlo desde la app (antes el botón desaparecía al concluir).
+      await notifyBalanceDue(prisma, id);
 
       return { reservation: updated, warnings };
     }

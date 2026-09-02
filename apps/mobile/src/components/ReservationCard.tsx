@@ -9,6 +9,8 @@ import {
   formatWeekdayShort,
   formatTime,
   formatTimeHHmm,
+  daysSinceVisitEnd,
+  BALANCE_AFTER_CHECKOUT_MAX_DAYS,
 } from "@/lib/format";
 import { PawRating } from "./PawRating";
 
@@ -31,6 +33,7 @@ interface ReservationCardProps {
   bookedByName?: string | null;
   staffName?: string | null;
   petCount?: number;
+  /** Ya no se usa para el aviso de saldo; se conserva porque los callers lo pasan. */
   paymentType?: string | null;
   hasBalance?: boolean;
   hasPendingChangeRequest?: boolean;
@@ -130,7 +133,6 @@ function ReservationCardBase({
   bookedByName,
   staffName,
   petCount,
-  paymentType,
   hasBalance,
   hasPendingChangeRequest,
   lastUpdateAt,
@@ -159,10 +161,22 @@ function ReservationCardBase({
       }
     : baseConfig;
 
+  // Saldo pendiente: antes solo se avisaba en reservas CONFIRMED con anticipo,
+  // así que una visita que se cerró debiendo dinero desaparecía del radar del
+  // cliente. Ahora se avisa mientras haya saldo y la reserva no esté cancelada.
+  // Misma ventana que el detalle: en visitas viejas el saldo suele ser un pago
+  // de mostrador que nunca se registró, no dinero real por cobrar.
+  const endedDaysAgo = daysSinceVisitEnd({ checkOut, appointmentAt });
   const showDepositAlert =
     !!hasBalance &&
-    paymentType === "DEPOSIT" &&
-    status === "CONFIRMED";
+    status !== "CANCELLED" &&
+    !(
+      status === "CHECKED_OUT" &&
+      endedDaysAgo != null &&
+      endedDaysAgo > BALANCE_AFTER_CHECKOUT_MAX_DAYS
+    );
+  const balanceAlertLabel =
+    status === "CHECKED_OUT" ? "Visita concluida · saldo pendiente" : "Saldo pendiente";
   const showChangeRequest = !!hasPendingChangeRequest;
   const showUpdatePreview = status === "CHECKED_IN" && !!lastUpdateAt;
   const showReviewCta = status === "CHECKED_OUT" && hasReview === false;
@@ -299,7 +313,7 @@ function ReservationCardBase({
                   size={13}
                   color={COLORS.warningText}
                 />
-                <Text style={styles.indicatorText}>Saldo pendiente</Text>
+                <Text style={styles.indicatorText}>{balanceAlertLabel}</Text>
               </View>
             )}
             {showChangeRequest && (

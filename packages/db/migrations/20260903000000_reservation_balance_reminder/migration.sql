@@ -1,0 +1,13 @@
+-- Aviso de saldo pendiente cuando la visita ya terminó.
+--
+-- Hasta ahora, si una estancia/baño/guardería se cerraba con dinero por cobrar,
+-- el cliente se quedaba sin enterarse: la app le escondía el botón de pago al
+-- pasar a CHECKED_OUT y nadie le avisaba. El cobro terminaba dependiendo de que
+-- alguien del equipo se acordara.
+--
+-- La marca vive aquí y no en `notifications` por lo mismo que `reviewRequestedAt`
+-- (ver el comentario en schema.prisma): el barrido de mantenimiento la consulta
+-- en bucle y necesita un findMany, no N búsquedas json-path sin índice.
+-- Se sella por VISITA completa (todo el groupId) para que una reserva de tres
+-- perros mande UN aviso y no tres.
+ALTER TABLE "reservations" ADD COLUMN "balanceReminderAt" TIMESTAMP(3);

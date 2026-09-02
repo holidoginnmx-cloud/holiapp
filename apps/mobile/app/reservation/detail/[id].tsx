@@ -27,10 +27,13 @@ import {
 } from "@/lib/api";
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { PaymentCardFlow } from "@/components/PaymentCardFlow";
+import { ReservationBreakdownCard } from "@/components/ReservationBreakdownCard";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   formatName,
+  daysSinceVisitEnd,
+  BALANCE_AFTER_CHECKOUT_MAX_DAYS,
   formatCurrency,
   formatDayShort,
   formatWeekdayShort,
@@ -267,10 +270,31 @@ function ReservationDetailScreenContent() {
   const remainingBalance = reservation
     ? Number(reservation.totalAmount) - totalPaid
     : 0;
+  // El saldo NO se apaga al concluir la visita: antes `CHECKED_OUT` escondía el
+  // botón, así que una estancia que se cerró debiendo dinero se quedaba sin
+  // forma de cobrarse desde la app (el endpoint pay-balance siempre lo permitió;
+  // el candado era solo de UI). Solo una reserva cancelada deja de cobrarse.
+  //
+  // Con una excepción: una visita cerrada hace mucho suele tener el saldo
+  // cobrado en mostrador y nunca registrado (ver daysSinceVisitEnd). Pasada la
+  // ventana, el cobro vuelve a ser cosa del equipo y al cliente no se le pide
+  // nada.
+  const daysSinceEnd = reservation ? daysSinceVisitEnd(reservation) : null;
+  const checkoutTooOld =
+    reservation?.status === "CHECKED_OUT" &&
+    daysSinceEnd != null &&
+    daysSinceEnd > BALANCE_AFTER_CHECKOUT_MAX_DAYS;
   const hasBalance =
     remainingBalance > 0.01 &&
     reservation?.status !== "CANCELLED" &&
-    reservation?.status !== "CHECKED_OUT";
+    !checkoutTooOld;
+  const balanceAfterCheckout =
+    hasBalance && reservation?.status === "CHECKED_OUT";
+  // "Saldo por extensión" solo si de verdad hay una extensión aprobada: en una
+  // reserva capturada por el equipo sin anticipo, `isDeposit` es false y el
+  // banner venía anunciando días agregados que nunca existieron.
+  const balanceFromExtension =
+    !isDeposit && !!approvedExtension && !balanceAfterCheckout;
 
   // El modal de reseña se abre SOLO si venimos del push (?action=review) o si
   // el cliente toca el CTA. Antes se abría solo cada vez que se entraba a una
@@ -667,6 +691,10 @@ function ReservationDetailScreenContent() {
           </View>
         )}
 
+        {/* Qué incluye el cobro. En multi-mascota es el desglose de ESTA
+            mascota; el reparto del grupo ya sale en el card "Mascotas". */}
+        <ReservationBreakdownCard reservation={reservation} />
+
         <View style={styles.totalFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalAmount}>
@@ -734,29 +762,52 @@ function ReservationDetailScreenContent() {
         </View>
       )}
 
-      {/* El saldo del anticipo se liquida en la app o al entregar al perro; no
-          hay fecha límite ni cancelación automática (ver auto-actions.ts). */}
+      {/* El saldo se liquida en la app o al entregar al perro; no hay fecha
+          límite ni cancelación automática (ver auto-actions.ts). Sigue visible
+          después del check-out: antes desaparecía ahí y la visita se quedaba sin
+          forma de cobrarse desde la app. */}
       {hasBalance && (
         <View style={styles.balanceBanner}>
           <View style={styles.balanceBannerHeader}>
             <Ionicons name="warning-outline" size={20} color={COLORS.warningText} />
             <Text style={styles.balanceBannerTitle}>
-              {isDeposit ? "Saldo pendiente" : "Saldo por extensión"}
+              {balanceFromExtension ? "Saldo por extensión" : "Saldo pendiente"}
             </Text>
           </View>
           <Text style={styles.balanceBannerAmount}>
             {formatCurrency(remainingBalance)} MXN
           </Text>
-          {isDeposit && (
+          {balanceAfterCheckout ? (
+            <Text style={styles.balanceBannerWarning}>
+              La visita de {formatName(reservation.pet?.name ?? "tu mascota")} ya
+              terminó y quedó este saldo por cubrir. Puedes pagarlo aquí mismo.
+            </Text>
+          ) : balanceFromExtension ? (
+            <Text style={styles.balanceBannerWarning}>
+              Corresponde a los días agregados tras la extensión aprobada.
+            </Text>
+          ) : (
             <Text style={styles.balanceBannerWarning}>
               Puedes liquidarlo aquí en la app o al entregar a tu mascota en la sucursal de Holidog Inn.
             </Text>
           )}
-          {!isDeposit && (
-            <Text style={styles.balanceBannerWarning}>
-              Corresponde a los días agregados tras la extensión aprobada.
-            </Text>
+
+          {/* Qué se está pagando: total, lo ya cubierto y el desglose de
+              conceptos. Antes solo se veía la cifra del saldo, sin explicación. */}
+          {totalPaid > 0 && (
+            <View style={styles.balancePaidRow}>
+              <Text style={styles.balancePaidLabel}>Ya pagaste</Text>
+              <Text style={styles.balancePaidValue}>
+                {formatCurrency(totalPaid)}
+              </Text>
+            </View>
           )}
+          <ReservationBreakdownCard
+            reservation={reservation}
+            variant="payment"
+            title="Qué estás pagando"
+          />
+
           <TouchableOpacity
             style={[styles.balanceButton, payingBalance && { opacity: 0.5 }]}
             onPress={handlePayBalance}
@@ -768,7 +819,9 @@ function ReservationDetailScreenContent() {
             ) : (
               <>
                 <Ionicons name="card-outline" size={20} color={COLORS.white} />
-                <Text style={styles.balanceButtonText}>Liquidar saldo</Text>
+                <Text style={styles.balanceButtonText}>
+                  {balanceAfterCheckout ? "Pagar saldo" : "Liquidar saldo"}
+                </Text>
               </>
             )}
           </TouchableOpacity>

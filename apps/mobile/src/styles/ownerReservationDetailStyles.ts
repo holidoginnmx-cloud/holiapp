@@ -526,6 +526,25 @@ export const styles = StyleSheet.create({
     color: COLORS.warningText,
     lineHeight: 18,
   },
+  // Lo ya cubierto, arriba del desglose del banner: sin esto el cliente solo
+  // veía el saldo, sin saber contra qué total se descuenta.
+  balancePaidRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  balancePaidLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.warningText,
+  },
+  balancePaidValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    fontVariant: ["tabular-nums"],
+  },
   balanceButton: {
     flexDirection: "row",
     alignItems: "center",

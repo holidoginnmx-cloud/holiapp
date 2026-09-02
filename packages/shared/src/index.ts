@@ -1361,3 +1361,7 @@ export * from "./quote";
 // Plantilla del documento que ve el cliente (página pública y PDF). El tipo
 // PublicQuote que recibe es la allowlist de lo que puede salir hacia afuera.
 export * from "./quoteHtml";
+
+// Desglose de una reserva YA creada (lo que ./quote hace para una cotización).
+// Mismo criterio: módulo puro, sin zod.
+export * from "./reservationBreakdown";

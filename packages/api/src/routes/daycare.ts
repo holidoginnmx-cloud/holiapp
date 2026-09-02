@@ -13,6 +13,7 @@ import {
 import { notifyPetAudience, notifyTeamReservationUpdated } from "../lib/notify";
 import { sharedPetIds } from "../lib/petAccess";
 import { requestReview } from "../lib/reviewRequest";
+import { notifyBalanceDue } from "../lib/balanceReminder";
 import { quoteDelivery } from "../lib/delivery";
 import { resolveDiscount } from "../lib/discounts";
 import {
@@ -693,6 +694,9 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           data: { reservationId: reservation.id, kind: "DAYCARE_CHECK_OUT" },
         });
         await requestReview(prisma, reservation.id);
+        // Si la guardería se cierra con saldo, el dueño se entera y lo paga
+        // desde la app.
+        await notifyBalanceDue(prisma, reservation.id);
       }
 
       return reply.send({
@@ -792,6 +796,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         });
         concluded = true;
         await requestReview(prisma, reservation.id);
+        await notifyBalanceDue(prisma, reservation.id);
       }
 
       await notifyPetAudience(prisma, { petId: reservation.petId, ownerId: reservation.ownerId }, {

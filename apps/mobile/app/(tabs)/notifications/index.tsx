@@ -107,6 +107,7 @@ export default function NotificationsScreen() {
       renderItem={({ item }) => (
         <NotificationItem
           type={item.type}
+          kind={(item.data as { kind?: string } | null)?.kind}
           title={item.title}
           body={item.body}
           isRead={item.isRead}

@@ -5,6 +5,8 @@ import { formatDayShort } from "@/lib/format";
 
 interface NotificationItemProps {
   type: string;
+  /** Subtipo de los avisos que viajan como GENERAL (`data.kind`). */
+  kind?: string | null;
   title: string;
   body: string;
   isRead: boolean;
@@ -45,6 +47,8 @@ const TYPE_STYLE: Record<string, TypeStyle> = {
     tint: COLORS.warningText,
   },
   PAYOUT_PAID: { icon: "business-outline", tint: COLORS.successText },
+  // Subtipos que viajan como GENERAL + data.kind (ver notificationRoute).
+  BALANCE_DUE: { icon: "card-outline", tint: COLORS.warningText },
 };
 
 function relativeTime(date: string | Date): string {
@@ -61,13 +65,17 @@ function relativeTime(date: string | Date): string {
 
 export function NotificationItem({
   type,
+  kind,
   title,
   body,
   isRead,
   createdAt,
   onPress,
 }: NotificationItemProps) {
-  const cfg = TYPE_STYLE[type] ?? TYPE_STYLE.GENERAL;
+  // El subtipo manda cuando existe: varios avisos viajan como GENERAL y con
+  // solo el `type` todos saldrían con el mismo icono de "información".
+  const cfg =
+    (kind ? TYPE_STYLE[kind] : undefined) ?? TYPE_STYLE[type] ?? TYPE_STYLE.GENERAL;
   const tint = cfg.tint;
 
   return (

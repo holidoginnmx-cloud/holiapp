@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@holidoginn/db";
 import { notifyUser, notifyPetAudience } from "./notify";
 import { requestReview } from "./reviewRequest";
+import { notifyBalanceDue } from "./balanceReminder";
 import { dayRangeUtc, localYMD } from "./bathAvailability";
 
 // Recordatorios automáticos de vacunas por vencer.
@@ -161,6 +162,9 @@ export async function autoCheckoutOverdueStays(
       data: { reservationId: res.id },
     });
     await requestReview(prisma, res.id);
+    // El auto-checkout es justo donde más aparece el saldo olvidado: la
+    // estancia se cierra sola y nadie cobró.
+    await notifyBalanceDue(prisma, res.id);
   }
 }
 
@@ -298,6 +302,9 @@ export async function requestPendingReviews(
     REVIEW_SWEEP_MAX_GROUPS
   )) {
     if (await requestReview(prisma, reservationId)) enviadas++;
+    // Red de seguridad del mismo barrido: una visita que cerró con saldo y
+    // cuyo aviso se perdió (proceso caído a media petición) se recupera aquí.
+    await notifyBalanceDue(prisma, reservationId);
   }
   return enviadas;
 }

@@ -34,6 +34,45 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03",
+    title: "El cliente ya ve qué incluye su cobro (y puede pagar aunque la visita haya terminado)",
+    items: [
+      {
+        icon: "receipt-outline",
+        title: "Desglose del cobro para el cliente",
+        body:
+          "Cuando capturas una reserva, el cliente solo veía una cifra suelta: " +
+          "\"Total $1,350\", sin saber qué incluía. Ahora ve el mismo desglose " +
+          "que tú — hospedaje por noche, baño, desparasitante, horas extra, " +
+          "descuento, domicilio — y los servicios de cortesía le aparecen " +
+          "marcados como regalo. Menos llamadas preguntando de qué es el cobro.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "card-outline",
+        title: "Ahora también hay desglose en baños y guarderías",
+        body:
+          "El desglose del detalle solo salía en estancias. Ya aparece en los " +
+          "tres servicios, incluso cuando pusiste el total a mano: la " +
+          "diferencia se muestra como \"Ajuste del equipo\".",
+        route: "/admin/reservations",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "alert-circle-outline",
+        title: "Si concluyes con saldo, el cliente puede pagarlo desde la app",
+        body:
+          "Antes, al marcar la estancia, baño o guardería como concluida, al " +
+          "cliente se le escondía el botón de pagar aunque siguiera debiendo — " +
+          "el cobro dependía de que alguien se acordara de perseguirlo. Ahora " +
+          "le llega un aviso con el monto, le sigue apareciendo el botón con el " +
+          "desglose de lo que está pagando, y en su lista la reserva queda " +
+          "marcada como \"Visita concluida · saldo pendiente\".",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-02-b",
     title: "La app se actualiza sola y ya puedes decirnos qué versión traes",
     items: [

@@ -64,6 +64,7 @@ import {
   utcDayKey,
   localDayKey,
 } from "@/lib/format";
+import { buildReservationBreakdown } from "@holidoginn/shared";
 import { computeDaycareHours } from "@holidoginn/shared/src/pricing";
 import { LIVE_OPS } from "@/lib/queryOptions";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
@@ -1232,107 +1233,41 @@ export default function AdminReservationDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Desglose del cobro original: la misma foto que el cliente vio al
-            reservar (hospedaje × noches, medicamento +10%, mismo día +20%,
-            descuento, domicilio y servicios). Solo existe en estancias que
-            guardaron el desglose (lodgingAmount); si el total se editó
-            después, la diferencia sale como "Otros ajustes". */}
-        {reservation.lodgingAmount != null &&
-          (() => {
-            const lodging = Number(reservation.lodgingAmount);
-            const med = Number(reservation.medicationFee ?? 0);
-            const sameDay = Number(reservation.sameDayFee ?? 0);
-            const discount = Number(reservation.discountTotal ?? 0);
-            const delivery = reservation.homeDelivery ? deliveryFee : 0;
-            const addonRows = (reservation.addons ?? [])
-              .filter(
-                (a) =>
-                  a.paidWith === "BOOKING" &&
-                  !a.isCourtesy &&
-                  Number(a.unitPrice) > 0,
-              )
-              .map((a) => ({
-                label:
-                  a.variant?.serviceType?.code === "EXTRA_HOURS" && a.quantity
-                    ? `Horas extra (${a.quantity} h)`
-                    : (a.variant?.serviceType?.name ?? "Servicio"),
-                amount: Number(a.unitPrice),
-                negative: false,
-              }));
-            const addonsSum = addonRows.reduce((s, r) => s + r.amount, 0);
-            const residual = Number(
-              (
-                Number(reservation.totalAmount) -
-                (lodging + med + sameDay - discount + delivery + addonsSum)
-              ).toFixed(2),
-            );
-            const noches = reservation.totalDays ?? 0;
-            const rows = [
-              {
-                label:
-                  noches > 0
-                    ? `Hospedaje · ${formatCurrency(lodging / noches)} × ${noches} ${
-                        noches === 1 ? "noche" : "noches"
-                      }`
-                    : "Hospedaje",
-                amount: lodging,
-                negative: false,
-              },
-              ...(med > 0
-                ? [{ label: "Medicamento (+10%)", amount: med, negative: false }]
-                : []),
-              ...addonRows,
-              ...(discount > 0
-                ? [{ label: "Descuento", amount: discount, negative: true }]
-                : []),
-              ...(sameDay > 0
-                ? [
-                    {
-                      label: "Reserva del mismo día (+20%)",
-                      amount: sameDay,
-                      negative: false,
-                    },
-                  ]
-                : []),
-              ...(delivery > 0
-                ? [
-                    {
-                      label: "Servicio a domicilio",
-                      amount: delivery,
-                      negative: false,
-                    },
-                  ]
-                : []),
-              ...(Math.abs(residual) > 0.5
-                ? [
-                    {
-                      label: "Otros ajustes (ediciones posteriores)",
-                      amount: Math.abs(residual),
-                      negative: residual < 0,
-                    },
-                  ]
-                : []),
-            ];
-            return (
-              <View style={styles.breakdownBox}>
-                <Text style={styles.breakdownTitle}>Desglose del cobro</Text>
-                {rows.map((r, i) => (
-                  <View key={`${r.label}-${i}`} style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>{r.label}</Text>
-                    <Text
-                      style={[
-                        styles.breakdownValue,
-                        r.negative && styles.breakdownNegative,
-                      ]}
-                    >
-                      {r.negative ? "−" : ""}
-                      {formatCurrency(r.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })()}
+        {/* Desglose del cobro: hospedaje × noches, medicamento, servicios,
+            descuento, domicilio. El cálculo vive en @holidoginn/shared para que
+            el equipo y el cliente vean exactamente lo mismo; antes estaba
+            inline aquí y solo existía en estancias con `lodgingAmount`, así que
+            baños y guarderías se quedaban sin él. Si el total se editó después,
+            la diferencia sale como "Ajuste del equipo". */}
+        {(() => {
+          const { rows } = buildReservationBreakdown(reservation as any, {
+            formatMoney: formatCurrency,
+          });
+          if (rows.length < 2) return null;
+          return (
+            <View style={styles.breakdownBox}>
+              <Text style={styles.breakdownTitle}>Desglose del cobro</Text>
+              {rows.map((r) => (
+                <View key={r.key} style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>
+                    {r.label}
+                    {r.isCourtesy ? " · Cortesía" : ""}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.breakdownValue,
+                      (r.negative || r.isCourtesy) && styles.breakdownNegative,
+                    ]}
+                  >
+                    {r.isCourtesy
+                      ? "Gratis"
+                      : `${r.negative ? "−" : ""}${formatCurrency(r.amount)}`}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
 
         {/* Total — editable: una reserva capturada sin el descuento no tenía
             forma de corregirse. */}
