@@ -5,12 +5,14 @@ import {
   View,
   Text,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   Platform,
   InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { TimeSlotPicker } from "@/components/TimeSlotPicker";
+import { TimeSlotGrid } from "@/components/TimeSlotPicker";
+import { useTrackedModal } from "@/lib/modalPresentation";
 import { formatTimeHHmm } from "@/lib/format";
 
 /**
@@ -19,6 +21,11 @@ import { formatTimeHHmm } from "@/lib/format";
  * convierte a segmentos en negrita al renderizar. Además permite indicar
  * (opcionalmente) la hora estimada de llegada y recogida; si no la indica,
  * un día antes se le pedirá por notificación.
+ *
+ * El selector de horas se renderiza DENTRO de esta misma hoja, intercambiando el
+ * contenido. Antes era un `Modal` anidado, y eso obligaba a descartar dos view
+ * controllers encadenados justo antes del cobro: mientras eso pasa, Stripe no
+ * puede presentar su hoja de pago y el botón se queda girando para siempre.
  */
 const REMINDER_TEXT =
   "*RECUERDA* 💡 El *check in* se puede programar en horario de lunes a sábado de 9:00 am a 6:00 pm y el *check out* es de 9:00 am a 1:00 pm ✨👉🏼 Igual puedes programar el *check out* después de la 1:00 pm solo que empieza a considerarse el *tiempo de guardería*, tiene costo de $25 pesos la hora 🙌🏼";
@@ -50,10 +57,9 @@ interface CheckInReminderModalProps {
   onAcknowledge: (times: ReservationTimes) => void;
   /**
    * Se dispara cuando el modal terminó de cerrarse — no cuando se pidió que se
-   * cerrara. Importa para el cobro: en iOS este modal es un view controller
-   * presentado, y si Stripe intenta abrir su hoja de pago mientras todavía se
-   * está descartando, la presentación falla en silencio y la promesa de
-   * `presentPaymentSheet` NUNCA resuelve (botón girando para siempre).
+   * cerrara. Sirve para arrancar el cobro en cuanto la pantalla queda libre, sin
+   * esperar al tope de la compuerta. La corrección de fondo la hace
+   * `waitForNoPresentedModal` dentro del checkout; esto es solo latencia.
    */
   onDismissed?: () => void;
 }
@@ -66,6 +72,8 @@ export function CheckInReminderModal({
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
+
+  const trackedDismiss = useTrackedModal(visible);
 
   // En ref para que el efecto de abajo dependa solo de `visible`: si dependiera
   // del callback (que el padre recrea en cada render) su cleanup cancelaría el
@@ -86,91 +94,112 @@ export function CheckInReminderModal({
     return () => task.cancel();
   }, [visible]);
 
+  // Si se reabre el recordatorio, el selector no debe seguir abierto de antes.
+  useEffect(() => {
+    if (visible) setPickerFor(null);
+  }, [visible]);
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={() => onAcknowledge({ checkInTime, checkOutTime })}
-      onDismiss={Platform.OS === "ios" ? () => onDismissedRef.current?.() : undefined}
+      onRequestClose={() => {
+        // Con el selector abierto, "atrás" solo cierra el selector: cerrar todo
+        // dispararía el cobro sin que el cliente lo pidiera.
+        if (pickerFor !== null) setPickerFor(null);
+        else onAcknowledge({ checkInTime, checkOutTime });
+      }}
+      onDismiss={() => {
+        trackedDismiss?.();
+        onDismissedRef.current?.();
+      }}
     >
       <View style={styles.overlay}>
         <View style={styles.sheet}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="time-outline" size={32} color={COLORS.primary} />
-          </View>
-
-          <Text style={styles.message}>{renderRichText(REMINDER_TEXT)}</Text>
-
-          {/* Hora estimada (opcional). Si no la eligen aquí, se pide por
-              notificación un día antes del check-in / check-out. */}
-          <Text style={styles.timesTitle}>
-            ¿Ya sabes tus horarios? (opcional)
-          </Text>
-          <View style={styles.timesRow}>
-            <TouchableOpacity
-              style={[styles.timeBtn, checkInTime && styles.timeBtnSet]}
-              onPress={() => setPickerFor("in")}
-              activeOpacity={0.8}
-              testID="reminder-checkin-time"
+          {pickerFor !== null ? (
+            <TimeSlotGrid
+              title={pickerFor === "in" ? "Hora de llegada" : "Hora de recogida"}
+              subtitle={
+                pickerFor === "in"
+                  ? "¿A qué hora planeas dejar a tu peludito?"
+                  : "¿A qué hora planeas recogerlo? Después de la 1:00 pm aplica guardería ($25/h)."
+              }
+              value={pickerFor === "in" ? checkInTime : checkOutTime}
+              warnFrom={pickerFor === "out" ? "13:00" : undefined}
+              warnLabel={pickerFor === "out" ? "guardería" : undefined}
+              onSelect={(v) => {
+                if (pickerFor === "in") setCheckInTime(v);
+                else setCheckOutTime(v);
+                setPickerFor(null);
+              }}
+              onClose={() => setPickerFor(null)}
+            />
+          ) : (
+            <ScrollView
+              style={styles.reminderScroll}
+              contentContainerStyle={styles.reminderContent}
+              bounces={false}
             >
-              <Text style={styles.timeBtnLabel}>Llegada</Text>
-              <Text
-                style={[
-                  styles.timeBtnValue,
-                  checkInTime && styles.timeBtnValueSet,
-                ]}
-              >
-                {checkInTime ? formatTimeHHmm(checkInTime) : "Elegir"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.timeBtn, checkOutTime && styles.timeBtnSet]}
-              onPress={() => setPickerFor("out")}
-              activeOpacity={0.8}
-              testID="reminder-checkout-time"
-            >
-              <Text style={styles.timeBtnLabel}>Recogida</Text>
-              <Text
-                style={[
-                  styles.timeBtnValue,
-                  checkOutTime && styles.timeBtnValueSet,
-                ]}
-              >
-                {checkOutTime ? formatTimeHHmm(checkOutTime) : "Elegir"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.timesHint}>
-            Si aún no lo sabes, te lo preguntaremos un día antes.
-          </Text>
+              <View style={styles.iconWrap}>
+                <Ionicons name="time-outline" size={32} color={COLORS.primary} />
+              </View>
 
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => onAcknowledge({ checkInTime, checkOutTime })}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.buttonText}>Continuar</Text>
-          </TouchableOpacity>
+              <Text style={styles.message}>{renderRichText(REMINDER_TEXT)}</Text>
 
-          <TimeSlotPicker
-            visible={pickerFor !== null}
-            title={pickerFor === "in" ? "Hora de llegada" : "Hora de recogida"}
-            subtitle={
-              pickerFor === "in"
-                ? "¿A qué hora planeas dejar a tu peludito?"
-                : "¿A qué hora planeas recogerlo? Después de la 1:00 pm aplica guardería ($25/h)."
-            }
-            value={pickerFor === "in" ? checkInTime : checkOutTime}
-            warnFrom={pickerFor === "out" ? "13:00" : undefined}
-            warnLabel={pickerFor === "out" ? "guardería" : undefined}
-            onSelect={(v) => {
-              if (pickerFor === "in") setCheckInTime(v);
-              else if (pickerFor === "out") setCheckOutTime(v);
-              setPickerFor(null);
-            }}
-            onClose={() => setPickerFor(null)}
-          />
+              {/* Hora estimada (opcional). Si no la eligen aquí, se pide por
+                  notificación un día antes del check-in / check-out. */}
+              <Text style={styles.timesTitle}>
+                ¿Ya sabes tus horarios? (opcional)
+              </Text>
+              <View style={styles.timesRow}>
+                <TouchableOpacity
+                  style={[styles.timeBtn, checkInTime && styles.timeBtnSet]}
+                  onPress={() => setPickerFor("in")}
+                  activeOpacity={0.8}
+                  testID="reminder-checkin-time"
+                >
+                  <Text style={styles.timeBtnLabel}>Llegada</Text>
+                  <Text
+                    style={[
+                      styles.timeBtnValue,
+                      checkInTime && styles.timeBtnValueSet,
+                    ]}
+                  >
+                    {checkInTime ? formatTimeHHmm(checkInTime) : "Elegir"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.timeBtn, checkOutTime && styles.timeBtnSet]}
+                  onPress={() => setPickerFor("out")}
+                  activeOpacity={0.8}
+                  testID="reminder-checkout-time"
+                >
+                  <Text style={styles.timeBtnLabel}>Recogida</Text>
+                  <Text
+                    style={[
+                      styles.timeBtnValue,
+                      checkOutTime && styles.timeBtnValueSet,
+                    ]}
+                  >
+                    {checkOutTime ? formatTimeHHmm(checkOutTime) : "Elegir"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.timesHint}>
+                Si aún no lo sabes, te lo preguntaremos un día antes.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => onAcknowledge({ checkInTime, checkOutTime })}
+                activeOpacity={0.85}
+                testID="reminder-continue"
+              >
+                <Text style={styles.buttonText}>Continuar</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
         </View>
       </View>
     </Modal>
@@ -189,6 +218,14 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     padding: 22,
     paddingBottom: 28,
+    maxHeight: "85%",
+  },
+  reminderScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  reminderContent: {
+    paddingBottom: 4,
   },
   iconWrap: {
     alignSelf: "center",

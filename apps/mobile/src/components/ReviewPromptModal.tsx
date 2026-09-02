@@ -19,6 +19,7 @@ import { REVIEW_COPY, reviewWho } from "@holidoginn/shared";
 import { createReview, snoozeReview } from "@/lib/api";
 import { PawRating, RATING_LABELS } from "./PawRating";
 import { maybePromptStoreReview } from "@/lib/storeReview";
+import { useTrackedModal } from "@/lib/modalPresentation";
 
 export type ReviewTarget = {
   /** Reservaciones de la visita (una por mascota). Se califica UNA vez. */
@@ -42,6 +43,9 @@ export function ReviewPromptModal({
   userId,
   onDismiss,
 }: ReviewPromptModalProps) {
+  // Registra el modal para que un cobro no intente presentar la hoja de
+  // Stripe mientras esta hoja todavía se está descartando.
+  const onTrackedDismiss = useTrackedModal(visible);
   const queryClient = useQueryClient();
   // Arranca en 0, no en 5: precargarlo en "Excelente" sesga el resultado y un
   // toque accidental en Enviar registraba 5 patitas que nadie eligió.
@@ -102,6 +106,7 @@ export function ReviewPromptModal({
       visible={visible}
       transparent
       animationType="slide"
+      onDismiss={onTrackedDismiss}
       onRequestClose={() => onDismiss("closed")}
     >
       <KeyboardAvoidingView

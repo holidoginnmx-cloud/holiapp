@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cancelReservation, issueRefund } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { useTrackedModal } from "@/lib/modalPresentation";
 
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
@@ -40,6 +41,9 @@ export function CancelReservationModal({
   mode = "cancel",
   onClose,
 }: CancelReservationModalProps) {
+  // Registra el modal para que un cobro no intente presentar la hoja de
+  // Stripe mientras esta hoja todavía se está descartando.
+  const onTrackedDismiss = useTrackedModal(visible);
   const qc = useQueryClient();
   const [choice, setChoice] = useState<RefundChoice>(
     allowStripeRefund ? "STRIPE_REFUND" : "CREDIT"
@@ -97,7 +101,13 @@ export function CancelReservationModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      onDismiss={onTrackedDismiss}
+    >
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.headerRow}>

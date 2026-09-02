@@ -33,9 +33,12 @@ import {
   type MedicationByPet,
 } from "@/lib/api";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
-import { withTimeout } from "@/lib/promiseTimeout";
+import {
+  usePaymentCheckout,
+  HOLIDOG_SHEET_APPEARANCE,
+} from "@/hooks/usePaymentCheckout";
 import {
   CheckInReminderModal,
   type ReservationTimes,
@@ -46,7 +49,6 @@ import {
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
 import { formatName, formatCurrency, formatDayShort, formatDayShortYear } from "@/lib/format";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
   sizeFromWeight,
@@ -86,7 +88,7 @@ function CreateReservationScreenContent() {
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
   const queryClient = useQueryClient();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const checkout = usePaymentCheckout("reservation");
 
   // Form state
   const [checkIn, setCheckIn] = useState<Date | null>(null);
@@ -568,14 +570,15 @@ function CreateReservationScreenContent() {
   const handleReminderAcknowledge = (times: ReservationTimes) => {
     // Ref (no estado): runPayment lo lee sin esperar un re-render.
     reservationTimesRef.current = times;
-    // El cobro NO arranca aquí: hay que esperar a que este modal termine de
-    // cerrarse o Stripe no puede presentar su hoja de pago encima (en iOS la
-    // promesa se queda colgada y el botón gira para siempre). El disparo real
-    // llega por onDismissed; el timer es la red por si ese aviso no llega.
+    // El cobro NO arranca aquí: se espera a que el modal termine de cerrarse.
+    // El disparo fino llega por onDismissed y este timer es solo la red por si
+    // ese aviso no llega — puede ser generoso porque la corrección de verdad
+    // está dentro del checkout (`waitForNoPresentedModal`), que no presenta la
+    // hoja de pago mientras quede un modal en pantalla.
     pendingPaymentRef.current = true;
     setPaying(true);
     setShowCheckInReminder(false);
-    kickoffTimerRef.current = setTimeout(startPaymentAfterDismiss, 800);
+    kickoffTimerRef.current = setTimeout(startPaymentAfterDismiss, 3000);
   };
 
   useEffect(() => {
@@ -628,50 +631,14 @@ function CreateReservationScreenContent() {
         if (!userConfirmed) return;
       }
 
-      // 3. Open Stripe PaymentSheet only when there is something to charge.
+      // 3. Cobro con Stripe, solo si hay algo que cobrar.
       if (!intent.coveredByCredit && intent.clientSecret) {
-        // Con tope de espera: si Stripe no contesta, el botón tiene que salir
-        // del spinner con un error, no quedarse girando.
-        const { error: initError } = await withTimeout(
-          initPaymentSheet({
-            paymentIntentClientSecret: intent.clientSecret,
-            merchantDisplayName: "Holidog Inn",
-            applePay: { merchantCountryCode: "MX" },
-            appearance: {
-              colors: {
-                primary: COLORS.primary,
-                background: COLORS.white,
-                componentBackground: COLORS.bgPage,
-                primaryText: COLORS.textPrimary,
-                secondaryText: COLORS.textSecondary,
-              },
-              shapes: {
-                borderRadius: 12,
-                borderWidth: 1,
-              },
-              primaryButton: {
-                colors: {
-                  background: COLORS.primary,
-                  text: COLORS.white,
-                },
-                shapes: {
-                  borderRadius: 12,
-                },
-              },
-            },
-          }),
-          30_000,
-          "No se pudo abrir la ventana de pago. Revisa tu conexión e intenta de nuevo.",
-        );
-
-        if (initError) {
-          Alert.alert("Error", initError.message);
-          return;
-        }
-
-        const { error: payError } = await presentPaymentSheet();
-
-        if (handlePaymentSheetError(payError, "reservation")) return;
+        const outcome = await checkout.run({
+          clientSecret: intent.clientSecret,
+          paymentIntentId: intent.paymentIntentId,
+          appearance: HOLIDOG_SHEET_APPEARANCE,
+        });
+        if (outcome !== "paid") return;
       }
 
       // 4. Payment succeeded — create reservations
@@ -1625,6 +1592,8 @@ function CreateReservationScreenContent() {
         label="Pagar y confirmar"
         testID="reservation-create-submit-button"
       />
+
+      {checkout.stuckNotice}
 
       <CheckInReminderModal
         visible={showCheckInReminder}
