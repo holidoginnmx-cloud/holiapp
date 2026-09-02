@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-02-b",
+    title: "La app se actualiza sola y ya puedes decirnos qué versión traes",
+    items: [
+      {
+        icon: "cloud-download-outline",
+        title: "Los arreglos llegan sin que cierres la app",
+        body:
+          "Hasta ahora, una corrección publicada solo entraba cuando cerrabas " +
+          "la app por completo y volvías a abrirla — podían pasar días sin que " +
+          "te llegara. Ahora, si dejaste la app un buen rato en segundo plano, " +
+          "al volver se pone al día sola. Nunca lo hace a media reserva ni con " +
+          "un cobro abierto.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "information-circle-outline",
+        title: "Tu versión, en Perfil",
+        body:
+          "En «Versión de la app» ahora sale también el identificador de la " +
+          "última actualización, y al tocarlo puedes compartirlo. Si te " +
+          "pedimos «mándanos tu versión» para revisar algo raro, es de ahí: " +
+          "dos teléfonos con el mismo número de versión pueden traer código " +
+          "distinto.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-02",
     title: "Cotizar el traslado, calendario para las fechas y un teclado que no estorba",
     items: [

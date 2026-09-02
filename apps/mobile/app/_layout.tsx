@@ -35,6 +35,7 @@ import {
   type NotificationRouteData,
 } from "@/lib/notificationRoute";
 import { notificationInvalidationKeys } from "@/lib/notificationInvalidate";
+import { applyIfSafe, checkAndFetch } from "@/lib/appUpdates";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -380,6 +381,41 @@ function PushCacheInvalidator() {
   return null;
 }
 
+/**
+ * Aplica las actualizaciones por aire sin esperar a que el cliente mate la app.
+ *
+ * Sin esto, un `eas update` solo entra en el siguiente arranque en frío: un
+ * arreglo urgente puede tardar días en llegarle a quien deja la app abierta en
+ * segundo plano. La recarga solo ocurre al volver de un rato largo fuera y
+ * nunca con un cobro en curso, así que se siente igual que abrir la app.
+ */
+function OtaUpdater() {
+  const backgroundedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Al arrancar ya se descarga lo que haya, para que esté listo la próxima vez.
+    void checkAndFetch();
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        const since = backgroundedAt.current;
+        backgroundedAt.current = null;
+        void (async () => {
+          const hasUpdate = await checkAndFetch();
+          if (!hasUpdate || since === null) return;
+          await applyIfSafe(Date.now() - since);
+        })();
+      } else if (state === "background") {
+        backgroundedAt.current = Date.now();
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  return null;
+}
+
 export default function RootLayout() {
   const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
@@ -405,6 +441,7 @@ export default function RootLayout() {
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
+        <OtaUpdater />
         <PushNavigationHandler />
         <PushCacheInvalidator />
         <StatusBar style="dark" />

@@ -5,18 +5,19 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Share,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
-import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
 import { formatName, formatMonthYear } from "@/lib/format";
 import { getStaffStats } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 import { clearSessionState } from "@/lib/session";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { buildDiagnostics, buildLabel } from "@/lib/appUpdates";
 
 export default function StaffProfile() {
   const { signOut } = useClerk();
@@ -48,8 +49,19 @@ export default function StaffProfile() {
     ? formatMonthYear(stats.memberSince)
     : null;
 
-  const appVersion =
-    (Constants.expoConfig?.version as string | undefined) ?? "1.0.0";
+
+  // El identificador del update importa: los arreglos viajan por aire, así que
+  // dos teléfonos con la misma versión pueden traer código distinto.
+  async function handleShareDiagnostics() {
+    try {
+      await Share.share({
+        title: "Holidog Inn — versión de la app",
+        message: buildDiagnostics(),
+      });
+    } catch {
+      // Compartir cancelado.
+    }
+  }
 
   return (
     <ScreenContainer scroll contentContainerStyle={styles.content}>
@@ -193,7 +205,11 @@ export default function StaffProfile() {
           </View>
         )}
 
-        <View style={[styles.menuRow, styles.menuRowReadonly, styles.menuRowLast]}>
+        <TouchableOpacity
+          style={[styles.menuRow, styles.menuRowLast]}
+          onPress={handleShareDiagnostics}
+          activeOpacity={0.7}
+        >
           <View
             style={[
               styles.menuIconWrap,
@@ -208,9 +224,10 @@ export default function StaffProfile() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.menuLabel}>Versión de la app</Text>
-            <Text style={styles.menuSubtitle}>v{appVersion}</Text>
+            <Text style={styles.menuSubtitle}>{buildLabel()}</Text>
           </View>
-        </View>
+          <Ionicons name="share-outline" size={18} color={COLORS.border} />
+        </TouchableOpacity>
       </View>
 
       {/* Cerrar sesión */}

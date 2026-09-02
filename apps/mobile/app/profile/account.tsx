@@ -17,6 +17,7 @@ import { useAuthStore } from "@/store/authStore";
 import { deleteMyAccount, exportMyData } from "@/lib/api";
 import { clearSessionState } from "@/lib/session";
 import { formatName } from "@/lib/format";
+import { buildDiagnostics, buildLabel } from "@/lib/appUpdates";
 
 export default function AccountScreen() {
   const router = useRouter();
@@ -73,6 +74,17 @@ export default function AccountScreen() {
       );
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleShareDiagnostics() {
+    try {
+      await Share.share({
+        title: "Holidog Inn — versión de la app",
+        message: buildDiagnostics(),
+      });
+    } catch {
+      // Compartir cancelado: no hay nada que avisar.
     }
   }
 
@@ -254,6 +266,26 @@ export default function AccountScreen() {
         ) : (
           <Ionicons name="chevron-forward" size={20} color={COLORS.dangerText} />
         )}
+      </TouchableOpacity>
+
+      {/* Acerca de: qué versión trae puesta este teléfono. Sirve para soporte —
+          los arreglos viajan por aire, así que dos clientes con la misma versión
+          de la App Store pueden estar corriendo código distinto. */}
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Acerca de</Text>
+
+      <TouchableOpacity
+        style={styles.row}
+        onPress={handleShareDiagnostics}
+        testID="account-build-info"
+      >
+        <Ionicons name="information-circle-outline" size={22} color={COLORS.primary} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>Versión {buildLabel()}</Text>
+          <Text style={styles.rowSubtitle}>
+            Compartir estos datos si te los pedimos por WhatsApp.
+          </Text>
+        </View>
+        <Ionicons name="share-outline" size={20} color={COLORS.textTertiary} />
       </TouchableOpacity>
     </ScrollView>
   );

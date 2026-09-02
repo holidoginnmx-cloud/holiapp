@@ -5,6 +5,7 @@ import { COLORS } from "@/constants/colors";
 import { PaymentStuckNotice } from "@/components/PaymentStuckNotice";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { waitForNoPresentedModal } from "@/lib/modalPresentation";
+import { beginCriticalFlow, endCriticalFlow } from "@/lib/appUpdates";
 import { withTimeout } from "@/lib/promiseTimeout";
 import {
   startPaymentSession,
@@ -75,6 +76,8 @@ export function usePaymentCheckout(flow: PaymentFlow) {
    * viejo, que es un cobro atribuido a quien no toca.
    */
   const runIdRef = useRef(0);
+  /** Candado contra recargas por OTA mientras hay un cobro en curso. */
+  const lockedRef = useRef(false);
 
   const disarmWatchdog = useCallback(() => {
     if (watchdogRef.current) {
@@ -83,7 +86,16 @@ export function usePaymentCheckout(flow: PaymentFlow) {
     }
   }, []);
 
-  useEffect(() => () => disarmWatchdog(), [disarmWatchdog]);
+  useEffect(
+    () => () => {
+      disarmWatchdog();
+      if (lockedRef.current) {
+        lockedRef.current = false;
+        endCriticalFlow();
+      }
+    },
+    [disarmWatchdog],
+  );
 
   /** Resuelve el cobro una sola vez y limpia todo lo que quedó armado. */
   const settle = useCallback(
@@ -95,6 +107,11 @@ export function usePaymentCheckout(flow: PaymentFlow) {
       setChecking(false);
       const resolve = resolveRef.current;
       resolveRef.current = null;
+      // Suelta el candado: ya se puede aplicar una actualización pendiente.
+      if (lockedRef.current) {
+        lockedRef.current = false;
+        endCriticalFlow();
+      }
       resolve?.(result);
       // El rastro se manda al final, para no competir por el token de Clerk con
       // las peticiones del propio cobro.
@@ -269,6 +286,10 @@ export function usePaymentCheckout(flow: PaymentFlow) {
     (options: RunOptions): Promise<CheckoutResult> => {
       const session = startPaymentSession(flow);
       runIdRef.current += 1;
+      if (!lockedRef.current) {
+        lockedRef.current = true;
+        beginCriticalFlow();
+      }
       ctxRef.current = { ...options, session };
       settledRef.current = false;
       setStuck(null);

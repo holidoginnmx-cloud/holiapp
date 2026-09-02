@@ -5,14 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Share,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useClerk } from "@clerk/clerk-expo";
-import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
 import { clearSessionState } from "@/lib/session";
 import { formatName } from "@/lib/format";
+import { buildDiagnostics, buildLabel } from "@/lib/appUpdates";
 
 export default function AdminAccount() {
   const { signOut } = useClerk();
@@ -29,8 +30,19 @@ export default function AdminAccount() {
     router.replace("/(auth)/login");
   };
 
-  const appVersion =
-    (Constants.expoConfig?.version as string | undefined) ?? "1.0.0";
+
+  // El identificador del update importa: los arreglos viajan por aire, así que
+  // dos teléfonos con la misma versión pueden traer código distinto.
+  async function handleShareDiagnostics() {
+    try {
+      await Share.share({
+        title: "Holidog Inn — versión de la app",
+        message: buildDiagnostics(),
+      });
+    } catch {
+      // Compartir cancelado.
+    }
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -84,7 +96,11 @@ export default function AdminAccount() {
           <Ionicons name="chevron-forward" size={18} color={COLORS.border} />
         </TouchableOpacity>
 
-        <View style={[styles.menuRow, styles.menuRowLast]}>
+        <TouchableOpacity
+          style={[styles.menuRow, styles.menuRowLast]}
+          onPress={handleShareDiagnostics}
+          activeOpacity={0.7}
+        >
           <View
             style={[styles.menuIconWrap, { backgroundColor: COLORS.bgSection }]}
           >
@@ -96,9 +112,10 @@ export default function AdminAccount() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.menuLabel}>Versión de la app</Text>
-            <Text style={styles.menuSubtitle}>v{appVersion}</Text>
+            <Text style={styles.menuSubtitle}>{buildLabel()}</Text>
           </View>
-        </View>
+          <Ionicons name="share-outline" size={18} color={COLORS.border} />
+        </TouchableOpacity>
       </View>
 
       {/* Cerrar sesión */}
