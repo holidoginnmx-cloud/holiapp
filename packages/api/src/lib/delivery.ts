@@ -8,6 +8,15 @@ export type DeliveryQuote = {
 };
 
 /**
+ * Viajes que cubre la tarifa. Espeja el enum `DeliveryTrip` de Prisma.
+ *
+ * PICKUP y DROPOFF cuestan lo MISMO: la tarifa de un traslado ya paga el
+ * recorrido completo de la camioneta (hotel → casa → hotel). Se distinguen
+ * porque al equipo le cambia a qué hora sale y en qué dirección, no el precio.
+ */
+export type DeliveryTripMode = "PICKUP" | "DROPOFF" | "ROUND_TRIP";
+
+/**
  * Cotiza el servicio a domicilio para un destino dado.
  *
  * Fuente única de verdad del cálculo de tarifa (la usan el endpoint
@@ -18,6 +27,11 @@ export type DeliveryQuote = {
  *   fee = baseFee + (distanciaKm redonda ida+vuelta × pricePerKm)
  * donde la distancia redonda = distancia de una sola ida × 2.
  *
+ * Con `trip: "ROUND_TRIP"` (lo recogen Y se lo regresan) son DOS traslados en
+ * días distintos, así que la tarifa se cobra dos veces —base incluida: cada
+ * salida de la camioneta paga su costo fijo—. `distanceKm` sigue reportando
+ * la distancia de una ida, que es lo que se imprime en el documento.
+ *
  * Si el servicio está desactivado en `DeliveryConfig`, regresa
  * `{ active:false, distanceKm:0, fee:0 }` y el llamador debe ignorar el
  * domicilio (no cobrar ni persistir).
@@ -25,7 +39,8 @@ export type DeliveryQuote = {
 export async function quoteDelivery(
   prisma: PrismaClient,
   lat: number,
-  lng: number
+  lng: number,
+  trip: DeliveryTripMode = "PICKUP"
 ): Promise<DeliveryQuote> {
   const config = await prisma.deliveryConfig.upsert({
     where: { id: "singleton" },
@@ -38,7 +53,8 @@ export async function quoteDelivery(
 
   const oneWayKm = await distanceKmFromHdi(lat, lng);
   const roundTripKm = oneWayKm * 2;
-  const fee = Number(config.baseFee) + roundTripKm * Number(config.pricePerKm);
+  const unaSalida = Number(config.baseFee) + roundTripKm * Number(config.pricePerKm);
+  const fee = trip === "ROUND_TRIP" ? unaSalida * 2 : unaSalida;
   return {
     active: true,
     distanceKm: Math.round(oneWayKm * 10) / 10,

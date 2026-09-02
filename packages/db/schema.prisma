@@ -155,6 +155,10 @@ enum ReservationType {
   STAY // Hospedaje con rango de fechas
   BATH // Cita de baño/estética puntual (appointmentAt)
   DAYCARE // Guardería: servicio de día sin pernocta (appointmentAt = llegada)
+  // Solo traslado, sin servicio en el hotel. EXISTE ÚNICAMENTE EN `quotes`
+  // (que reusa este enum para decir qué se cotizó): una reservación nunca es
+  // DELIVERY — el domicilio de una estancia vive en sus columnas homeDelivery*.
+  DELIVERY
 }
 
 // Tipo de pago dentro del ledger de una reservación. Reemplaza el `pago_tipo`
@@ -524,6 +528,9 @@ model Reservation {
   homeDeliveryAddress    String?
   homeDeliveryDistanceKm Float?
   homeDeliveryFee        Decimal?          @db.Decimal(10, 2)
+  // Qué viajes cubre la tarifa. PICKUP es el default porque es lo que se cobró
+  // siempre: todo lo anterior a esta columna es un traslado sencillo.
+  homeDeliveryTrip       DeliveryTrip      @default(PICKUP)
   // Reseña post-servicio. El marcador de "ya se pidió" vive AQUÍ y no en
   // `notifications` porque el barrido de mantenimiento lo consulta cada 10 min:
   // una columna indexable es un findMany, buscar en el JSON de notifications
@@ -1719,6 +1726,18 @@ enum QuoteStatus {
 // Tipo de concepto de una línea. Espeja los cobros que ya sabe generar la API
 // (POST /reservations y reservation_addons) para que la conversión sea un mapeo
 // 1:1 y no una reinterpretación.
+/// Viajes que cubre la tarifa del servicio a domicilio.
+///
+/// La tarifa de UN traslado ya incluye el regreso de la camioneta al hotel
+/// (base + km×2×precio): PICKUP y DROPOFF son el mismo recorrido y cuestan lo
+/// mismo; se distinguen para que el equipo sepa a qué hora salir y en qué
+/// dirección. ROUND_TRIP son dos traslados en días distintos y vale el doble.
+enum DeliveryTrip {
+  PICKUP // Solo ida: van por el perro a su casa
+  DROPOFF // Solo vuelta: lo llevan de regreso
+  ROUND_TRIP // Redondo: las dos cosas
+}
+
 enum QuoteItemKind {
   LODGING // Hospedaje: tarifa/noche × noches
   DAYCARE // Guardería: horas × daycareHourPrice
@@ -1797,12 +1816,13 @@ model Quote {
   // Se guardan lat/lng además de la dirección porque el fee se RECALCULA al
   // convertir (quoteDelivery lo resuelve server-side desde coordenadas) y las
   // tarifas de DeliveryConfig cambian.
-  homeDelivery           Boolean @default(false)
+  homeDelivery           Boolean      @default(false)
   homeDeliveryAddress    String?
   homeDeliveryLat        Float?
   homeDeliveryLng        Float?
   homeDeliveryPlaceId    String?
   homeDeliveryDistanceKm Float?
+  homeDeliveryTrip       DeliveryTrip @default(PICKUP)
 
   // ── Vigencia ───────────────────────────────────────────────
   // Pasada esta fecha la página pública SIGUE abriendo, marcada como vencida:

@@ -28,6 +28,7 @@ import {
   getDeliveryAddress,
   saveDeliveryAddress,
   deliveryQuote,
+  type DeliveryTrip,
   type BathVariant,
   type BathSelectionsByPet,
   type MedicationByPet,
@@ -45,6 +46,12 @@ import {
   DeliveryAddressPicker,
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
+import { LevelSelector } from "@/components/LevelSelector";
+import {
+  VIAJES_DOMICILIO,
+  VIAJE_SUB_CLIENTE,
+  viajeSufijo,
+} from "@/constants/delivery";
 import { formatName, formatCurrency, formatDayShort, formatDayShortYear } from "@/lib/format";
 import { handlePaymentSheetError } from "@/lib/paymentError";
 import { styles } from "@/styles/reservationCreateStyles";
@@ -106,6 +113,8 @@ function CreateReservationScreenContent() {
   // ── Servicio a domicilio ──
   const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+  // Qué viajes contrata. PICKUP (vamos por el perro) es lo que se cobró siempre.
+  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
   const [discountCodeInput, setDiscountCodeInput] = useState("");
   const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
   const [applyingDiscount, setApplyingDiscount] = useState(false);
@@ -142,8 +151,9 @@ function CreateReservationScreenContent() {
 
   // Cotiza distancia + tarifa para la dirección seleccionada.
   const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
     enabled: homeDeliveryEnabled && !!deliveryAddress,
   });
   const deliveryActive =
@@ -478,9 +488,10 @@ function CreateReservationScreenContent() {
             lat: deliveryAddress.lat,
             lng: deliveryAddress.lng,
             placeId: deliveryAddress.placeId,
+            trip: deliveryTrip,
           }
         : undefined,
-    [deliveryActive, deliveryAddress],
+    [deliveryActive, deliveryAddress, deliveryTrip],
   );
 
   // Medication notes required if toggle is enabled
@@ -1277,7 +1288,12 @@ function CreateReservationScreenContent() {
               size={22}
               color={homeDeliveryEnabled ? COLORS.primary : COLORS.textDisabled}
             />
-            <Text style={styles.bathPetName}>Quiero servicio a domicilio</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bathPetName}>Quiero servicio a domicilio</Text>
+              {/* Antes prometía "vamos por ella y la regresamos" cobrando UN
+                  traslado: el redondo son dos viajes y ahora se elige. */}
+              <Text style={styles.hint}>{VIAJE_SUB_CLIENTE[deliveryTrip]}</Text>
+            </View>
             {deliveryActive && (
               <Text style={styles.bathPrice}>
                 {formatCurrency(deliveryFee)}
@@ -1286,6 +1302,12 @@ function CreateReservationScreenContent() {
           </TouchableOpacity>
           {homeDeliveryEnabled && (
             <View style={{ gap: 8 }}>
+              <LevelSelector
+                label="¿Qué viaje necesitas?"
+                options={VIAJES_DOMICILIO}
+                selected={deliveryTrip}
+                onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
+              />
               <DeliveryAddressPicker
                 value={deliveryAddress}
                 onChange={setDeliveryAddress}
@@ -1298,7 +1320,7 @@ function CreateReservationScreenContent() {
                   <Ionicons name="navigate" size={14} color={COLORS.primary} />
                   <Text style={styles.deliveryQuoteText}>
                     {deliveryQuoteData!.distanceKm} km ·{" "}
-                    {formatCurrency(deliveryFee)} (ida y vuelta)
+                    {formatCurrency(deliveryFee)} {viajeSufijo(deliveryTrip)}
                   </Text>
                 </View>
               )}

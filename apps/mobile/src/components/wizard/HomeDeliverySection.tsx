@@ -2,6 +2,13 @@ import { Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { DeliveryAddressPicker } from "@/components/DeliveryAddressPicker";
+import { LevelSelector } from "@/components/LevelSelector";
+import type { DeliveryTrip } from "@/lib/api";
+import {
+  VIAJES_DOMICILIO,
+  VIAJE_SUB_CLIENTE,
+  viajeSufijo,
+} from "@/constants/delivery";
 import { formatCurrency } from "@/lib/format";
 import type { HomeDeliveryState } from "@/hooks/useHomeDelivery";
 import { wizardStyles as styles } from "@/styles/wizardStyles";
@@ -25,6 +32,8 @@ export function HomeDeliverySection({ delivery, testID }: HomeDeliverySectionPro
     setHomeDeliveryEnabled,
     deliveryAddress,
     setDeliveryAddress,
+    deliveryTrip,
+    setDeliveryTrip,
     deliveryQuoteData,
     deliveryQuoteLoading,
     deliveryActive,
@@ -47,10 +56,10 @@ export function HomeDeliverySection({ delivery, testID }: HomeDeliverySectionPro
           color={homeDeliveryEnabled ? COLORS.primary : COLORS.textTertiary}
         />
         <View style={{ flex: 1 }}>
-          <Text style={styles.toggleTitle}>Recoger y entregar a domicilio</Text>
-          <Text style={styles.toggleSub}>
-            Vamos por tu mascota y la regresamos a tu casa
-          </Text>
+          <Text style={styles.toggleTitle}>Servicio a domicilio</Text>
+          {/* Antes decía "vamos por ella y la regresamos" cobrando UN traslado:
+              el redondo son dos viajes y ahora se elige (y se cobra) aparte. */}
+          <Text style={styles.toggleSub}>{VIAJE_SUB_CLIENTE[deliveryTrip]}</Text>
         </View>
         {deliveryActive && (
           <Text style={styles.deliveryFeeText}>{formatCurrency(deliveryFee)}</Text>
@@ -58,6 +67,12 @@ export function HomeDeliverySection({ delivery, testID }: HomeDeliverySectionPro
       </TouchableOpacity>
       {homeDeliveryEnabled && (
         <View style={{ gap: 8, marginBottom: 8 }}>
+          <LevelSelector
+            label="¿Qué viaje necesitas?"
+            options={VIAJES_DOMICILIO}
+            selected={deliveryTrip}
+            onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
+          />
           <DeliveryAddressPicker value={deliveryAddress} onChange={setDeliveryAddress} />
           {deliveryAddress && deliveryQuoteLoading && (
             <Text style={styles.toggleSub}>Calculando distancia…</Text>
@@ -67,7 +82,7 @@ export function HomeDeliverySection({ delivery, testID }: HomeDeliverySectionPro
               <Ionicons name="navigate" size={14} color={COLORS.primary} />
               <Text style={styles.deliveryQuoteText}>
                 {deliveryQuoteData!.distanceKm} km · {formatCurrency(deliveryFee)}{" "}
-                (ida y vuelta)
+                {viajeSufijo(deliveryTrip)}
               </Text>
             </View>
           )}

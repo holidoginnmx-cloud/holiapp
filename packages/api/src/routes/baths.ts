@@ -20,7 +20,7 @@ import {
   type NewReservationSource,
 } from "../lib/notifyNewReservation";
 import { requestReview } from "../lib/reviewRequest";
-import { quoteDelivery } from "../lib/delivery";
+import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
 import { instanteDeLlegada } from "../lib/stayTimes";
@@ -318,7 +318,12 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         ensureConfig(prisma),
         prisma.serviceType.findUnique({ where: { code: "BATH" } }),
         wantsDelivery
-          ? quoteDelivery(prisma, homeDelivery!.lat, homeDelivery!.lng)
+          ? quoteDelivery(
+              prisma,
+              homeDelivery!.lat,
+              homeDelivery!.lng,
+              homeDelivery!.trip ?? "PICKUP"
+            )
           : null,
       ]);
       if (!pet) return reply.status(404).send({ error: "Mascota no encontrada" });
@@ -495,6 +500,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
                 deliveryFee: String(deliveryFee),
                 deliveryDistanceKm: String(deliveryDistanceKm),
                 deliveryAddress: homeDelivery!.address,
+                // El viaje viaja en el metadata igual que la tarifa: al
+                // confirmar ya no se recalcula nada en el flujo Stripe.
+                deliveryTrip: homeDelivery!.trip ?? "PICKUP",
               }
             : {}),
         },
@@ -1499,7 +1507,13 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         variantId?: string;
         appointmentAt?: string;
         notes?: string;
-        homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+        homeDelivery?: {
+          address: string;
+          lat: number;
+          lng: number;
+          placeId?: string;
+          trip?: DeliveryTripMode;
+        };
         discountCode?: string;
       };
 
@@ -1524,6 +1538,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       let deliveryFee = 0;
       let deliveryDistanceKm = 0;
       let deliveryAddress: string | null = null;
+      let deliveryTrip: DeliveryTripMode = "PICKUP";
 
       if (body.paymentIntentId) {
         const parsed = ConfirmBathSchema.safeParse(body);
@@ -1554,6 +1569,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         if (pi.metadata?.deliveryFee) {
           deliveryFee = Number(pi.metadata.deliveryFee);
           deliveryDistanceKm = Number(pi.metadata.deliveryDistanceKm || 0);
+          deliveryTrip = (pi.metadata.deliveryTrip as DeliveryTripMode) || "PICKUP";
           deliveryAddress = typeof pi.metadata.deliveryAddress === "string"
             ? pi.metadata.deliveryAddress
             : null;
@@ -1583,11 +1599,12 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         // Recalcular fee server-side (no hay PI donde estuviera guardada).
         const hd = body.homeDelivery;
         if (hd && Number.isFinite(hd.lat) && Number.isFinite(hd.lng)) {
-          const quote = await quoteDelivery(prisma, hd.lat, hd.lng);
+          const quote = await quoteDelivery(prisma, hd.lat, hd.lng, hd.trip ?? "PICKUP");
           if (quote.active) {
             deliveryFee = quote.fee;
             deliveryDistanceKm = quote.distanceKm;
             deliveryAddress = hd.address;
+            deliveryTrip = hd.trip ?? "PICKUP";
           }
         }
       }
@@ -1682,6 +1699,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
                     homeDeliveryAddress: deliveryAddress,
                     homeDeliveryDistanceKm: deliveryDistanceKm,
                     homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                    homeDeliveryTrip: deliveryTrip,
                   }
                 : {}),
             },

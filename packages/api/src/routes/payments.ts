@@ -16,7 +16,7 @@ import {
   sizeFromWeight,
   bathSizeKey,
 } from "../lib/pricing";
-import { quoteDelivery } from "../lib/delivery";
+import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { resolveDiscount } from "../lib/discounts";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -110,7 +110,13 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       paymentType?: "FULL" | "DEPOSIT";
       bathSelectionsByPet?: Record<string, { deslanado: boolean; corte: boolean }>;
       medicationByPet?: Record<string, { notes: string }>;
-      homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+      homeDelivery?: {
+          address: string;
+          lat: number;
+          lng: number;
+          placeId?: string;
+          trip?: DeliveryTripMode;
+        };
       discountCode?: string;
     };
 
@@ -158,7 +164,12 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           ? prisma.serviceType.findUnique({ where: { code: "BATH" } })
           : null,
         wantsDelivery
-          ? quoteDelivery(prisma, homeDelivery!.lat, homeDelivery!.lng)
+          ? quoteDelivery(
+              prisma,
+              homeDelivery!.lat,
+              homeDelivery!.lng,
+              homeDelivery!.trip ?? "PICKUP"
+            )
           : null,
       ]);
 

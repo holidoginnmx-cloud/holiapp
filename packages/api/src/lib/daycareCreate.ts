@@ -7,7 +7,7 @@ import {
   type NewReservationSource,
 } from "./notifyNewReservation";
 import { getLodgingPricing, computeDaycareHours } from "./pricing";
-import { quoteDelivery } from "./delivery";
+import { quoteDelivery, type DeliveryTripMode } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
 
 // ---------------------------------------------------------------------------
@@ -99,7 +99,13 @@ export interface CreateDaycareGroupParams {
   date: string;
   checkInTime: string;
   checkOutTime: string;
-  homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+  homeDelivery?: {
+    address: string;
+    lat: number;
+    lng: number;
+    placeId?: string;
+    trip?: DeliveryTripMode;
+  };
   /** PI de Stripe (null cuando el saldo a favor cubrió todo). */
   stripePaymentIntentId: string | null;
   /** Saldo a favor ya aplicado (viene del intent; 0 para invitados). */
@@ -192,7 +198,12 @@ export async function createDaycareGroup(
       deliveryFee = deliveryOverride.fee;
       deliveryDistanceKm = deliveryOverride.distanceKm;
     } else {
-      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      const quote = await quoteDelivery(
+        prisma,
+        homeDelivery.lat,
+        homeDelivery.lng,
+        homeDelivery.trip ?? "PICKUP"
+      );
       if (quote.active) {
         deliveryActive = true;
         deliveryFee = quote.fee;
@@ -267,6 +278,7 @@ export async function createDaycareGroup(
                     homeDeliveryAddress: homeDelivery!.address,
                     homeDeliveryDistanceKm: deliveryDistanceKm,
                     homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                    homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
                   }
                 : {}),
             },

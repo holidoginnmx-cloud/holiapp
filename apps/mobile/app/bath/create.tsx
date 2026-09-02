@@ -29,6 +29,7 @@ import {
   getDeliveryAddress,
   saveDeliveryAddress,
   deliveryQuote,
+  type DeliveryTrip,
   BATH_DEPOSIT_AMOUNT,
   BATH_LATE_TOLERANCE_MIN,
 } from "@/lib/api";
@@ -36,6 +37,12 @@ import {
   DeliveryAddressPicker,
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
+import { LevelSelector } from "@/components/LevelSelector";
+import {
+  VIAJES_DOMICILIO,
+  VIAJE_SUB_CLIENTE,
+  viajeSufijo,
+} from "@/constants/delivery";
 import { ErrorState } from "@/components/ErrorState";
 
 import { formatName, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
@@ -93,6 +100,8 @@ function CreateBathScreenContent() {
   // ── Servicio a domicilio ──
   const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+  // Qué viajes contrata. PICKUP (vamos por el perro) es lo que se cobró siempre.
+  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
   const [discountCodeInput, setDiscountCodeInput] = useState("");
   const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
   const [applyingDiscount, setApplyingDiscount] = useState(false);
@@ -126,8 +135,9 @@ function CreateBathScreenContent() {
   }, [savedAddress, deliveryAddress]);
 
   const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
     enabled: homeDeliveryEnabled && !!deliveryAddress,
   });
   const deliveryActive =
@@ -140,6 +150,7 @@ function CreateBathScreenContent() {
           lat: deliveryAddress.lat,
           lng: deliveryAddress.lng,
           placeId: deliveryAddress.placeId,
+          trip: deliveryTrip,
         }
       : undefined;
 
@@ -492,10 +503,12 @@ function CreateBathScreenContent() {
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.toggleTitle}>
-                      Recoger y entregar a domicilio
+                      Servicio a domicilio
                     </Text>
+                    {/* Antes prometía "vamos por ella y la regresamos" cobrando
+                        UN traslado: el redondo son dos viajes y ahora se elige. */}
                     <Text style={styles.toggleSub}>
-                      Vamos por tu mascota y la regresamos a tu casa
+                      {VIAJE_SUB_CLIENTE[deliveryTrip]}
                     </Text>
                   </View>
                   {deliveryActive && (
@@ -506,6 +519,12 @@ function CreateBathScreenContent() {
                 </TouchableOpacity>
                 {homeDeliveryEnabled && (
                   <View style={{ gap: 8, marginBottom: 8 }}>
+                    <LevelSelector
+                      label="¿Qué viaje necesitas?"
+                      options={VIAJES_DOMICILIO}
+                      selected={deliveryTrip}
+                      onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
+                    />
                     <DeliveryAddressPicker
                       value={deliveryAddress}
                       onChange={setDeliveryAddress}
@@ -518,7 +537,7 @@ function CreateBathScreenContent() {
                         <Ionicons name="navigate" size={14} color={COLORS.primary} />
                         <Text style={styles.deliveryQuoteText}>
                           {deliveryQuoteData!.distanceKm} km ·{" "}
-                          {formatCurrency(deliveryFee)} (ida y vuelta)
+                          {formatCurrency(deliveryFee)} {viajeSufijo(deliveryTrip)}
                         </Text>
                       </View>
                     )}

@@ -18,7 +18,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { getPetById, createPet, updatePet } from "@/lib/api";
+import { getPetById, getPetsByOwner, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
 import { BreedAutocomplete } from "@/components/BreedAutocomplete";
@@ -63,6 +63,11 @@ export default function CreatePetScreen() {
   // Última carga enviada, para poder reintentar forzando duplicado si el
   // backend responde 409 DUPLICATE_PET.
   const lastSubmitRef = useRef<Record<string, unknown> | null>(null);
+
+  // El prefill de los datos que comparte la camada (contacto de emergencia,
+  // veterinaria, alimentación) se aplica UNA sola vez: si el usuario borra un
+  // campo copiado, no se lo volvemos a escribir en el siguiente render.
+  const prefillDoneRef = useRef(false);
 
   const formReadyRef = useRef(false);
   const maybeScrollToCartilla = useCallback(() => {
@@ -113,6 +118,9 @@ export default function CreatePetScreen() {
   const [cartillaRejectionReason, setCartillaRejectionReason] = useState<
     string | null
   >(null);
+  // Nombre de la mascota de la que se copiaron los datos compartidos, para
+  // decírselo a quien captura (si no, parecen datos inventados por la app).
+  const [prefillFrom, setPrefillFrom] = useState<string | null>(null);
 
   // Load existing pet for editing
   const {
@@ -179,6 +187,61 @@ export default function CreatePetScreen() {
       maybeScrollToCartilla();
     }
   }, [isEditing, maybeScrollToCartilla]);
+
+  // Mascotas que ese dueño ya tiene registradas. Solo se consulta en el alta
+  // del equipo (paso 2 del selector de dueño), que es donde conocemos el
+  // ownerId antes de que se capture nada.
+  const { data: petsDelDueno } = useQuery({
+    queryKey: ["pets", ownerIdParam],
+    queryFn: () => getPetsByOwner(ownerIdParam!),
+    enabled: isAdminCreate,
+  });
+
+  // Un cliente que llega con varios perros comparte contacto de emergencia,
+  // veterinaria y, casi siempre, el alimento: son datos de la casa, no del
+  // perro, pero viven en `pets` (uno puede tener su propio vet). En vez de
+  // moverlos de tabla, la segunda mascota en adelante los hereda de la última
+  // registrada y quien captura solo corrige lo que cambie.
+  useEffect(() => {
+    if (!isAdminCreate || prefillDoneRef.current) return;
+    if (!petsDelDueno || petsDelDueno.length === 0) return;
+
+    // La lista llega ordenada por createdAt desc: la primera es la más
+    // reciente, que es la que trae los datos más frescos del dueño.
+    const previa = petsDelDueno[0] as Record<string, any>;
+    prefillDoneRef.current = true;
+
+    // `prev || valor` en vez de asignar directo: la consulta resuelve después
+    // del primer render y no debe pisar lo que ya se haya tecleado.
+    const copiar = (
+      set: (fn: (prev: string) => string) => void,
+      valor: unknown,
+      formato?: (v: string) => string,
+    ) => {
+      const texto = typeof valor === "string" ? valor.trim() : "";
+      if (!texto) return false;
+      set((prev) => prev || (formato ? formato(texto) : texto));
+      return true;
+    };
+
+    const copiado = [
+      copiar(setEmergencyContactName, previa.emergencyContactName),
+      copiar(setEmergencyContactPhone, previa.emergencyContactPhone, formatPhoneInput),
+      copiar(setEmergencyContactRelation, previa.emergencyContactRelation),
+      copiar(setVetName, previa.vetName),
+      copiar(setVetPhone, previa.vetPhone, formatPhoneInput),
+      copiar(setFeedingSchedule, previa.feedingSchedule),
+      copiar(setFeedingAmount, previa.feedingAmount),
+      copiar(setFoodType, previa.foodType),
+      copiar(setFeedingInstructions, previa.feedingInstructions),
+    ].some(Boolean);
+
+    // El switch de urgencias 24h solo se hereda si viene encendido: apagarlo
+    // es el default y no aporta nada avisar de que se "copió".
+    if (previa.vetEmergency24h) setVetEmergency24h(true);
+
+    if (copiado) setPrefillFrom(previa.name ?? null);
+  }, [isAdminCreate, petsDelDueno]);
 
   const mutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -428,6 +491,17 @@ export default function CreatePetScreen() {
       </Text>
       {isAdminCreate && ownerName ? (
         <Text style={styles.ownerHint}>Dueño: {ownerName}</Text>
+      ) : null}
+
+      {prefillFrom ? (
+        <View style={styles.prefillCard}>
+          <Ionicons name="copy-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.prefillText}>
+            Copiamos el contacto de emergencia, la veterinaria y la alimentación
+            de {prefillFrom}. Revísalos y cambia lo que sea distinto en este
+            perro.
+          </Text>
+        </View>
       ) : null}
 
       {/* Foto */}
@@ -1004,6 +1078,22 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginTop: -14,
     marginBottom: 20,
+  },
+  prefillCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+  },
+  prefillText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "PlusJakartaSans_500Medium",
+    color: COLORS.textPrimary,
   },
   photoSection: {
     alignItems: "center",

@@ -32,6 +32,11 @@ import {
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
 import {
+  VIAJES_DOMICILIO,
+  VIAJE_HINT_EQUIPO,
+  viajeSufijo,
+} from "@/constants/delivery";
+import {
   getAllPets,
   getRooms,
   getBathVariants,
@@ -40,6 +45,7 @@ import {
   registerManualPayment,
   getDeliveryStatus,
   deliveryQuote,
+  type DeliveryTrip,
   getAdminLodgingPricing,
   getBathSlots,
   getQuote,
@@ -170,6 +176,8 @@ export default function AdminCreateReservation() {
 
   // Servicio a domicilio
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  // Qué viajes cubre la tarifa. PICKUP es lo que se cobró siempre.
+  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
 
   // Anticipo ya cobrado al crear la reserva. Un solo monto: se guarda como
@@ -220,7 +228,9 @@ export default function AdminCreateReservation() {
     const p = cotizacion.prefill;
     yaHidratado.current = true;
 
-    setReservationType(p.reservationType);
+    // Una cotización de solo traslado no llega aquí (el detalle esconde el
+    // botón), pero el tipo lo permite: se ignora en vez de romper el formulario.
+    if (p.reservationType !== "DELIVERY") setReservationType(p.reservationType);
     if (p.ownerId) setOwnerId(p.ownerId);
     if (p.petIds.length > 0) setPetIds(p.petIds);
 
@@ -429,8 +439,9 @@ export default function AdminCreateReservation() {
   });
   const deliveryServiceActive = deliveryStatus?.active === true;
   const { data: deliveryQuoteData } = useQuery({
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
     enabled: deliveryEnabled && !!deliveryAddress,
   });
 
@@ -610,6 +621,7 @@ export default function AdminCreateReservation() {
               lat: deliveryAddress.lat,
               lng: deliveryAddress.lng,
               placeId: deliveryAddress.placeId,
+              trip: deliveryTrip,
             },
           }
         : {}),
@@ -1340,6 +1352,13 @@ export default function AdminCreateReservation() {
             />
             {deliveryEnabled && (
               <>
+                <LevelSelector
+                  label="Viaje"
+                  options={VIAJES_DOMICILIO}
+                  selected={deliveryTrip}
+                  onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
+                />
+                <Text style={styles.estimate}>{VIAJE_HINT_EQUIPO[deliveryTrip]}</Text>
                 <DeliveryAddressPicker
                   value={deliveryAddress}
                   onChange={setDeliveryAddress}
@@ -1348,7 +1367,7 @@ export default function AdminCreateReservation() {
                 {deliveryQuoteData?.active && (
                   <Text style={styles.estimate}>
                     Tarifa domicilio: ${deliveryQuoteData.fee} (
-                    {deliveryQuoteData.distanceKm} km)
+                    {deliveryQuoteData.distanceKm} km) {viajeSufijo(deliveryTrip)}
                   </Text>
                 )}
               </>

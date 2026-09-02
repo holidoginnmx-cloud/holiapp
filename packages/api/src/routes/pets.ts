@@ -14,6 +14,7 @@ import {
   accessiblePetFilter,
   invalidatePetAccessCache,
 } from "../lib/petAccess";
+import { findPetByName } from "../lib/petName";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -212,14 +213,14 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         // registrada y a esta persona se la compartieron, registrarla de nuevo
         // es justo el duplicado que queremos evitar.
         const accessible = await accessiblePetFilter(prisma, ownerId);
-        const dup = await prisma.pet.findFirst({
-          where: {
-            ...accessible,
-            isActive: true,
-            name: { equals: parsed.data.name, mode: "insensitive" },
-          },
+        // El nombre se compara normalizado y en memoria: el `equals ...
+        // insensitive` de Postgres deja pasar los espacios sobrantes, y con eso
+        // se coló un segundo "DUGAN " en prod. Es la lista de un solo dueño.
+        const candidatos = await prisma.pet.findMany({
+          where: { ...accessible, isActive: true },
           select: { id: true, name: true },
         });
+        const dup = findPetByName(candidatos, parsed.data.name);
         if (dup) {
           return reply.status(409).send({
             error: "DUPLICATE_PET",

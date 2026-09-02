@@ -76,7 +76,12 @@ export async function previewQuote(
   // fee que mande el cliente (misma regla que en los endpoints de creación).
   let delivery: QuotePreviewOutput["delivery"] = null;
   if (input.homeDelivery) {
-    const q = await quoteDelivery(prisma, input.homeDelivery.lat, input.homeDelivery.lng);
+    const q = await quoteDelivery(
+      prisma,
+      input.homeDelivery.lat,
+      input.homeDelivery.lng,
+      input.homeDelivery.trip ?? "PICKUP"
+    );
     delivery = q;
   }
 
@@ -144,6 +149,7 @@ function toComputeInput(
             address: input.homeDelivery.address,
             distanceKm: delivery.distanceKm,
             fee: delivery.fee,
+            trip: input.homeDelivery.trip ?? ("PICKUP" as const),
           }
         : null,
     discount,
@@ -215,6 +221,10 @@ export async function createQuote(
         homeDeliveryLng: input.homeDelivery?.lng ?? null,
         homeDeliveryPlaceId: input.homeDelivery?.placeId ?? null,
         homeDeliveryDistanceKm: delivery?.distanceKm ?? null,
+        // El viaje se persiste porque la fee se RECALCULA al convertir: sin
+        // esto, un redondo cotizado se volvería un traslado sencillo (mitad de
+        // precio) en la reservación.
+        homeDeliveryTrip: input.homeDelivery?.trip ?? "PICKUP",
         validUntil: resolveValidUntil(input.validUntil),
         notes: input.notes?.trim() || null,
         internalNotes: input.internalNotes?.trim() || null,
@@ -334,6 +344,8 @@ function diaHotelMasDias(dias: number): string {
  *             reservas cuenta las mismas noches que nightsBetweenYMD)
  *   BATH    → appointmentAt = inicio de la cita
  *   DAYCARE → appointmentAt anclado a MEDIODÍA UTC
+ *   DELIVERY→ el día es opcional (se cotiza un precio, no se aparta agenda) y
+ *             cuando viene se ancla a mediodía UTC como los otros puntuales.
  */
 function buildDateAnchors(input: CreateQuote): {
   anchors: {
@@ -368,7 +380,7 @@ function buildDateAnchors(input: CreateQuote): {
   if (input.serviceType === "DAYCARE") {
     return { anchors: { ...empty, appointmentAt: new Date(`${input.date}T12:00:00.000Z`) } };
   }
-  // BATH: la hora exacta de la cita se decide al reservar (la cotización no
+  // BATH y DELIVERY: la hora exacta se decide al reservar (la cotización no
   // aparta agenda). Se ancla a mediodía UTC para no sugerir una hora falsa.
   return { anchors: { ...empty, appointmentAt: new Date(`${input.date}T12:00:00.000Z`) } };
 }
@@ -739,9 +751,14 @@ export function buildWhatsappMessage(quote: {
       ? "del hospedaje"
       : quote.serviceType === "BATH"
         ? "de la estética"
-        : "de la guardería";
+        : quote.serviceType === "DELIVERY"
+          ? "del servicio a domicilio"
+          : "de la guardería";
+  // Una cotización de solo traslado puede ir dirigida a alguien que todavía no
+  // tiene perro con nosotros: "para tu peludo" ahí suena a mensaje equivocado.
+  const cierrePeludo = quote.serviceType === "DELIVERY" ? "" : " para tu peludo 🐾";
   return [
-    `¡Hola ${nombre}! Te comparto la cotización ${servicio} para tu peludo 🐾`,
+    `¡Hola ${nombre}! Te comparto la cotización ${servicio}${cierrePeludo}`,
     "",
     `${formatQuoteFolio(quote.folio)} · Total $${Number(quote.total).toLocaleString("es-MX")}`,
     publicUrl,

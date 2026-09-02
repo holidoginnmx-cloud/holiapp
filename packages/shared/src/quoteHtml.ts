@@ -146,6 +146,7 @@ const SERVICE_LABEL: Record<QuoteServiceType, string> = {
   STAY: "Hospedaje",
   BATH: "Estética",
   DAYCARE: "Guardería",
+  DELIVERY: "Servicio a domicilio",
 };
 
 // ─── Paleta ──────────────────────────────────────────────────
@@ -198,8 +199,13 @@ export function renderQuoteHtml(quote: PublicQuote, opts: RenderQuoteOptions = {
     // El descuento y el domicilio ya tienen su renglón en el bloque de totales;
     // imprimirlos aquí también los mostraba DOS veces y hacía que la suma
     // visible no cuadrara con el total.
+    //
+    // La excepción es la cotización de SOLO traslado: ahí el domicilio no es un
+    // extra al final, es el único concepto. Sin esta fila el documento llegaría
+    // sin decir a dónde va la camioneta ni qué viajes cubre.
+    const soloDomicilio = quote.serviceType === "DELIVERY";
     const sueltas = quote.groupLines.filter(
-      (l) => l.kind !== "DISCOUNT" && l.kind !== "HOME_DELIVERY"
+      (l) => l.kind !== "DISCOUNT" && (soloDomicilio || l.kind !== "HOME_DELIVERY")
     );
     return sueltas.length > 0 ? groupBlock(sueltas) : "";
   })()}
@@ -346,14 +352,18 @@ function lineRow(line: PublicQuoteLine): string {
 function totalsBlock(quote: PublicQuote): string {
   const filas: string[] = [];
 
+  // En la cotización de solo traslado el domicilio ya salió como concepto: aquí
+  // sería el mismo renglón dos veces, y un "Subtotal $0" arriba del total.
+  const soloDomicilio = quote.serviceType === "DELIVERY";
+
   // El subtotal solo aporta información si hay algo que lo modifique.
-  if (quote.discountTotal > 0 || quote.deliveryFee > 0) {
+  if (!soloDomicilio && (quote.discountTotal > 0 || quote.deliveryFee > 0)) {
     filas.push(row("Subtotal", mx(quote.subtotal)));
   }
   if (quote.discountTotal > 0) {
     filas.push(row("Descuento", `−${mx(quote.discountTotal)}`, "q-neg"));
   }
-  if (quote.deliveryFee > 0) {
+  if (!soloDomicilio && quote.deliveryFee > 0) {
     filas.push(row("Servicio a domicilio", mx(quote.deliveryFee)));
   }
 
@@ -398,10 +408,16 @@ function vigenciaBlock(quote: PublicQuote): string {
 
 function ctaBlock(quote: PublicQuote): string {
   if (quote.status === "CONVERTED" || quote.status === "CANCELLED") return "";
+  // "Reservar" no aplica a una cotización de solo traslado: el domicilio viaja
+  // pegado a un servicio, así que lo que sigue es preguntar, no apartar.
+  const texto =
+    quote.serviceType === "DELIVERY"
+      ? "Escríbenos por WhatsApp"
+      : "Reservar por WhatsApp";
   return `
   <div class="q-cta">
     <a class="q-btn" href="${esc(quote.whatsappUrl)}" target="_blank" rel="noopener noreferrer">
-      Reservar por WhatsApp
+      ${esc(texto)}
     </a>
   </div>`;
 }

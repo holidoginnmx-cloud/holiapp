@@ -203,7 +203,12 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           Number.isFinite(body.homeDelivery.lat) &&
           Number.isFinite(body.homeDelivery.lng)
         ) {
-          const quote = await quoteDelivery(prisma, body.homeDelivery.lat, body.homeDelivery.lng);
+          const quote = await quoteDelivery(
+            prisma,
+            body.homeDelivery.lat,
+            body.homeDelivery.lng,
+            body.homeDelivery.trip ?? "PICKUP"
+          );
           if (quote.active) {
             deliveryActive = true;
             deliveryFee = quote.fee;

@@ -338,7 +338,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           }
         }
 
-        const quote = await quoteDelivery(prisma, parsed.data.lat, parsed.data.lng);
+        const trip = parsed.data.trip ?? "PICKUP";
+        const quote = await quoteDelivery(prisma, parsed.data.lat, parsed.data.lng, trip);
         if (!quote.active) {
           return reply
             .status(400)
@@ -355,6 +356,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           homeDeliveryAddress: parsed.data.address,
           homeDeliveryDistanceKm: quote.distanceKm,
           homeDeliveryFee: new Prisma.Decimal(newFee),
+          homeDeliveryTrip: trip,
         };
       } else {
         if (!reservation.homeDelivery) {
@@ -544,7 +546,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       Number.isFinite(homeDelivery.lat) &&
       Number.isFinite(homeDelivery.lng)
     ) {
-      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      const quote = await quoteDelivery(
+        prisma,
+        homeDelivery.lat,
+        homeDelivery.lng,
+        homeDelivery.trip ?? "PICKUP"
+      );
       if (quote.active) {
         deliveryFee = quote.fee;
         deliveryDistanceKm = quote.distanceKm;
@@ -557,6 +564,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           homeDeliveryAddress: deliveryAddress,
           homeDeliveryDistanceKm: deliveryDistanceKm,
           homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+          homeDeliveryTrip: homeDelivery?.trip ?? "PICKUP",
         }
       : {};
 
@@ -1574,7 +1582,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     let deliveryDistanceKm = 0;
     let deliveryActive = false;
     if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
-      const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+      const quote = await quoteDelivery(
+        prisma,
+        homeDelivery.lat,
+        homeDelivery.lng,
+        homeDelivery.trip ?? "PICKUP"
+      );
       if (quote.active) {
         deliveryActive = true;
         deliveryFee = quote.fee;
@@ -1673,6 +1686,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
                   homeDeliveryAddress: homeDelivery!.address,
                   homeDeliveryDistanceKm: deliveryDistanceKm,
                   homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                  homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
                 }
               : {}),
           },

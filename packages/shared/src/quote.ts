@@ -27,10 +27,30 @@ import {
   type SizeKey,
 } from "./pricing";
 
+/**
+ * Viajes que cubre la tarifa del domicilio. PICKUP y DROPOFF valen lo mismo
+ * (la camioneta recorre lo mismo); ROUND_TRIP son dos salidas y vale el doble.
+ * El precio ya viene resuelto por la API — aquí solo se etiqueta.
+ */
+export type DeliveryTripMode = "PICKUP" | "DROPOFF" | "ROUND_TRIP";
+
+/** Cómo se le nombra a cada viaje en el documento que ve el cliente. */
+export const DELIVERY_TRIP_LABEL: Record<DeliveryTripMode, string> = {
+  PICKUP: "Recogemos a tu perro en casa",
+  DROPOFF: "Lo llevamos de regreso a casa",
+  ROUND_TRIP: "Lo recogemos y lo regresamos",
+};
+
 /** Talla de catálogo. XS existe en `pets` pero colapsa a S al cobrar. */
 export type PetSizeKey = "XS" | SizeKey;
 
-export type QuoteServiceType = "STAY" | "BATH" | "DAYCARE";
+/**
+ * DELIVERY cotiza SOLO el traslado, sin servicio en el hotel: es la respuesta a
+ * "¿y cuánto me cobran por ir por él?". No lleva mascotas (el viaje se cobra por
+ * camioneta, no por perro) ni se convierte en reserva — no hay nada que
+ * reservar hasta que el cliente cierre un hospedaje, un baño o una guardería.
+ */
+export type QuoteServiceType = "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
 
 /**
  * Tipo de concepto de una línea. Espeja los cobros que ya sabe generar la API
@@ -97,7 +117,13 @@ export interface QuoteInput {
   extraHours?: number | null;
 
   /** Ya cotizado por POST /delivery/quote — este módulo NO calcula distancias. */
-  homeDelivery?: { address: string; distanceKm: number; fee: number } | null;
+  homeDelivery?: {
+    address: string;
+    distanceKm: number;
+    fee: number;
+    /** Viajes que cubre la tarifa. Sin él se asume el traslado sencillo. */
+    trip?: DeliveryTripMode;
+  } | null;
   /** Ya resuelto por resolveDiscount() — este módulo NO valida códigos. */
   discount?: { code: string; amount: number } | null;
 
@@ -200,6 +226,7 @@ export interface QuoteBreakdown {
 
 export type QuoteErrorCode =
   | "NO_PETS"
+  | "MISSING_DELIVERY"
   | "MISSING_DATES"
   | "INVALID_RANGE"
   | "MISSING_DAYCARE_TIMES"
@@ -263,8 +290,20 @@ export function computeQuote(
   input: QuoteInput,
   catalog: QuoteCatalog
 ): ComputeQuoteResult {
-  if (!input.pets || input.pets.length === 0) {
+  const soloDomicilio = input.serviceType === "DELIVERY";
+
+  // Cotizar solo el traslado no necesita perro: se cobra por viaje. Exigir uno
+  // obligaría a registrar la mascota de alguien que apenas está preguntando el
+  // precio por WhatsApp.
+  if (!soloDomicilio && (!input.pets || input.pets.length === 0)) {
     return { ok: false, code: "NO_PETS", message: "Agrega al menos una mascota" };
+  }
+  if (soloDomicilio && !(input.homeDelivery && input.homeDelivery.fee > 0)) {
+    return {
+      ok: false,
+      code: "MISSING_DELIVERY",
+      message: "Indica la dirección del servicio a domicilio",
+    };
   }
 
   const warnings: string[] = [];
@@ -365,7 +404,10 @@ export function computeQuote(
   // ── Líneas por perro ──────────────────────────────────────────────────────
   const pets: QuotePetBreakdown[] = [];
 
-  for (const pet of input.pets) {
+  // En DELIVERY no se recorren mascotas ni aunque vengan en la entrada: la
+  // cotización es el viaje y nada más. Si el cliente además quiere un baño, eso
+  // es una cotización de baño CON domicilio, que ya existe.
+  for (const pet of soloDomicilio ? [] : input.pets) {
     const size = resolveSize(pet);
     const lines: QuoteLine[] = [];
 
@@ -590,12 +632,17 @@ export function computeQuote(
   if (input.homeDelivery && input.homeDelivery.fee > 0) {
     const isCourtesy = courtesy.has("HOME_DELIVERY");
     deliveryFee = isCourtesy ? 0 : round2(input.homeDelivery.fee);
+    const trip: DeliveryTripMode = input.homeDelivery.trip ?? "PICKUP";
     groupLines.push(
       line({
         kind: "HOME_DELIVERY",
         petKey: null,
-        label: "Servicio a domicilio",
-        detail: `${input.homeDelivery.address} · ${input.homeDelivery.distanceKm} km`,
+        // El viaje va en la ETIQUETA, no escondido en el detalle: es lo que
+        // separa un traslado de dos y por lo que el precio se duplica.
+        label: `Servicio a domicilio · ${
+          trip === "ROUND_TRIP" ? "redondo" : trip === "DROPOFF" ? "solo vuelta" : "solo ida"
+        }`,
+        detail: `${DELIVERY_TRIP_LABEL[trip]} · ${input.homeDelivery.address} · ${input.homeDelivery.distanceKm} km`,
         quantity: 1,
         unitPrice: input.homeDelivery.fee,
         listPrice: round2(input.homeDelivery.fee),
@@ -604,7 +651,12 @@ export function computeQuote(
     );
   }
 
-  const totalIsManual = input.totalOverride != null;
+  // El "precio pactado" reemplaza el total de los SERVICIOS y el domicilio se
+  // suma aparte (misma regla que POST /reservations). En una cotización de solo
+  // traslado no hay servicios que reemplazar: aceptarlo sumaría el pactado
+  // ENCIMA de la tarifa del viaje. Para dejar el traslado en otro precio está
+  // la cortesía (regalarlo) o un concepto libre.
+  const totalIsManual = !soloDomicilio && input.totalOverride != null;
   const calculatedTotal = round2(subtotal - discountTotal + deliveryFee);
   const total = totalIsManual
     ? round2(input.totalOverride! + deliveryFee)

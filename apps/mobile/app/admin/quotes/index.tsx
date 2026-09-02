@@ -47,10 +47,16 @@ function etiquetaEstado(q: QuoteListItem): { texto: string; color: string; fondo
   return { texto: "Borrador", color: COLORS.textSecondary, fondo: COLORS.bgSection };
 }
 
-const SERVICIO: Record<string, { label: string; icon: "bed" | "cut" | "sunny" }> = {
+const SERVICIO: Record<
+  string,
+  { label: string; icon: "bed" | "cut" | "sunny" | "car" }
+> = {
   STAY: { label: "Hospedaje", icon: "bed" },
   BATH: { label: "Estética", icon: "cut" },
   DAYCARE: { label: "Guardería", icon: "sunny" },
+  // Solo el traslado, sin servicio en el hotel. Sin esta fila caía en el
+  // fallback y una cotización de domicilio se listaba como "Hospedaje".
+  DELIVERY: { label: "Domicilio", icon: "car" },
 };
 
 function folioLegible(folio: number): string {

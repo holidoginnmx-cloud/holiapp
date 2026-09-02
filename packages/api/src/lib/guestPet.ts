@@ -1,5 +1,6 @@
 import type { PrismaClient, Pet } from "@prisma/client";
 import type { GuestPet } from "@holidoginn/shared";
+import { findPetByName } from "./petName";
 
 // Datos de mascota inline del invitado (GuestPet del shared, sin ownerId).
 type GuestPetInput = GuestPet;
@@ -29,14 +30,18 @@ export async function resolveOrCreateGuestPet(
     cartillaStatus,
   };
 
-  const existing = await prisma.pet.findFirst({
+  // El match por nombre se hace en memoria (`findPetByName`) porque el `equals
+  // ... insensitive` de Postgres ignora mayúsculas pero NO los espacios: "DUGAN"
+  // y "DUGAN " se veían como perros distintos y el invitado terminaba con dos
+  // fichas del mismo. Son las mascotas de UN dueño, así que la lista es corta.
+  const candidatos = await prisma.pet.findMany({
     where: {
       ownerId,
       isActive: true,
-      name: { equals: gp.name, mode: "insensitive" },
       weight: gp.weight ?? undefined,
     },
   });
+  const existing = findPetByName(candidatos, gp.name);
 
   if (existing) {
     const pet = await prisma.pet.update({ where: { id: existing.id }, data });

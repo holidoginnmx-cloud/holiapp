@@ -163,7 +163,12 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         countDaycareOccupancy(prisma, date),
         getLodgingPricing(prisma),
         wantsDelivery
-          ? quoteDelivery(prisma, homeDelivery!.lat, homeDelivery!.lng)
+          ? quoteDelivery(
+              prisma,
+              homeDelivery!.lat,
+              homeDelivery!.lng,
+              homeDelivery!.trip ?? "PICKUP"
+            )
           : null,
       ]);
 
