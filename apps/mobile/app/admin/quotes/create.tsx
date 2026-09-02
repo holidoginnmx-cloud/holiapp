@@ -5,6 +5,8 @@ import {
   Text,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -18,8 +20,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTimeField } from "@/components/DateTimeField";
 import { SwitchRow } from "@/components/SwitchRow";
 import { LevelSelector } from "@/components/LevelSelector";
+import {
+  KeyboardDoneBar,
+  KEYBOARD_DONE_ID,
+} from "@/components/KeyboardDoneBar";
 import { ErrorState } from "@/components/ErrorState";
-import { getAllPets, createQuote, type PetWithOwner } from "@/lib/api";
+import {
+  getAllPets,
+  createQuote,
+  getDeliveryStatus,
+  type PetWithOwner,
+} from "@/lib/api";
+import {
+  DeliveryAddressPicker,
+  type SelectedAddress,
+} from "@/components/DeliveryAddressPicker";
 import {
   formatName,
   formatFullName,
@@ -108,6 +123,13 @@ export default function AdminCreateQuote() {
   const [probarf, setProbarf] = useState(false);
   const [medicamento, setMedicamento] = useState(false);
 
+  // Servicio a domicilio. La dirección NO se precarga de ningún perfil: quien
+  // usa esta pantalla es el equipo, y la dirección guardada sería la suya.
+  const [conDomicilio, setConDomicilio] = useState(false);
+  const [direccionDomicilio, setDireccionDomicilio] =
+    useState<SelectedAddress | null>(null);
+  const [domicilioCortesia, setDomicilioCortesia] = useState(false);
+
   // Cortesías, descuento y precio
   const [banoCortesia, setBanoCortesia] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
@@ -127,6 +149,14 @@ export default function AdminCreateQuote() {
     isError,
     refetch,
   } = useQuery<PetWithOwner[]>({ queryKey: ["all-pets"], queryFn: getAllPets });
+
+  // ¿El servicio a domicilio está prendido? Si no, la opción ni se muestra.
+  const { data: deliveryStatus } = useQuery({
+    queryKey: ["delivery-status"],
+    queryFn: getDeliveryStatus,
+    staleTime: 1000 * 60 * 10,
+  });
+  const domicilioDisponible = deliveryStatus?.active === true;
 
   // ── Clientes derivados de las mascotas activas (mismo criterio que la
   // pantalla de crear reservación: se busca por nombre de cliente O de perro).
@@ -232,14 +262,29 @@ export default function AdminCreateQuote() {
       bath: conBano || serviceType === "BATH" ? { deslanado, corte } : null,
       deworming: desparasitante,
       probarf: serviceType === "STAY" ? probarf : false,
-      courtesy: banoCortesia ? ["BATH" as const] : [],
+      // La TARIFA la recotiza el servidor con estas coordenadas; aquí nunca se
+      // manda un precio.
+      homeDelivery:
+        conDomicilio && direccionDomicilio
+          ? {
+              address: direccionDomicilio.address,
+              lat: direccionDomicilio.lat,
+              lng: direccionDomicilio.lng,
+              placeId: direccionDomicilio.placeId,
+            }
+          : null,
+      courtesy: [
+        ...(banoCortesia ? (["BATH"] as const) : []),
+        ...(domicilioCortesia ? (["HOME_DELIVERY"] as const) : []),
+      ],
       discountCode: discountCode.trim() || null,
       totalOverride: totalOverride.trim() ? Number(totalOverride) : null,
     } as QuotePreviewInput;
   }, [
     serviceType, petsPayload, sinFechas, checkIn, checkOut, noches, fechaServicio,
     dcInTime, dcOutTime, conBano, deslanado, corte, desparasitante, probarf,
-    banoCortesia, discountCode, totalOverride,
+    banoCortesia, discountCode, totalOverride, conDomicilio, direccionDomicilio,
+    domicilioCortesia,
   ]);
 
   const { result: preview, error: previewError, loading: previewLoading } =
@@ -314,10 +359,16 @@ export default function AdminCreateQuote() {
   const listoParaCotizar = petsPayload.length > 0;
 
   return (
-    <View style={styles.screen}>
+    // Sin el KAV, el teclado tapa el campo que se escribe Y el pie con el total
+    // y el botón de guardar.
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <LevelSelector
           label="Servicio a cotizar"
@@ -479,6 +530,7 @@ export default function AdminCreateQuote() {
               value={prospectPhone}
               onChangeText={setProspectPhone}
               keyboardType="phone-pad"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
             <Text style={styles.hint}>
               Es a este número al que se le va a mandar la cotización.
@@ -524,6 +576,7 @@ export default function AdminCreateQuote() {
                         )
                       }
                       keyboardType="numeric"
+                      inputAccessoryViewID={KEYBOARD_DONE_ID}
                     />
                   </View>
                   <View style={styles.dateCol}>
@@ -580,6 +633,7 @@ export default function AdminCreateQuote() {
                   value={noches}
                   onChangeText={setNoches}
                   keyboardType="numeric"
+                  inputAccessoryViewID={KEYBOARD_DONE_ID}
                 />
               </>
             ) : (
@@ -690,6 +744,59 @@ export default function AdminCreateQuote() {
           </>
         )}
 
+        {/* ── Servicio a domicilio ── */}
+        {listoParaCotizar && domicilioDisponible && (
+          <>
+            <Text style={styles.label}>Servicio a domicilio</Text>
+            <SwitchRow
+              label="Recoger y entregar a domicilio"
+              hint="Se cobra por la distancia desde el hotel, ida y vuelta"
+              value={conDomicilio}
+              onValueChange={setConDomicilio}
+              testID="quote-delivery-toggle"
+            />
+            {conDomicilio && (
+              <View style={{ gap: 8 }}>
+                <DeliveryAddressPicker
+                  value={direccionDomicilio}
+                  onChange={setDireccionDomicilio}
+                  placeholder="Busca la calle y número…"
+                />
+                {!direccionDomicilio && (
+                  <Text style={styles.hint}>
+                    Elige la dirección para calcular la tarifa.
+                  </Text>
+                )}
+                {direccionDomicilio && !preview?.delivery && previewLoading && (
+                  <Text style={styles.hint}>Calculando distancia…</Text>
+                )}
+                {preview?.delivery?.active && (
+                  <View style={styles.deliveryQuoteRow}>
+                    <Ionicons name="navigate" size={14} color={COLORS.primary} />
+                    <Text style={styles.deliveryQuoteText}>
+                      {preview.delivery.distanceKm} km ·{" "}
+                      {formatCurrency(preview.delivery.fee)} (ida y vuelta)
+                    </Text>
+                  </View>
+                )}
+                {preview?.delivery && !preview.delivery.active && (
+                  <Text style={styles.previewWarn}>
+                    El servicio a domicilio está apagado ahora mismo: no se sumará
+                    a la cotización.
+                  </Text>
+                )}
+                <SwitchRow
+                  label="Domicilio de cortesía"
+                  hint="Se muestra con su precio tachado y no suma al total"
+                  value={domicilioCortesia}
+                  onValueChange={setDomicilioCortesia}
+                  nested
+                />
+              </View>
+            )}
+          </>
+        )}
+
         {/* ── Desglose calculado por el servidor ── */}
         {listoParaCotizar && (
           <>
@@ -769,6 +876,7 @@ export default function AdminCreateQuote() {
               value={totalOverride}
               onChangeText={setTotalOverride}
               keyboardType="numeric"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
             <Text style={styles.hint}>
               Reemplaza el total calculado. El servicio a domicilio se suma aparte.
@@ -782,6 +890,7 @@ export default function AdminCreateQuote() {
               value={depositSuggested}
               onChangeText={setDepositSuggested}
               keyboardType="numeric"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
             <Text style={styles.hint}>
               Lo que se le pide para apartar. Sale en la cotización.
@@ -849,7 +958,10 @@ export default function AdminCreateQuote() {
           )}
         </TouchableOpacity>
       </View>
-    </View>
+
+      {/* Salida del teclado numérico y del de teléfono, que no traen retorno. */}
+      <KeyboardDoneBar />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1045,6 +1157,16 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   previewGift: { color: COLORS.successText },
+  deliveryQuoteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  deliveryQuoteText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
+  },
   previewWarn: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_400Regular",

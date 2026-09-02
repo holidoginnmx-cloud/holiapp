@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Crypto from "expo-crypto";
@@ -54,6 +55,9 @@ export function DeliveryAddressPicker({
     const q = query.trim();
     if (q.length < 3) {
       setPredictions([]);
+      // Si se borra el texto mientras había una búsqueda en vuelo, el cleanup
+      // la cancela: sin esto el spinner se quedaba girando para siempre.
+      setSearching(false);
       return;
     }
     let cancelled = false;
@@ -132,12 +136,27 @@ export function DeliveryAddressPicker({
           placeholder={placeholder}
           placeholderTextColor={COLORS.textDisabled}
           autoCorrect={false}
+          returnKeyType="done"
+          onSubmitEditing={() => Keyboard.dismiss()}
           testID="delivery-address-input"
         />
-        {(searching || loadingDetails) && (
+        {searching || loadingDetails ? (
           <ActivityIndicator size="small" color={COLORS.primary} />
-        )}
+        ) : query.length > 0 ? (
+          <TouchableOpacity
+            onPress={handleClear}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            testID="delivery-address-clear-query"
+          >
+            <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
+      {!searching && query.trim().length >= 3 && predictions.length === 0 ? (
+        <Text style={styles.emptyText}>
+          Sin resultados. Prueba con la calle y el número.
+        </Text>
+      ) : null}
       {predictions.length > 0 && (
         <View style={styles.dropdown}>
           {predictions.map((p) => (
@@ -199,6 +218,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.bgSection,
+  },
+  emptyText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
   },
   predictionText: {
     flex: 1,

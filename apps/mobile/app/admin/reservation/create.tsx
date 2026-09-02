@@ -5,11 +5,13 @@ import {
   Text,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +22,10 @@ import { DateTimeField } from "@/components/DateTimeField";
 import { SelectField } from "@/components/SelectField";
 import { SwitchRow } from "@/components/SwitchRow";
 import { LevelSelector } from "@/components/LevelSelector";
+import {
+  KeyboardDoneBar,
+  KEYBOARD_DONE_ID,
+} from "@/components/KeyboardDoneBar";
 import { ErrorState } from "@/components/ErrorState";
 import {
   DeliveryAddressPicker,
@@ -772,8 +778,18 @@ export default function AdminCreateReservation() {
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    // El KAV encoge la pantalla con el teclado abierto: sin él, el teclado
+    // tapaba el campo que se estaba escribiendo Y el botón de guardar, que vive
+    // en el pie fijo de abajo.
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Viene de una cotización: se recuerda cuánto se prometió y con qué
             folio, para que quien confirma sepa que ese número ya salió. */}
         {desdeCotizacion && (
@@ -1353,6 +1369,7 @@ export default function AdminCreateReservation() {
               value={totalOverride}
               onChangeText={setTotalOverride}
               keyboardType="numeric"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
             {petIds.length > 1 && (
               <Text style={styles.hint}>
@@ -1382,6 +1399,7 @@ export default function AdminCreateReservation() {
               value={depositAgreed}
               onChangeText={setDepositAgreed}
               keyboardType="numeric"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
             <Text style={styles.hint}>
               Monto que el cliente YA pagó al apartar. Se registra como pago de
@@ -1444,7 +1462,10 @@ export default function AdminCreateReservation() {
           )}
         </TouchableOpacity>
       </View>
-    </View>
+
+      {/* Salida del teclado numérico, que no trae tecla de retorno. */}
+      <KeyboardDoneBar />
+    </KeyboardAvoidingView>
   );
 }
 

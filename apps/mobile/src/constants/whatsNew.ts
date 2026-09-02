@@ -34,6 +34,95 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-02",
+    title: "Cotizar el traslado, calendario para las fechas y un teclado que no estorba",
+    items: [
+      {
+        icon: "car-outline",
+        title: "El servicio a domicilio ya se puede cotizar",
+        body:
+          "Cuando alguien pregunta por WhatsApp «¿y si van por ella a la " +
+          "casa?», la cotización no tenía dónde poner eso: se mandaba el " +
+          "hospedaje y el traslado se acordaba aparte, de palabra. Ahora, al " +
+          "armar una cotización hay una sección de Servicio a domicilio: " +
+          "buscas la dirección, y la tarifa se calcula sola por la distancia " +
+          "desde el hotel (ida y vuelta). Sale como concepto en el desglose, " +
+          "en el link que ve el cliente y en el PDF. " +
+          "También se puede regalar el viaje con «Domicilio de cortesía»: " +
+          "aparece con su precio tachado y no suma al total. " +
+          "Ojo con una regla que ya existía y ahora se nota: el domicilio NO " +
+          "entra en el descuento ni en el «precio pactado», siempre se suma " +
+          "aparte —igual que en las reservaciones. " +
+          "Y si esa cotización se convierte en reservación, la dirección se " +
+          "va sola: no hay que volver a capturarla. " +
+          "Está en la app y también en el panel de la computadora.",
+        route: "/admin/quotes/create",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "calendar-outline",
+        title: "Las fechas se eligen en un calendario, no en tres ruedas",
+        body:
+          "Para poner una fecha había que girar tres listas por separado —día, " +
+          "mes y año— y encima el mes salía en inglés («September»). Para una " +
+          "fecha que casi siempre está a unos días de hoy, era el camino " +
+          "largo. Ahora se abre el calendario del mes: tocas el día y listo, " +
+          "viéndolo entre sus vecinos, que es lo que sirve al agendar. Y en " +
+          "español. " +
+          "Aplica en todos lados donde se elige una fecha: crear " +
+          "reservación, nueva cotización, cambiar la hora de entrada o " +
+          "salida, reagendar un baño y editar el horario de guardería. Las " +
+          "horas siguen igual, con la rueda de siempre.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "keypad-outline",
+        title: "El teclado ya no tapa el botón de guardar",
+        body:
+          "Al escribir el total o el anticipo, el teclado de números se comía " +
+          "media pantalla —incluido el botón de guardar— y no había forma de " +
+          "bajarlo: ese teclado no trae la tecla de retorno. Se quedaba uno " +
+          "atorado. Ahora la pantalla se recorre hacia arriba con el teclado, " +
+          "así que el campo y el botón siguen a la vista, y arriba del " +
+          "teclado hay un botón «Listo» para bajarlo. También se baja " +
+          "arrastrándolo o tocando cualquier parte vacía. " +
+          "Ya está en crear reservación y en nueva cotización.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "location-outline",
+        title: "Buscar la dirección del domicilio ya funciona bien",
+        body:
+          "En una reserva ya creada, al agregar o cambiar el servicio a " +
+          "domicilio, las direcciones que sugiere Google quedaban DEBAJO del " +
+          "teclado: se escribía la calle y no aparecía nada que tocar, y " +
+          "tampoco se podía bajar el teclado sin cerrar la ventana y perder " +
+          "lo escrito. Ya sube con el teclado y las sugerencias se ven y se " +
+          "eligen al primer toque. " +
+          "De paso: si Google no encuentra nada ahora lo dice («Sin " +
+          "resultados, prueba con la calle y el número») en vez de quedarse " +
+          "en blanco como si estuviera pensando.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "card-outline",
+        title: "Para saber: a los clientes ya no se les traba el pago",
+        body:
+          "Esto es de la app del cliente, pero conviene que lo sepan en " +
+          "ventas: al confirmar una reserva, la ventana de pago a veces no " +
+          "abría y el botón se quedaba dando vueltas para siempre, sin decir " +
+          "nada. El cliente cerraba la app pensando que la reserva no se " +
+          "hizo. Ya está corregido, y si algo falla de verdad (se cayó el " +
+          "internet, no responde el banco) ahora sale un mensaje claro en " +
+          "vez de quedarse cargando. Si alguien reportó eso estos días, ya " +
+          "puede volver a intentar.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-08-31-b",
     title: "La hora de llegada y de salida, por fin en la app",
     items: [

@@ -20,6 +20,16 @@ import DateTimePicker from "@react-native-community/datetimepicker";
  * del cuadro y en otro idioma. Aquí el cuadro muestra el texto en español y el
  * selector vive en un bottom sheet; en Android el componente ya es un diálogo
  * nativo, así que se monta sólo mientras está abierto.
+ *
+ * Las FECHAS se eligen en un calendario del mes, no en las tres ruedas de
+ * día/mes/año: ver "el 5 de septiembre" entre sus días vecinos es justo lo que
+ * hace falta al agendar, y girar tres listas por separado para una fecha que
+ * casi siempre está a días de hoy era el camino largo. Las HORAS se quedan en
+ * ruedas, que es como iOS las presenta. El calendario va en español (`locale`);
+ * sin eso hereda el idioma del teléfono y salía "September".
+ *
+ * El calendario se mide solo (`sizeThatFits` en el componente nativo), así que
+ * no lleva alto fijo, y en iOS 13 el paquete cae de vuelta al spinner.
  */
 
 type Props = {
@@ -52,8 +62,8 @@ export function DateTimeField({
   testID,
 }: Props) {
   const [open, setOpen] = useState(false);
-  // Valor que se está girando en el spinner de iOS. Se confirma al cerrar el
-  // sheet (por "Listo" o tocando fuera), para que abrir y cerrar sin girar
+  // Lo que se lleva elegido en el selector de iOS. Se confirma al cerrar el
+  // sheet (por "Listo" o tocando fuera), para que abrir y cerrar sin tocar nada
   // igual fije la fecha que se estaba mostrando.
   const [draft, setDraft] = useState<Date | null>(null);
 
@@ -138,10 +148,12 @@ export function DateTimeField({
               <DateTimePicker
                 value={draft ?? pickerValue}
                 mode={mode}
-                display="spinner"
+                display={mode === "date" ? "inline" : "spinner"}
+                locale="es-MX"
                 minimumDate={minimumDate}
                 themeVariant="light"
                 textColor={COLORS.textPrimary}
+                accentColor={COLORS.primary}
                 onChange={(_, date) => {
                   if (date) setDraft(date);
                 }}

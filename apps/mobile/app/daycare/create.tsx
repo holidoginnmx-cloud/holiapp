@@ -215,6 +215,8 @@ function CreateDaycareScreenContent() {
       <ScrollView
         style={wizardStyles.container}
         contentContainerStyle={wizardStyles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         testID="daycare-create-screen"
       >
         {/* Paso 1: mascotas (multi-select) */}

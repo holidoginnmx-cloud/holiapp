@@ -333,6 +333,8 @@ function CreateBathScreenContent() {
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         testID="bath-create-screen"
       >
         {/* Paso 1: mascota */}
