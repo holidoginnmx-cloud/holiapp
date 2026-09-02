@@ -25,7 +25,17 @@ import type { QuoteWithRelations } from "./quotes";
 export interface QuotePrefill {
   quoteId: string;
   folio: number;
-  reservationType: "STAY" | "BATH" | "DAYCARE";
+  reservationType: "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
+  /**
+   * Si esta cotización puede volverse reservación.
+   *
+   * Una de solo traslado NO: el domicilio siempre viaja pegado a un servicio
+   * (vive en las columnas homeDelivery* de `reservations`), así que no hay nada
+   * que reservar hasta que el cliente cierre un hospedaje, un baño o una
+   * guardería. La UI esconde el botón y explica por qué.
+   */
+  convertible: boolean;
+  noConvertibleMotivo: string | null;
 
   /** null si la cotización era para un prospecto: hay que darlo de alta antes. */
   ownerId: string | null;
@@ -152,10 +162,16 @@ export function buildQuotePrefill(quote: QuoteWithRelations): QuotePrefill {
   const internalNotesSugeridas =
     [quote.internalNotes, avisoPendientes].filter(Boolean).join("\n") || null;
 
+  const soloDomicilio = quote.reservationType === "DELIVERY";
+
   return {
     quoteId: quote.id,
     folio: quote.folio,
     reservationType: quote.reservationType as QuotePrefill["reservationType"],
+    convertible: !soloDomicilio,
+    noConvertibleMotivo: soloDomicilio
+      ? "Esta cotización es solo del traslado. Para agendarlo, crea la reservación del servicio (hospedaje, baño o guardería) y ahí activa el servicio a domicilio."
+      : null,
 
     ownerId: quote.ownerId,
     clientName: quote.clientName,

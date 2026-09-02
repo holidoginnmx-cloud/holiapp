@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { createAuthMiddleware, createOptionalAuthMiddleware } from "../middleware/auth";
 import { placesAutocomplete, placeDetails } from "../lib/maps";
-import { quoteDelivery } from "../lib/delivery";
+import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 
 export default async function deliveryRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -71,18 +71,26 @@ export default async function deliveryRoutes(fastify: FastifyInstance) {
   );
 
   // ── POST /delivery/quote — distancia + tarifa ────────────────
-  // fee = baseFee + (distanciaKm redonda ida+vuelta × pricePerKm)
-  fastify.post<{ Body: { lat?: number; lng?: number } }>(
+  // fee = baseFee + (distanciaKm redonda ida+vuelta × pricePerKm), y el doble
+  // si el cliente contrata el redondo (son dos salidas de la camioneta).
+  fastify.post<{
+    Body: { lat?: number; lng?: number; trip?: DeliveryTripMode };
+  }>(
     "/delivery/quote",
     { preHandler: optionalAuth },
     async (request, reply) => {
-      const { lat, lng } = request.body ?? {};
+      const { lat, lng, trip } = request.body ?? {};
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         return reply.status(400).send({ error: "lat/lng requeridos" });
       }
+      // Un `trip` desconocido se trata como el traslado sencillo de siempre en
+      // vez de tumbar la cotización: es un campo nuevo y los clientes viejos ni
+      // lo mandan.
+      const viaje: DeliveryTripMode =
+        trip === "DROPOFF" || trip === "ROUND_TRIP" ? trip : "PICKUP";
 
       try {
-        return await quoteDelivery(prisma, lat as number, lng as number);
+        return await quoteDelivery(prisma, lat as number, lng as number, viaje);
       } catch (err) {
         request.log.error(err);
         return reply

@@ -171,7 +171,8 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
         const quote = await quoteDelivery(
           prisma,
           body.homeDelivery.lat,
-          body.homeDelivery.lng
+          body.homeDelivery.lng,
+          body.homeDelivery.trip ?? "PICKUP"
         );
         if (quote.active) {
           deliveryActive = true;

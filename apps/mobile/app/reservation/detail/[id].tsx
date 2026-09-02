@@ -46,6 +46,7 @@ import { PawRating } from "@/components/PawRating";
 import { REVIEW_COPY } from "@holidoginn/shared";
 import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
+import { VIAJE_SUB_CLIENTE } from "@/constants/delivery";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 import { styles } from "@/styles/ownerReservationDetailStyles";
@@ -1033,6 +1034,11 @@ function ReservationDetailScreenContent() {
                   {reservation.homeDeliveryAddress ?? "Dirección registrada"}
                 </Text>
               </View>
+              {/* Qué viajes cubre lo pagado: sin esto, un cliente que contrató
+                  solo ida esperaría que también se la regresemos. */}
+              <Text style={styles.deliveryFee}>
+                {VIAJE_SUB_CLIENTE[reservation.homeDeliveryTrip ?? "PICKUP"]}
+              </Text>
               <Text style={styles.deliveryFee}>
                 {deliveryFee > 0
                   ? `${formatCurrency(deliveryFee)} · se paga al recoger a tu mascota`

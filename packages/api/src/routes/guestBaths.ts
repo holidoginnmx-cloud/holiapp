@@ -9,7 +9,7 @@ import { recordRequiredAcceptances } from "../lib/legal";
 import { cartillaBlocks } from "../lib/cartilla";
 import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import type { SizeKey } from "@holidoginn/shared";
-import { quoteDelivery } from "../lib/delivery";
+import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { notifyUsers } from "../lib/notify";
 import {
   BATH_DEPOSIT_AMOUNT,
@@ -221,7 +221,12 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
         Number.isFinite(body.homeDelivery.lat) &&
         Number.isFinite(body.homeDelivery.lng)
       ) {
-        const quote = await quoteDelivery(prisma, body.homeDelivery.lat, body.homeDelivery.lng);
+        const quote = await quoteDelivery(
+          prisma,
+          body.homeDelivery.lat,
+          body.homeDelivery.lng,
+          body.homeDelivery.trip ?? "PICKUP"
+        );
         if (quote.active) {
           deliveryActive = true;
           deliveryFee = quote.fee;
@@ -259,6 +264,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             ? {
                 deliveryFee: String(deliveryFee),
                 deliveryDistanceKm: String(deliveryDistanceKm),
+                deliveryTrip: body.homeDelivery?.trip ?? "PICKUP",
               }
             : {}),
         },
@@ -338,9 +344,11 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       let deliveryFee = 0;
       let deliveryDistanceKm = 0;
       let deliveryAddress: string | null = null;
+      let deliveryTrip: DeliveryTripMode = "PICKUP";
       if (pi.metadata?.deliveryFee) {
         deliveryFee = Number(pi.metadata.deliveryFee);
         deliveryDistanceKm = Number(pi.metadata.deliveryDistanceKm || 0);
+        deliveryTrip = (pi.metadata.deliveryTrip as DeliveryTripMode) || "PICKUP";
         // La dirección se lee de la DB (ya no del metadata de Stripe).
         const pendingDelivery = await prisma.pendingDeliveryAddress.findUnique({
           where: { paymentIntentId: pi.id },
@@ -400,6 +408,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
                     homeDeliveryAddress: deliveryAddress,
                     homeDeliveryDistanceKm: deliveryDistanceKm,
                     homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                    homeDeliveryTrip: deliveryTrip,
                   }
                 : {}),
             },

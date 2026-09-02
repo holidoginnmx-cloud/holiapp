@@ -152,7 +152,10 @@ export type CreateUser = z.infer<typeof CreateUserSchema>;
 
 export const PetSchema = z.object({
   id: z.string().cuid(),
-  name: z.string().min(1),
+  // `.trim()` no es cosmético: los candados anti-duplicado comparan por nombre,
+  // y un "Dugan " con espacio final se escapaba de todos ellos creando una
+  // segunda ficha del mismo perro (pasó en prod el 26-ago-2026).
+  name: z.string().trim().min(1),
   breed: z.string().nullable(),
   size: PetSizeEnum,
   birthDate: z.coerce.date().nullable(),
@@ -391,6 +394,13 @@ export type CreateRoom = z.infer<typeof CreateRoomSchema>;
 // Reservation
 // ========================
 
+/**
+ * Viajes que cubre la tarifa del domicilio. Default PICKUP: es lo que se cobró
+ * siempre y lo que sigue mandando cualquier cliente viejo de la app.
+ */
+export const DeliveryTripSchema = z.enum(["PICKUP", "DROPOFF", "ROUND_TRIP"]);
+export type DeliveryTrip = z.infer<typeof DeliveryTripSchema>;
+
 export const ReservationSchema = z.object({
   id: z.string().cuid(),
   reservationType: z.enum(["STAY", "BATH", "DAYCARE"]).default("STAY"),
@@ -421,6 +431,9 @@ export const ReservationSchema = z.object({
   homeDeliveryAddress: z.string().nullable().optional(),
   homeDeliveryDistanceKm: z.number().nullable().optional(),
   homeDeliveryFee: z.union([z.string(), z.number()]).nullable().optional(),
+  // Qué viajes cubre la tarifa. Los registros anteriores a la columna son
+  // traslados sencillos, y así los devuelve la BD (default PICKUP).
+  homeDeliveryTrip: DeliveryTripSchema.optional(),
   // Desglose del precio ORIGINAL de una estancia (Decimal → string, como la
   // fee de domicilio). NULL/ausente en reservas viejas, otros tipos o total
   // manual: sin datos, el desglose no se muestra.
@@ -459,6 +472,7 @@ export const HomeDeliveryInputSchema = z.object({
   placeId: z.string().optional(),
   distanceKm: z.number().optional(),
   fee: z.number().optional(),
+  trip: DeliveryTripSchema.optional(),
 });
 export type HomeDeliveryInput = z.infer<typeof HomeDeliveryInputSchema>;
 
@@ -475,6 +489,7 @@ export const UpdateReservationDeliverySchema = z.discriminatedUnion("enable", [
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
     placeId: z.string().optional(),
+    trip: DeliveryTripSchema.optional(),
     // Cortesía: el viaje se hace igual pero no se cobra (tarifa 0). Solo el
     // equipo puede regalarlo; la API ignora esta bandera si la manda el dueño.
     isCourtesy: z.boolean().optional(),
@@ -1285,8 +1300,12 @@ export const QuoteCustomItemSchema = z.object({
 // Lo que hace falta para CALCULAR. Es el cuerpo de POST /quotes/preview y el
 // núcleo de POST /quotes.
 export const QuotePreviewSchema = z.object({
-  serviceType: z.enum(["STAY", "BATH", "DAYCARE"]),
-  pets: z.array(QuotePetInputSchema).min(1).max(10),
+  // DELIVERY = cotizar SOLO el traslado, sin servicio en el hotel.
+  serviceType: z.enum(["STAY", "BATH", "DAYCARE", "DELIVERY"]),
+  // Sin `.min(1)` en el schema base: DELIVERY se cotiza sin mascotas (el viaje
+  // se cobra por camioneta). El mínimo lo exige el superRefine de abajo para
+  // los otros tres servicios, que sí se cotizan por perro.
+  pets: z.array(QuotePetInputSchema).max(10),
   checkIn: DateYMDSchema.nullable().optional(),
   checkOut: DateYMDSchema.nullable().optional(),
   date: DateYMDSchema.nullable().optional(),
@@ -1307,6 +1326,23 @@ export const QuotePreviewSchema = z.object({
   customItems: z.array(QuoteCustomItemSchema).max(10).optional(),
   // Total pactado del GRUPO. El domicilio siempre se suma aparte.
   totalOverride: z.number().nonnegative().nullable().optional(),
+}).superRefine((v, ctx) => {
+  if (v.serviceType !== "DELIVERY" && v.pets.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pets"],
+      message: "Agrega al menos una mascota",
+    });
+  }
+  // Una cotización de solo traslado sin dirección no cotiza nada. Se ataja
+  // aquí para que el error hable de la dirección y no de un total en $0.
+  if (v.serviceType === "DELIVERY" && !v.homeDelivery) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["homeDelivery"],
+      message: "Indica la dirección del servicio a domicilio",
+    });
+  }
 });
 export type QuotePreviewInput = z.infer<typeof QuotePreviewSchema>;
 

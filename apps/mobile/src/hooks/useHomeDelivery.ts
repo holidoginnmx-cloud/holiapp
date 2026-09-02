@@ -5,6 +5,7 @@ import {
   getDeliveryAddress,
   saveDeliveryAddress,
   deliveryQuote,
+  type DeliveryTrip,
 } from "@/lib/api";
 import type { SelectedAddress } from "@/components/DeliveryAddressPicker";
 
@@ -14,6 +15,7 @@ export type HomeDeliveryPayload = {
   lat: number;
   lng: number;
   placeId?: string;
+  trip: DeliveryTrip;
 };
 
 /**
@@ -28,6 +30,9 @@ export type HomeDeliveryPayload = {
 export function useHomeDelivery() {
   const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
+  // Qué viajes contrata. PICKUP (van por el perro) es lo más común y lo que se
+  // cobró siempre, así que es el default.
+  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
 
   // ¿El servicio está activo? Gate para mostrar la opción.
   const { data: deliveryStatus } = useQuery({
@@ -60,9 +65,11 @@ export function useHomeDelivery() {
   }, [savedAddress, deliveryAddress]);
 
   // Cotiza distancia + tarifa para la dirección seleccionada.
+  // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa,
+  // y sin él la pantalla seguiría mostrando el precio anterior.
   const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng),
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
     enabled: homeDeliveryEnabled && !!deliveryAddress,
   });
   const deliveryActive =
@@ -76,6 +83,7 @@ export function useHomeDelivery() {
           lat: deliveryAddress.lat,
           lng: deliveryAddress.lng,
           placeId: deliveryAddress.placeId,
+          trip: deliveryTrip,
         }
       : undefined;
 
@@ -100,6 +108,8 @@ export function useHomeDelivery() {
     setHomeDeliveryEnabled,
     deliveryAddress,
     setDeliveryAddress,
+    deliveryTrip,
+    setDeliveryTrip,
     deliveryQuoteData,
     deliveryQuoteLoading,
     deliveryActive,

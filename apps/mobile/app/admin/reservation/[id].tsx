@@ -47,6 +47,7 @@ import {
   type AmountEditValues,
 } from "@/components/AmountEditModal";
 import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
+import { VIAJE_ETIQUETA } from "@/constants/delivery";
 import { NoteEditModal } from "@/components/NoteEditModal";
 import { MediaViewer } from "@/components/MediaViewer";
 import { cloudinaryResized, uploadToCloudinary } from "@/lib/cloudinary";
@@ -1213,7 +1214,14 @@ export default function AdminReservationDetail() {
               <Ionicons name="car-outline" size={16} color={COLORS.primary} />
             </View>
             <View style={styles.deliveryTexts}>
-              <Text style={styles.deliveryLabel}>Servicio a domicilio</Text>
+              {/* El viaje va en el TÍTULO: si dice solo "Servicio a domicilio",
+                  nadie sabe que hay que hacer el segundo viaje de un redondo. */}
+              <Text style={styles.deliveryLabel}>
+                Servicio a domicilio
+                {reservation.homeDelivery
+                  ? ` · ${VIAJE_ETIQUETA[reservation.homeDeliveryTrip ?? "PICKUP"]}`
+                  : ""}
+              </Text>
               {reservation.homeDelivery ? (
                 <Text style={styles.deliveryValue} numberOfLines={2}>
                   {reservation.homeDeliveryAddress ?? "Dirección no registrada"}

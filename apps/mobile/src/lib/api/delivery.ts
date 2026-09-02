@@ -20,10 +20,17 @@ export const deliveryPlaceDetails = (placeId: string, sessionToken?: string) =>
     { method: "POST", body: JSON.stringify({ placeId, sessionToken }) }
   );
 
-export const deliveryQuote = (lat: number, lng: number) =>
+/** Viajes que cubre la tarifa. El redondo son dos salidas y vale el doble. */
+export type DeliveryTrip = "PICKUP" | "DROPOFF" | "ROUND_TRIP";
+
+export const deliveryQuote = (
+  lat: number,
+  lng: number,
+  trip: DeliveryTrip = "PICKUP"
+) =>
   apiFetch<{ active: boolean; distanceKm: number; fee: number }>(
     "/delivery/quote",
-    { method: "POST", body: JSON.stringify({ lat, lng }) }
+    { method: "POST", body: JSON.stringify({ lat, lng, trip }) }
   );
 
 export type SavedDeliveryAddress = {
@@ -60,7 +67,15 @@ export type UpdateDeliveryResult = {
 export const updateReservationDelivery = (
   reservationId: string,
   payload:
-    | { enable: true; address: string; lat: number; lng: number; placeId?: string }
+    | {
+        enable: true;
+        address: string;
+        lat: number;
+        lng: number;
+        placeId?: string;
+        trip?: DeliveryTrip;
+        isCourtesy?: boolean;
+      }
     | { enable: false },
 ) =>
   apiFetch<UpdateDeliveryResult>(`/reservations/${reservationId}/delivery`, {

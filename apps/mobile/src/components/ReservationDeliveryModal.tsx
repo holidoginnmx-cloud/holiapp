@@ -21,11 +21,14 @@ import {
   DeliveryAddressPicker,
   type SelectedAddress,
 } from "@/components/DeliveryAddressPicker";
+import { LevelSelector } from "@/components/LevelSelector";
 import {
   deliveryQuote,
   getDeliveryAddress,
   saveDeliveryAddress,
+  type DeliveryTrip,
 } from "@/lib/api";
+import { VIAJES_DOMICILIO, VIAJE_HINT_EQUIPO } from "@/constants/delivery";
 import { formatCurrency } from "@/lib/format";
 import { useTrackedModal } from "@/lib/modalPresentation";
 
@@ -48,6 +51,7 @@ interface Props {
           lat: number;
           lng: number;
           placeId?: string;
+          trip?: DeliveryTrip;
           isCourtesy?: boolean;
         }
       | { enable: false },
@@ -82,6 +86,8 @@ export function ReservationDeliveryModal({
   // Stripe mientras esta hoja todavía se está descartando.
   const onTrackedDismiss = useTrackedModal(visible);
   const [address, setAddress] = useState<SelectedAddress | null>(null);
+  // Qué viajes cubre la tarifa. PICKUP es lo que se cobró siempre.
+  const [trip, setTrip] = useState<DeliveryTrip>("PICKUP");
   const [quote, setQuote] = useState<{
     fee: number;
     distanceKm: number;
@@ -170,7 +176,7 @@ export function ReservationDeliveryModal({
     let cancelled = false;
     setQuoting(true);
     setQuoteError(null);
-    deliveryQuote(address.lat, address.lng)
+    deliveryQuote(address.lat, address.lng, trip)
       .then((res) => {
         if (cancelled) return;
         if (!res.active) {
@@ -192,7 +198,9 @@ export function ReservationDeliveryModal({
     return () => {
       cancelled = true;
     };
-  }, [address]);
+    // El viaje va en las dependencias: cambiar de sencillo a redondo cambia la
+    // tarifa, y sin esto el modal seguiría mostrando (y guardando) la anterior.
+  }, [address, trip]);
 
   const handleSave = () => {
     if (!address || submitting) return;
@@ -212,6 +220,7 @@ export function ReservationDeliveryModal({
       lat: address.lat,
       lng: address.lng,
       placeId: address.placeId,
+      trip,
       isCourtesy: canGiveCourtesy && isCourtesy ? true : undefined,
     });
   };
@@ -281,6 +290,14 @@ export function ReservationDeliveryModal({
                   </Text>
                 </View>
               ) : null}
+
+              <LevelSelector
+                label="Viaje"
+                options={VIAJES_DOMICILIO}
+                selected={trip}
+                onSelect={(k) => setTrip(k as DeliveryTrip)}
+              />
+              <Text style={styles.hint}>{VIAJE_HINT_EQUIPO[trip]}</Text>
 
               <Text style={styles.label}>
                 {current.enabled ? "Nueva dirección" : "Dirección"}
@@ -431,6 +448,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
+  },
+  hint: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginTop: -4,
+    marginBottom: 4,
   },
   label: {
     fontSize: 13,

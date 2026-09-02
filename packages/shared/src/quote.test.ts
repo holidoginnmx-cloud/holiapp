@@ -539,3 +539,108 @@ describe("computeQuote · el documento tiene que cuadrar", () => {
     expect(Math.round(suma * 100) / 100).toBe(b.total);
   });
 });
+
+describe("cotización de solo traslado (DELIVERY)", () => {
+  const domicilio = (fee = 210, trip?: "PICKUP" | "DROPOFF" | "ROUND_TRIP") => ({
+    address: "Blvd. Solidaridad 123",
+    distanceKm: 8,
+    fee,
+    ...(trip ? { trip } : {}),
+  });
+
+  it("cotiza sin mascotas: el viaje se cobra por camioneta, no por perro", () => {
+    const b = ok(
+      computeQuote(
+        { serviceType: "DELIVERY", pets: [], homeDelivery: domicilio() },
+        CATALOG
+      )
+    );
+    expect(b.pets).toEqual([]);
+    expect(b.subtotal).toBe(0);
+    expect(b.deliveryFee).toBe(210);
+    expect(b.total).toBe(210);
+    expect(b.lines.map((l) => l.kind)).toEqual(["HOME_DELIVERY"]);
+  });
+
+  it("sin dirección no cotiza nada: el error habla del domicilio", () => {
+    const r = computeQuote({ serviceType: "DELIVERY", pets: [] }, CATALOG);
+    expect(r).toMatchObject({ ok: false, code: "MISSING_DELIVERY" });
+  });
+
+  // El total pactado reemplaza el precio de los SERVICIOS y el domicilio se
+  // suma aparte. Sin esta guarda, pactar $150 sobre un traslado de $210 daba
+  // $360: más caro que no haber pactado nada.
+  it("ignora el precio pactado en vez de sumarlo encima de la tarifa", () => {
+    const b = ok(
+      computeQuote(
+        {
+          serviceType: "DELIVERY",
+          pets: [],
+          homeDelivery: domicilio(),
+          totalOverride: 150,
+        },
+        CATALOG
+      )
+    );
+    expect(b.totalIsManual).toBe(false);
+    expect(b.total).toBe(210);
+  });
+
+  it("no cobra servicios por perro aunque la entrada traiga mascotas y baño", () => {
+    const b = ok(
+      computeQuote(
+        {
+          serviceType: "DELIVERY",
+          pets: [CHICO, GRANDE],
+          bath: { deslanado: false, corte: false },
+          deworming: true,
+          homeDelivery: domicilio(),
+        },
+        CATALOG
+      )
+    );
+    expect(b.pets).toEqual([]);
+    expect(b.total).toBe(210);
+  });
+
+  it("el viaje se nombra en la etiqueta, que es lo que lee el cliente", () => {
+    const etiqueta = (trip?: "PICKUP" | "DROPOFF" | "ROUND_TRIP") => {
+      const b = ok(
+        computeQuote(
+          { serviceType: "DELIVERY", pets: [], homeDelivery: domicilio(210, trip) },
+          CATALOG
+        )
+      );
+      return b.lines[0].label;
+    };
+    expect(etiqueta("PICKUP")).toContain("solo ida");
+    expect(etiqueta("DROPOFF")).toContain("solo vuelta");
+    expect(etiqueta("ROUND_TRIP")).toContain("redondo");
+    // Sin `trip` (cliente viejo) se asume el traslado sencillo de siempre.
+    expect(etiqueta()).toContain("solo ida");
+  });
+
+  it("una cortesía deja el traslado en cero sin perder el precio de lista", () => {
+    const b = ok(
+      computeQuote(
+        {
+          serviceType: "DELIVERY",
+          pets: [],
+          homeDelivery: domicilio(),
+          courtesy: ["HOME_DELIVERY"],
+        },
+        CATALOG
+      )
+    );
+    expect(b.total).toBe(0);
+    expect(b.lines[0]).toMatchObject({ isCourtesy: true, amount: 0, listPrice: 210 });
+  });
+
+  it("los otros servicios SIGUEN exigiendo mascota", () => {
+    for (const serviceType of ["STAY", "BATH", "DAYCARE"] as const) {
+      expect(
+        computeQuote({ serviceType, pets: [], checkIn: "2026-09-01", checkOut: "2026-09-03" }, CATALOG)
+      ).toMatchObject({ ok: false, code: "NO_PETS" });
+    }
+  });
+});

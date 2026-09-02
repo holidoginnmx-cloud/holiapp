@@ -34,6 +34,120 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-d",
+    title: "Cotizar el traslado solo, e ida / vuelta / redondo",
+    items: [
+      {
+        icon: "car-outline",
+        title: "Ya se cotiza SOLO el servicio a domicilio",
+        body:
+          "Cuando alguien pregunta nada más «¿cuánto me cobran por ir por él?», " +
+          "no había forma de mandarle un precio por escrito: había que armar " +
+          "una cotización de hospedaje aunque no la fuera a tomar. Ahora, en " +
+          "Nueva cotización, junto a Hospedaje, Estética y Guardería hay una " +
+          "cuarta opción: Domicilio. " +
+          "Esa cotización no pide mascota —el traslado se cobra por viaje, no " +
+          "por perro—, así que se le puede mandar a alguien que ni siquiera " +
+          "tiene perro registrado con nosotros: eliges al cliente, la " +
+          "dirección y listo. " +
+          "Ojo: una cotización de solo traslado NO se convierte en " +
+          "reservación (no hay nada que agendar por sí solo). Cuando el " +
+          "cliente cierre el hospedaje o el baño, ahí activas el domicilio.",
+        route: "/admin/quotes/create",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "swap-horizontal-outline",
+        title: "Ida, vuelta o redondo — y el redondo ya se cobra",
+        body:
+          "Esto arregla algo que nos estaba costando dinero. La tarifa del " +
+          "domicilio (base + kilómetros) paga UN viaje: la camioneta sale, va " +
+          "a la casa y regresa. Pero la app le decía al cliente «vamos por tu " +
+          "mascota y la regresamos a tu casa» cobrando ese viaje sencillo — o " +
+          "sea, el segundo viaje se estaba regalando. " +
+          "Ahora, en cualquier lugar donde se active el domicilio (cotización, " +
+          "reserva nueva, agregarlo a una reserva ya hecha, y también en la " +
+          "app del cliente y en la página) se elige el viaje: " +
+          "Solo ida (vamos por el perro), Solo vuelta (lo llevamos de " +
+          "regreso) o Redondo (las dos cosas). " +
+          "Ida y vuelta cuestan lo MISMO —es el mismo recorrido—; el redondo " +
+          "cuesta el doble, porque son dos salidas en días distintos. " +
+          "El viaje contratado aparece en el detalle de la reservación y en " +
+          "el desglose del cobro, para que quien maneja sepa si tiene que " +
+          "volver a salir. " +
+          "Las reservaciones que ya existen quedan como estaban: un traslado " +
+          "sencillo.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
+    id: "2026-09-03-c",
+    title: "El mismo perro, registrado dos veces",
+    items: [
+      {
+        icon: "git-merge-outline",
+        title: "El aviso de «mascota ya registrada» ya no se escapa por un espacio",
+        body:
+          "La app ya avisaba cuando un cliente intentaba registrar un perro " +
+          "que ya tenía, pero comparaba el nombre tal cual: «Dugan» y «Dugan » " +
+          "—con un espacio al final, que nadie ve— pasaban por perros " +
+          "distintos y se creaba una segunda ficha. Cuando eso ocurre el " +
+          "historial se parte en dos: las reservas quedan en una ficha y la " +
+          "cartilla en la otra. " +
+          "Ahora la comparación ignora los espacios de sobra, las mayúsculas y " +
+          "los acentos, así que «MUÑECA» y «muneca» también se reconocen como " +
+          "el mismo perro. " +
+          "El aviso funciona igual que siempre: puedes ver el perfil que ya " +
+          "existe o, si de verdad son dos perros que se llaman igual, elegir " +
+          "«Crear de todos modos».",
+        route: "/admin/pets/owner",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "desktop-outline",
+        title: "El panel de la computadora ahora también revisa",
+        body:
+          "Al dar de alta un perro desde la computadora no había ninguna " +
+          "revisión: si el formulario se enviaba dos veces por un doble clic, " +
+          "o si al cliente ya le habíamos registrado a ese perro antes, se " +
+          "creaba la ficha repetida sin decir nada. Ya pasó tres veces. " +
+          "Ahora, cuando eliges a un cliente que ya existe y capturas un perro " +
+          "con un nombre que ese cliente ya tiene, el panel lo detiene y te " +
+          "manda a su ficha en vez de duplicarlo.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
+    id: "2026-09-03-b",
+    title: "El cliente que llega con varios perros",
+    items: [
+      {
+        icon: "copy-outline",
+        title: "La segunda mascota ya llega con los datos de la casa",
+        body:
+          "Cuando alguien llega con cuatro perros, el contacto de emergencia " +
+          "y la veterinaria son los mismos para los cuatro, pero había que " +
+          "teclearlos cuatro veces. Ahora, al dar de alta una mascota para un " +
+          "cliente que ya tiene otra registrada, el formulario abre con el " +
+          "contacto de emergencia, la veterinaria y la alimentación ya " +
+          "puestos, copiados de su perro más reciente. Arriba dice de cuál se " +
+          "copiaron. " +
+          "Todo se puede cambiar: si ese perro come distinto o tiene su " +
+          "propio veterinario, se corrige encima y se guarda como siempre. " +
+          "Lo del perro —nombre, peso, sexo, raza, foto, cartilla— se captura " +
+          "igual que antes, porque eso sí cambia de uno a otro. " +
+          "Recuerda que para esto hay que entrar por Registrar → Nueva " +
+          "mascota y elegir primero al dueño de la lista: si lo das de alta " +
+          "como cliente nuevo, no hay de dónde copiar.",
+        route: "/admin/pets/owner",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03",
     title: "El cliente ya ve qué incluye su cobro (y puede pagar aunque la visita haya terminado)",
     items: [

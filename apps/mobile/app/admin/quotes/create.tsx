@@ -46,7 +46,17 @@ import type { QuotePreviewInput } from "@holidoginn/shared";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
-type ServiceType = "STAY" | "BATH" | "DAYCARE";
+type ServiceType = "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
+type Viaje = "PICKUP" | "DROPOFF" | "ROUND_TRIP";
+
+// La tarifa de UN traslado ya paga el recorrido completo de la camioneta
+// (hotel → casa → hotel): recoger y entregar cuestan lo mismo. El redondo son
+// DOS salidas, en días distintos, y por eso vale el doble.
+const VIAJE_HINT: Record<Viaje, string> = {
+  PICKUP: "Vamos por el perro a su casa.",
+  DROPOFF: "Lo llevamos de regreso a su casa.",
+  ROUND_TRIP: "Lo recogemos y lo regresamos: son dos viajes, cuesta el doble.",
+};
 /** A quién se le cotiza: alguien con cuenta o alguien que apenas preguntó. */
 type Destinatario = "CLIENTE" | "PROSPECTO";
 
@@ -129,6 +139,12 @@ export default function AdminCreateQuote() {
   const [direccionDomicilio, setDireccionDomicilio] =
     useState<SelectedAddress | null>(null);
   const [domicilioCortesia, setDomicilioCortesia] = useState(false);
+  const [viaje, setViaje] = useState<Viaje>("PICKUP");
+
+  // Cotizar SOLO el traslado: no hay servicio en el hotel, así que no hay
+  // mascotas que elegir y el domicilio deja de ser un extra opcional.
+  const soloDomicilio = serviceType === "DELIVERY";
+  const domicilioActivo = soloDomicilio || conDomicilio;
 
   // Cortesías, descuento y precio
   const [banoCortesia, setBanoCortesia] = useState(false);
@@ -246,31 +262,34 @@ export default function AdminCreateQuote() {
   // La pantalla no suma nada. El input se manda a POST /quotes/preview con
   // debounce; si está incompleto, se manda null y no se pide nada.
   const previewInput: QuotePreviewInput | null = useMemo(() => {
-    if (petsPayload.length === 0) return null;
+    // En una cotización de solo traslado lo que hace falta es la dirección; en
+    // las demás, al menos un perro.
+    if (soloDomicilio ? !direccionDomicilio : petsPayload.length === 0) return null;
     if (serviceType === "STAY" && !sinFechas && (!checkIn || !checkOut)) return null;
     if (serviceType === "STAY" && sinFechas && !noches.trim()) return null;
 
     return {
       serviceType,
-      pets: petsPayload,
+      pets: soloDomicilio ? [] : petsPayload,
       checkIn: serviceType === "STAY" && !sinFechas && checkIn ? toYMD(checkIn) : null,
       checkOut: serviceType === "STAY" && !sinFechas && checkOut ? toYMD(checkOut) : null,
       date: serviceType !== "STAY" && fechaServicio ? toYMD(fechaServicio) : null,
       checkInTime: serviceType === "DAYCARE" ? dcInTime : null,
       checkOutTime: serviceType === "DAYCARE" ? dcOutTime : null,
       nightsOverride: serviceType === "STAY" && sinFechas ? Number(noches) || null : null,
-      bath: conBano || serviceType === "BATH" ? { deslanado, corte } : null,
-      deworming: desparasitante,
+      bath: !soloDomicilio && (conBano || serviceType === "BATH") ? { deslanado, corte } : null,
+      deworming: soloDomicilio ? false : desparasitante,
       probarf: serviceType === "STAY" ? probarf : false,
       // La TARIFA la recotiza el servidor con estas coordenadas; aquí nunca se
       // manda un precio.
       homeDelivery:
-        conDomicilio && direccionDomicilio
+        domicilioActivo && direccionDomicilio
           ? {
               address: direccionDomicilio.address,
               lat: direccionDomicilio.lat,
               lng: direccionDomicilio.lng,
               placeId: direccionDomicilio.placeId,
+              trip: viaje,
             }
           : null,
       courtesy: [
@@ -278,13 +297,16 @@ export default function AdminCreateQuote() {
         ...(domicilioCortesia ? (["HOME_DELIVERY"] as const) : []),
       ],
       discountCode: discountCode.trim() || null,
-      totalOverride: totalOverride.trim() ? Number(totalOverride) : null,
+      // El precio pactado reemplaza el total de los SERVICIOS y el domicilio se
+      // suma aparte: en una cotización de solo traslado no hay nada que pactar.
+      totalOverride:
+        !soloDomicilio && totalOverride.trim() ? Number(totalOverride) : null,
     } as QuotePreviewInput;
   }, [
     serviceType, petsPayload, sinFechas, checkIn, checkOut, noches, fechaServicio,
     dcInTime, dcOutTime, conBano, deslanado, corte, desparasitante, probarf,
     banoCortesia, discountCode, totalOverride, conDomicilio, direccionDomicilio,
-    domicilioCortesia,
+    domicilioCortesia, soloDomicilio, domicilioActivo, viaje,
   ]);
 
   const { result: preview, error: previewError, loading: previewLoading } =
@@ -295,7 +317,12 @@ export default function AdminCreateQuote() {
   // ── Guardar ────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!previewInput) {
-      Alert.alert("Faltan datos", "Completa el servicio y las mascotas.");
+      Alert.alert(
+        "Faltan datos",
+        soloDomicilio
+          ? "Elige la dirección del traslado."
+          : "Completa el servicio y las mascotas."
+      );
       return;
     }
     if (!breakdown) {
@@ -342,7 +369,7 @@ export default function AdminCreateQuote() {
   }, [
     previewInput, breakdown, previewError, destinatario, selectedOwner, prospectName,
     prospectPhone, ownerId, notas, notasInternas, vigencia, depositSuggested,
-    queryClient, router,
+    queryClient, router, soloDomicilio,
   ]);
 
   if (isLoading) {
@@ -356,7 +383,11 @@ export default function AdminCreateQuote() {
     return <ErrorState message="No se pudieron cargar los clientes" onRetry={refetch} />;
   }
 
-  const listoParaCotizar = petsPayload.length > 0;
+  // Qué tan lejos puede avanzar el formulario. Cotizar el traslado no necesita
+  // mascota: basta con saber a dónde va la camioneta.
+  const listoParaCotizar = soloDomicilio
+    ? !!direccionDomicilio
+    : petsPayload.length > 0;
 
   return (
     // Sin el KAV, el teclado tapa el campo que se escribe Y el pie con el total
@@ -376,6 +407,7 @@ export default function AdminCreateQuote() {
             { key: "STAY", label: "Hospedaje" },
             { key: "BATH", label: "Estética" },
             { key: "DAYCARE", label: "Guardería" },
+            { key: "DELIVERY", label: "Domicilio" },
           ]}
           selected={serviceType}
           onSelect={(k) => setServiceType(k as ServiceType)}
@@ -469,7 +501,7 @@ export default function AdminCreateQuote() {
               </>
             )}
 
-            {ownerId && (
+            {ownerId && !soloDomicilio && (
               <>
                 <Text style={styles.label}>
                   Mascotas{petIds.length > 1 ? ` (${petIds.length})` : ""}
@@ -536,8 +568,10 @@ export default function AdminCreateQuote() {
               Es a este número al que se le va a mandar la cotización.
             </Text>
 
-            <Text style={styles.label}>Perros</Text>
-            {perrosLibres.map((perro, i) => (
+            {/* Cotizar solo el traslado no necesita saber qué perro es: la
+                camioneta cobra por viaje. Se pregunta cuando hay servicio. */}
+            {!soloDomicilio && <Text style={styles.label}>Perros</Text>}
+            {!soloDomicilio && perrosLibres.map((perro, i) => (
               <View key={perro.key} style={styles.perroCard}>
                 <View style={styles.perroHead}>
                   <Text style={styles.perroTitulo}>Perro {i + 1}</Text>
@@ -706,7 +740,7 @@ export default function AdminCreateQuote() {
         )}
 
         {/* ── Servicios ── */}
-        {listoParaCotizar && (
+        {listoParaCotizar && !soloDomicilio && (
           <>
             <Text style={styles.label}>Servicios</Text>
             {serviceType !== "BATH" && (
@@ -745,18 +779,33 @@ export default function AdminCreateQuote() {
         )}
 
         {/* ── Servicio a domicilio ── */}
-        {listoParaCotizar && domicilioDisponible && (
+        {(listoParaCotizar || soloDomicilio) && domicilioDisponible && (
           <>
             <Text style={styles.label}>Servicio a domicilio</Text>
-            <SwitchRow
-              label="Recoger y entregar a domicilio"
-              hint="Se cobra por la distancia desde el hotel, ida y vuelta"
-              value={conDomicilio}
-              onValueChange={setConDomicilio}
-              testID="quote-delivery-toggle"
-            />
-            {conDomicilio && (
+            {/* Cuando el traslado ES la cotización, el switch sobra: apagarlo
+                dejaría el documento sin un solo concepto. */}
+            {!soloDomicilio && (
+              <SwitchRow
+                label="Recoger y entregar a domicilio"
+                hint="Se cobra por la distancia desde el hotel"
+                value={conDomicilio}
+                onValueChange={setConDomicilio}
+                testID="quote-delivery-toggle"
+              />
+            )}
+            {domicilioActivo && (
               <View style={{ gap: 8 }}>
+                <LevelSelector
+                  label="Viaje"
+                  options={[
+                    { key: "PICKUP", label: "Solo ida" },
+                    { key: "DROPOFF", label: "Solo vuelta" },
+                    { key: "ROUND_TRIP", label: "Redondo" },
+                  ]}
+                  selected={viaje}
+                  onSelect={(k) => setViaje(k as Viaje)}
+                />
+                <Text style={styles.hint}>{VIAJE_HINT[viaje]}</Text>
                 <DeliveryAddressPicker
                   value={direccionDomicilio}
                   onChange={setDireccionDomicilio}
@@ -775,7 +824,8 @@ export default function AdminCreateQuote() {
                     <Ionicons name="navigate" size={14} color={COLORS.primary} />
                     <Text style={styles.deliveryQuoteText}>
                       {preview.delivery.distanceKm} km ·{" "}
-                      {formatCurrency(preview.delivery.fee)} (ida y vuelta)
+                      {formatCurrency(preview.delivery.fee)}{" "}
+                      {viaje === "ROUND_TRIP" ? "(dos viajes)" : "(un viaje)"}
                     </Text>
                   </View>
                 )}
@@ -868,19 +918,26 @@ export default function AdminCreateQuote() {
               autoCorrect={false}
             />
 
-            <Text style={styles.label}>Precio pactado (opcional)</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder={breakdown ? String(breakdown.subtotal) : "Total pactado"}
-              placeholderTextColor={COLORS.textDisabled}
-              value={totalOverride}
-              onChangeText={setTotalOverride}
-              keyboardType="numeric"
-              inputAccessoryViewID={KEYBOARD_DONE_ID}
-            />
-            <Text style={styles.hint}>
-              Reemplaza el total calculado. El servicio a domicilio se suma aparte.
-            </Text>
+            {/* El precio pactado reemplaza el total de los SERVICIOS y el
+                domicilio se suma aparte: en una cotización de solo traslado no
+                habría nada que reemplazar y lo tecleado se sumaría encima. */}
+            {!soloDomicilio && (
+              <>
+                <Text style={styles.label}>Precio pactado (opcional)</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder={breakdown ? String(breakdown.subtotal) : "Total pactado"}
+                  placeholderTextColor={COLORS.textDisabled}
+                  value={totalOverride}
+                  onChangeText={setTotalOverride}
+                  keyboardType="numeric"
+                  inputAccessoryViewID={KEYBOARD_DONE_ID}
+                />
+                <Text style={styles.hint}>
+                  Reemplaza el total calculado. El servicio a domicilio se suma aparte.
+                </Text>
+              </>
+            )}
 
             <Text style={styles.label}>Anticipo sugerido (opcional)</Text>
             <TextInput

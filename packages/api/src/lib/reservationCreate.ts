@@ -9,7 +9,7 @@ import {
   type NewReservationSource,
 } from "./notifyNewReservation";
 import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "./pricing";
-import { quoteDelivery } from "./delivery";
+import { quoteDelivery, type DeliveryTripMode } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
 
 type ReservationStatusType = import("@holidoginn/db").ReservationStatus;
@@ -24,7 +24,13 @@ export interface CreateReservationGroupParams {
   paymentType: "FULL" | "DEPOSIT";
   bathSelectionsByPet?: Record<string, { deslanado: boolean; corte: boolean }>;
   medicationByPet?: Record<string, { notes: string }>;
-  homeDelivery?: { address: string; lat: number; lng: number; placeId?: string };
+  homeDelivery?: {
+    address: string;
+    lat: number;
+    lng: number;
+    placeId?: string;
+    trip?: DeliveryTripMode;
+  };
   /** PI de Stripe (null cuando el saldo cubrió todo). */
   stripePaymentIntentId: string | null;
   /** Saldo a favor ya aplicado (0 en el flujo de invitado). */
@@ -215,7 +221,12 @@ export async function createReservationGroup(
   let deliveryDistanceKm = 0;
   let deliveryActive = false;
   if (homeDelivery && Number.isFinite(homeDelivery.lat) && Number.isFinite(homeDelivery.lng)) {
-    const quote = await quoteDelivery(prisma, homeDelivery.lat, homeDelivery.lng);
+    const quote = await quoteDelivery(
+      prisma,
+      homeDelivery.lat,
+      homeDelivery.lng,
+      homeDelivery.trip ?? "PICKUP"
+    );
     if (quote.active) {
       deliveryActive = true;
       deliveryFee = quote.fee;
@@ -267,6 +278,7 @@ export async function createReservationGroup(
                 homeDeliveryAddress: homeDelivery!.address,
                 homeDeliveryDistanceKm: deliveryDistanceKm,
                 homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
               }
             : {}),
         },

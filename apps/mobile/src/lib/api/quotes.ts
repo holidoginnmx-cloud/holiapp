@@ -48,7 +48,7 @@ export type QuoteRow = {
   folio: number;
   token: string;
   status: QuoteStatus;
-  reservationType: "STAY" | "BATH" | "DAYCARE";
+  reservationType: "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
   checkIn: string | null;
   checkOut: string | null;
   appointmentAt: string | null;
@@ -91,7 +91,7 @@ export type QuoteRow = {
 export type QuotePrefill = {
   quoteId: string;
   folio: number;
-  reservationType: "STAY" | "BATH" | "DAYCARE";
+  reservationType: "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
   ownerId: string | null;
   clientName: string;
   clientPhone: string | null;
@@ -124,6 +124,12 @@ export type QuotePrefill = {
   pendientes: { label: string; amount: number }[];
   /** Nota interna sugerida: deja constancia de qué incluye el total cotizado. */
   internalNotesSugeridas: string | null;
+  /**
+   * Si esta cotización puede volverse reservación. Una de solo traslado no:
+   * el domicilio viaja pegado a un servicio. El motivo lo redacta la API.
+   */
+  convertible: boolean;
+  noConvertibleMotivo: string | null;
 };
 
 /** Detalle: la cotización más lo que la pantalla necesita para compartirla. */

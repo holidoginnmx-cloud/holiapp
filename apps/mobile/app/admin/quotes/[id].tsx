@@ -37,6 +37,7 @@ const SERVICIO: Record<string, string> = {
   STAY: "Hospedaje",
   BATH: "Estética",
   DAYCARE: "Guardería",
+  DELIVERY: "Servicio a domicilio",
 };
 
 export default function AdminQuoteDetail() {
@@ -279,13 +280,24 @@ export default function AdminQuoteDetail() {
           <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        {!cerrada && (
+        {/* Una cotización de solo traslado no se convierte: el domicilio viaja
+            pegado a un servicio, así que no hay nada que agendar por sí solo.
+            El motivo lo manda la API para no repetir la regla en cada cliente. */}
+        {!cerrada && data.prefill.convertible !== false && (
           <TouchableOpacity style={styles.accion} onPress={convertir} activeOpacity={0.7}>
             <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
             <Text style={styles.accionText}>Convertir en reservación</Text>
             <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
           </TouchableOpacity>
         )}
+
+        {!cerrada &&
+          data.prefill.convertible === false &&
+          !!data.prefill.noConvertibleMotivo && (
+            <Text style={styles.noConvertible}>
+              {data.prefill.noConvertibleMotivo}
+            </Text>
+          )}
 
         {!cerrada && (
           <TouchableOpacity
@@ -351,6 +363,15 @@ function LineaDesglose({ item }: { item: QuoteItemRow }) {
 }
 
 const styles = StyleSheet.create({
+  noConvertible: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "PlusJakartaSans_500Medium",
+    color: COLORS.textSecondary,
+    backgroundColor: COLORS.bgSection,
+    borderRadius: 12,
+    padding: 12,
+  },
   screen: { flex: 1, backgroundColor: COLORS.bgPage },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.bgPage },
   content: { padding: 16, paddingBottom: 32 },
