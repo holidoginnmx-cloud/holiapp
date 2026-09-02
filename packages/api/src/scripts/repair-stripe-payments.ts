@@ -41,9 +41,21 @@ import { PrismaClient, Prisma } from "@holidoginn/db";
 import Stripe from "stripe";
 
 const prisma = new PrismaClient();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-03-31.basil",
-});
+// El cliente de Stripe se construye sólo si de verdad hace falta. Cuando el
+// cobro ya viaja en un depósito conciliado los números salen de la base, y
+// entonces correr esto sin llave es legítimo: es lo que pasa al repararlo desde
+// la laptop apuntando el DATABASE_URL a producción. Construirlo de entrada
+// tumbaba el script con "Neither apiKey nor config.authenticator provided"
+// antes de leer un solo pago.
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!stripeClient) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("falta STRIPE_SECRET_KEY para consultarlo en Stripe");
+    stripeClient = new Stripe(key, { apiVersion: "2025-03-31.basil" });
+  }
+  return stripeClient;
+}
 
 function money(n: number): string {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -51,6 +63,7 @@ function money(n: number): string {
 
 type Arreglo = {
   paymentId: string;
+  mascota: string;
   reservationId: string | null;
   pi: string;
   amountActual: number;
@@ -67,13 +80,15 @@ async function main() {
     `🔧 Pagos de Stripe con monto o método editados a mano ${apply ? "(APLICANDO)" : "(dry-run)"}\n`
   );
 
-  // Candidatos: tienen PaymentIntent (o sea, los cobró Stripe) pero su método
-  // dice otra cosa, o no tienen registrada la comisión.
+  // Candidatos: todo lo que cobró Stripe. Antes se filtraba por "método distinto
+  // de STRIPE o comisión vacía", y eso dejaba ciego al caso más silencioso: que
+  // le tecleen el neto encima al monto sin tocar el método ni la comisión. El
+  // pago se ve impecable y arrastra el saldo fantasma igual. Cada uno se compara
+  // contra su depósito y los que cuadran se reportan como verificados.
   const candidatos = await prisma.payment.findMany({
     where: {
       stripePaymentIntentId: { not: null },
       NOT: { stripePaymentIntentId: { contains: "_refund_" } },
-      OR: [{ method: { not: "STRIPE" } }, { stripeFeeAmount: null }],
       status: { in: ["PAID", "PARTIAL"] },
     },
     select: {
@@ -123,9 +138,12 @@ async function main() {
 
   const arreglos: Arreglo[] = [];
   const saltados: string[] = [];
+  const verificados: string[] = [];
 
   for (const p of candidatos) {
     const pi = p.stripePaymentIntentId!;
+    const mascota = p.reservation?.pet?.name?.trim() || "sin mascota";
+    const etiqueta = `${mascota} · ${p.id}`;
 
     // Dos casos donde el monto NO se toca (ver cabecera). No se saltan del todo:
     // rellenar la comisión que falte sigue siendo correcto y útil.
@@ -147,7 +165,7 @@ async function main() {
     } else {
       fuente = "stripe";
       try {
-        const full = await stripe.paymentIntents.retrieve(pi, {
+        const full = await getStripe().paymentIntents.retrieve(pi, {
           expand: ["latest_charge.balance_transaction"],
         });
         const charge = full.latest_charge as Stripe.Charge | null;
@@ -155,13 +173,13 @@ async function main() {
         if (full.amount) gross = full.amount / 100;
         if (bt && typeof bt !== "string") fee = bt.fee / 100;
       } catch (err) {
-        saltados.push(`${p.id} (no se pudo leer ${pi} en Stripe: ${String(err).slice(0, 80)})`);
+        saltados.push(`${etiqueta} (no se pudo leer ${pi} en Stripe: ${String(err).slice(0, 80)})`);
         continue;
       }
     }
 
     if (gross == null || !(gross > 0)) {
-      saltados.push(`${p.id} (sin monto bruto confiable)`);
+      saltados.push(`${etiqueta} (sin monto bruto confiable)`);
       continue;
     }
 
@@ -172,14 +190,18 @@ async function main() {
     const montoCambia = Math.abs(amountActual - amountCorrecto) > 0.005;
     const feeCambia = fee != null && (feeActual == null || Math.abs(feeActual - fee) > 0.005);
     const methodCambia = p.method !== "STRIPE";
-    if (!montoCambia && !feeCambia && !methodCambia) continue;
+    if (!montoCambia && !feeCambia && !methodCambia) {
+      verificados.push(`${etiqueta} — ${money(amountActual)} (cuadra con el ${fuente})`);
+      continue;
+    }
 
     if (montoIntocable && Math.abs(amountActual - gross) > 0.005) {
-      saltados.push(`${p.id} (monto sin tocar: ${razonIntocable})`);
+      saltados.push(`${etiqueta} (monto sin tocar: ${razonIntocable})`);
     }
 
     arreglos.push({
       paymentId: p.id,
+      mascota,
       reservationId: p.reservationId,
       pi,
       amountActual,
@@ -196,7 +218,7 @@ async function main() {
   }
 
   for (const a of arreglos) {
-    console.log(`   payment ${a.paymentId}  (${a.fuente})`);
+    console.log(`   ${a.mascota}  ·  payment ${a.paymentId}  (${a.fuente})`);
     const delta = a.amountCorrecto - a.amountActual;
     console.log(
       `      monto:    ${money(a.amountActual)} → ${money(a.amountCorrecto)}` +
@@ -210,6 +232,11 @@ async function main() {
       `      comisión: ${a.feeActual == null ? "—" : money(a.feeActual)} → ${a.feeCorrecta == null ? "—" : money(a.feeCorrecta)}`
     );
     console.log(`      método:   ${a.methodActual} → STRIPE`);
+  }
+
+  if (verificados.length > 0) {
+    console.log(`\n   ✔ Verificados, sin nada que corregir (${verificados.length}):`);
+    for (const v of verificados) console.log(`      ${v}`);
   }
 
   if (saltados.length > 0) {
@@ -233,7 +260,7 @@ async function main() {
           : {}),
       },
     });
-    console.log(`   ✔ ${a.paymentId} reparado`);
+    console.log(`   ✔ ${a.mascota} (${a.paymentId}) reparado`);
   }
   console.log(`\n   ${arreglos.length} pago(s) reparado(s).`);
 }
