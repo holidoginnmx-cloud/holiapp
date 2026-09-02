@@ -398,6 +398,21 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       },
     });
 
+    // Deja rastro de cada intent creado. Con esto se puede medir cuántos se
+    // quedan en `requires_payment_method` pasados 15 minutos: hay ruido normal
+    // de gente que se arrepiente, pero un pico delata que la hoja de pago dejó
+    // de abrirse — que es lo que nadie vio la primera vez que pasó.
+    request.log.info(
+      {
+        tag: "payment-intent-created",
+        paymentIntentId: paymentIntent.id,
+        ownerId,
+        amount: chargeAmount,
+        flow: "reservation",
+      },
+      "[pago] intent creado",
+    );
+
     return reply.send({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,

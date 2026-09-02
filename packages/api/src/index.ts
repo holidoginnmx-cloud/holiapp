@@ -32,6 +32,7 @@ import guestBathsRoutes from "./routes/guestBaths";
 import daycareRoutes from "./routes/daycare";
 import guestDaycareRoutes from "./routes/guestDaycare";
 import quotesRoutes from "./routes/quotes";
+import telemetryRoutes from "./routes/telemetry";
 
 const app = Fastify({ logger: true });
 
@@ -138,6 +139,7 @@ app.register(guestBathsRoutes);
 app.register(daycareRoutes);
 app.register(guestDaycareRoutes);
 app.register(quotesRoutes);
+app.register(telemetryRoutes);
 
 const start = async () => {
   try {
