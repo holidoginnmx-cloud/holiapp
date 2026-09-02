@@ -15,7 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@stripe/stripe-react-native";
+import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
 import { useAuthStore } from "@/store/authStore";
 import { getDaycareAvailability, createDaycareIntent, confirmDaycare } from "@/lib/api";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
@@ -30,7 +31,6 @@ import { useDiscountCode } from "@/hooks/useDiscountCode";
 import { wizardStyles } from "@/styles/wizardStyles";
 
 import { formatCurrency, formatDateLong, formatTimeHHmm } from "@/lib/format";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import {
   computeDaycareHours,
   isWithinDaycareHours,
@@ -67,7 +67,7 @@ function CreateDaycareScreenContent() {
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ petId?: string }>();
   const userId = useAuthStore((s) => s.userId);
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const checkout = usePaymentCheckout("daycare");
 
   // La guardería no exige cartilla aprobada (como el baño): se listan todas.
   const {
@@ -170,17 +170,11 @@ function CreateDaycareScreenContent() {
       const intent = await createDaycareIntent(payload);
 
       if (!intent.coveredByCredit && intent.clientSecret) {
-        const { error: initError } = await initPaymentSheet({
-          paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: "Holidog Inn",
-          applePay: { merchantCountryCode: "MX" },
+        const outcome = await checkout.run({
+          clientSecret: intent.clientSecret,
+          paymentIntentId: intent.paymentIntentId,
         });
-        if (initError) {
-          Alert.alert("Error", initError.message);
-          return;
-        }
-        const { error: payError } = await presentPaymentSheet();
-        if (handlePaymentSheetError(payError, "daycare")) return;
+        if (outcome !== "paid") return;
       }
 
       await confirmDaycare(
@@ -430,6 +424,8 @@ function CreateDaycareScreenContent() {
             )}
           </TouchableOpacity>
         )}
+
+        {checkout.stuckNotice}
 
         <TimeSlotPicker
           visible={timePickerFor !== null}

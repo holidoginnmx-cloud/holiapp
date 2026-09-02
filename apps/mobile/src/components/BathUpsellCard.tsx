@@ -10,7 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useStripe } from "@stripe/stripe-react-native";
+import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
 import { COLORS } from "@/constants/colors";
 import {
   getBathVariants,
@@ -19,7 +19,6 @@ import {
   type BathVariant,
   type ReservationDetail,
 } from "@/lib/api";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 function bathSizeFromWeight(kg: number | null | undefined): "S" | "M" | "L" | "XL" {
@@ -50,7 +49,7 @@ interface Props {
 export function BathUpsellCard({ reservation }: Props) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const checkout = usePaymentCheckout("bath-upsell");
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -136,18 +135,8 @@ export function BathUpsellCard({ reservation }: Props) {
         { petId: reservation.petId, deslanado, corte }
       );
 
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: "Holidog Inn",
-        applePay: { merchantCountryCode: "MX" },
-      });
-      if (initError) {
-        Alert.alert("Error", initError.message);
-        return;
-      }
-
-      const { error: payError } = await presentPaymentSheet();
-      if (handlePaymentSheetError(payError, "bath-upsell")) return;
+      const outcome = await checkout.run({ clientSecret, paymentIntentId });
+      if (outcome !== "paid") return;
 
       await confirmBathAddonPayment(reservation.id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", reservation.id] });
@@ -209,6 +198,8 @@ export function BathUpsellCard({ reservation }: Props) {
           </>
         )}
       </TouchableOpacity>
+
+      {checkout.stuckNotice}
     </View>
   );
 }

@@ -27,6 +27,7 @@ import {
   saveDeliveryAddress,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { useTrackedModal } from "@/lib/modalPresentation";
 
 export type CurrentDelivery = {
   enabled: boolean;
@@ -77,6 +78,9 @@ export function ReservationDeliveryModal({
   submitting = false,
   preloadSavedAddress = false,
 }: Props) {
+  // Registra el modal para que un cobro no intente presentar la hoja de
+  // Stripe mientras esta hoja todavía se está descartando.
+  const onTrackedDismiss = useTrackedModal(visible);
   const [address, setAddress] = useState<SelectedAddress | null>(null);
   const [quote, setQuote] = useState<{
     fee: number;
@@ -233,6 +237,7 @@ export function ReservationDeliveryModal({
       visible={visible}
       transparent
       animationType="slide"
+      onDismiss={onTrackedDismiss}
       onRequestClose={handleClose}
     >
       <Pressable style={styles.overlay} onPress={handleOverlayPress}>

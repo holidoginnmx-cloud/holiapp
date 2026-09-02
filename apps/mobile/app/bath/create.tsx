@@ -16,7 +16,8 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@stripe/stripe-react-native";
+import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
 import { useAuthStore } from "@/store/authStore";
 import {
   getPetsByOwner,
@@ -39,7 +40,6 @@ import {
 import { ErrorState } from "@/components/ErrorState";
 
 import { formatName, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import { sizeFromWeight, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 function toYMD(d: Date): string {
@@ -71,7 +71,7 @@ function CreateBathScreenContent() {
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ petId?: string }>();
   const userId = useAuthStore((s) => s.userId);
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const checkout = usePaymentCheckout("bath");
 
   const [selectedPetId, setSelectedPetId] = useState<string | null>(
     params.petId ?? null,
@@ -262,17 +262,11 @@ function CreateBathScreenContent() {
       });
 
       if (!intent.coveredByCredit && intent.clientSecret) {
-        const { error: initError } = await initPaymentSheet({
-          paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: "Holidog Inn",
-          applePay: { merchantCountryCode: "MX" },
+        const outcome = await checkout.run({
+          clientSecret: intent.clientSecret,
+          paymentIntentId: intent.paymentIntentId,
         });
-        if (initError) {
-          Alert.alert("Error", initError.message);
-          return;
-        }
-        const { error: payError } = await presentPaymentSheet();
-        if (handlePaymentSheetError(payError, "bath")) return;
+        if (outcome !== "paid") return;
       }
 
       await confirmBath(
@@ -805,6 +799,8 @@ function CreateBathScreenContent() {
             })()}
           </TouchableOpacity>
         )}
+
+        {checkout.stuckNotice}
       </ScrollView>
     </KeyboardAvoidingView>
   );

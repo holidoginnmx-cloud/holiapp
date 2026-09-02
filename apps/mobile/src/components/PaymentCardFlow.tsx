@@ -7,7 +7,8 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useStripe } from "@stripe/stripe-react-native";
+import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
+import type { PaymentFlow } from "@/lib/telemetry";
 import {
   useMutation,
   useQueryClient,
@@ -24,7 +25,6 @@ import {
   type ReservationAddonWithVariant,
   type ChangeRequest,
 } from "@/lib/api";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import { formatCurrency } from "@/lib/format";
 import { styles } from "@/styles/paymentCardStyles";
 
@@ -50,7 +50,7 @@ type Phase = "hidden" | "pending" | "pickup" | "paid";
 type FlowConfig = {
   amount: number;
   phase: Phase;
-  /** Etiqueta para handlePaymentSheetError (telemetría/log de cancelación). */
+  /** Flujo para la telemetría y el mensaje de error del cobro. */
   errorTag: string;
   createIntent: () => Promise<{ clientSecret: string; paymentIntentId: string }>;
   confirm: (paymentIntentId: string) => Promise<unknown>;
@@ -148,11 +148,11 @@ function buildConfig(props: PaymentCardFlowProps): FlowConfig {
 
 export function PaymentCardFlow(props: PaymentCardFlowProps) {
   const queryClient = useQueryClient();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [paying, setPaying] = useState(false);
 
   const cfg = buildConfig(props);
   const { amount } = cfg;
+  const checkout = usePaymentCheckout(cfg.errorTag as PaymentFlow);
 
   const invalidate = () => {
     for (const queryKey of cfg.invalidateKeys) {
@@ -170,17 +170,11 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
     setPaying(true);
     try {
       const intent = await cfg.createIntent();
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: intent.clientSecret,
-        merchantDisplayName: "Holidog Inn",
-        applePay: { merchantCountryCode: "MX" },
+      const outcome = await checkout.run({
+        clientSecret: intent.clientSecret,
+        paymentIntentId: intent.paymentIntentId,
       });
-      if (initError) {
-        Alert.alert("Error", initError.message);
-        return;
-      }
-      const { error: payError } = await presentPaymentSheet();
-      if (handlePaymentSheetError(payError, cfg.errorTag)) return;
+      if (outcome !== "paid") return;
       await cfg.confirm(intent.paymentIntentId);
       invalidate();
     } catch (err) {
@@ -310,6 +304,8 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
           <Text style={styles.btnSecondaryText}>Pagar al recoger</Text>
         </TouchableOpacity>
       </View>
+
+      {checkout.stuckNotice}
     </View>
   );
 }

@@ -13,7 +13,8 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@stripe/stripe-react-native";
+import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
 import {
   getReservationById,
   getReservations,
@@ -37,7 +38,6 @@ import {
   formatTime,
   formatTimeHHmm,
 } from "@/lib/format";
-import { handlePaymentSheetError } from "@/lib/paymentError";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { PawRating } from "@/components/PawRating";
 import { REVIEW_COPY } from "@holidoginn/shared";
@@ -110,7 +110,7 @@ function ReservationDetailScreenContent() {
   const { id, action } = useLocalSearchParams<{ id: string; action?: string; from?: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const checkout = usePaymentCheckout("balance");
   const [payingBalance, setPayingBalance] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewPrompted, setReviewPrompted] = useState(false);
@@ -325,18 +325,11 @@ function ReservationDetailScreenContent() {
         return;
       }
 
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret: clientSecret,
-        merchantDisplayName: "Holidog Inn",
-        applePay: { merchantCountryCode: "MX" },
+      const outcome = await checkout.run({
+        clientSecret,
+        paymentIntentId,
       });
-      if (initError) {
-        Alert.alert("Error", initError.message);
-        return;
-      }
-
-      const { error: payError } = await presentPaymentSheet();
-      if (handlePaymentSheetError(payError, "balance")) return;
+      if (outcome !== "paid") return;
 
       await confirmBalancePayment(id, paymentIntentId);
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
@@ -779,6 +772,8 @@ function ReservationDetailScreenContent() {
               </>
             )}
           </TouchableOpacity>
+
+          {checkout.stuckNotice}
         </View>
       )}
 
