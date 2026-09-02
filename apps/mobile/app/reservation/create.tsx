@@ -35,6 +35,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
+import { withTimeout } from "@/lib/promiseTimeout";
 import {
   CheckInReminderModal,
   type ReservationTimes,
@@ -550,15 +551,46 @@ function CreateReservationScreenContent() {
     setShowCheckInReminder(true);
   };
 
-  const handleReminderAcknowledge = (times: ReservationTimes) => {
-    // Ref (no estado): runPayment corre en el mismo tick y necesita el valor.
-    reservationTimesRef.current = times;
-    setShowCheckInReminder(false);
+  // Cobro pendiente de arrancar en cuanto el recordatorio termine de cerrarse.
+  const pendingPaymentRef = useRef(false);
+  const kickoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startPaymentAfterDismiss = () => {
+    if (kickoffTimerRef.current) {
+      clearTimeout(kickoffTimerRef.current);
+      kickoffTimerRef.current = null;
+    }
+    if (!pendingPaymentRef.current) return;
+    pendingPaymentRef.current = false;
     runPayment();
   };
 
+  const handleReminderAcknowledge = (times: ReservationTimes) => {
+    // Ref (no estado): runPayment lo lee sin esperar un re-render.
+    reservationTimesRef.current = times;
+    // El cobro NO arranca aquí: hay que esperar a que este modal termine de
+    // cerrarse o Stripe no puede presentar su hoja de pago encima (en iOS la
+    // promesa se queda colgada y el botón gira para siempre). El disparo real
+    // llega por onDismissed; el timer es la red por si ese aviso no llega.
+    pendingPaymentRef.current = true;
+    setPaying(true);
+    setShowCheckInReminder(false);
+    kickoffTimerRef.current = setTimeout(startPaymentAfterDismiss, 800);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (kickoffTimerRef.current) clearTimeout(kickoffTimerRef.current);
+    };
+  }, []);
+
   const runPayment = async () => {
-    if (!canSubmit) return;
+    // paying ya viene en true desde el acknowledge del recordatorio: si aquí
+    // salimos temprano hay que apagarlo o el botón se queda girando.
+    if (!canSubmit) {
+      setPaying(false);
+      return;
+    }
 
     setPaying(true);
     try {
@@ -566,7 +598,16 @@ function CreateReservationScreenContent() {
       // pedirlo aquí si por alguna razón no existe).
       const pending = intentPromiseRef.current;
       intentPromiseRef.current = null;
-      const intent = await (pending ?? createPaymentIntent(buildIntentPayload()));
+      // Si el prefetch se cayó por red (o se pasó del tope de espera mientras
+      // el usuario leía el recordatorio) lo volvemos a pedir. Un error del
+      // servidor (cartilla, consentimientos, monto inválido) sí se propaga:
+      // reintentarlo daría exactamente el mismo 4xx.
+      const intent = await (pending
+        ? pending.catch((err: any) => {
+            if (err?.status) throw err;
+            return createPaymentIntent(buildIntentPayload());
+          })
+        : createPaymentIntent(buildIntentPayload()));
 
       // 2. Saldo a favor cubre todo: confirmar con el usuario antes de aplicar
       // el cargo. Sin esto el botón "Reservar" se sentiría mágico — Stripe no
@@ -589,33 +630,39 @@ function CreateReservationScreenContent() {
 
       // 3. Open Stripe PaymentSheet only when there is something to charge.
       if (!intent.coveredByCredit && intent.clientSecret) {
-        const { error: initError } = await initPaymentSheet({
-          paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: "Holidog Inn",
-          applePay: { merchantCountryCode: "MX" },
-          appearance: {
-            colors: {
-              primary: COLORS.primary,
-              background: COLORS.white,
-              componentBackground: COLORS.bgPage,
-              primaryText: COLORS.textPrimary,
-              secondaryText: COLORS.textSecondary,
-            },
-            shapes: {
-              borderRadius: 12,
-              borderWidth: 1,
-            },
-            primaryButton: {
+        // Con tope de espera: si Stripe no contesta, el botón tiene que salir
+        // del spinner con un error, no quedarse girando.
+        const { error: initError } = await withTimeout(
+          initPaymentSheet({
+            paymentIntentClientSecret: intent.clientSecret,
+            merchantDisplayName: "Holidog Inn",
+            applePay: { merchantCountryCode: "MX" },
+            appearance: {
               colors: {
-                background: COLORS.primary,
-                text: COLORS.white,
+                primary: COLORS.primary,
+                background: COLORS.white,
+                componentBackground: COLORS.bgPage,
+                primaryText: COLORS.textPrimary,
+                secondaryText: COLORS.textSecondary,
               },
               shapes: {
                 borderRadius: 12,
+                borderWidth: 1,
+              },
+              primaryButton: {
+                colors: {
+                  background: COLORS.primary,
+                  text: COLORS.white,
+                },
+                shapes: {
+                  borderRadius: 12,
+                },
               },
             },
-          },
-        });
+          }),
+          30_000,
+          "No se pudo abrir la ventana de pago. Revisa tu conexión e intenta de nuevo.",
+        );
 
         if (initError) {
           Alert.alert("Error", initError.message);
@@ -1582,6 +1629,7 @@ function CreateReservationScreenContent() {
       <CheckInReminderModal
         visible={showCheckInReminder}
         onAcknowledge={handleReminderAcknowledge}
+        onDismissed={startPaymentAfterDismiss}
       />
     </ScrollView>
     </KeyboardAvoidingView>

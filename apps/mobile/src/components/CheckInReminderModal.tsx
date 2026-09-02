@@ -1,11 +1,13 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Modal,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
+  Platform,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
@@ -46,15 +48,43 @@ interface CheckInReminderModalProps {
   visible: boolean;
   /** Cierra el modal y continúa al cobro, con las horas elegidas (o null). */
   onAcknowledge: (times: ReservationTimes) => void;
+  /**
+   * Se dispara cuando el modal terminó de cerrarse — no cuando se pidió que se
+   * cerrara. Importa para el cobro: en iOS este modal es un view controller
+   * presentado, y si Stripe intenta abrir su hoja de pago mientras todavía se
+   * está descartando, la presentación falla en silencio y la promesa de
+   * `presentPaymentSheet` NUNCA resuelve (botón girando para siempre).
+   */
+  onDismissed?: () => void;
 }
 
 export function CheckInReminderModal({
   visible,
   onAcknowledge,
+  onDismissed,
 }: CheckInReminderModalProps) {
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
+
+  // En ref para que el efecto de abajo dependa solo de `visible`: si dependiera
+  // del callback (que el padre recrea en cada render) su cleanup cancelaría el
+  // aviso antes de dispararlo.
+  const onDismissedRef = useRef(onDismissed);
+  onDismissedRef.current = onDismissed;
+
+  // Android no tiene `onDismiss` en Modal: lo aproximamos esperando a que
+  // terminen las animaciones en curso.
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    const wasOpen = wasVisible.current;
+    wasVisible.current = visible;
+    if (Platform.OS === "ios" || !wasOpen || visible) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      onDismissedRef.current?.();
+    });
+    return () => task.cancel();
+  }, [visible]);
 
   return (
     <Modal
@@ -62,6 +92,7 @@ export function CheckInReminderModal({
       transparent
       animationType="slide"
       onRequestClose={() => onAcknowledge({ checkInTime, checkOutTime })}
+      onDismiss={Platform.OS === "ios" ? () => onDismissedRef.current?.() : undefined}
     >
       <View style={styles.overlay}>
         <View style={styles.sheet}>
