@@ -15,6 +15,7 @@ import {
   invalidatePetAccessCache,
 } from "../lib/petAccess";
 import { findPetByName } from "../lib/petName";
+import { stripInternalFieldsList } from "../lib/stripInternal";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -571,7 +572,15 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         },
       });
 
-      return { pet, reservations, behaviorTags };
+      // El dueño (o co-dueño) puede leer el historial, pero las notas internas
+      // de cada reserva y el relevo [HANDOFF] de los reportes son del equipo.
+      const isStaffOrAdmin =
+        request.userRole === "ADMIN" || request.userRole === "STAFF";
+      return {
+        pet,
+        reservations: stripInternalFieldsList(reservations, isStaffOrAdmin),
+        behaviorTags,
+      };
     }
   );
 

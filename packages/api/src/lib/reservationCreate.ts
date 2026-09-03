@@ -9,10 +9,70 @@ import {
   type NewReservationSource,
 } from "./notifyNewReservation";
 import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "./pricing";
+import { hoursUntilHotelDay } from "@holidoginn/shared";
 import { quoteDelivery, type DeliveryTripMode } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
 
 type ReservationStatusType = import("@holidoginn/db").ReservationStatus;
+
+/** Namespace del advisory lock de cupo de HOSPEDAJE (42 = baños, 43 = guardería). */
+export const ROOM_LOCK_NAMESPACE = 44;
+
+/**
+ * El cuarto elegido antes de la transacción ya no tiene lugar al momento de
+ * escribir. El handler lo convierte en 409.
+ */
+export class RoomTakenError extends Error {
+  constructor(public readonly roomName: string) {
+    super(`ROOM_TAKEN:${roomName}`);
+    this.name = "RoomTakenError";
+  }
+}
+
+/**
+ * Serializa y re-verifica la capacidad de los cuartos DENTRO de la
+ * transacción que crea las reservas. La búsqueda del cuarto ocurre antes y
+ * sin lock (count-then-create): dos confirmaciones simultáneas veían el mismo
+ * lugar libre y ambas lo tomaban. Igual que la agenda de baños (42) y el cupo
+ * de guardería (43), pero por cuarto. Los ids se bloquean ORDENADOS para que
+ * dos transacciones con cuartos en común no se traben entre sí.
+ *
+ * `assignments` son los cuartos que ESTA operación va a ocupar (uno por
+ * mascota; repetidos si comparten cuarto).
+ */
+export async function lockRoomsAndVerifyCapacity(
+  tx: Prisma.TransactionClient,
+  assignments: Array<{ roomId: string | null }>,
+  checkIn: Date,
+  checkOut: Date
+): Promise<void> {
+  const adding = new Map<string, number>();
+  for (const a of assignments) {
+    if (!a.roomId) continue;
+    adding.set(a.roomId, (adding.get(a.roomId) ?? 0) + 1);
+  }
+  const roomIds = Array.from(adding.keys()).sort();
+  for (const roomId of roomIds) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK_NAMESPACE}, hashtext(${roomId}))`;
+  }
+  for (const roomId of roomIds) {
+    const room = await tx.room.findUnique({
+      where: { id: roomId },
+      select: { name: true, capacity: true },
+    });
+    const taken = await tx.reservation.count({
+      where: {
+        roomId,
+        reservationType: "STAY",
+        status: { notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatusType[] },
+        AND: [{ checkIn: { lt: checkOut } }, { checkOut: { gt: checkIn } }],
+      },
+    });
+    if (!room || taken + (adding.get(roomId) ?? 0) > room.capacity) {
+      throw new RoomTakenError(room?.name ?? roomId);
+    }
+  }
+}
 
 export interface CreateReservationGroupParams {
   owner: User;
@@ -213,7 +273,9 @@ export async function createReservationGroup(
   const medicationTotal = Array.from(medicationSurchargeByPet.values()).reduce((s, n) => s + n, 0);
   const baseTotal = lodgingTotal + bathTotal + medicationTotal;
 
-  const hoursUntilCheckIn = (checkIn.getTime() - Date.now()) / (60 * 60 * 1000);
+  // Mismo día = menos de 24 h para la medianoche LOCAL del check-in (no para
+  // las 00:00 UTC, que son las 17:00 del día anterior en Hermosillo).
+  const hoursUntilCheckIn = hoursUntilHotelDay(checkIn);
   const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
   const surchargeMultiplier = sameDaySurcharge ? 1.2 : 1;
 
@@ -245,49 +307,66 @@ export async function createReservationGroup(
     creditApplied = Math.min(ownerCredit, amountDue);
   }
 
-  const operations = [];
-  for (let i = 0; i < assignments.length; i++) {
-    const a = assignments[i];
-    const bath = bathByPet.get(a.petId);
-    const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
-    const medNotes = medicationNotesByPet.get(a.petId) ?? null;
-    const isFirst = i === 0;
-    const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
-    const reservationAmount =
-      (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier + deliveryForThis;
-    operations.push(
-      prisma.reservation.create({
-        data: {
-          checkIn,
-          checkOut,
-          totalDays,
-          totalAmount: new Prisma.Decimal(reservationAmount),
-          notes,
-          medicationNotes: medNotes,
-          legalAccepted,
-          status: "CONFIRMED",
-          groupId,
-          paymentType,
-          depositDeadline: paymentType === "DEPOSIT" ? checkIn : null,
-          ownerId,
-          petId: a.petId,
-          roomId: a.roomId,
-          ...(isFirst && deliveryActive
-            ? {
-                homeDelivery: true,
-                homeDeliveryAddress: homeDelivery!.address,
-                homeDeliveryDistanceKm: deliveryDistanceKm,
-                homeDeliveryFee: new Prisma.Decimal(deliveryFee),
-                homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
-              }
-            : {}),
-        },
-        include: { pet: true, room: true },
-      })
-    );
+  // Transacción interactiva (no batch) para tomar el lock por cuarto y
+  // re-verificar el cupo justo antes de escribir.
+  let reservations: Array<Prisma.ReservationGetPayload<{ include: { pet: true; room: true } }>>;
+  try {
+    reservations = await prisma.$transaction(async (tx) => {
+      await lockRoomsAndVerifyCapacity(tx, assignments, checkIn, checkOut);
+      const created: typeof reservations = [];
+      for (let i = 0; i < assignments.length; i++) {
+        const a = assignments[i];
+        const bath = bathByPet.get(a.petId);
+        const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
+        const medNotes = medicationNotesByPet.get(a.petId) ?? null;
+        const isFirst = i === 0;
+        const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
+        const reservationAmount =
+          (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier + deliveryForThis;
+        created.push(
+          await tx.reservation.create({
+            data: {
+              checkIn,
+              checkOut,
+              totalDays,
+              totalAmount: new Prisma.Decimal(reservationAmount),
+              notes,
+              medicationNotes: medNotes,
+              legalAccepted,
+              status: "CONFIRMED",
+              groupId,
+              paymentType,
+              depositDeadline: paymentType === "DEPOSIT" ? checkIn : null,
+              ownerId,
+              petId: a.petId,
+              roomId: a.roomId,
+              ...(isFirst && deliveryActive
+                ? {
+                    homeDelivery: true,
+                    homeDeliveryAddress: homeDelivery!.address,
+                    homeDeliveryDistanceKm: deliveryDistanceKm,
+                    homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                    homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
+                  }
+                : {}),
+            },
+            include: { pet: true, room: true },
+          })
+        );
+      }
+      return created;
+    });
+  } catch (err) {
+    if (err instanceof RoomTakenError) {
+      return {
+        ok: false,
+        status: 409,
+        error: `El cuarto ${err.roomName} ya fue ocupado por otra reserva en esas fechas. Vuelve a intentar.`,
+        extra: { code: "ROOM_TAKEN" },
+      };
+    }
+    throw err;
   }
-
-  const reservations = await prisma.$transaction(operations);
 
   const isDeposit = paymentType === "DEPOSIT";
   for (let i = 0; i < reservations.length; i++) {

@@ -44,7 +44,31 @@ export async function resolveOrCreateGuestPet(
   const existing = findPetByName(candidatos, gp.name);
 
   if (existing) {
-    const pet = await prisma.pet.update({ where: { id: existing.id }, data });
+    // Al reutilizar NO se pisa lo que ya tiene la ficha: el wizard manda null
+    // o "" en todo lo que el invitado dejó vacío, y antes eso borraba raza,
+    // salud y contactos capturados en una visita anterior. Peor: escribía
+    // cartillaStatus (PENDING o null) y cartillaPhotos: [] encima de una
+    // cartilla APROBADA por el equipo, y el perro quedaba bloqueado para
+    // reservar. Regla: una APPROVED nunca baja por este camino; solo se
+    // manda a revisión (PENDING + fotos) si llegaron fotos nuevas y la
+    // cartilla actual NO está aprobada.
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(gp)) {
+      if (key.startsWith("cartilla")) continue;
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      // Un checkbox sin marcar llega como `false` por default del schema: es
+      // "sin dato", no "dato negativo" (p. ej. un isNeutered que capturó el
+      // equipo no debe volverse false porque el invitado no lo marcó).
+      if (value === false) continue;
+      patch[key] = value;
+    }
+    if (photos.length > 0 && existing.cartillaStatus !== "APPROVED") {
+      patch.cartillaPhotos = photos;
+      patch.cartillaUrl = gp.cartillaUrl ?? photos[0];
+      patch.cartillaStatus = "PENDING";
+    }
+    const pet = await prisma.pet.update({ where: { id: existing.id }, data: patch });
     return { pet, created: false };
   }
 

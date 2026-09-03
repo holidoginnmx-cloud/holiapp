@@ -16,6 +16,7 @@ import { triggerMaintenance } from "../lib/maintenance";
 import { requestReview } from "../lib/reviewRequest";
 import { notifyBalanceDue } from "../lib/balanceReminder";
 import { maybeConcludeStandaloneBath } from "./baths";
+import { stripHandoff } from "../lib/stripInternal";
 
 export default async function staffRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -606,9 +607,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       const dateEnd = new Date(dateStart.getTime() + 86_400_000);
 
       // El caption público no debe incluir el bloque [HANDOFF] (notas internas de relevo entre staff).
-      const publicCaption = data.additionalNotes
-        ? data.additionalNotes.replace(/\n?\[HANDOFF\] [\s\S]*/, "").trim() || null
-        : null;
+      const publicCaption = stripHandoff(data.additionalNotes);
 
       const checklist = await prisma.$transaction(async (tx) => {
         await tx.stayUpdate.createMany({
@@ -671,9 +670,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
         EXCITED: { emoji: "🤩", label: "emocionado" },
       };
       const m = moodConfig[data.mood] ?? moodConfig.HAPPY;
-      const ownerNote = (data.additionalNotes ?? "")
-        .replace(/\n?\[HANDOFF\] [\s\S]*/, "")
-        .trim();
+      const ownerNote = stripHandoff(data.additionalNotes) ?? "";
       const hasVideo = rawItems.some((it) => it.type === "video");
       const hasImage = rawItems.some((it) => it.type === "image");
       const evidenceLabel =

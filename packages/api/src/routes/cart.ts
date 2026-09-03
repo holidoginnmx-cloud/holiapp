@@ -17,6 +17,14 @@ import {
 //   POST   /store/cart/merge           fusiona carrito invitado al del usuario
 // ---------------------------------------------------------------------------
 
+// Servicios que se importaron de Shopify como "producto" (Baño Deluxe, Reserva
+// de hotel) pero que NO se venden en la tienda: se agendan con fecha y mascota
+// desde /reservar. El sitio los esconde de las listas y del detalle con este
+// mismo patrón; aquí se rechazan al agregar al carrito para que no entren por
+// una URL vieja ni por una llamada directa. ESPEJO de `isStoreProduct` en
+// HolidogInn-site/lib/store-menu.ts — si cambia uno, cambia el otro.
+const SERVICIO_NO_VENDIBLE = /ba[ñn]o\s*deluxe|reserva de hotel/i;
+
 const EMPTY = (id: string | null) => ({
   id,
   items: [] as never[],
@@ -51,6 +59,11 @@ export default async function cartRoutes(fastify: FastifyInstance) {
       });
       if (!variant || !variant.isActive || !variant.product.isActive) {
         return reply.status(404).send({ error: "Variante no disponible" });
+      }
+      if (SERVICIO_NO_VENDIBLE.test(variant.product.name ?? "")) {
+        return reply.status(409).send({
+          error: "Este servicio se agenda desde Reservar, no se agrega al carrito",
+        });
       }
 
       const userId = request.userId ?? null;

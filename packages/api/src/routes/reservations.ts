@@ -7,6 +7,7 @@ import {
   UpdateReservationDeliverySchema,
   ReservationStatus,
   CancelReservationSchema,
+  hoursUntilHotelDay,
 } from "@holidoginn/shared";
 import { Prisma, PetSize, ReservationStatus as PrismaResStatus } from "@holidoginn/db";
 import { randomUUID } from "crypto";
@@ -24,7 +25,7 @@ import {
   reservationConfirmedTemplate,
   sendEmail,
 } from "../lib/email";
-import { notifyUser, notifyTeamReservationUpdated } from "../lib/notify";
+import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
 import { notifyNewReservation } from "../lib/notifyNewReservation";
 import { applyReservationTimesUpdate } from "../lib/stayTimes";
 import { markQuoteConverted } from "../lib/quotes";
@@ -34,6 +35,7 @@ import { triggerMaintenance } from "../lib/maintenance";
 import {
   stripInternalFields,
   stripInternalFieldsList,
+  stripChecklistInternalFieldsList,
 } from "../lib/stripInternal";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
@@ -49,6 +51,7 @@ import {
   resolveBathDuration,
 } from "../lib/bathAvailabilityDb";
 import { quoteDelivery } from "../lib/delivery";
+import { lockRoomsAndVerifyCapacity, RoomTakenError } from "../lib/reservationCreate";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -450,6 +453,19 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
   // POST /reservations — crear (calcula totalDays y totalAmount)
   fastify.post("/reservations", { preHandler: [authMiddleware] }, async (request, reply) => {
+    // Este es el alta MANUAL del equipo (mostrador/teléfono): nace CONFIRMED
+    // sin pago, sin cartilla aprobada, sin gate legal y acepta staffId,
+    // internalNotes y anticipo acordado. Un dueño con sesión podía llamarlo y
+    // saltarse todo eso. El cliente reserva por sus rutas con pago
+    // (/reservations/multi, /baths/confirm, /daycare/confirm); la app del
+    // cliente nunca usa este endpoint.
+    if (request.userRole !== "ADMIN" && request.userRole !== "STAFF") {
+      return reply.status(403).send({
+        error: "Reserva desde el flujo de pago",
+        code: "TEAM_ONLY",
+      });
+    }
+
     const parsed = CreateReservationSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -1204,14 +1220,102 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
 
+      const from = reservation.status;
+      const to = parsed.data.status;
+      // Repetir el estado actual (doble tap, reintento) no es un error.
+      if (from === to) {
+        return prisma.reservation.findUniqueOrThrow({
+          where: { id: reservation.id },
+          include: { pet: true, room: true },
+        });
+      }
+
+      const verdict = statusTransitionVerdict(
+        from,
+        to,
+        reservation.reservationType,
+        request.userRole === "ADMIN",
+      );
+      if (verdict) {
+        return reply.status(409).send({ error: verdict, code: "INVALID_TRANSITION" });
+      }
+
+      // Cancelar con dinero de por medio tiene su propia ruta, que decide el
+      // reembolso (tarjeta o saldo a favor). Por aquí solo se cancelan
+      // reservas sin cobro, para no dejar pagos huérfanos.
+      if (to === "CANCELLED") {
+        const paidCount = await prisma.payment.count({
+          where: {
+            reservationId: reservation.id,
+            status: { in: ["PAID", "PARTIAL"] },
+          },
+        });
+        if (paidCount > 0) {
+          return reply.status(409).send({
+            error:
+              "La reserva tiene pagos registrados. Usa la cancelación con reembolso (/admin/reservations/:id/cancel).",
+            code: "HAS_PAYMENTS",
+          });
+        }
+      }
+
       const updated = await prisma.reservation.update({
         where: { id: request.params.id },
-        data: { status: parsed.data.status },
+        data: { status: to },
         include: { pet: true, room: true },
       });
       return updated;
     }
   );
+
+  // ── Máquina de estados de PATCH /reservations/:id/status ──────────────
+  // El enum real es CONFIRMED → CHECKED_IN → CHECKED_OUT (+ CANCELLED): no hay
+  // PENDING ni COMPLETED; "finalizada" es CHECKED_OUT para los tres tipos.
+  //   CONFIRMED   → CHECKED_IN (STAY/DAYCARE), CANCELLED,
+  //                 CHECKED_OUT (BATH/DAYCARE: concluyen sin check-in)
+  //   CHECKED_IN  → CHECKED_OUT
+  //   CHECKED_OUT → CONFIRMED | CHECKED_IN (STAY/DAYCARE) — "reabrir", SOLO
+  //                 ADMIN: corrige un check-out hecho por error, sin avisos ni
+  //                 pagos. Es el único camino de salida de CHECKED_OUT y lo usa
+  //                 la app admin por esta misma ruta.
+  //   CANCELLED   → nada (deshacer una cancelación implica dinero; no existe).
+  // Devuelve null si la transición es válida, o el mensaje del 409.
+  function statusTransitionVerdict(
+    from: PrismaResStatus,
+    to: PrismaResStatus,
+    type: string,
+    isAdmin: boolean,
+  ): string | null {
+    const hasCheckIn = type === "STAY" || type === "DAYCARE";
+    switch (from) {
+      case "CONFIRMED":
+        if (to === "CANCELLED") return null;
+        if (to === "CHECKED_IN") {
+          return hasCheckIn ? null : "Un baño no hace check-in; se concluye al cobrarlo.";
+        }
+        if (to === "CHECKED_OUT") {
+          return type === "STAY"
+            ? "Una estancia no puede finalizar sin check-in. Haz el check-in primero o cancélala."
+            : null;
+        }
+        return `Transición no válida: ${from} → ${to}`;
+      case "CHECKED_IN":
+        if (to === "CHECKED_OUT") return null;
+        if (to === "CANCELLED") {
+          return "Una reserva con la mascota en el hotel no se cancela: haz el check-out.";
+        }
+        return `Transición no válida: ${from} → ${to}`;
+      case "CHECKED_OUT":
+        if (to === "CONFIRMED" || (to === "CHECKED_IN" && hasCheckIn)) {
+          return isAdmin ? null : "Solo un administrador puede reabrir una reserva finalizada.";
+        }
+        return "Una reserva finalizada no se cancela por aquí; reábrela primero (solo admin).";
+      case "CANCELLED":
+        return "Una reserva cancelada no se puede reactivar. Crea una nueva.";
+      default:
+        return `Transición no válida: ${from} → ${to}`;
+    }
+  }
 
   // ── Helper: cuenta cuántas reservas activas (no CANCELLED/CHECKED_OUT) solapan
   // con la ventana [checkIn, checkOut) en un cuarto. Opcionalmente excluye un id
@@ -1509,65 +1613,135 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }));
 
     // Find rooms
-    const assignments: { petId: string; roomId: string | null; amount: number }[] = [];
-
-    if (roomPreference === "shared") {
-      // Find room for the largest pet size that fits TODAS las mascotas del grupo.
-      const sizeOrder: PetSize[] = ["XS", "S", "M", "L", "XL"];
-      const largestSize = petSizes.reduce((max, ps) =>
-        sizeOrder.indexOf(ps.size) > sizeOrder.indexOf(max) ? ps.size : max,
-        petSizes[0].size
-      );
-      const room = await findAvailableRoom(
-        largestSize,
-        checkIn,
-        checkOut,
-        petSizes.length,
-      );
-      if (!room) {
-        return reply.status(400).send({
-          error: `No hay cuartos con capacidad para ${petSizes.length} perros (tamaño ${largestSize}) en las fechas seleccionadas`,
-        });
-      }
-      for (const ps of petSizes) {
-        assignments.push({
-          petId: ps.pet.id,
-          roomId: room.id,
-          amount: ps.pricePerDay * totalDays,
-        });
-      }
-    } else {
-      // Separate: find a room per pet — y reservar lugares ya asignados en este
-      // mismo request para no asignar dos perros al mismo cuarto rebasando su
-      // capacidad dentro de la misma operación.
-      const localUsage = new Map<string, number>();
-      for (const ps of petSizes) {
-        const rooms = await prisma.room.findMany({
-          where: { isActive: true, sizeAllowed: { has: ps.size } },
-          orderBy: { createdAt: "asc" },
-        });
-        let chosen: typeof rooms[number] | null = null;
-        for (const room of rooms) {
-          const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
-          const localTaken = localUsage.get(room.id) ?? 0;
-          if (taken + localTaken + 1 <= room.capacity) {
-            chosen = room;
-            localUsage.set(room.id, localTaken + 1);
-            break;
-          }
+    type Assignment = { petId: string; roomId: string | null; amount: number };
+    // La búsqueda corre SIN lock (el lock por cuarto se toma dentro de la
+    // transacción). Va en una función para poder rehacerla si otro request
+    // gana el lugar entre la búsqueda y la escritura (RoomTakenError).
+    const assignRooms = async (): Promise<
+      { assignments: Assignment[]; error?: undefined } | { assignments?: undefined; error: string }
+    > => {
+      const assignments: Assignment[] = [];
+      if (roomPreference === "shared") {
+        // Find room for the largest pet size that fits TODAS las mascotas del grupo.
+        const sizeOrder: PetSize[] = ["XS", "S", "M", "L", "XL"];
+        const largestSize = petSizes.reduce((max, ps) =>
+          sizeOrder.indexOf(ps.size) > sizeOrder.indexOf(max) ? ps.size : max,
+          petSizes[0].size
+        );
+        const room = await findAvailableRoom(
+          largestSize,
+          checkIn,
+          checkOut,
+          petSizes.length,
+        );
+        if (!room) {
+          return {
+            error: `No hay cuartos con capacidad para ${petSizes.length} perros (tamaño ${largestSize}) en las fechas seleccionadas`,
+          };
         }
-        if (!chosen) {
-          return reply.status(400).send({
-            error: `No hay cuartos disponibles para ${ps.pet.name} (tamaño ${ps.size}) en las fechas seleccionadas`,
+        for (const ps of petSizes) {
+          assignments.push({
+            petId: ps.pet.id,
+            roomId: room.id,
+            amount: ps.pricePerDay * totalDays,
           });
         }
-        assignments.push({
-          petId: ps.pet.id,
-          roomId: chosen.id,
-          amount: ps.pricePerDay * totalDays,
-        });
+      } else {
+        // Separate: find a room per pet — y reservar lugares ya asignados en este
+        // mismo request para no asignar dos perros al mismo cuarto rebasando su
+        // capacidad dentro de la misma operación.
+        const localUsage = new Map<string, number>();
+        for (const ps of petSizes) {
+          const rooms = await prisma.room.findMany({
+            where: { isActive: true, sizeAllowed: { has: ps.size } },
+            orderBy: { createdAt: "asc" },
+          });
+          let chosen: typeof rooms[number] | null = null;
+          for (const room of rooms) {
+            const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
+            const localTaken = localUsage.get(room.id) ?? 0;
+            if (taken + localTaken + 1 <= room.capacity) {
+              chosen = room;
+              localUsage.set(room.id, localTaken + 1);
+              break;
+            }
+          }
+          if (!chosen) {
+            return {
+              error: `No hay cuartos disponibles para ${ps.pet.name} (tamaño ${ps.size}) en las fechas seleccionadas`,
+            };
+          }
+          assignments.push({
+            petId: ps.pet.id,
+            roomId: chosen.id,
+            amount: ps.pricePerDay * totalDays,
+          });
+        }
       }
+      return { assignments };
+    };
+
+    // Sin cuarto y con el PaymentIntent YA cobrado: antes se respondía 4xx y
+    // el dinero quedaba en Stripe sin reserva, sin fila en `payments`, sin
+    // reembolso y sin aviso (solo un log). Ahora se devuelve el cobro de
+    // inmediato (idempotente por PI) y se avisa a los admins; si el reembolso
+    // falla, el aviso lo dice para que se haga a mano en Stripe.
+    const failWithoutRoom = async (message: string) => {
+      if (!paymentIntent) {
+        return reply.status(409).send({ error: message, code: "ROOM_TAKEN" });
+      }
+      const piId = paymentIntent.id;
+      let refunded = false;
+      try {
+        await stripe.refunds.create(
+          { payment_intent: piId },
+          { idempotencyKey: `refund-orphan-${piId}` },
+        );
+        refunded = true;
+      } catch (e) {
+        request.log.error(
+          { tag: "multi-orphan-refund-failed", ownerId, paymentIntentId: piId, err: String(e) },
+          "[reservas] no se pudo reembolsar el cobro sin reserva",
+        );
+      }
+      request.log.warn(
+        { tag: "multi-orphan-charge", ownerId, paymentIntentId: piId, refunded },
+        "[reservas] cobro sin reserva por falta de cuarto",
+      );
+      try {
+        const admins = await prisma.user.findMany({
+          where: { role: "ADMIN" },
+          select: { id: true },
+        });
+        const amount = (paymentIntent.amount_received ?? paymentIntent.amount) / 100;
+        await notifyUsers(prisma, admins.map((a) => a.id), {
+          type: "STAFF_ALERT",
+          title: refunded ? "Cobro devuelto: se acabó el cupo" : "Cobro sin reserva: revisar en Stripe",
+          body: refunded
+            ? `Un cliente pagó $${amount.toFixed(2)} por la app pero el cuarto se ocupó antes de crear la reserva. El pago ya se reembolsó (${piId}).`
+            : `Un cliente pagó $${amount.toFixed(2)} por la app, el cuarto se ocupó antes de crear la reserva y el reembolso automático falló. Devuélvelo en Stripe: ${piId}.`,
+          data: { paymentIntentId: piId, refunded },
+          priority: "high",
+        });
+      } catch (e) {
+        request.log.error({ err: String(e) }, "[reservas] no se pudo avisar a los admins del cobro sin reserva");
+      }
+      return reply.status(409).send({
+        error:
+          message +
+          (refunded
+            ? " Tu pago se devolvió automáticamente; el reembolso aparece en tu tarjeta en unos días."
+            : " Tu pago quedó registrado y el equipo te contactará para devolverlo."),
+        code: refunded ? "ROOM_TAKEN_REFUNDED" : "ROOM_TAKEN_UNREFUNDED",
+      });
+    };
+
+    const firstAssign = await assignRooms();
+    if (firstAssign.error !== undefined) {
+      if (!paymentIntent) return reply.status(400).send({ error: firstAssign.error });
+      return await failWithoutRoom(firstAssign.error);
     }
+    let assignments: Assignment[] = firstAssign.assignments;
 
     // Resolve bath variants for each pet (if provided)
     const bathByPet = new Map<string, { variantId: string; price: number }>();
@@ -1661,7 +1835,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%.
     // Con PI se respeta lo que el intent cobró (un intent creado a las 23:50 y
     // confirmado a las 00:05 no debe cambiar de precio).
-    const hoursUntilCheckIn = (checkIn.getTime() - Date.now()) / (60 * 60 * 1000);
+    // Sin PI (saldo a favor): "mismo día" se mide contra la medianoche LOCAL
+    // del check-in; las 00:00 UTC guardadas son las 17:00 del día anterior.
+    const hoursUntilCheckIn = hoursUntilHotelDay(checkIn);
     const sameDaySurcharge =
       piSameDaySurcharge !== null
         ? piSameDaySurcharge
@@ -1747,201 +1923,235 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // sin su registro de pago, ni saldo descontado sin reserva). Las
     // notificaciones (push) y lecturas auxiliares van DESPUÉS del commit.
     const isDeposit = paymentType === "DEPOSIT";
-    const reservations = await prisma.$transaction(async (tx) => {
-      const created: Prisma.ReservationGetPayload<{
-        include: { pet: true; room: true };
-      }>[] = [];
-      // Reparto del descuento del booking entre las reservas (proporcional a la
-      // base de cada una); la última fila absorbe el redondeo para que la suma
-      // de discountTotal sea exactamente el descuento total.
-      let allocatedDiscount = 0;
-      // Saldo a favor por repartir entre los pagos de las filas.
-      let remainingCredit = Number(creditApplied.toFixed(2));
-      let piAttached = false;
+    let reservations!: Prisma.ReservationGetPayload<{
+      include: { pet: true; room: true };
+    }>[];
+    // Si otro request ganó el lugar (RoomTakenError, antes de escribir nada),
+    // se vuelve a buscar cuarto y se reintenta la transacción; con un PI ya
+    // cobrado no se puede responder 4xx a secas (ver failWithoutRoom).
+    const MAX_ROOM_ATTEMPTS = 3;
+    for (let attempt = 1; ; attempt++) {
+    try {
+      reservations = await prisma.$transaction(async (tx) => {
+        // La búsqueda del cuarto (arriba) corre sin lock; aquí se toma el
+        // advisory lock por cuarto y se re-verifica el cupo antes de escribir,
+        // como hacen baños (42) y guardería (43). Si otro request ganó el
+        // lugar, RoomTakenError → 409.
+        await lockRoomsAndVerifyCapacity(tx, assignments, checkIn, checkOut);
+        const created: Prisma.ReservationGetPayload<{
+          include: { pet: true; room: true };
+        }>[] = [];
+        // Reparto del descuento del booking entre las reservas (proporcional a la
+        // base de cada una); la última fila absorbe el redondeo para que la suma
+        // de discountTotal sea exactamente el descuento total.
+        let allocatedDiscount = 0;
+        // Saldo a favor por repartir entre los pagos de las filas.
+        let remainingCredit = Number(creditApplied.toFixed(2));
+        let piAttached = false;
 
-      for (let i = 0; i < assignments.length; i++) {
-        const a = assignments[i];
-        const bath = bathByPet.get(a.petId);
-        const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
-        const medNotes = medicationNotesByPet.get(a.petId) ?? null;
-        // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
-        // (un viaje cubre a todas las mascotas del mismo dueño).
-        const isFirst = i === 0;
-        const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
-        const rowBase = a.amount + (bath?.price ?? 0) + medSurcharge;
-        const isLast = i === assignments.length - 1;
-        const rowDiscount =
-          discountTotal <= 0 || baseTotal <= 0
-            ? 0
-            : isLast
-              ? Math.max(0, Number((discountTotal - allocatedDiscount).toFixed(2)))
-              : Number(((discountTotal * rowBase) / baseTotal).toFixed(2));
-        allocatedDiscount += rowDiscount;
-        const reservationAmount =
-          (rowBase - rowDiscount) * surchargeMultiplier + deliveryForThis;
+        for (let i = 0; i < assignments.length; i++) {
+          const a = assignments[i];
+          const bath = bathByPet.get(a.petId);
+          const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
+          const medNotes = medicationNotesByPet.get(a.petId) ?? null;
+          // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
+          // (un viaje cubre a todas las mascotas del mismo dueño).
+          const isFirst = i === 0;
+          const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
+          const rowBase = a.amount + (bath?.price ?? 0) + medSurcharge;
+          const isLast = i === assignments.length - 1;
+          const rowDiscount =
+            discountTotal <= 0 || baseTotal <= 0
+              ? 0
+              : isLast
+                ? Math.max(0, Number((discountTotal - allocatedDiscount).toFixed(2)))
+                : Number(((discountTotal * rowBase) / baseTotal).toFixed(2));
+          allocatedDiscount += rowDiscount;
+          const reservationAmount =
+            (rowBase - rowDiscount) * surchargeMultiplier + deliveryForThis;
 
-        const res = await tx.reservation.create({
-          data: {
-            checkIn,
-            checkOut,
-            checkInTime: checkInTime ?? null,
-            checkOutTime: checkOutTime ?? null,
-            totalDays,
-            totalAmount: new Prisma.Decimal(reservationAmount),
-            // Desglose del cobro original — la misma foto que el cliente vio
-            // al reservar. totalAmount muta después; esto no se recalcula.
-            lodgingAmount: new Prisma.Decimal(a.amount),
-            ...(medSurcharge > 0
-              ? { medicationFee: new Prisma.Decimal(medSurcharge.toFixed(2)) }
-              : {}),
-            ...(sameDaySurcharge
-              ? {
-                  sameDayFee: new Prisma.Decimal(
-                    ((rowBase - rowDiscount) * 0.2).toFixed(2),
-                  ),
-                }
-              : {}),
-            ...(discountCodeId
-              ? { discountCodeId, discountTotal: new Prisma.Decimal(rowDiscount) }
-              : {}),
-            notes,
-            medicationNotes: medNotes,
-            legalAccepted,
-            status: "CONFIRMED",
-            groupId,
-            paymentType,
-            // Deposit deadline = check-in day. Owner can pay the balance in
-            // the app or in person at the branch on arrival.
-            depositDeadline: paymentType === "DEPOSIT" ? checkIn : null,
-            ownerId,
-            petId: a.petId,
-            roomId: a.roomId,
-            // Servicio a domicilio (persistido en la primera reserva del grupo).
-            ...(isFirst && deliveryActive
-              ? {
-                  homeDelivery: true,
-                  homeDeliveryAddress: homeDelivery!.address,
-                  homeDeliveryDistanceKm: deliveryDistanceKm,
-                  homeDeliveryFee: new Prisma.Decimal(deliveryFee),
-                  homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
-                }
-              : {}),
-          },
-          include: { pet: true, room: true },
-        });
-        created.push(res);
-
-        const paidAmount = isDeposit
-          ? Number((Number(res.totalAmount) * 0.20).toFixed(2))
-          : Number(res.totalAmount);
-        // El pago de cada fila se reparte entre el saldo a favor aplicado (se
-        // agota fila por fila) y lo que cobró Stripe. Así `payments.amount` de
-        // un pago STRIPE es exactamente lo que Stripe cobró (bruto), y un
-        // reembolso nunca pide a Stripe dinero que salió del saldo.
-        const creditPart = creditOnly
-          ? paidAmount
-          : Number(Math.min(remainingCredit, paidAmount).toFixed(2));
-        remainingCredit = Number((remainingCredit - creditPart).toFixed(2));
-        const stripePart = Number((paidAmount - creditPart).toFixed(2));
-        const paymentStatus = isDeposit ? "PARTIAL" : "PAID";
-        let payment: { id: string } | null = null;
-        if (creditPart > 0) {
-          payment = await tx.payment.create({
+          const res = await tx.reservation.create({
             data: {
-              amount: new Prisma.Decimal(creditPart),
-              method: "CREDIT",
-              status: paymentStatus,
-              paidAt: new Date(),
-              notes: isDeposit ? "Anticipo 20% (saldo a favor)" : "Pago con saldo a favor",
-              reservationId: res.id,
-              userId: ownerId,
+              checkIn,
+              checkOut,
+              checkInTime: checkInTime ?? null,
+              checkOutTime: checkOutTime ?? null,
+              totalDays,
+              totalAmount: new Prisma.Decimal(reservationAmount),
+              // Desglose del cobro original — la misma foto que el cliente vio
+              // al reservar. totalAmount muta después; esto no se recalcula.
+              lodgingAmount: new Prisma.Decimal(a.amount),
+              ...(medSurcharge > 0
+                ? { medicationFee: new Prisma.Decimal(medSurcharge.toFixed(2)) }
+                : {}),
+              ...(sameDaySurcharge
+                ? {
+                    sameDayFee: new Prisma.Decimal(
+                      ((rowBase - rowDiscount) * 0.2).toFixed(2),
+                    ),
+                  }
+                : {}),
+              ...(discountCodeId
+                ? { discountCodeId, discountTotal: new Prisma.Decimal(rowDiscount) }
+                : {}),
+              notes,
+              medicationNotes: medNotes,
+              legalAccepted,
+              status: "CONFIRMED",
+              groupId,
+              paymentType,
+              // Deposit deadline = check-in day. Owner can pay the balance in
+              // the app or in person at the branch on arrival.
+              depositDeadline: paymentType === "DEPOSIT" ? checkIn : null,
+              ownerId,
+              petId: a.petId,
+              roomId: a.roomId,
+              // Servicio a domicilio (persistido en la primera reserva del grupo).
+              ...(isFirst && deliveryActive
+                ? {
+                    homeDelivery: true,
+                    homeDeliveryAddress: homeDelivery!.address,
+                    homeDeliveryDistanceKm: deliveryDistanceKm,
+                    homeDeliveryFee: new Prisma.Decimal(deliveryFee),
+                    homeDeliveryTrip: homeDelivery!.trip ?? "PICKUP",
+                  }
+                : {}),
             },
+            include: { pet: true, room: true },
           });
+          created.push(res);
+
+          const paidAmount = isDeposit
+            ? Number((Number(res.totalAmount) * 0.20).toFixed(2))
+            : Number(res.totalAmount);
+          // El pago de cada fila se reparte entre el saldo a favor aplicado (se
+          // agota fila por fila) y lo que cobró Stripe. Así `payments.amount` de
+          // un pago STRIPE es exactamente lo que Stripe cobró (bruto), y un
+          // reembolso nunca pide a Stripe dinero que salió del saldo.
+          const creditPart = creditOnly
+            ? paidAmount
+            : Number(Math.min(remainingCredit, paidAmount).toFixed(2));
+          remainingCredit = Number((remainingCredit - creditPart).toFixed(2));
+          const stripePart = Number((paidAmount - creditPart).toFixed(2));
+          const paymentStatus = isDeposit ? "PARTIAL" : "PAID";
+          let payment: { id: string } | null = null;
+          if (creditPart > 0) {
+            payment = await tx.payment.create({
+              data: {
+                amount: new Prisma.Decimal(creditPart),
+                method: "CREDIT",
+                status: paymentStatus,
+                paidAt: new Date(),
+                notes: isDeposit ? "Anticipo 20% (saldo a favor)" : "Pago con saldo a favor",
+                reservationId: res.id,
+                userId: ownerId,
+              },
+            });
+          }
+          if (stripePart > 0) {
+            payment = await tx.payment.create({
+              data: {
+                amount: new Prisma.Decimal(stripePart),
+                method: "STRIPE",
+                status: paymentStatus,
+                // El PI cuelga del PRIMER pago Stripe del grupo (idempotencia).
+                stripePaymentIntentId: piAttached ? null : stripePaymentIntentId,
+                paidAt: new Date(),
+                notes: isDeposit ? "Anticipo 20%" : null,
+                reservationId: res.id,
+                userId: ownerId,
+              },
+            });
+            piAttached = true;
+          }
+
+          // Persist bath addon attached to this reservation's payment
+          if (bath) {
+            await tx.reservationAddon.create({
+              data: {
+                reservationId: res.id,
+                variantId: bath.variantId,
+                unitPrice: new Prisma.Decimal(bath.price),
+                paidWith: "BOOKING",
+                paymentId: payment?.id ?? null,
+              },
+            });
+          }
         }
-        if (stripePart > 0) {
-          payment = await tx.payment.create({
+
+        // Si Stripe cobró (aunque sean centavos por redondeo entre el ceil del
+        // intent y el reparto por filas) y ningún pago se llevó el PI, el cargo
+        // no puede quedar huérfano: sin fila STRIPE, un reintento del confirm no
+        // encuentra la reserva y un reembolso nunca devuelve ese cargo.
+        if (paymentIntent && !piAttached && created[0]) {
+          await tx.payment.create({
             data: {
-              amount: new Prisma.Decimal(stripePart),
+              amount: new Prisma.Decimal(paymentIntent.amount / 100),
               method: "STRIPE",
-              status: paymentStatus,
-              // El PI cuelga del PRIMER pago Stripe del grupo (idempotencia).
-              stripePaymentIntentId: piAttached ? null : stripePaymentIntentId,
+              status: isDeposit ? "PARTIAL" : "PAID",
+              stripePaymentIntentId,
               paidAt: new Date(),
-              notes: isDeposit ? "Anticipo 20%" : null,
-              reservationId: res.id,
+              notes: "Diferencia de redondeo cobrada con tarjeta",
+              reservationId: created[0].id,
               userId: ownerId,
             },
           });
           piAttached = true;
         }
 
-        // Persist bath addon attached to this reservation's payment
-        if (bath) {
-          await tx.reservationAddon.create({
+        // Deduct credit applied (if any) and write ledger entry — atómico con lo anterior.
+        if (creditApplied > 0) {
+          const updatedOwner = await tx.user.update({
+            where: { id: ownerId },
             data: {
-              reservationId: res.id,
-              variantId: bath.variantId,
-              unitPrice: new Prisma.Decimal(bath.price),
-              paidWith: "BOOKING",
-              paymentId: payment?.id ?? null,
+              creditBalance: { decrement: creditApplied },
+              lastCreditEntryAt: new Date(),
+            },
+          });
+          await tx.creditLedger.create({
+            data: {
+              userId: ownerId,
+              type: "CREDIT_APPLIED",
+              amount: -creditApplied,
+              balanceAfter: Number(updatedOwner.creditBalance),
+              description: `Saldo aplicado en nueva reservación`,
+              reservationId: created[0]?.id ?? null,
             },
           });
         }
-      }
 
-      // Si Stripe cobró (aunque sean centavos por redondeo entre el ceil del
-      // intent y el reparto por filas) y ningún pago se llevó el PI, el cargo
-      // no puede quedar huérfano: sin fila STRIPE, un reintento del confirm no
-      // encuentra la reserva y un reembolso nunca devuelve ese cargo.
-      if (paymentIntent && !piAttached && created[0]) {
-        await tx.payment.create({
-          data: {
-            amount: new Prisma.Decimal(paymentIntent.amount / 100),
-            method: "STRIPE",
-            status: isDeposit ? "PARTIAL" : "PAID",
-            stripePaymentIntentId,
-            paidAt: new Date(),
-            notes: "Diferencia de redondeo cobrada con tarjeta",
-            reservationId: created[0].id,
-            userId: ownerId,
-          },
-        });
-        piAttached = true;
-      }
+        // Incrementar el uso del código UNA vez por booking. Idempotente: un
+        // reintento del mismo PI devuelve las reservas existentes (rama de arriba)
+        // sin re-entrar a esta transacción.
+        if (discountCodeId) {
+          await tx.discountCode.update({
+            where: { id: discountCodeId },
+            data: { usesCount: { increment: 1 } },
+          });
+        }
 
-      // Deduct credit applied (if any) and write ledger entry — atómico con lo anterior.
-      if (creditApplied > 0) {
-        const updatedOwner = await tx.user.update({
-          where: { id: ownerId },
-          data: {
-            creditBalance: { decrement: creditApplied },
-            lastCreditEntryAt: new Date(),
-          },
-        });
-        await tx.creditLedger.create({
-          data: {
-            userId: ownerId,
-            type: "CREDIT_APPLIED",
-            amount: -creditApplied,
-            balanceAfter: Number(updatedOwner.creditBalance),
-            description: `Saldo aplicado en nueva reservación`,
-            reservationId: created[0]?.id ?? null,
-          },
-        });
+        return created;
+      });
+      break;
+    } catch (err) {
+      if (!(err instanceof RoomTakenError)) throw err;
+      request.log.warn(
+        { tag: "multi-room-taken", ownerId, room: err.roomName, paymentIntentId: stripePaymentIntentId, attempt },
+        "[reservas] el cuarto se ocupó entre la búsqueda y la transacción",
+      );
+      if (attempt < MAX_ROOM_ATTEMPTS) {
+        const again = await assignRooms();
+        if (again.error === undefined) {
+          assignments = again.assignments;
+          continue;
+        }
+        return await failWithoutRoom(again.error);
       }
-
-      // Incrementar el uso del código UNA vez por booking. Idempotente: un
-      // reintento del mismo PI devuelve las reservas existentes (rama de arriba)
-      // sin re-entrar a esta transacción.
-      if (discountCodeId) {
-        await tx.discountCode.update({
-          where: { id: discountCodeId },
-          data: { usesCount: { increment: 1 } },
-        });
-      }
-
-      return created;
-    });
+      return await failWithoutRoom(
+        `El cuarto ${err.roomName} ya fue ocupado por otra reserva en esas fechas.`,
+      );
+    }
+    }
 
     // ─── Post-commit (no crítico): notificaciones y lecturas auxiliares ───
     // Baños contratados: avisar a staff/admin (fire-and-forget).
@@ -2035,7 +2245,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           },
         },
       });
-      return checklists;
+      // El relevo [HANDOFF] entre staff vive en additionalNotes: al dueño (o
+      // co-dueño) solo le llega la parte pública; el equipo lo ve completo.
+      return stripChecklistInternalFieldsList(checklists, isStaffOrAdmin);
     }
   );
 

@@ -45,6 +45,17 @@ export function stripInternalFields<T extends Record<string, unknown>>(
     delete clean[field];
   }
 
+  // El historial de la mascota incluye los reportes diarios anidados: el
+  // relevo interno del staff tampoco debe viajar por ahí.
+  const checklists = clean.checklists;
+  if (Array.isArray(checklists)) {
+    clean.checklists = checklists.map((c) =>
+      c && typeof c === "object"
+        ? stripChecklistInternalFields(c as Record<string, unknown>, false)
+        : c
+    );
+  }
+
   const addons = clean.addons;
   if (Array.isArray(addons)) {
     clean.addons = addons.map((addon) => {
@@ -67,4 +78,45 @@ export function stripInternalFieldsList<T extends Record<string, unknown>>(
 ): T[] {
   if (isStaffOrAdmin) return reservations;
   return reservations.map((r) => stripInternalFields(r, isStaffOrAdmin));
+}
+
+/**
+ * Bloque de relevo entre staff dentro de `DailyChecklist.additionalNotes`:
+ * todo lo que sigue a "[HANDOFF] " es interno. El reporte diario se escribe
+ * en un solo campo (lo público arriba, el relevo abajo) y el corte se hace
+ * aquí, en UN lugar, para que caption, push y las lecturas del dueño
+ * coincidan siempre.
+ */
+const HANDOFF_BLOCK = /\n?\[HANDOFF\] [\s\S]*/;
+
+/** Quita el bloque `[HANDOFF]` de una nota. null si no queda nada público. */
+export function stripHandoff(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const cleaned = notes.replace(HANDOFF_BLOCK, "").trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+/**
+ * Reporte diario sin el relevo interno cuando quien pregunta NO es del
+ * equipo. Para staff/admin lo devuelve intacto (misma referencia).
+ */
+export function stripChecklistInternalFields<T extends Record<string, unknown>>(
+  checklist: T,
+  isStaffOrAdmin: boolean
+): T {
+  if (isStaffOrAdmin) return checklist;
+  if (typeof checklist.additionalNotes !== "string") return checklist;
+  return {
+    ...checklist,
+    additionalNotes: stripHandoff(checklist.additionalNotes),
+  } as T;
+}
+
+/** Igual que `stripChecklistInternalFields` pero para listas. */
+export function stripChecklistInternalFieldsList<T extends Record<string, unknown>>(
+  checklists: T[],
+  isStaffOrAdmin: boolean
+): T[] {
+  if (isStaffOrAdmin) return checklists;
+  return checklists.map((c) => stripChecklistInternalFields(c, isStaffOrAdmin));
 }

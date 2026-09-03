@@ -17,6 +17,15 @@ export type DeliveryQuote = {
 export type DeliveryTripMode = "PICKUP" | "DROPOFF" | "ROUND_TRIP";
 
 /**
+ * Lee el viaje desde un valor externo (metadata de Stripe, body sin validar).
+ * PICKUP si no viene o no es uno de los tres modos: es el default histórico y
+ * el más barato, así que nunca cobra de más.
+ */
+export function parseDeliveryTrip(raw: unknown): DeliveryTripMode {
+  return raw === "DROPOFF" || raw === "ROUND_TRIP" ? raw : "PICKUP";
+}
+
+/**
  * Cotiza el servicio a domicilio para un destino dado.
  *
  * Fuente única de verdad del cálculo de tarifa (la usan el endpoint

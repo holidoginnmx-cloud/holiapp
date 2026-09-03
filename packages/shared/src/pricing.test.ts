@@ -8,6 +8,7 @@ import {
   computeDaycareExtraHours,
   computeDaycareHours,
   computeDays,
+  hoursUntilHotelDay,
   isWithinDaycareHours,
   minutesFromHHmm,
   pricePerDayForWeight,
@@ -186,5 +187,39 @@ describe("isWithinDaycareHours", () => {
     expect(isWithinDaycareHours("08:59")).toBe(false);
     expect(isWithinDaycareHours("18:01")).toBe(false);
     expect(isWithinDaycareHours("mal")).toBe(false);
+  });
+});
+
+describe("hoursUntilHotelDay", () => {
+  // checkIn guardado a las 00:00 UTC del 10 de septiembre = día calendario
+  // 10-sep en Hermosillo, cuya medianoche local es 07:00 UTC.
+  const checkIn = new Date("2026-09-10T00:00:00.000Z");
+
+  it("mide contra la medianoche LOCAL del día (00:00 UTC + 7 h)", () => {
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 7, 0))).toBe(0);
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 0, 0))).toBe(7);
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 8, 0))).toBe(-1);
+  });
+
+  it("mismo día (< 24 h): a las 17:00 local de dos días antes NO aplica", () => {
+    // 8-sep 17:00 Hermosillo = 9-sep 00:00 UTC. Con la resta ingenua daría
+    // 24 h exactas y cualquier segundo después caía en el recargo.
+    const eveningTwoDaysBefore = Date.UTC(2026, 8, 9, 0, 30);
+    expect(hoursUntilHotelDay(checkIn, eveningTwoDaysBefore)).toBeGreaterThan(24);
+    // 9-sep 01:00 local (08:00 UTC) sí son menos de 24 h.
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 9, 8, 0))).toBeLessThan(24);
+  });
+
+  it("anticipo (≥ 72 h): sigue disponible la tarde del día −4 local", () => {
+    // 6-sep 20:00 Hermosillo = 7-sep 03:00 UTC. Ingenuo: 69 h (bloqueado);
+    // real: 76 h (permitido).
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 7, 3, 0))).toBe(76);
+    // 7-sep 01:00 local (08:00 UTC) → 71 h: ya no.
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 7, 8, 0))).toBe(71);
+  });
+
+  it("acepta otro desfase y usa Date.now() por defecto", () => {
+    expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 0, 0), 0)).toBe(0);
+    expect(typeof hoursUntilHotelDay(checkIn)).toBe("number");
   });
 });

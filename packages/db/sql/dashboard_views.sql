@@ -87,24 +87,34 @@ drop view if exists vw_ocupacion_hoy         cascade;
 -- Incluye TODO lo cobrado: hospedaje, estética, guardería y las ventas de
 -- tienda (mostrador y en línea). No hace join a `reservations`, así que los
 -- pagos de pedido —que tienen "reservationId" NULL— entran solos.
+-- El mes se agrupa en HORA DEL HOTEL (America/Hermosillo): `paidAt` es un
+-- timestamp UTC y un cobro de las 18:00 del día 31 caía en el mes siguiente.
+-- Los REEMBOLSOS (status REFUNDED, monto positivo) se RESTAN en el mes en que
+-- se emitieron, igual que hace el admin móvil (admin.ts /admin/revenue): antes
+-- la web los ignoraba y una reserva cancelada con reembolso seguía contando
+-- como ingreso, así que la app y el panel daban cifras distintas del mismo mes.
 create or replace view vw_ingresos_mensuales as
 with base as (
   select
-    extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
-    extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+    extract(year  from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as anio,
+    extract(month from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as mes_num,
     -- Neto real: se resta la comisión que absorbe el negocio — Stripe
     -- (stripeFeeAmount, pagos de la app) y terminal Getnet (cardFeeAmount, cobros
     -- con tarjeta). En efectivo/transferencia ambas son NULL → 0.
-    (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) as amount
+    case when p.status = 'REFUNDED'
+         then -(p.amount)
+         else (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0))
+    end as amount,
+    p.status
   from payments p
-  where p.status in ('PAID', 'PARTIAL')
+  where p.status in ('PAID', 'PARTIAL', 'REFUNDED')
 )
 select
   anio,
   mes_num,
   to_char(make_date(anio, mes_num, 1), 'TMMonth') as mes_nombre,
   sum(amount)::numeric(12, 2) as total_ingresos,
-  count(*)                    as cantidad_pagos
+  count(*) filter (where status <> 'REFUNDED') as cantidad_pagos
 from base
 group by anio, mes_num
 order by anio, mes_num;
@@ -163,7 +173,11 @@ with bano_por_reserva as (
   from reservation_addons a
   join service_variants sv on sv.id = a."variantId"
   join service_types    st on st.id = sv."serviceTypeId"
+  -- Una CORTESÍA conserva el precio de catálogo en unitPrice pero NUNCA entró
+  -- a totalAmount: si se restara del hospedaje, un baño regalado reclasificaría
+  -- ingresos de HOTEL como ESTETICA.
   where st.code = 'BATH' and a."paidWith" = 'BOOKING'
+    and coalesce(a."isCourtesy", false) = false
   group by a."reservationId"
 ),
 deworm_por_reserva as (
@@ -175,7 +189,26 @@ deworm_por_reserva as (
   join service_variants sv on sv.id = a."variantId"
   join service_types    st on st.id = sv."serviceTypeId"
   where st.code = 'DEWORMING' and a."paidWith" = 'BOOKING'
+    and coalesce(a."isCourtesy", false) = false
   group by a."reservationId"
+),
+reembolsos as (
+  -- Reembolsos (REFUNDED, monto positivo) restados en el mes de emisión, en la
+  -- banda del servicio de la reserva (o TIENDA si cuelgan de un pedido). Sin
+  -- esto la web sumaba lo cobrado de una reserva cancelada y devuelta.
+  select
+    extract(year  from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as anio,
+    extract(month from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as mes_num,
+    case r."reservationType"
+      when 'STAY'    then 'HOTEL'
+      when 'BATH'    then 'ESTETICA'
+      when 'DAYCARE' then 'GUARDERIA'
+      else 'TIENDA'
+    end as servicio,
+    -(p.amount) as total
+  from payments p
+  left join reservations r on r.id = p."reservationId"
+  where p.status = 'REFUNDED'
 ),
 extra_por_reserva as (
   -- Extra del deslanado/corte ya cobrado (su Payment ya existe).
@@ -190,8 +223,8 @@ extra_por_reserva as (
 ),
 pagos as (
   select
-    extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
-    extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+    extract(year  from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as anio,
+    extract(month from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as mes_num,
     r."reservationType" as tipo,
     -- Neto real: se resta la comisión que absorbe el negocio (Stripe + terminal;
     -- NULL → 0 en efectivo/transferencia).
@@ -245,8 +278,8 @@ pagos_tienda as (
   -- No hay waterfall aquí (no hay add-ons que repartir): el monto neto entero es
   -- la banda.
   select
-    extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
-    extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+    extract(year  from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as anio,
+    extract(month from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as mes_num,
     (p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)) as monto
   from payments p
   where p.status in ('PAID', 'PARTIAL')
@@ -291,15 +324,19 @@ desglosado as (
   -- Ventas de tienda (mostrador y en línea) → banda TIENDA.
   select anio, mes_num, 'TIENDA' as servicio, monto as total
   from pagos_tienda
+  union all
+  -- Reembolsos → restan en su banda.
+  select anio, mes_num, servicio, total
+  from reembolsos
 )
 select
   anio,
   mes_num,
   servicio,
   sum(total)::numeric(12, 2) as total,
-  count(*)                   as cantidad_pagos
+  count(*) filter (where total > 0) as cantidad_pagos
 from desglosado
-where total > 0
+where total <> 0
 group by 1, 2, 3;
 
 -- --- Ingresos del mes por perro (Top 10 facturado) -------------------------
@@ -308,16 +345,20 @@ group by 1, 2, 3;
 -- de este Top NO cuadra con vw_ingresos_mensuales, y está bien.
 create or replace view vw_ingresos_por_perro as
 select
-  extract(year  from coalesce(p."paidAt", p."createdAt"))::int as anio,
-  extract(month from coalesce(p."paidAt", p."createdAt"))::int as mes_num,
+  extract(year  from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as anio,
+  extract(month from (coalesce(p."paidAt", p."createdAt") at time zone 'UTC' at time zone 'America/Hermosillo'))::int as mes_num,
   pe.id                         as perro_id,
   pe.name                       as perro_nombre,
-  -- Neto real (Stripe + terminal), consistente con las demás vistas de ingresos.
-  sum(p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0))::numeric(12, 2) as total
+  -- Neto real (Stripe + terminal), consistente con las demás vistas de ingresos;
+  -- los reembolsos restan.
+  sum(case when p.status = 'REFUNDED'
+           then -(p.amount)
+           else p.amount - coalesce(p."stripeFeeAmount", 0) - coalesce(p."cardFeeAmount", 0)
+      end)::numeric(12, 2) as total
 from payments p
 join reservations r on r.id = p."reservationId"
 join pets pe        on pe.id = r."petId"
-where p.status in ('PAID', 'PARTIAL')
+where p.status in ('PAID', 'PARTIAL', 'REFUNDED')
 group by 1, 2, pe.id, pe.name;
 
 -- --- Ocupación actual del hotel --------------------------------------------

@@ -8,7 +8,7 @@ import { createOptionalAuthMiddleware } from "../middleware/auth";
 import { resolveOrCreateGuestUser } from "../lib/guestUser";
 import { resolveOrCreateGuestPet } from "../lib/guestPet";
 import { recordRequiredAcceptances } from "../lib/legal";
-import { quoteDelivery } from "../lib/delivery";
+import { quoteDelivery, parseDeliveryTrip, type DeliveryTripMode } from "../lib/delivery";
 import { notifyUsers } from "../lib/notify";
 import { getLodgingPricing, computeDaycareHours } from "../lib/pricing";
 import {
@@ -206,6 +206,10 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
             ? {
                 deliveryFee: String(deliveryFee),
                 deliveryDistanceKm: String(deliveryDistanceKm),
+                // El viaje fija la tarifa (redondo = doble) y
+                // PendingDeliveryAddress no lo guarda: viaja en el PI para
+                // que la reserva no quede como PICKUP.
+                deliveryTrip: body.homeDelivery?.trip ?? "PICKUP",
               }
             : {}),
         },
@@ -291,7 +295,7 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
 
       let deliveryOverride: { fee: number; distanceKm: number } | null = null;
       let homeDelivery:
-        | { address: string; lat: number; lng: number }
+        | { address: string; lat: number; lng: number; trip: DeliveryTripMode }
         | undefined;
       if (pi.metadata?.deliveryFee) {
         deliveryOverride = {
@@ -306,6 +310,7 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
             address: pendingDelivery.address,
             lat: pendingDelivery.lat ?? 0,
             lng: pendingDelivery.lng ?? 0,
+            trip: parseDeliveryTrip(pi.metadata.deliveryTrip),
           };
         }
       }

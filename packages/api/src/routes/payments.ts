@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { CreatePaymentSchema } from "@holidoginn/shared";
+import { CreatePaymentSchema, hoursUntilHotelDay } from "@holidoginn/shared";
 import Stripe from "stripe";
 import {
   createAuthMiddleware,
@@ -224,8 +224,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           error: "El anticipo no está disponible para estancias de una sola noche",
         });
       }
-      const daysUntilCheckIn = (checkInDate.getTime() - Date.now()) / 86_400_000;
-      if (daysUntilCheckIn < 3) {
+      // 3 días = 72 h para la medianoche LOCAL del check-in (ver
+      // hoursUntilHotelDay): contra las 00:00 UTC se cerraba un día antes.
+      if (hoursUntilHotelDay(checkInDate) < 72) {
         return reply.status(400).send({
           error: "El anticipo solo está disponible con 3 o más días de anticipación al check-in",
         });
@@ -318,7 +319,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
 
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%
     // (sobre la base YA descontada, para que cuadre con el cargo de Stripe).
-    const hoursUntilCheckIn = (checkInDate.getTime() - Date.now()) / (60 * 60 * 1000);
+    const hoursUntilCheckIn = hoursUntilHotelDay(checkInDate);
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
     const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
 

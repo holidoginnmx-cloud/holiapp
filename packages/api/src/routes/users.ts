@@ -15,6 +15,39 @@ import {
   ClaimUnavailableError,
   ClaimForbiddenError,
 } from "../lib/userMerge";
+import {
+  createChallenge,
+  createClaimToken,
+  maskEmail,
+  newCode,
+  readClaimToken,
+  verifyChallenge,
+} from "../lib/claimChallenge";
+import { claimCodeTemplate, sendEmail } from "../lib/email";
+
+// Correos de walk-in que crea el equipo (no son un buzón real).
+const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
+const CLAIM_CODE_MINUTES = 10;
+
+// Cuota por USUARIO (además de la de IP de @fastify/rate-limit). La IP no
+// basta: los teléfonos salen por CG-NAT de la operadora y varios clientes
+// comparten IP (8 intentos entre todos); y a la inversa, un solo usuario podía
+// enumerar teléfonos mandando un correo real por cada acierto. Memoria de
+// proceso: la API corre en una sola instancia.
+const userQuotas = new Map<string, { count: number; resetAt: number }>();
+function takeUserQuota(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const cur = userQuotas.get(key);
+  if (!cur || cur.resetAt <= now) {
+    if (userQuotas.size > 5000) userQuotas.clear();
+    userQuotas.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (cur.count >= max) return false;
+  cur.count += 1;
+  return true;
+}
+const QUOTA_WINDOW_MS = 10 * 60 * 1000;
 
 export default async function usersRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -61,14 +94,74 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // Fichas legacy (OWNER activo SIN app vinculada) que coinciden con el
+  // teléfono (últimos 10 dígitos) o, como respaldo, con el correo exacto.
+  async function findLegacyCandidates(
+    phone: string | null,
+    email: string | null,
+    excludeId: string,
+  ): Promise<string[]> {
+    let ids: string[] = [];
+    if (phone) {
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM users
+        WHERE "clerkId" IS NULL AND "isActive" = true AND role = 'OWNER'
+          AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
+        LIMIT 10
+      `;
+      ids = rows.map((r) => r.id);
+    }
+    if (ids.length === 0 && email) {
+      const byEmail = await prisma.user.findMany({
+        where: { email, clerkId: null, isActive: true, role: "OWNER" },
+        select: { id: true },
+      });
+      ids = byEmail.map((u) => u.id);
+    }
+    return ids.filter((id) => id !== excludeId);
+  }
+
+  // Lo que la pantalla necesita para que el cliente reconozca su ficha
+  // (primer nombre + mascotas). Solo se entrega DESPUÉS de verificar el código.
+  async function candidatesPayload(ids: string[]) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        firstName: true,
+        pets: {
+          where: { isActive: true },
+          select: { id: true, name: true, breed: true, photoUrl: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+    return users.map((u) => ({
+      candidateId: u.id,
+      firstName: u.firstName,
+      pets: u.pets,
+    }));
+  }
+
   // POST /users/claim/lookup — el cliente recién registrado busca su cuenta
   // preexistente (creada por el admin, aún sin app vinculada) por teléfono y,
-  // como respaldo, por correo. Devuelve datos mínimos para reconocerla
-  // (primer nombre + mascotas). Es el primer paso de la pantalla "¿Ya eres
+  // como respaldo, por correo. Es el primer paso de la pantalla "¿Ya eres
   // cliente?".
-  fastify.post<{ Body: { phone?: string; email?: string } }>(
+  //
+  // Antes devolvía nombre y mascotas de cualquier teléfono, y con eso bastaba
+  // para reclamar la ficha. Ahora solo dice si hay coincidencia y manda un
+  // código de 6 dígitos al correo que YA tiene la ficha (no al que escriba
+  // quien busca); nombre y mascotas se entregan en /verify, con el código.
+  // Si la ficha no tiene un correo real (walk-in), no hay forma de probar que
+  // es suya desde la app: el equipo le pone el correo desde el panel y vuelve
+  // a intentar.
+  fastify.post<{ Body: { phone?: string; email?: string; v?: number } }>(
     "/users/claim/lookup",
-    { preHandler: [authMiddleware] },
+    {
+      preHandler: [authMiddleware],
+      // Cuota por IP laxa (CG-NAT); la cuota real es por usuario, abajo.
+      config: { rateLimit: { max: 40, timeWindow: "10 minutes" } },
+    },
     async (request, reply) => {
       const currentUserId = request.userId!;
       const phone = normalizePhone(request.body?.phone);
@@ -78,52 +171,108 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           .status(400)
           .send({ error: "Ingresa tu teléfono o tu correo" });
       }
-
-      // Por teléfono: la columna está en formato libre, así que comparamos los
-      // últimos 10 dígitos vía SQL. Solo cuentas OWNER activas SIN app vinculada.
-      let candidateIds: string[] = [];
-      if (phone) {
-        const rows = await prisma.$queryRaw<{ id: string }[]>`
-          SELECT id FROM users
-          WHERE "clerkId" IS NULL AND "isActive" = true AND role = 'OWNER'
-            AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
-          LIMIT 10
-        `;
-        candidateIds = rows.map((r) => r.id);
-      }
-      // Respaldo por correo exacto si el teléfono no encontró nada.
-      if (candidateIds.length === 0 && email) {
-        const byEmail = await prisma.user.findFirst({
-          where: { email, clerkId: null, isActive: true, role: "OWNER" },
-          select: { id: true },
+      if (!takeUserQuota(`lookup:${currentUserId}`, 5, QUOTA_WINDOW_MS)) {
+        return reply.status(429).send({
+          error: "Demasiados intentos. Espera 10 minutos o escríbenos por WhatsApp.",
         });
-        if (byEmail) candidateIds = [byEmail.id];
       }
 
-      candidateIds = candidateIds.filter((id) => id !== currentUserId);
+      const candidateIds = await findLegacyCandidates(phone, email, currentUserId);
       if (candidateIds.length === 0) {
-        return reply.send({ candidates: [] });
+        return reply.send({ found: false, channel: "none", candidates: [] });
       }
 
-      const users = await prisma.user.findMany({
+      // La app anterior al OTA (sin `v: 2`) no sabe pedir el código: leería
+      // `candidates: []` como "no encontramos" mientras al cliente le llega un
+      // correo misterioso. No se manda nada y se le pide actualizar.
+      if (request.body?.v !== 2) {
+        return reply.send({
+          found: true,
+          channel: "none",
+          candidates: [],
+          message:
+            "Encontramos tu ficha. Actualiza la app a la última versión para vincularla con un código que te llegará por correo.",
+        });
+      }
+
+      const owners = await prisma.user.findMany({
         where: { id: { in: candidateIds } },
-        select: {
-          id: true,
-          firstName: true,
-          pets: {
-            where: { isActive: true },
-            select: { id: true, name: true, breed: true, photoUrl: true },
-            orderBy: { createdAt: "asc" },
-          },
-        },
+        select: { email: true, firstName: true },
       });
+      const realEmails = Array.from(
+        new Set(
+          owners
+            .map((o) => o.email?.trim().toLowerCase() ?? "")
+            .filter((e) => e && !WALKIN_EMAIL_RE.test(e)),
+        ),
+      ).slice(0, 3);
+
+      if (realEmails.length === 0) {
+        return reply.send({
+          found: true,
+          channel: "none",
+          candidates: [],
+          message:
+            "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
+        });
+      }
+
+      const code = newCode();
+      const challengeToken = createChallenge(currentUserId, candidateIds, code);
+      const firstName = owners.find((o) => o.firstName)?.firstName ?? null;
+      const tpl = claimCodeTemplate({ firstName, code, minutes: CLAIM_CODE_MINUTES });
+      await Promise.all(realEmails.map((to) => sendEmail({ to, ...tpl })));
+      request.log.info(
+        { tag: "claim-code-sent", userId: currentUserId, candidates: candidateIds.length },
+        "[claim] código enviado",
+      );
 
       return reply.send({
-        candidates: users.map((u) => ({
-          candidateId: u.id,
-          firstName: u.firstName,
-          pets: u.pets,
-        })),
+        found: true,
+        channel: "email",
+        candidates: [],
+        maskedEmails: realEmails.map(maskEmail),
+        challengeToken,
+        expiresInMinutes: CLAIM_CODE_MINUTES,
+      });
+    }
+  );
+
+  // POST /users/claim/verify — el cliente escribe el código que le llegó.
+  // Devuelve las fichas (nombre + mascotas) y un token de claim que /confirm
+  // exige. Cuota corta por IP: 10^6 códigos con 10 minutos de vida.
+  fastify.post<{ Body: { challengeToken?: string; code?: string } }>(
+    "/users/claim/verify",
+    {
+      preHandler: [authMiddleware],
+      config: { rateLimit: { max: 40, timeWindow: "10 minutes" } },
+    },
+    async (request, reply) => {
+      const currentUserId = request.userId!;
+      const token = request.body?.challengeToken;
+      const code = request.body?.code?.replace(/\D/g, "") ?? "";
+      if (!token || code.length !== 6) {
+        return reply.status(400).send({ error: "Escribe el código de 6 dígitos" });
+      }
+      if (!takeUserQuota(`verify:${currentUserId}`, 8, QUOTA_WINDOW_MS)) {
+        return reply.status(429).send({
+          error: "Demasiados intentos con el código. Espera 10 minutos y vuelve a buscar tu cuenta.",
+        });
+      }
+      const result = verifyChallenge(token, currentUserId, code);
+      if (!result.ok) {
+        const message =
+          result.reason === "expired"
+            ? "El código venció. Vuelve a buscar tu cuenta para recibir otro."
+            : result.reason === "wrong-code"
+              ? "El código no coincide. Revisa tu correo e inténtalo de nuevo."
+              : "No pudimos validar el código. Vuelve a buscar tu cuenta.";
+        return reply.status(400).send({ error: message, code: result.reason });
+      }
+      const candidates = await candidatesPayload(result.ids);
+      return reply.send({
+        candidates,
+        claimToken: createClaimToken(currentUserId, result.ids),
       });
     }
   );
@@ -135,7 +284,11 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Body: {
       petIds?: string[];
-      candidateId?: string; // compat con apps previas (un solo registro)
+      /** Token de /users/claim/verify (obligatorio). */
+      claimToken?: string;
+      // `candidateId`/`email` de apps previas ya no autorizan nada; `phone`
+      // solo se usa para completar la ficha si no tenía teléfono.
+      candidateId?: string;
       phone?: string;
       email?: string;
     };
@@ -168,86 +321,26 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           ]
         : [];
 
-      let allowedIds: string[];
-      let petIds: string[];
-
-      if (selectedPetIds.length > 0) {
-        // Flujo nuevo (selección por mascota). Autorización: re-derivar los
-        // registros legacy permitidos con la MISMA lógica del lookup (teléfono
-        // últimos-10, respaldo por correo). No confiamos en ids del cliente:
-        // las mascotas se validan contra estos registros dentro de la
-        // transacción de claimPetsIntoAccount.
-        const phone = normalizePhone(request.body?.phone);
-        const email = request.body?.email?.trim().toLowerCase() || null;
-        if (!phone && !email) {
-          return reply
-            .status(400)
-            .send({ error: "Falta el teléfono o correo con el que buscaste" });
-        }
-        allowedIds = [];
-        if (phone) {
-          const rows = await prisma.$queryRaw<{ id: string }[]>`
-            SELECT id FROM users
-            WHERE "clerkId" IS NULL AND "isActive" = true AND role = 'OWNER'
-              AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
-            LIMIT 20
-          `;
-          allowedIds = rows.map((r) => r.id);
-        }
-        if (allowedIds.length === 0 && email) {
-          const byEmail = await prisma.user.findMany({
-            where: { email, clerkId: null, isActive: true, role: "OWNER" },
-            select: { id: true },
-          });
-          allowedIds = byEmail.map((u) => u.id);
-        }
-        allowedIds = allowedIds.filter((id) => id !== fresh.id);
-        if (allowedIds.length === 0) {
-          return reply
-            .status(404)
-            .send({ error: "No encontramos una cuenta con ese dato" });
-        }
-        petIds = selectedPetIds;
-      } else if (request.body?.candidateId) {
-        // Compat con apps previas: mandaban un `candidateId` (un solo registro).
-        // Autorizamos ese registro directamente y reclamamos todas sus mascotas
-        // (replica el comportamiento anterior de merge de un candidato).
-        const candidateId = request.body.candidateId;
-        if (candidateId === fresh.id) {
-          return reply
-            .status(400)
-            .send({ error: "No puedes vincularte a tu propia cuenta" });
-        }
-        const candidate = await prisma.user.findFirst({
-          where: {
-            id: candidateId,
-            clerkId: null,
-            isActive: true,
-            role: "OWNER",
-          },
-          select: { id: true },
+      // Autorización: SOLO el token que entregó /verify tras el código. Antes
+      // bastaba con repetir el teléfono (o mandar un `candidateId`) para
+      // apropiarse de la ficha; esas dos puertas quedan cerradas. Las apps
+      // anteriores a este cambio reciben un mensaje claro para actualizar.
+      const allowedIds = request.body?.claimToken
+        ? readClaimToken(request.body.claimToken, fresh.id)
+        : null;
+      if (!allowedIds || allowedIds.length === 0) {
+        return reply.status(403).send({
+          error:
+            "Para vincular tu cuenta necesitas el código que te enviamos por correo. Vuelve a buscar tu cuenta; si tu app no te pide el código, actualízala.",
+          code: "CLAIM_CODE_REQUIRED",
         });
-        if (!candidate) {
-          return reply
-            .status(404)
-            .send({ error: "No encontramos esa cuenta para vincular" });
-        }
-        const pets = await prisma.pet.findMany({
-          where: { ownerId: candidateId, isActive: true },
-          select: { id: true },
-        });
-        if (pets.length === 0) {
-          return reply
-            .status(400)
-            .send({ error: "Esa cuenta no tiene mascotas para vincular" });
-        }
-        allowedIds = [candidateId];
-        petIds = pets.map((p) => p.id);
-      } else {
+      }
+      if (selectedPetIds.length === 0) {
         return reply
           .status(400)
           .send({ error: "Selecciona al menos una mascota" });
       }
+      const petIds = selectedPetIds;
 
       const enteredPhone = request.body?.phone?.trim() || null;
       try {

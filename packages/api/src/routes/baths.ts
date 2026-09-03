@@ -135,7 +135,9 @@ export async function maybeConcludeStandaloneBath(
   const reservation = await prisma.reservation.findUnique({
     where: { id: reservationId },
     include: {
-      payments: { where: { status: "PAID" } },
+      // El anticipo del baño se registra PARTIAL: si solo se suman los PAID,
+      // el saldo nunca llega a cero y la cita jamás concluye sola.
+      payments: { where: { status: { in: ["PAID", "PARTIAL"] } } },
       addons: { include: { variant: { include: { serviceType: true } } } },
     },
   });
@@ -607,9 +609,10 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           orderBy: { createdAt: "desc" },
           take: 5,
         },
-        // Para calcular saldo pendiente (deposit remainder) en el mobile.
+        // Para calcular saldo pendiente (deposit remainder) en el mobile. El
+        // anticipo es PARTIAL y cuenta como pagado.
         payments: {
-          where: { status: "PAID" },
+          where: { status: { in: ["PAID", "PARTIAL"] as ("PAID" | "PARTIAL")[] } },
           select: { id: true, amount: true, method: true, paidAt: true },
         },
       } as const;
@@ -1089,7 +1092,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           pet: { select: { id: true, name: true } },
-          payments: { where: { status: "PAID" } },
+          // PARTIAL = anticipo ya cobrado; sin él el tope "no cobrar más que
+          // el saldo" dejaba cobrar el anticipo dos veces.
+          payments: { where: { status: { in: ["PAID", "PARTIAL"] } } },
           addons: { include: { variant: { include: { serviceType: true } } } },
         },
       });

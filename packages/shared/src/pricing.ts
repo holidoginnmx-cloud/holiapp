@@ -202,3 +202,30 @@ export function isWithinDaycareHours(time: string): boolean {
     minutes >= DAYCARE_OPEN_HOUR * 60 && minutes <= DAYCARE_CLOSE_HOUR * 60
   );
 }
+
+// ============================================================
+// Reloj del hotel — America/Hermosillo (UTC-7 FIJO, sin horario de verano).
+// ============================================================
+
+/** Desfase del hotel respecto a UTC, en horas. Constante: Sonora no cambia. */
+export const HOTEL_TZ_OFFSET_HOURS = 7;
+
+/**
+ * Horas que faltan para las 00:00 HORA LOCAL del hotel del día calendario
+ * `day`. Puede ser negativo si ese momento ya pasó.
+ *
+ * Las fechas de estadía (`checkIn`/`checkOut`) se guardan a las 00:00 UTC y
+ * representan el DÍA calendario, no un instante: las 00:00 UTC del 10 son las
+ * 17:00 del 9 en Hermosillo. Si se resta `checkIn − now` a secas, la ventana de
+ * "mismo día" (< 24 h) arranca a las 17:00 de DOS días antes y la de anticipo
+ * (≥ 3 días) se cierra un día antes de lo debido. La medianoche local del día
+ * es `day + tzOffset`, y contra eso se mide.
+ */
+export function hoursUntilHotelDay(
+  day: Date,
+  now: number = Date.now(),
+  tzOffsetHours: number = HOTEL_TZ_OFFSET_HOURS
+): number {
+  const localMidnight = day.getTime() + tzOffsetHours * 3_600_000;
+  return (localMidnight - now) / 3_600_000;
+}

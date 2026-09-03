@@ -231,6 +231,38 @@ export function refundIssuedTemplate(d: RefundIssuedData) {
   return { subject, html, text };
 }
 
+export type ClaimCodeData = {
+  firstName: string | null;
+  code: string;
+  minutes: number;
+};
+
+// Código para vincular una cuenta nueva de la app con una ficha que ya existía
+// (creada por el equipo). Se manda al correo que YA está en la ficha, no al que
+// diga quien lo pide: esa es la prueba de que es suya.
+export function claimCodeTemplate(d: ClaimCodeData) {
+  const subject = `Tu código para vincular tu cuenta: ${d.code}`;
+  const hola = d.firstName ? `Hola ${d.firstName},` : "Hola,";
+  const html = layout(
+    subject,
+    `
+    <h1 style="font-size:20px;margin:0 0 12px;">Vincula tu cuenta 🐾</h1>
+    <p style="font-size:15px;line-height:1.5;">
+      ${hola} alguien está vinculando la app de HolidogInn con la ficha de tus mascotas.
+      Si eres tú, escribe este código en la app:
+    </p>
+    <p style="font-size:32px;letter-spacing:8px;font-weight:700;text-align:center;padding:16px;background:#f0f7ff;border-radius:8px;">
+      ${d.code}
+    </p>
+    <p style="font-size:13px;line-height:1.5;color:#666;">
+      Vence en ${d.minutes} minutos. Si no fuiste tú, ignora este correo: sin el código nadie puede vincular tu ficha.
+    </p>
+  `
+  );
+  const text = `${hola} tu código para vincular la app de HolidogInn con la ficha de tus mascotas es: ${d.code}\n\nVence en ${d.minutes} minutos. Si no fuiste tú, ignora este correo.\n\n— HolidogInn`;
+  return { subject, html, text };
+}
+
 export type PaymentFailedData = {
   ownerFirstName: string;
   petName: string | null;

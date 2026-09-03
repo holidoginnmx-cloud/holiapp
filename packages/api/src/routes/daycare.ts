@@ -529,8 +529,9 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           addons: {
             include: { variant: { include: { serviceType: true } } },
           },
+          // El anticipo se registra PARTIAL y cuenta como pagado.
           payments: {
-            where: { status: "PAID" },
+            where: { status: { in: ["PAID", "PARTIAL"] } },
             select: { id: true, amount: true, method: true, paidAt: true },
           },
         },
@@ -597,7 +598,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           pet: { select: { name: true } },
-          payments: { where: { status: "PAID" } },
+          // PARTIAL = anticipo ya cobrado; cuenta para el saldo.
+          payments: { where: { status: { in: ["PAID", "PARTIAL"] } } },
           addons: { include: { variant: { include: { serviceType: true } } } },
         },
       });
@@ -745,7 +747,8 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         where: { id: request.params.id },
         include: {
           pet: { select: { name: true } },
-          payments: { where: { status: "PAID" } },
+          // PARTIAL = anticipo ya cobrado; cuenta para el saldo.
+          payments: { where: { status: { in: ["PAID", "PARTIAL"] } } },
         },
       });
       if (!reservation || reservation.reservationType !== "DAYCARE") {

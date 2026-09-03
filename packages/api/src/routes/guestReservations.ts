@@ -13,6 +13,8 @@ import { cartillaBlocks } from "../lib/cartilla";
 import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight, bathSizeKey } from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
 import { createReservationGroup } from "../lib/reservationCreate";
+import { parseDeliveryTrip } from "../lib/delivery";
+import { hoursUntilHotelDay } from "@holidoginn/shared";
 import { notifyUsers } from "../lib/notify";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -95,8 +97,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
               .status(400)
               .send({ error: "El anticipo no está disponible para estancias de una sola noche" });
           }
-          const daysUntilCheckIn = (checkInDate.getTime() - Date.now()) / 86_400_000;
-          if (daysUntilCheckIn < 3) {
+          // 72 h para la medianoche LOCAL del check-in (ver hoursUntilHotelDay).
+          if (hoursUntilHotelDay(checkInDate) < 72) {
             return reply.status(400).send({
               error: "El anticipo solo está disponible con 3 o más días de anticipación al check-in",
             });
@@ -192,7 +194,7 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
 
         const baseTotal =
           breakdown.reduce((sum, b) => sum + b.subtotal, 0) + bathTotal + medicationTotal;
-        const hoursUntilCheckIn = (checkInDate.getTime() - Date.now()) / (60 * 60 * 1000);
+        const hoursUntilCheckIn = hoursUntilHotelDay(checkInDate);
         const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
         const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.2) : 0;
 
@@ -247,6 +249,12 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         // de 500 chars por valor del metadata de Stripe.
         for (const [petId, sel] of Object.entries(medicationByPet)) {
           metadata[`med_${petId}`] = sel.notes;
+        }
+        // El tipo de viaje fija la tarifa (redondo = doble). La dirección va a
+        // PendingDeliveryAddress, que no guarda el viaje; sin esto el confirm
+        // recotizaba como PICKUP y cobraba la mitad de lo que pagó el PI.
+        if (deliveryActive && body.homeDelivery) {
+          metadata.deliveryTrip = body.homeDelivery.trip ?? "PICKUP";
         }
         const paymentIntent = await stripe.paymentIntents.create({
           amount: Math.round(depositAmountBase * 100),
@@ -396,6 +404,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
               address: pendingDelivery.address,
               lat: pendingDelivery.lat,
               lng: pendingDelivery.lng,
+              // Mismo viaje que se cobró en el intent (ver create-intent).
+              trip: parseDeliveryTrip(pi.metadata.deliveryTrip),
             }
           : undefined;
 
