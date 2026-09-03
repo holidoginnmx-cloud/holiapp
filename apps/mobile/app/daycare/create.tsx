@@ -17,6 +17,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
+import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { ENDPOINTS } from "@/constants/api";
 import { useAuthStore } from "@/store/authStore";
 import { getDaycareAvailability, createDaycareIntent, confirmDaycare } from "@/lib/api";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
@@ -155,8 +160,35 @@ function CreateDaycareScreenContent() {
     !deliveryIncomplete &&
     !submitting;
 
+  // Lo que sigue a una guardería confirmada. Se comparte entre el camino
+  // normal y el reintento de una confirmación que quedó pendiente.
+  const finishDaycare = () => {
+    // Guarda la dirección para precargarla en futuras reservas (best-effort).
+    delivery.persistAddress();
+
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    queryClient.invalidateQueries({ queryKey: ["daycare-availability", dateYMD] });
+    router.replace({
+      pathname: "/reservation/success" as any,
+      params: { variant: "daycare" },
+    });
+  };
+
+  // Red de seguridad de la confirmación: si `/daycare/confirm` falla DESPUÉS
+  // de que Stripe cobró, el PaymentIntent no se pierde — se reintenta tal cual
+  // (aquí o al abrir la app). Mientras haya uno pendiente no se puede pagar.
+  const pendingConfirm = usePendingConfirmation<
+    Awaited<ReturnType<typeof confirmDaycare>>
+  >({
+    flow: "daycare",
+    telemetryFlow: "daycare",
+    userId,
+    onConfirmed: () => finishDaycare(),
+  });
+
   async function handleSubmit() {
     if (!canSubmit || !checkInTime || !checkOutTime) return;
+    if (pendingConfirm.hasPending) return;
     setSubmitting(true);
     try {
       const payload = {
@@ -177,22 +209,24 @@ function CreateDaycareScreenContent() {
         if (outcome !== "paid") return;
       }
 
-      await confirmDaycare(
-        intent.coveredByCredit
-          ? { paymentIntentId: null, ...payload }
-          : { paymentIntentId: intent.paymentIntentId! },
-      );
+      if (intent.coveredByCredit) {
+        // Sin cobro de Stripe no hay PaymentIntent que proteger.
+        await confirmDaycare({ paymentIntentId: null, ...payload });
+      } else {
+        const paymentIntentId = intent.paymentIntentId!;
+        await pendingConfirm.confirm({
+          paymentIntentId,
+          request: {
+            path: `${ENDPOINTS.daycare}/confirm`,
+            payload: { paymentIntentId },
+          },
+        });
+      }
 
-      // Guarda la dirección para precargarla en futuras reservas (best-effort).
-      delivery.persistAddress();
-
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      queryClient.invalidateQueries({ queryKey: ["daycare-availability", dateYMD] });
-      router.replace({
-        pathname: "/reservation/success" as any,
-        params: { variant: "daycare" },
-      });
+      finishDaycare();
     } catch (err) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla.
+      if (err instanceof PendingConfirmationError) return;
       const msg =
         err instanceof Error ? err.message : "No se pudo reservar la guardería";
       Alert.alert("Error", msg);
@@ -406,10 +440,11 @@ function CreateDaycareScreenContent() {
           <TouchableOpacity
             style={[
               wizardStyles.payButton,
-              !canSubmit && wizardStyles.payButtonDisabled,
+              (!canSubmit || pendingConfirm.hasPending) &&
+                wizardStyles.payButtonDisabled,
             ]}
             onPress={handleSubmit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || pendingConfirm.hasPending}
             testID="daycare-pay-button"
           >
             {submitting ? (
@@ -426,6 +461,7 @@ function CreateDaycareScreenContent() {
         )}
 
         {checkout.stuckNotice}
+        {pendingConfirm.notice}
 
         <TimeSlotPicker
           visible={timePickerFor !== null}

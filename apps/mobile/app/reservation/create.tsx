@@ -41,6 +41,11 @@ import {
   HOLIDOG_SHEET_APPEARANCE,
 } from "@/hooks/usePaymentCheckout";
 import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { ENDPOINTS } from "@/constants/api";
+import {
   CheckInReminderModal,
   type ReservationTimes,
 } from "@/components/CheckInReminderModal";
@@ -598,6 +603,60 @@ function CreateReservationScreenContent() {
     };
   }, []);
 
+  type MultiResult = Awaited<ReturnType<typeof createMultiReservation>>;
+
+  // Lo que sigue a una reservación creada. Se comparte entre el camino normal
+  // y el reintento de una confirmación que quedó pendiente.
+  const finishReservation = (
+    result: MultiResult,
+    params: {
+      paymentType: "FULL" | "DEPOSIT";
+      amount: string;
+      paidWith: "STRIPE" | "CREDIT";
+    },
+  ) => {
+    // Guarda la dirección para precargarla en futuras reservas (best-effort).
+    if (homeDeliveryPayload && deliveryAddress) {
+      saveDeliveryAddress({
+        address: deliveryAddress.address,
+        lat: deliveryAddress.lat,
+        lng: deliveryAddress.lng,
+        placeId: deliveryAddress.placeId,
+      }).catch(() => {});
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+
+    const firstReservationId = result?.reservations?.[0]?.id;
+    router.replace({
+      pathname: "/reservation/success" as any,
+      params: {
+        reservationId: firstReservationId ?? "",
+        paymentType: params.paymentType,
+        amount: params.amount,
+        paidWith: params.paidWith,
+      },
+    });
+  };
+
+  // Red de seguridad de la confirmación: si el POST falla DESPUÉS de que
+  // Stripe cobró, el PaymentIntent no se pierde — se guarda con el cuerpo
+  // exacto y se reintenta tal cual (aquí o al abrir la app). Mientras haya uno
+  // pendiente, el botón de pagar se deshabilita: pagar otra vez cobraría doble.
+  const pendingConfirm = usePendingConfirmation<MultiResult>({
+    flow: "multi",
+    telemetryFlow: "reservation",
+    userId,
+    onConfirmed: (result, record) =>
+      finishReservation(result, {
+        paymentType: record.payload.paymentType === "FULL" ? "FULL" : "DEPOSIT",
+        // El monto del anticipo no viaja en el cuerpo; la pantalla de éxito
+        // omite la tarjeta del anticipo cuando no lo conoce.
+        amount: "0",
+        paidWith: "STRIPE",
+      }),
+  });
+
   const runPayment = async () => {
     // paying ya viene en true desde el acknowledge del recordatorio: si aquí
     // salimos temprano hay que apagarlo o el botón se queda girando.
@@ -652,8 +711,10 @@ function CreateReservationScreenContent() {
         if (outcome !== "paid") return;
       }
 
-      // 4. Payment succeeded — create reservations
-      const result = await createMultiReservation({
+      // 4. Cobro hecho — crear las reservaciones. Con cargo de Stripe el POST
+      // pasa por la red de seguridad (mismo cuerpo, mismo PaymentIntent); el
+      // camino 100% saldo a favor no tiene cobro que proteger.
+      const body: Parameters<typeof createMultiReservation>[0] = {
         checkIn: checkIn!.toISOString(),
         checkOut: checkOut!.toISOString(),
         checkInTime: reservationTimesRef.current.checkInTime ?? undefined,
@@ -669,31 +730,23 @@ function CreateReservationScreenContent() {
         medicationByPet: medicationPayload,
         homeDelivery: homeDeliveryPayload,
         discountCode: appliedDiscount?.code,
-      });
+      };
+      const result = intent.paymentIntentId
+        ? await pendingConfirm.confirm({
+            paymentIntentId: intent.paymentIntentId,
+            request: { path: `${ENDPOINTS.reservations}/multi`, payload: body },
+          })
+        : await createMultiReservation(body);
 
-      // Guarda la dirección para precargarla en futuras reservas (best-effort).
-      if (homeDeliveryPayload && deliveryAddress) {
-        saveDeliveryAddress({
-          address: deliveryAddress.address,
-          lat: deliveryAddress.lat,
-          lng: deliveryAddress.lng,
-          placeId: deliveryAddress.placeId,
-        }).catch(() => {});
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
-
-      const firstReservationId = result?.reservations?.[0]?.id;
-      router.replace({
-        pathname: "/reservation/success" as any,
-        params: {
-          reservationId: firstReservationId ?? "",
-          paymentType,
-          amount: paymentType === "DEPOSIT" ? String(depositAmount) : "0",
-          paidWith: intent.coveredByCredit ? "CREDIT" : "STRIPE",
-        },
+      finishReservation(result, {
+        paymentType,
+        amount: paymentType === "DEPOSIT" ? String(depositAmount) : "0",
+        paidWith: intent.coveredByCredit ? "CREDIT" : "STRIPE",
       });
     } catch (err: any) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla: nada de
+      // "Error" genérico, que es lo que llevaba al doble cobro.
+      if (err instanceof PendingConfirmationError) return;
       const msg: string = err?.message || "No se pudo procesar el pago";
       if (msg.toLowerCase().includes("consentimientos legales")) {
         Alert.alert(
@@ -1609,13 +1662,14 @@ function CreateReservationScreenContent() {
       {/* ── Submit ── */}
       <AnimatedPayButton
         onPress={handleSubmit}
-        disabled={!canSubmit}
+        disabled={!canSubmit || pendingConfirm.hasPending}
         loading={paying}
         label="Pagar y confirmar"
         testID="reservation-create-submit-button"
       />
 
       {checkout.stuckNotice}
+      {pendingConfirm.notice}
 
       <CheckInReminderModal
         visible={showCheckInReminder}

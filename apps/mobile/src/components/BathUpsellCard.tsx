@@ -11,6 +11,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
+import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { useAuthStore } from "@/store/authStore";
+import { ENDPOINTS } from "@/constants/api";
 import { COLORS } from "@/constants/colors";
 import {
   getBathVariants,
@@ -50,9 +56,36 @@ export function BathUpsellCard({ reservation }: Props) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const checkout = usePaymentCheckout("bath-upsell");
+  const userId = useAuthStore((s) => s.userId);
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
   const [paying, setPaying] = useState(false);
+
+  const confirmPath = `${ENDPOINTS.reservations}/${reservation.id}/addons/bath/confirm`;
+
+  // Lo que sigue a un baño contratado. Se comparte entre el camino normal y el
+  // reintento de una confirmación que quedó pendiente.
+  const finishAddon = () => {
+    queryClient.invalidateQueries({ queryKey: ["reservation", reservation.id] });
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    router.replace({
+      pathname: "/reservation/success" as any,
+      params: { variant: "bath" },
+    });
+  };
+
+  // Red de seguridad: si el confirm del add-on falla DESPUÉS de que Stripe
+  // cobró, el PaymentIntent no se pierde — se reintenta tal cual.
+  const pendingConfirm = usePendingConfirmation<
+    Awaited<ReturnType<typeof confirmBathAddonPayment>>
+  >({
+    flow: "bathAddon",
+    telemetryFlow: "bath-upsell",
+    userId,
+    matches: (record) => record.path === confirmPath,
+    onConfirmed: () => finishAddon(),
+    subject: "tu pago",
+  });
 
   const { data: variants } = useQuery({
     queryKey: ["bath-variants"],
@@ -128,6 +161,7 @@ export function BathUpsellCard({ reservation }: Props) {
       Alert.alert("Error", "No se encontró precio para la combinación seleccionada");
       return;
     }
+    if (pendingConfirm.hasPending) return;
     setPaying(true);
     try {
       const { clientSecret, paymentIntentId } = await createBathAddonPayment(
@@ -138,14 +172,15 @@ export function BathUpsellCard({ reservation }: Props) {
       const outcome = await checkout.run({ clientSecret, paymentIntentId });
       if (outcome !== "paid") return;
 
-      await confirmBathAddonPayment(reservation.id, paymentIntentId);
-      queryClient.invalidateQueries({ queryKey: ["reservation", reservation.id] });
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      router.replace({
-        pathname: "/reservation/success" as any,
-        params: { variant: "bath" },
+      // Mismo cuerpo que `confirmBathAddonPayment`, pero con red de seguridad.
+      await pendingConfirm.confirm({
+        paymentIntentId,
+        request: { path: confirmPath, payload: { paymentIntentId } },
       });
+      finishAddon();
     } catch (err: any) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla.
+      if (err instanceof PendingConfirmationError) return;
       Alert.alert("Error", err.message || "No se pudo contratar el baño");
     } finally {
       setPaying(false);
@@ -182,9 +217,12 @@ export function BathUpsellCard({ reservation }: Props) {
       </View>
 
       <TouchableOpacity
-        style={[styles.contractButton, (!variant || paying) && { opacity: 0.5 }]}
+        style={[
+          styles.contractButton,
+          (!variant || paying || pendingConfirm.hasPending) && { opacity: 0.5 },
+        ]}
         onPress={handleContract}
-        disabled={!variant || paying}
+        disabled={!variant || paying || pendingConfirm.hasPending}
         activeOpacity={0.8}
       >
         {paying ? (
@@ -200,6 +238,7 @@ export function BathUpsellCard({ reservation }: Props) {
       </TouchableOpacity>
 
       {checkout.stuckNotice}
+      {pendingConfirm.notice}
     </View>
   );
 }

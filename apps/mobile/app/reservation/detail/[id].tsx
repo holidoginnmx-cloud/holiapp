@@ -16,6 +16,12 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
 import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { ENDPOINTS } from "@/constants/api";
+import { useAuthStore } from "@/store/authStore";
+import {
   getReservationById,
   getReservations,
   getCreditLedger,
@@ -115,7 +121,33 @@ function ReservationDetailScreenContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const checkout = usePaymentCheckout("balance");
+  const userId = useAuthStore((s) => s.userId);
   const [payingBalance, setPayingBalance] = useState(false);
+
+  // Lo que sigue a un saldo liquidado. Se comparte entre el camino normal y el
+  // reintento de una confirmación que quedó pendiente.
+  const finishBalance = () => {
+    queryClient.invalidateQueries({ queryKey: ["reservation", id] });
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    router.replace({
+      pathname: "/reservation/success" as any,
+      params: { variant: "balance" },
+    });
+  };
+
+  // Red de seguridad: si `/payments/confirm-balance` falla DESPUÉS de que
+  // Stripe cobró, el PaymentIntent no se pierde — se reintenta tal cual. Se
+  // acota a ESTA reservación para no mezclar avisos entre detalles.
+  const pendingConfirm = usePendingConfirmation<
+    Awaited<ReturnType<typeof confirmBalancePayment>>
+  >({
+    flow: "balance",
+    telemetryFlow: "balance",
+    userId,
+    matches: (record) => record.payload.reservationId === id,
+    onConfirmed: () => finishBalance(),
+    subject: "tu pago",
+  });
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewPrompted, setReviewPrompted] = useState(false);
   const [cancelModalMode, setCancelModalMode] = useState<
@@ -337,7 +369,7 @@ function ReservationDetailScreenContent() {
   };
 
   const handlePayBalance = async () => {
-    if (!id) return;
+    if (!id || pendingConfirm.hasPending) return;
     setPayingBalance(true);
     try {
       const { clientSecret, paymentIntentId } = await createBalancePayment(id);
@@ -356,14 +388,18 @@ function ReservationDetailScreenContent() {
       });
       if (outcome !== "paid") return;
 
-      await confirmBalancePayment(id, paymentIntentId);
-      queryClient.invalidateQueries({ queryKey: ["reservation", id] });
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      router.replace({
-        pathname: "/reservation/success" as any,
-        params: { variant: "balance" },
+      // Mismo cuerpo que `confirmBalancePayment`, pero con red de seguridad.
+      await pendingConfirm.confirm({
+        paymentIntentId,
+        request: {
+          path: `${ENDPOINTS.payments}/confirm-balance`,
+          payload: { reservationId: id, stripePaymentIntentId: paymentIntentId },
+        },
       });
+      finishBalance();
     } catch (err: any) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla.
+      if (err instanceof PendingConfirmationError) return;
       Alert.alert("Error", err.message || "No se pudo procesar el pago");
     } finally {
       setPayingBalance(false);
@@ -810,9 +846,12 @@ function ReservationDetailScreenContent() {
           />
 
           <TouchableOpacity
-            style={[styles.balanceButton, payingBalance && { opacity: 0.5 }]}
+            style={[
+              styles.balanceButton,
+              (payingBalance || pendingConfirm.hasPending) && { opacity: 0.5 },
+            ]}
             onPress={handlePayBalance}
-            disabled={payingBalance}
+            disabled={payingBalance || pendingConfirm.hasPending}
             activeOpacity={0.8}
           >
             {payingBalance ? (
@@ -828,6 +867,7 @@ function ReservationDetailScreenContent() {
           </TouchableOpacity>
 
           {checkout.stuckNotice}
+          {pendingConfirm.notice}
         </View>
       )}
 

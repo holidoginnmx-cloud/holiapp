@@ -8,6 +8,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
+import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { useAuthStore } from "@/store/authStore";
 import type { PaymentFlow } from "@/lib/telemetry";
 import {
   useMutation,
@@ -54,6 +59,16 @@ type FlowConfig = {
   errorTag: string;
   createIntent: () => Promise<{ clientSecret: string; paymentIntentId: string }>;
   confirm: (paymentIntentId: string) => Promise<unknown>;
+  /**
+   * Versión serializable de `confirm` (ruta + cuerpo). Si viene, la
+   * confirmación se persiste y se reintenta también al abrir la app; si no,
+   * solo se reintenta en sesión con el mismo PaymentIntent. Solo se declara
+   * para endpoints que sabemos idempotentes por PaymentIntent.
+   */
+  pending?: {
+    path: string;
+    payload: (paymentIntentId: string) => Record<string, unknown>;
+  };
   payOnPickupApi: () => Promise<unknown>;
   invalidateKeys: QueryKey[];
   // Presentación
@@ -94,6 +109,12 @@ function buildConfig(props: PaymentCardFlowProps): FlowConfig {
       createIntent: () => createExtrasPaymentIntent(reservationId, addon.id),
       confirm: (paymentIntentId) =>
         confirmExtrasPayment(reservationId, addon.id, paymentIntentId),
+      // `extras/confirm` responde `success` si el add-on ya está PAID: es
+      // seguro reenviarlo tal cual al abrir la app.
+      pending: {
+        path: `/reservations/${reservationId}/addons/${addon.id}/extras/confirm`,
+        payload: (paymentIntentId) => ({ paymentIntentId }),
+      },
       payOnPickupApi: () => chooseExtrasPayOnPickup(reservationId, addon.id),
       invalidateKeys: [["reservation", reservationId]],
       pendingIcon: "water",
@@ -128,6 +149,12 @@ function buildConfig(props: PaymentCardFlowProps): FlowConfig {
       changeRequestPayNowIntent(reservationId, changeRequest.id),
     confirm: (paymentIntentId) =>
       changeRequestPayNowConfirm(reservationId, changeRequest.id, paymentIntentId),
+    // `pay-now-confirm` responde `alreadyConfirmed` al repetirse: es seguro
+    // reenviarlo tal cual al abrir la app.
+    pending: {
+      path: `/reservations/${reservationId}/change-requests/${changeRequest.id}/pay-now-confirm`,
+      payload: (stripePaymentIntentId) => ({ stripePaymentIntentId }),
+    },
     payOnPickupApi: () =>
       changeRequestPayOnPickup(reservationId, changeRequest.id),
     invalidateKeys: [
@@ -153,12 +180,25 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
   const cfg = buildConfig(props);
   const { amount } = cfg;
   const checkout = usePaymentCheckout(cfg.errorTag as PaymentFlow);
+  const userId = useAuthStore((s) => s.userId);
 
   const invalidate = () => {
     for (const queryKey of cfg.invalidateKeys) {
       queryClient.invalidateQueries({ queryKey });
     }
   };
+
+  // Red de seguridad: si el confirm falla DESPUÉS de que Stripe cobró, se
+  // reintenta con el MISMO PaymentIntent (nunca se crea otro). Con `pending`
+  // en la config además se persiste; sin él, solo en sesión.
+  const pendingConfirm = usePendingConfirmation<unknown>({
+    flow: "card",
+    telemetryFlow: cfg.errorTag as PaymentFlow,
+    userId,
+    matches: (record) => !!cfg.pending && record.path === cfg.pending.path,
+    onConfirmed: () => invalidate(),
+    subject: "tu pago",
+  });
 
   const pickupMutation = useMutation({
     mutationFn: () => cfg.payOnPickupApi(),
@@ -167,6 +207,7 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
   });
 
   async function handlePayNow() {
+    if (pendingConfirm.hasPending) return;
     setPaying(true);
     try {
       const intent = await cfg.createIntent();
@@ -175,9 +216,22 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
         paymentIntentId: intent.paymentIntentId,
       });
       if (outcome !== "paid") return;
-      await cfg.confirm(intent.paymentIntentId);
+      const { paymentIntentId } = intent;
+      await pendingConfirm.confirm(
+        cfg.pending
+          ? {
+              paymentIntentId,
+              request: {
+                path: cfg.pending.path,
+                payload: cfg.pending.payload(paymentIntentId),
+              },
+            }
+          : { paymentIntentId, run: () => cfg.confirm(paymentIntentId) },
+      );
       invalidate();
     } catch (err) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla.
+      if (err instanceof PendingConfirmationError) return;
       const msg =
         err instanceof Error ? err.message : "No se pudo procesar el pago";
       Alert.alert("Error", msg);
@@ -282,9 +336,13 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
       <Text style={styles.hint}>{cfg.pendingHint}</Text>
       <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.btn, styles.btnPrimary, paying && { opacity: 0.7 }]}
+          style={[
+            styles.btn,
+            styles.btnPrimary,
+            (paying || pendingConfirm.hasPending) && { opacity: 0.7 },
+          ]}
           onPress={handlePayNow}
-          disabled={paying || pickupMutation.isPending}
+          disabled={paying || pickupMutation.isPending || pendingConfirm.hasPending}
         >
           {paying ? (
             <ActivityIndicator color={COLORS.white} size="small" />
@@ -298,7 +356,9 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
         <TouchableOpacity
           style={[styles.btn, styles.btnSecondary]}
           onPress={handlePayOnPickup}
-          disabled={paying || pickupMutation.isPending}
+          // Con un cobro ya hecho y sin confirmar, "pagar al recoger" tampoco
+          // tiene sentido: se cobraría dos veces.
+          disabled={paying || pickupMutation.isPending || pendingConfirm.hasPending}
         >
           <Ionicons name="cash-outline" size={16} color={COLORS.primary} />
           <Text style={styles.btnSecondaryText}>Pagar al recoger</Text>
@@ -306,6 +366,7 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
       </View>
 
       {checkout.stuckNotice}
+      {pendingConfirm.notice}
     </View>
   );
 }

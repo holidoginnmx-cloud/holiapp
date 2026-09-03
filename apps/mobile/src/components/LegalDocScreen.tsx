@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -40,6 +40,30 @@ export function LegalDocScreen({
   const queryClient = useQueryClient();
   const [scrollDone, setScrollDone] = useState(false);
 
+  // Si el documento cabe completo en pantalla (iPad, iPhone grande, texto
+  // corto) `onScroll` no dispara NUNCA y el botón se quedaba en "Desplaza
+  // hasta el final" para siempre — con la autorización veterinaria obligatoria
+  // el cliente no podía salir del onboarding. Por eso también se comparan
+  // alturas: sin nada que desplazar, ya se "leyó hasta el final". Se reevalúa
+  // en cada cambio de tamaño (rotación de iPad, contenido que termina de cargar).
+  const layoutHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+
+  const evaluateFit = useCallback(() => {
+    const layoutHeight = layoutHeightRef.current;
+    const contentHeight = contentHeightRef.current;
+    if (layoutHeight > 0 && contentHeight > 0 && contentHeight <= layoutHeight + 1) {
+      setScrollDone(true);
+    }
+  }, []);
+
+  // Al cambiar de documento (misma pantalla reutilizada) vuelve a exigirse la
+  // lectura; si sigue cabiendo, la comparación de alturas lo libera de nuevo.
+  useEffect(() => {
+    setScrollDone(false);
+    evaluateFit();
+  }, [documentType, evaluateFit]);
+
   const { data: docs } = useQuery({
     queryKey: ["legal-documents"],
     queryFn: getLegalDocuments,
@@ -72,6 +96,14 @@ export function LegalDocScreen({
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
+        onLayout={({ nativeEvent }) => {
+          layoutHeightRef.current = nativeEvent.layout.height;
+          evaluateFit();
+        }}
+        onContentSizeChange={(_width, height) => {
+          contentHeightRef.current = height;
+          evaluateFit();
+        }}
         onScroll={({ nativeEvent }) => {
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
           if (

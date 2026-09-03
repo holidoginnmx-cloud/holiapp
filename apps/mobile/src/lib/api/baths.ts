@@ -169,6 +169,8 @@ export const confirmBath = (data: {
   notes?: string;
   homeDelivery?: HomeDeliveryInput;
   discountCode?: string;
+  // Solo sin PaymentIntent (saldo a favor): qué se paga ahora.
+  paymentType?: "DEPOSIT" | "FULL";
 }) =>
   apiFetch<{ success: boolean; reservation: Reservation }>(
     `${ENDPOINTS.baths}/confirm`,

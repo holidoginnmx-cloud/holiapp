@@ -9,7 +9,7 @@ import "@/lib/queryFocus";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, InteractionManager, StyleSheet } from "react-native";
+import { Alert, AppState, InteractionManager, StyleSheet } from "react-native";
 import Animated, { FadeOut } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -36,6 +36,11 @@ import {
 } from "@/lib/notificationRoute";
 import { notificationInvalidationKeys } from "@/lib/notificationInvalidate";
 import { applyIfSafe, checkAndFetch } from "@/lib/appUpdates";
+import {
+  recoverPendingConfirmation,
+  reservationIdOf,
+} from "@/lib/pendingConfirmation";
+import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -382,6 +387,42 @@ function PushCacheInvalidator() {
 }
 
 /**
+ * Cobro hecho, confirmación pendiente: la termina al arrancar.
+ *
+ * Si la app se cerró (o murió) entre el "paid" de Stripe y el POST que crea la
+ * reserva, quedó un registro guardado (lib/pendingConfirmation). Aquí se
+ * reenvía UNA vez por arranque, en segundo plano, y solo si es del usuario que
+ * tiene la sesión abierta. Si sale, se refrescan las reservas y se avisa; si
+ * vuelve a fallar, se queda guardado y no se molesta a nadie: la pantalla del
+ * flujo y el siguiente arranque lo vuelven a intentar.
+ */
+function PendingConfirmationRecovery() {
+  const { isSignedIn } = useAuth();
+  const dbUserId = useAuthStore((s) => s.dbUserId);
+
+  useEffect(() => {
+    if (!isSignedIn || !dbUserId) return;
+    void (async () => {
+      const record = await recoverPendingConfirmation(dbUserId);
+      if (!record) return;
+      invalidateReservationScope(queryClient, reservationIdOf(record));
+      const isNewBooking =
+        record.flow === "multi" || record.flow === "bath" || record.flow === "daycare";
+      Alert.alert(
+        isNewBooking ? "Tu reservación quedó confirmada" : "Tu pago quedó registrado",
+        isNewBooking
+          ? "Tu pago se recibió y la reservación que quedó pendiente ya está confirmada."
+          : "El pago que quedó pendiente ya quedó registrado en tu reservación.",
+      );
+    })().catch(() => {
+      // Nunca romper el arranque por esto: se reintenta en la próxima apertura.
+    });
+  }, [isSignedIn, dbUserId]);
+
+  return null;
+}
+
+/**
  * Aplica las actualizaciones por aire sin esperar a que el cliente mate la app.
  *
  * Sin esto, un `eas update` solo entra en el siguiente arranque en frío: un
@@ -444,6 +485,7 @@ export default function RootLayout() {
         <OtaUpdater />
         <PushNavigationHandler />
         <PushCacheInvalidator />
+        <PendingConfirmationRecovery />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{

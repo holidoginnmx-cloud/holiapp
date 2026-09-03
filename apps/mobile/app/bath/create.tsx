@@ -18,6 +18,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { usePaymentCheckout } from "@/hooks/usePaymentCheckout";
+import {
+  usePendingConfirmation,
+  PendingConfirmationError,
+} from "@/hooks/usePendingConfirmation";
+import { ENDPOINTS } from "@/constants/api";
 import { useAuthStore } from "@/store/authStore";
 import {
   getPetsByOwner,
@@ -256,8 +261,42 @@ function CreateBathScreenContent() {
     setSelectedSlotIso(null);
   }, [selectedPetId, deslanado, corte]);
 
+  // Lo que sigue a un baño confirmado. Se comparte entre el camino normal y el
+  // reintento de una confirmación que quedó pendiente.
+  const finishBath = () => {
+    // Guarda la dirección para precargarla en futuras reservas (best-effort).
+    if (homeDeliveryPayload && deliveryAddress) {
+      saveDeliveryAddress({
+        address: deliveryAddress.address,
+        lat: deliveryAddress.lat,
+        lng: deliveryAddress.lng,
+        placeId: deliveryAddress.placeId,
+      }).catch(() => {});
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    queryClient.invalidateQueries({ queryKey: ["bath-slots", dateYMD] });
+    router.replace({
+      pathname: "/reservation/success" as any,
+      params: { variant: "bath" },
+    });
+  };
+
+  // Red de seguridad de la confirmación: si `/baths/confirm` falla DESPUÉS de
+  // que Stripe cobró, el PaymentIntent no se pierde — se reintenta tal cual
+  // (aquí o al abrir la app). Mientras haya uno pendiente no se puede pagar.
+  const pendingConfirm = usePendingConfirmation<
+    Awaited<ReturnType<typeof confirmBath>>
+  >({
+    flow: "bath",
+    telemetryFlow: "bath",
+    userId,
+    onConfirmed: () => finishBath(),
+  });
+
   async function handleSubmit() {
     if (!selectedPet || !variant || !selectedSlotIso) return;
+    if (pendingConfirm.hasPending) return;
     setSubmitting(true);
     try {
       const corteNotasTrim = corte && corteNotas.trim() ? corteNotas.trim() : undefined;
@@ -280,36 +319,34 @@ function CreateBathScreenContent() {
         if (outcome !== "paid") return;
       }
 
-      await confirmBath(
-        intent.coveredByCredit
-          ? {
-              petId: selectedPet.id,
-              variantId: intent.variantId,
-              appointmentAt: selectedSlotIso,
-              homeDelivery: homeDeliveryPayload,
-              discountCode: appliedDiscount?.code,
-              notes: corteNotasTrim,
-            }
-          : { paymentIntentId: intent.paymentIntentId! },
-      );
-
-      // Guarda la dirección para precargarla en futuras reservas (best-effort).
-      if (homeDeliveryPayload && deliveryAddress) {
-        saveDeliveryAddress({
-          address: deliveryAddress.address,
-          lat: deliveryAddress.lat,
-          lng: deliveryAddress.lng,
-          placeId: deliveryAddress.placeId,
-        }).catch(() => {});
+      if (intent.coveredByCredit) {
+        // Sin cobro de Stripe no hay PaymentIntent que proteger.
+        await confirmBath({
+          petId: selectedPet.id,
+          variantId: intent.variantId,
+          appointmentAt: selectedSlotIso,
+          homeDelivery: homeDeliveryPayload,
+          discountCode: appliedDiscount?.code,
+          notes: corteNotasTrim,
+          // Sin PaymentIntent el servidor no sabe si se eligió pagar todo o
+          // solo el anticipo; sin esto asumía anticipo y dejaba saldo.
+          paymentType,
+        });
+      } else {
+        const paymentIntentId = intent.paymentIntentId!;
+        await pendingConfirm.confirm({
+          paymentIntentId,
+          request: {
+            path: `${ENDPOINTS.baths}/confirm`,
+            payload: { paymentIntentId },
+          },
+        });
       }
 
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      queryClient.invalidateQueries({ queryKey: ["bath-slots", dateYMD] });
-      router.replace({
-        pathname: "/reservation/success" as any,
-        params: { variant: "bath" },
-      });
+      finishBath();
     } catch (err) {
+      // Ya se cobró y el aviso con "Reintentar" está en pantalla.
+      if (err instanceof PendingConfirmationError) return;
       const msg = err instanceof Error ? err.message : "No se pudo reservar el baño";
       Alert.alert("Error", msg);
     } finally {
@@ -791,9 +828,12 @@ function CreateBathScreenContent() {
         {/* Botón pagar */}
         {selectedPet && variant && selectedSlotIso && (
           <TouchableOpacity
-            style={[styles.payButton, !canSubmit && styles.payButtonDisabled]}
+            style={[
+              styles.payButton,
+              (!canSubmit || pendingConfirm.hasPending) && styles.payButtonDisabled,
+            ]}
             onPress={handleSubmit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || pendingConfirm.hasPending}
             testID="bath-pay-button"
           >
             {submitting ? (
@@ -820,6 +860,7 @@ function CreateBathScreenContent() {
         )}
 
         {checkout.stuckNotice}
+        {pendingConfirm.notice}
       </ScrollView>
     </KeyboardAvoidingView>
   );
