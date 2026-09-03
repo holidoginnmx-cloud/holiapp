@@ -103,6 +103,12 @@ jobs:
           cache: npm
       - name: Instalar (lockfile congelado)
         run: npm ci
+      # `dist/` está gitignoreado y NO basta con la condición `react-native`
+      # del package.json: eso lo resuelve Metro, pero `tsc` sigue los campos
+      # `types`/`main` → `dist/index.d.ts`. Sin este paso salen ~195 errores
+      # de tipos que en local no se ven porque dist/ ya existe.
+      - name: Compilar @holidoginn/shared (tipos que consume la app)
+        run: npm run build --workspace=@holidoginn/shared
       - name: tsc --noEmit
         working-directory: apps/mobile
         run: npx tsc --noEmit
