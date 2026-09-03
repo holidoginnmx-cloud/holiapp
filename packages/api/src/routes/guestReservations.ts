@@ -10,7 +10,14 @@ import { resolveOrCreateGuestUser } from "../lib/guestUser";
 import { resolveOrCreateGuestPet } from "../lib/guestPet";
 import { recordRequiredAcceptances } from "../lib/legal";
 import { cartillaBlocks } from "../lib/cartilla";
-import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import {
+  getLodgingPricing,
+  sizeFromWeight,
+  bathSizeKey,
+  computeDays,
+  computeStayPricing,
+  roundMoney,
+} from "../lib/pricing";
 import { quoteDelivery } from "../lib/delivery";
 import { createReservationGroup } from "../lib/reservationCreate";
 import { parseDeliveryTrip } from "../lib/delivery";
@@ -90,7 +97,12 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         if (checkOutDate <= checkInDate) {
           return reply.status(400).send({ error: "checkOut debe ser posterior a checkIn" });
         }
-        const totalDays = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / 86_400_000);
+        // Noches en días-calendario UTC (computeDays): la misma cuenta que
+        // hace createReservationGroup al confirmar.
+        const totalDays = computeDays(checkInDate, checkOutDate);
+        if (totalDays < 1) {
+          return reply.status(400).send({ error: "La estancia debe ser de al menos una noche" });
+        }
         if (body.paymentType === "DEPOSIT") {
           if (totalDays < 2) {
             return reply
@@ -124,16 +136,23 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           });
         }
 
-        // 6) Precio (mismo cálculo que /payments/create-intent).
+        // 6) Precio — UNA fórmula (computeStayPricing), la misma que
+        // /payments/create-intent y que createReservationGroup al confirmar.
         const pricingConfig = await getLodgingPricing(prisma);
         const breakdown = createdPets.map((pet) => {
-          const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
+          const stay = computeStayPricing({
+            petWeightKg: pet.weight,
+            totalDays,
+            hasMedication: false,
+            sameDay: false,
+            config: pricingConfig,
+          });
           return {
             petId: pet.id,
             petName: pet.name,
             weight: pet.weight ?? 0,
-            pricePerDay,
-            subtotal: pricePerDay * totalDays,
+            pricePerDay: stay.pricePerDay,
+            subtotal: stay.lodging,
           };
         });
 
@@ -152,6 +171,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
             if (pet && sel?.notes?.trim()) medicationByPet[pet.id] = { notes: sel.notes.trim() };
           }
         }
+        const petIdHasMedication = (petId: string) =>
+          Object.prototype.hasOwnProperty.call(medicationByPet, petId);
 
         let bathTotal = 0;
         const bathBreakdown: Array<{ petId: string; variantId: string; price: number }> = [];
@@ -182,21 +203,28 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           }
         }
 
-        const medicationBreakdown: Array<{ petId: string; surcharge: number }> = [];
-        let medicationTotal = 0;
-        for (const [petId] of Object.entries(medicationByPet)) {
-          const petLodging = breakdown.find((b) => b.petId === petId);
-          if (!petLodging) continue;
-          const surcharge = Math.ceil(petLodging.subtotal * 0.1);
-          medicationTotal += surcharge;
-          medicationBreakdown.push({ petId, surcharge });
-        }
-
-        const baseTotal =
-          breakdown.reduce((sum, b) => sum + b.subtotal, 0) + bathTotal + medicationTotal;
         const hoursUntilCheckIn = hoursUntilHotelDay(checkInDate);
         const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
-        const surchargeAmount = sameDaySurcharge ? Math.ceil(baseTotal * 0.2) : 0;
+
+        // Precio FINAL por mascota: hospedaje + medicamento (porcentaje de
+        // Config → Tarifas) + baño, y mismo día sobre esa base. Sin descuento
+        // en el flujo de invitado.
+        const bathPriceByPet = new Map(bathBreakdown.map((b) => [b.petId, b.price]));
+        const finalByPet = createdPets.map((pet) =>
+          computeStayPricing({
+            petWeightKg: pet.weight,
+            totalDays,
+            hasMedication: petIdHasMedication(pet.id),
+            sameDay: sameDaySurcharge,
+            addonsAmount: bathPriceByPet.get(pet.id) ?? 0,
+            config: pricingConfig,
+          })
+        );
+        const medicationBreakdown: Array<{ petId: string; surcharge: number }> = createdPets
+          .map((pet, i) => ({ petId: pet.id, surcharge: finalByPet[i].medicationFee }))
+          .filter((m) => petIdHasMedication(m.petId));
+        const medicationTotal = medicationBreakdown.reduce((s, m) => s + m.surcharge, 0);
+        const surchargeAmount = finalByPet.reduce((s, f) => s + f.sameDayFee, 0);
 
         let deliveryFee = 0;
         let deliveryDistanceKm = 0;
@@ -219,7 +247,10 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           }
         }
 
-        const grandTotal = baseTotal + surchargeAmount + deliveryFee;
+        // Σ precio final por mascota + domicilio (costo fijo, sin recargo).
+        const grandTotal = roundMoney(
+          finalByPet.reduce((s, f) => s + f.total, 0) + deliveryFee
+        );
         const depositAmountBase =
           body.paymentType === "DEPOSIT" ? Math.ceil(grandTotal * 0.2) : grandTotal;
         const remainingAmount = grandTotal - depositAmountBase;
@@ -241,6 +272,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
           roomPreference: body.roomPreference,
           paymentType: body.paymentType,
           totalDays: String(totalDays),
+          // Lo que se cobró de mismo día manda al confirmar (ver createReservationGroup).
+          sameDaySurcharge: sameDaySurcharge ? "1" : "0",
         };
         if (Object.keys(bathSelectionsByPet).length > 0) {
           metadata.bath = JSON.stringify(bathSelectionsByPet);
@@ -420,6 +453,13 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         medicationByPet,
         homeDelivery,
         stripePaymentIntentId: pi.id,
+        // Intents viejos no traen la llave: se decide con el reloj, como antes.
+        sameDaySurcharge:
+          pi.metadata.sameDaySurcharge === "1"
+            ? true
+            : pi.metadata.sameDaySurcharge === "0"
+              ? false
+              : null,
         creditApplied: 0,
         notes: null,
         legalAccepted: true,

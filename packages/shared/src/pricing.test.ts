@@ -13,6 +13,13 @@ import {
   minutesFromHHmm,
   pricePerDayForWeight,
   sizeFromWeight,
+  SIZE_RANGES_KG,
+  sizeRangeLabel,
+  SAME_DAY_SURCHARGE_PCT,
+  ceilMoney,
+  roundMoney,
+  computeStayPricing,
+  allocateProportional,
 } from "./pricing";
 
 describe("sizeFromWeight", () => {
@@ -221,5 +228,227 @@ describe("hoursUntilHotelDay", () => {
   it("acepta otro desfase y usa Date.now() por defecto", () => {
     expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 0, 0), 0)).toBe(0);
     expect(typeof hoursUntilHotelDay(checkIn)).toBe("number");
+  });
+});
+
+describe("SIZE_RANGES_KG", () => {
+  it("es la misma tabla que sizeFromWeight (tope inclusivo, piso exclusivo)", () => {
+    for (let i = 0; i < SIZE_RANGES_KG.length; i++) {
+      const { size, upToKg } = SIZE_RANGES_KG[i];
+      if (upToKg != null) {
+        expect(sizeFromWeight(upToKg)).toBe(size);
+        expect(sizeFromWeight(upToKg + 0.1)).not.toBe(size);
+      } else {
+        expect(sizeFromWeight(SIZE_RANGES_KG[i - 1].upToKg! + 0.1)).toBe(size);
+        expect(sizeFromWeight(200)).toBe(size);
+      }
+    }
+  });
+
+  it("etiqueta cada tramo", () => {
+    expect(sizeRangeLabel("S")).toBe("≤ 5 kg");
+    expect(sizeRangeLabel("M")).toBe("5–15 kg");
+    expect(sizeRangeLabel("L")).toBe("15–24 kg");
+    expect(sizeRangeLabel("XL")).toBe("> 24 kg");
+  });
+});
+
+describe("ceilMoney / roundMoney", () => {
+  it("ceil a peso entero sin dejarse engañar por el ruido flotante", () => {
+    expect(ceilMoney(77.00000000000001)).toBe(77);
+    expect(ceilMoney(385 * 0.2)).toBe(77);
+    expect(ceilMoney(0.1 * 3 * 100)).toBe(30);
+    expect(ceilMoney(35.01)).toBe(36);
+    expect(ceilMoney(35)).toBe(35);
+    expect(ceilMoney(0)).toBe(0);
+  });
+
+  it("roundMoney normaliza a centavos", () => {
+    expect(roundMoney(0.1 + 0.2)).toBe(0.3);
+    expect(roundMoney(12.345)).toBe(12.35);
+    expect(roundMoney(12.344)).toBe(12.34);
+  });
+});
+
+describe("computeStayPricing", () => {
+  const cfg = DEFAULT_LODGING_PRICING;
+
+  it("hospedaje = tarifa por peso × noches, sin recargos", () => {
+    const r = computeStayPricing({
+      petWeightKg: 12,
+      totalDays: 3,
+      hasMedication: false,
+      sameDay: false,
+      config: cfg,
+    });
+    expect(r).toEqual({
+      totalDays: 3,
+      pricePerDay: 350,
+      lodging: 1050,
+      medicationFee: 0,
+      addonsAmount: 0,
+      discount: 0,
+      subtotal: 1050,
+      sameDayFee: 0,
+      total: 1050,
+    });
+  });
+
+  it("toma la tarifa de grande a partir del umbral configurado", () => {
+    expect(
+      computeStayPricing({ petWeightKg: 20, totalDays: 2, hasMedication: false, sameDay: false, config: cfg })
+        .pricePerDay
+    ).toBe(450);
+    expect(
+      computeStayPricing({ petWeightKg: 19.9, totalDays: 2, hasMedication: false, sameDay: false, config: cfg })
+        .pricePerDay
+    ).toBe(350);
+  });
+
+  it("cuenta las noches con computeDays cuando vienen fechas (no ceil de milisegundos)", () => {
+    const r = computeStayPricing({
+      petWeightKg: 5,
+      checkIn: new Date("2026-09-10T09:00:00Z"),
+      checkOut: new Date("2026-09-15T18:00:00Z"),
+      hasMedication: false,
+      sameDay: false,
+      config: cfg,
+    });
+    expect(r.totalDays).toBe(5);
+    expect(r.lodging).toBe(1750);
+  });
+
+  it("totalDays explícito manda sobre las fechas y nunca es negativo", () => {
+    const r = computeStayPricing({
+      petWeightKg: 5,
+      totalDays: 2,
+      checkIn: new Date("2026-09-10T00:00:00Z"),
+      checkOut: new Date("2026-09-20T00:00:00Z"),
+      hasMedication: false,
+      sameDay: false,
+      config: cfg,
+    });
+    expect(r.totalDays).toBe(2);
+    const neg = computeStayPricing({
+      petWeightKg: 5,
+      checkIn: new Date("2026-09-20T00:00:00Z"),
+      checkOut: new Date("2026-09-10T00:00:00Z"),
+      hasMedication: false,
+      sameDay: false,
+      config: cfg,
+    });
+    expect(neg.totalDays).toBe(0);
+    expect(neg.total).toBe(0);
+  });
+
+  it("medicamento: porcentaje CONFIGURABLE sobre el hospedaje, redondeado hacia arriba", () => {
+    const base = computeStayPricing({ petWeightKg: 30, totalDays: 3, hasMedication: true, sameDay: false, config: cfg });
+    expect(base.lodging).toBe(1350);
+    expect(base.medicationFee).toBe(135); // 10 % default
+    expect(base.total).toBe(1485);
+
+    const custom = computeStayPricing({
+      petWeightKg: 30,
+      totalDays: 3,
+      hasMedication: true,
+      sameDay: false,
+      config: { ...cfg, medicationSurchargePct: 0.15 },
+    });
+    expect(custom.medicationFee).toBe(203); // ceil(202.5)
+
+    const off = computeStayPricing({
+      petWeightKg: 30,
+      totalDays: 3,
+      hasMedication: true,
+      sameDay: false,
+      config: { ...cfg, medicationSurchargePct: 0 },
+    });
+    expect(off.medicationFee).toBe(0);
+  });
+
+  it("mismo día: 20 % sobre hospedaje + medicamento + add-ons − descuento, hacia arriba", () => {
+    const r = computeStayPricing({
+      petWeightKg: 10,
+      totalDays: 1,
+      hasMedication: true,
+      sameDay: true,
+      addonsAmount: 320,
+      config: cfg,
+    });
+    // 350 + 35 + 320 = 705 → 20 % = 141
+    expect(r.subtotal).toBe(705);
+    expect(r.sameDayFee).toBe(141);
+    expect(r.total).toBe(846);
+    expect(SAME_DAY_SURCHARGE_PCT).toBe(0.2);
+
+    const conDescuento = computeStayPricing({
+      petWeightKg: 10,
+      totalDays: 1,
+      hasMedication: false,
+      sameDay: true,
+      addonsAmount: 320,
+      discount: 67.33,
+      config: cfg,
+    });
+    // 670 − 67.33 = 602.67 → 20 % = 120.534 → 121
+    expect(conDescuento.subtotal).toBe(602.67);
+    expect(conDescuento.sameDayFee).toBe(121);
+    expect(conDescuento.total).toBe(723.67);
+  });
+
+  it("un descuento mayor que la base no deja el subtotal negativo", () => {
+    const r = computeStayPricing({
+      petWeightKg: 3,
+      totalDays: 1,
+      hasMedication: false,
+      sameDay: true,
+      discount: 1000,
+      config: cfg,
+    });
+    expect(r.subtotal).toBe(0);
+    expect(r.sameDayFee).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it("PARIDAD con la fórmula histórica de create-intent (default 10 %, montos enteros)", () => {
+    // Oráculo: lo que /payments/create-intent cobró siempre.
+    for (const peso of [4, 12, 22, 35]) {
+      for (const noches of [1, 3, 7, 13]) {
+        for (const med of [false, true]) {
+          const ppd = peso >= 20 ? 450 : 350;
+          const lodging = ppd * noches;
+          const medFee = med ? Math.ceil(lodging * 0.1) : 0;
+          const r = computeStayPricing({ petWeightKg: peso, totalDays: noches, hasMedication: med, sameDay: false, config: cfg });
+          expect(r.lodging).toBe(lodging);
+          expect(r.medicationFee).toBe(medFee);
+          expect(r.total).toBe(lodging + medFee);
+          // Mismo día sobre la base completa (hospedaje + medicamento): entero.
+          const sd = computeStayPricing({ petWeightKg: peso, totalDays: noches, hasMedication: med, sameDay: true, config: cfg });
+          expect(sd.sameDayFee).toBe(Math.ceil((lodging + medFee) * 0.2));
+          expect(Number.isInteger(sd.total)).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("allocateProportional", () => {
+  it("reparte a centavos y la última fila absorbe el redondeo", () => {
+    const parts = allocateProportional(100, [1, 1, 1]);
+    expect(parts).toEqual([33.33, 33.33, 33.34]);
+    expect(parts.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 2);
+  });
+
+  it("proporcional a los pesos", () => {
+    expect(allocateProportional(90, [700, 200])).toEqual([70, 20]);
+  });
+
+  it("una sola fila se lleva todo; sin filas no hay nada", () => {
+    expect(allocateProportional(45.678, [3])).toEqual([45.68]);
+    expect(allocateProportional(45, [])).toEqual([]);
+  });
+
+  it("pesos en cero → partes iguales", () => {
+    expect(allocateProportional(10, [0, 0, 0])).toEqual([3.33, 3.33, 3.34]);
   });
 });

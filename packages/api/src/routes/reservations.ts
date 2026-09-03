@@ -28,7 +28,6 @@ import {
 import { notifyUser, notifyUsers, notifyTeamReservationUpdated } from "../lib/notify";
 import { notifyNewReservation } from "../lib/notifyNewReservation";
 import { applyReservationTimesUpdate } from "../lib/stayTimes";
-import { markQuoteConverted } from "../lib/quotes";
 import { processRefund } from "../lib/refund";
 import { notifyExpiringVaccines } from "../lib/auto-actions";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -40,18 +39,18 @@ import {
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
   getLodgingPricing,
-  pricePerDayForWeight,
   sizeFromWeight,
-  computeDaycareHours,
+  computeDays,
+  computeStayPricing,
+  allocateProportional,
+  roundMoney,
+  type StayPricing,
 } from "../lib/pricing";
-import { chainStarts, evaluateStart, localYMD } from "../lib/bathAvailability";
-import {
-  loadScheduleCfg,
-  loadBusyIntervals,
-  resolveBathDuration,
-} from "../lib/bathAvailabilityDb";
 import { quoteDelivery } from "../lib/delivery";
+import { applyDeliveryUpdate } from "../lib/deliveryUpdate";
 import { lockRoomsAndVerifyCapacity, RoomTakenError } from "../lib/reservationCreate";
+import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeamCreate";
+import { statusTransitionVerdict } from "../lib/reservationStatus";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -82,38 +81,6 @@ function parseBathBreakdown(raw: unknown): Map<string, string> | null {
   } catch {
     return null;
   }
-}
-
-// Reparte un total de grupo pactado manualmente en n filas con 2 decimales;
-// la primera fila absorbe el residuo de redondeo para que la suma sea exacta.
-function splitGroupTotal(total: number, n: number): number[] {
-  if (n <= 1) return [Number(total.toFixed(2))];
-  const share = Math.floor((total / n) * 100) / 100;
-  const first = Number((total - share * (n - 1)).toFixed(2));
-  return [first, ...Array<number>(n - 1).fill(share)];
-}
-
-// Reparte un monto entre las filas del grupo EN PROPORCIÓN a lo que cuesta
-// cada una (la última absorbe el residuo). Se usa para el anticipo: es del
-// grupo, pero cada reserva necesita su parte para que el saldo por mascota
-// cuadre — colgarlo entero de la primera dejaba a las demás con su total
-// íntegro pendiente. Con pesos en cero cae a partes iguales.
-function splitProportional(amount: number, weights: number[]): number[] {
-  const n = weights.length;
-  if (n <= 1) return [Number(amount.toFixed(2))];
-  const sum = weights.reduce((a, w) => a + w, 0);
-  const parts: number[] = [];
-  let allocated = 0;
-  for (let i = 0; i < n - 1; i++) {
-    const part =
-      sum > 0
-        ? Number(((amount * (weights[i] ?? 0)) / sum).toFixed(2))
-        : Math.floor((amount / n) * 100) / 100;
-    parts.push(part);
-    allocated += part;
-  }
-  parts.push(Number((amount - allocated).toFixed(2)));
-  return parts;
 }
 
 export default async function reservationsRoutes(fastify: FastifyInstance) {
@@ -292,9 +259,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
   //
   //  La tarifa SIEMPRE se recotiza server-side; el delta se aplica al
   //  totalAmount y se cobra al recoger (no se cobra en línea aquí).
-  //  Nota: el admin web escribe estas mismas columnas directo en
-  //  Supabase y admite tarifa manual; no chocan (columnas distintas
-  //  del mismo registro), pero no hay que divergir a propósito.
+  //  Nota: el admin web YA NO escribe estas columnas en Supabase; pasa
+  //  por PATCH /internal/reservations/:id/delivery, que comparte esta
+  //  misma lógica (lib/deliveryUpdate.ts) y solo agrega `feeOverride`
+  //  para las tarifas pactadas a mano.
   // ────────────────────────────────────────────────────────────
   fastify.patch<{ Params: { id: string } }>(
     "/reservations/:id/delivery",
@@ -305,158 +273,34 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const reservation = await prisma.reservation.findUnique({
-        where: { id: request.params.id },
-        include: {
-          pet: { select: { name: true } },
-          payments: true,
-        },
-      });
-      if (!reservation) {
-        return reply.status(404).send({ error: "Reservación no encontrada" });
-      }
-
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!(await canAccessReservation(prisma, reservation, request))) {
-        return reply.status(403).send({ error: "No autorizado" });
-      }
-      if (reservation.status === "CANCELLED" || reservation.status === "CHECKED_OUT") {
-        return reply.status(400).send({ error: "La reserva ya no se puede modificar" });
-      }
-      // El equipo puede ajustarlo con la estancia en curso; el dueño solo antes
-      // de que su mascota llegue.
-      if (!isStaffOrAdmin && reservation.status !== "CONFIRMED") {
+
+      const res = await applyDeliveryUpdate(prisma, {
+        reservationId: request.params.id,
+        input: parsed.data,
+        isStaffOrAdmin,
+        actorUserId: request.userId ?? null,
+        authorize: (reservation) => canAccessReservation(prisma, reservation, request),
+      });
+      if (!res.ok) {
         return reply
-          .status(400)
-          .send({ error: "El domicilio solo se puede cambiar antes del check-in" });
+          .status(res.status)
+          .send({ error: res.error, ...(res.code ? { code: res.code } : {}) });
       }
-      // Aquí siempre se mueve el total: mismo criterio que el PATCH de precio.
-      const pendingChange = await prisma.reservationChangeRequest.findFirst({
-        where: { reservationId: reservation.id, status: "PENDING" },
-      });
-      if (pendingChange) {
-        return reply.status(409).send({
-          error:
-            "Hay una solicitud de cambio pendiente en esta reserva. Resuélvela antes de tocar el total.",
-        });
-      }
-
-      const oldFee = reservation.homeDelivery ? Number(reservation.homeDeliveryFee ?? 0) : 0;
-      let deliveryData: Prisma.ReservationUpdateInput;
-      let newFee = 0;
-      let address = "";
-      let isCourtesy = false;
-
-      if (parsed.data.enable) {
-        // En un grupo multi-mascota el domicilio vive en UNA sola fila (es un
-        // viaje, no uno por perro). Si otra hermana ya lo tiene, se edita ahí.
-        if (reservation.groupId) {
-          const sibling = await prisma.reservation.findFirst({
-            where: {
-              groupId: reservation.groupId,
-              id: { not: reservation.id },
-              homeDelivery: true,
-              status: { not: "CANCELLED" },
-            },
-            include: { pet: { select: { name: true } } },
-          });
-          if (sibling) {
-            return reply.status(409).send({
-              error: `El domicilio de este grupo está en la reserva de ${sibling.pet.name}; edítalo desde ahí.`,
-            });
-          }
-        }
-
-        const trip = parsed.data.trip ?? "PICKUP";
-        const quote = await quoteDelivery(prisma, parsed.data.lat, parsed.data.lng, trip);
-        if (!quote.active) {
-          return reply
-            .status(400)
-            .send({ error: "El servicio a domicilio no está disponible por ahora" });
-        }
-        // Regalar el viaje es decisión del equipo: si la bandera viene del
-        // dueño se ignora. Se guarda como tarifa 0 —el viaje queda registrado
-        // en la reserva pero no entra al total— igual que un add-on de cortesía.
-        isCourtesy = !!parsed.data.isCourtesy && isStaffOrAdmin;
-        newFee = isCourtesy ? 0 : quote.fee;
-        address = parsed.data.address;
-        deliveryData = {
-          homeDelivery: true,
-          homeDeliveryAddress: parsed.data.address,
-          homeDeliveryDistanceKm: quote.distanceKm,
-          homeDeliveryFee: new Prisma.Decimal(newFee),
-          homeDeliveryTrip: trip,
-        };
-      } else {
-        if (!reservation.homeDelivery) {
-          return reply
-            .status(400)
-            .send({ error: "La reserva no tiene servicio a domicilio" });
-        }
-        deliveryData = {
-          homeDelivery: false,
-          homeDeliveryAddress: null,
-          homeDeliveryDistanceKm: null,
-          homeDeliveryFee: null,
-        };
-      }
-
-      // Al quitar se descuenta la tarifa GUARDADA, no una recotización: se
-      // devuelve exactamente lo que se cobró, aunque los precios hayan cambiado.
-      const delta = Number((newFee - oldFee).toFixed(2));
-      const newTotal = Math.max(0, Number((Number(reservation.totalAmount) + delta).toFixed(2)));
-
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { ...deliveryData, totalAmount: new Prisma.Decimal(newTotal) },
-      });
-
-      const totalPaid = reservation.payments
-        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
-        .reduce((sum, p) => sum + Number(p.amount), 0);
-      const overpaid = Math.max(0, Number((totalPaid - newTotal).toFixed(2)));
-
-      // Avisos best-effort: nunca tumban el cambio ya escrito.
-      try {
-        if (isStaffOrAdmin) {
-          await notifyUser(prisma, {
-            userId: reservation.ownerId,
-            type: "GENERAL",
-            title: parsed.data.enable
-              ? "Servicio a domicilio agregado 🚗"
-              : "Servicio a domicilio retirado",
-            body: parsed.data.enable
-              ? isCourtesy
-                ? `Recogeremos y entregaremos a ${reservation.pet.name} en ${address}, sin costo. ¡Va por nuestra cuenta!`
-                : `Recogeremos y entregaremos a ${reservation.pet.name} en ${address}. La tarifa de $${newFee} se suma al total y se paga al recoger.`
-              : `Se quitó el servicio a domicilio de la reserva de ${reservation.pet.name}. El total bajó $${oldFee}.`,
-            data: { reservationId: reservation.id, kind: "DELIVERY_UPDATED" },
-          });
-        }
-        await notifyTeamReservationUpdated(prisma, {
-          reservationId: reservation.id,
-          petName: reservation.pet.name,
-          body: parsed.data.enable
-            ? `Se agregó servicio a domicilio${isCourtesy ? " de CORTESÍA" : ` ($${newFee})`} — ${address}.`
-            : `Se quitó el servicio a domicilio (−$${oldFee}).`,
-          actorUserId: request.userId,
-          assignedStaffId: reservation.staffId,
-        });
-      } catch (err) {
-        console.error("[delivery] avisos fallaron:", err);
-      }
-
+      const { delta, newTotal, overpaid } = res.data;
       return reply.send({ success: true, delta, newTotal, overpaid });
     }
   );
 
-  // POST /reservations — crear (calcula totalDays y totalAmount)
+  // POST /reservations — alta MANUAL del equipo (mostrador/teléfono). La
+  // lógica vive en lib/reservationTeamCreate.ts y la comparten esta ruta y
+  // POST /internal/reservations (admin web): una sola fórmula de precio,
+  // un solo lock de cuartos y los mismos avisos, sin dos copias que diverjan.
   fastify.post("/reservations", { preHandler: [authMiddleware] }, async (request, reply) => {
-    // Este es el alta MANUAL del equipo (mostrador/teléfono): nace CONFIRMED
-    // sin pago, sin cartilla aprobada, sin gate legal y acepta staffId,
-    // internalNotes y anticipo acordado. Un dueño con sesión podía llamarlo y
-    // saltarse todo eso. El cliente reserva por sus rutas con pago
+    // Nace CONFIRMED sin pago, sin cartilla aprobada, sin gate legal y acepta
+    // staffId, internalNotes y anticipo acordado. Un dueño con sesión podía
+    // llamarlo y saltarse todo eso. El cliente reserva por sus rutas con pago
     // (/reservations/multi, /baths/confirm, /daycare/confirm); la app del
     // cliente nunca usa este endpoint.
     if (request.userRole !== "ADMIN" && request.userRole !== "STAFF") {
@@ -471,596 +315,22 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const {
-      reservationType,
-      checkIn,
-      checkOut,
-      // STAY: hora estimada de llegada/recogida (opcional). En DAYCARE la rama
-      // correspondiente las lee aparte de parsed.data porque ahí son requeridas.
-      checkInTime,
-      checkOutTime,
-      ownerId,
-      petId,
-      petIds,
-      roomId,
-      roomIds,
-      notes,
-      internalNotes,
-      legalAccepted,
-      appointmentAt,
-      deslanado,
-      corte,
-      bath,
-      staffId,
-      medicationNotes,
-      depositAgreed,
-      homeDelivery,
-      totalAmountOverride,
-      scheduleOverride,
-      quoteId,
-    } = parsed.data;
-
-    // OWNER solo puede reservar para sí mismo; STAFF/ADMIN pueden reservar en nombre de cualquiera.
-    const isStaffOrAdmin =
-      request.userRole === "ADMIN" || request.userRole === "STAFF";
-    if (!isStaffOrAdmin && ownerId !== request.userId) {
-      return reply
-        .status(403)
-        .send({ error: "Solo puedes reservar para tu propia cuenta" });
-    }
-
-    if (!legalAccepted) {
-      return reply
-        .status(400)
-        .send({ error: "Debes aceptar los términos legales para reservar" });
-    }
-
-    // Verify owner exists
-    const owner = await prisma.user.findUnique({ where: { id: ownerId } });
-    if (!owner) {
-      return reply.status(404).send({ error: "Dueño no encontrado" });
-    }
-
-    // Lista de mascotas: petIds (multi-perro) o petId único (flujo clásico).
-    // Se crea UNA reserva por mascota; con más de una comparten groupId.
-    const petIdList = Array.from(
-      new Set(petIds?.length ? petIds : petId ? [petId] : []),
-    );
-    if (petIdList.length === 0) {
-      return reply.status(400).send({ error: "Selecciona al menos una mascota" });
-    }
-    if (petIdList.length > 1 && !isStaffOrAdmin) {
-      return reply.status(403).send({
-        error: "Solo staff/admin puede crear reservas multi-mascota por esta vía",
-      });
-    }
-    // El total pactado manualmente es exclusivo de staff/admin (nunca se
-    // confía en el cliente owner para fijar el precio).
-    if (totalAmountOverride != null && !isStaffOrAdmin) {
-      return reply.status(403).send({
-        error: "Solo staff/admin puede fijar un total manual",
-      });
-    }
-    // Saltarse la agenda ("agendar de todos modos") también es exclusivo de
-    // staff/admin: el cliente nunca debe poder reservar un horario imposible.
-    if (scheduleOverride && !isStaffOrAdmin) {
-      return reply.status(403).send({
-        error: "Solo staff/admin puede agendar fuera de la disponibilidad",
-      });
-    }
-
-    // Verify pets exist and belong to owner (orden estable = orden pedido)
-    const foundPets = await prisma.pet.findMany({
-      where: { id: { in: petIdList } },
+    const res = await createTeamReservation(prisma, {
+      input: parsed.data,
+      actorUserId: request.userId ?? null,
+      source: "APP_ADMIN",
     });
-    if (foundPets.length !== petIdList.length) {
-      return reply.status(404).send({ error: "Mascota no encontrada" });
+    if (!res.ok) {
+      return reply.status(res.status).send({
+        error: res.error,
+        ...(res.code ? { code: res.code } : {}),
+        ...(res.extra ?? {}),
+      });
     }
-    // Basta con que la mascota sea suya O se la hayan compartido: quien reserva
-    // puede ser el co-dueño. La reserva se guarda a nombre de quien reserva
-    // (`ownerId`), que es también quien paga y a quien se le abona un reembolso.
-    const sharedForBooker = await sharedPetIds(prisma, ownerId);
-    if (
-      foundPets.some(
-        (p) => p.ownerId !== ownerId && !sharedForBooker.includes(p.id)
-      )
-    ) {
-      return reply.status(400).send({ error: "La mascota no pertenece al dueño indicado" });
-    }
-    const groupPets = petIdList.map((id) => foundPets.find((p) => p.id === id)!);
-    const groupId = groupPets.length > 1 ? randomUUID() : null;
-
-    // Validar staff asignado (opcional). Solo usuarios con rol STAFF.
-    if (staffId) {
-      const staffUser = await prisma.user.findUnique({ where: { id: staffId } });
-      if (!staffUser || staffUser.role !== "STAFF") {
-        return reply.status(400).send({ error: "El staff asignado no es válido" });
-      }
-    }
-
-    const trimmedMedication = medicationNotes?.trim() || null;
-
-    // Servicio a domicilio: la tarifa SIEMPRE se recalcula server-side desde lat/lng.
-    let deliveryFee = 0;
-    let deliveryDistanceKm = 0;
-    let deliveryAddress: string | null = null;
-    if (
-      homeDelivery &&
-      Number.isFinite(homeDelivery.lat) &&
-      Number.isFinite(homeDelivery.lng)
-    ) {
-      const quote = await quoteDelivery(
-        prisma,
-        homeDelivery.lat,
-        homeDelivery.lng,
-        homeDelivery.trip ?? "PICKUP"
-      );
-      if (quote.active) {
-        deliveryFee = quote.fee;
-        deliveryDistanceKm = quote.distanceKm;
-        deliveryAddress = homeDelivery.address;
-      }
-    }
-    const deliveryData = deliveryAddress
-      ? {
-          homeDelivery: true,
-          homeDeliveryAddress: deliveryAddress,
-          homeDeliveryDistanceKm: deliveryDistanceKm,
-          homeDeliveryFee: new Prisma.Decimal(deliveryFee),
-          homeDeliveryTrip: homeDelivery?.trip ?? "PICKUP",
-        }
-      : {};
-
-    // Campos comunes adicionales: staff y medicamento aplican a TODAS las
-    // filas del grupo; el domicilio se registra una sola vez (un viaje por
-    // grupo) y el anticipo se REPARTE entre las filas en proporción a lo que
-    // cuesta cada mascota (ver splitProportional).
-    const sharedData = {
-      ...(staffId ? { staffId } : {}),
-      ...(trimmedMedication ? { medicationNotes: trimmedMedication } : {}),
-    };
-    // Partes del anticipo, calculadas por cada rama con los totales de sus
-    // filas (el fee de domicilio de la primera incluido).
-    const splitDeposit = (rowTotals: number[]): number[] | null =>
-      depositAgreed != null && depositAgreed > 0
-        ? splitProportional(depositAgreed, rowTotals)
-        : null;
-    const rowExtraData = (isFirst: boolean, depositShare?: number | null) => ({
-      ...sharedData,
-      ...(depositShare != null && depositShare > 0
-        ? { depositAgreed: new Prisma.Decimal(depositShare) }
-        : {}),
-      ...(isFirst ? deliveryData : {}),
+    return reply.status(201).send({
+      ...teamCreatePayload(res.data.reservations),
+      agendaWarnings: res.data.agendaWarnings,
     });
-
-    // Respuesta: la primera reserva (misma forma que siempre, compatible con
-    // clientes existentes) + resumen del grupo cuando se crearon varias filas.
-    type CreatedReservation = Prisma.ReservationGetPayload<{
-      include: { pet: true; room: true };
-    }>;
-    const sendCreated = (rows: CreatedReservation[]) => {
-      // Aviso al equipo. Punto único para las tres ramas (BATH/DAYCARE/STAY),
-      // que convergen aquí. Fire-and-forget: el helper no lanza y el equipo no
-      // debe esperar al push para recibir su 201.
-      void notifyNewReservation(prisma, {
-        reservations: rows,
-        owner,
-        source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
-        createdByUserId: request.userId ?? null,
-      });
-
-      // La reserva vino de una cotización: se cierra el círculo. También
-      // fire-and-forget — que falle marcarla NUNCA debe tumbar la creación de
-      // la reserva, que es lo que de verdad importa.
-      if (quoteId) {
-        void markQuoteConverted(
-          prisma,
-          quoteId,
-          { id: rows[0].id, groupId: rows[0].groupId },
-          request.userId ?? null,
-        );
-      }
-
-      return reply.status(201).send(
-        rows.length > 1
-          ? {
-              ...rows[0],
-              groupReservations: rows.map((r) => ({
-                id: r.id,
-                petId: r.petId,
-                petName: r.pet?.name ?? null,
-                totalAmount: r.totalAmount,
-              })),
-            }
-          : rows[0],
-      );
-    };
-
-    // ── Rama BATH: cita puntual; el precio se resuelve server-side desde la
-    // variante de cada mascota, o del total manual pactado (staff/admin).
-    if (reservationType === "BATH") {
-      if (!appointmentAt || Number.isNaN(appointmentAt.getTime())) {
-        return reply
-          .status(400)
-          .send({ error: "appointmentAt es requerido para una cita de baño" });
-      }
-
-      const bathType = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
-      if (!bathType) {
-        return reply.status(500).send({ error: "Servicio de baño no configurado" });
-      }
-
-      // Variante por mascota (la talla puede diferir dentro del grupo).
-      const bathVariants: { id: string; price: number; durationMinutes: number | null }[] = [];
-      for (const p of groupPets) {
-        const size = sizeFromWeight(p.weight ?? 0);
-        const variant = await prisma.serviceVariant.findUnique({
-          where: {
-            serviceTypeId_petSize_deslanado_corte: {
-              serviceTypeId: bathType.id,
-              petSize: size,
-              deslanado: deslanado ?? false,
-              corte: corte ?? false,
-            },
-          },
-        });
-        if (!variant || !variant.isActive) {
-          return reply
-            .status(400)
-            .send({ error: `Variante de baño no disponible para ${p.name}` });
-        }
-        bathVariants.push({
-          id: variant.id,
-          price: Number(variant.price),
-          durationMinutes: variant.durationMinutes,
-        });
-      }
-
-      // ── Agenda: cada mascota ocupa su propio bloque de tiempo ──────────────
-      // Antes todas las filas de un grupo se guardaban con la MISMA hora, que
-      // es justamente el encime que se reportó. Ahora se encadenan: el segundo
-      // perro empieza cuando termina el primero.
-      const schedule = await loadScheduleCfg(prisma);
-      // Vía `resolveBathDuration` y no leyendo la variante a secas: así respeta
-      // la duración propia del perro (`pets.groomingMinutes`) cuando la tiene.
-      const bathDurations = await Promise.all(
-        bathVariants.map(async (v, i) => {
-          const { durationMinutes } = await resolveBathDuration(
-            prisma,
-            { variantId: v.id, petId: groupPets[i].id },
-            schedule,
-          );
-          return durationMinutes;
-        }),
-      );
-      const bathStarts = chainStarts(appointmentAt, bathDurations, schedule.bufferMinutes);
-      const dateYMD = localYMD(appointmentAt);
-
-      const agendaWarnings: string[] = [];
-      {
-        const busy = await loadBusyIntervals(prisma, dateYMD, schedule);
-        for (let i = 0; i < bathStarts.length; i++) {
-          const verdict = evaluateStart(bathStarts[i], bathDurations[i], schedule, busy);
-          if (!verdict.ok) {
-            agendaWarnings.push(`${groupPets[i].name}: ${verdict.message}`);
-          }
-          // La cita entra a la ocupación aunque haya avisado, para que el
-          // siguiente perro de la cadena se evalúe contra la agenda real.
-          busy.push({
-            startMs: bathStarts[i].getTime(),
-            endMs: bathStarts[i].getTime() + bathDurations[i] * 60_000,
-            id: `pending-${i}`,
-            label: groupPets[i].name,
-          });
-        }
-      }
-
-      // Sin override, el conflicto bloquea. El equipo puede forzar desde el
-      // admin: la operación real tiene excepciones (favores, urgencias) y
-      // quedan marcadas para verlas distinto en la agenda.
-      if (agendaWarnings.length > 0 && !scheduleOverride) {
-        return reply.status(409).send({
-          error: agendaWarnings.join(" "),
-          code: "AGENDA_CONFLICT",
-          warnings: agendaWarnings,
-        });
-      }
-
-      // Monto por fila: total manual repartido, o la variante de cada mascota.
-      // El fee de domicilio va SOLO en la primera fila del grupo.
-      const amounts =
-        totalAmountOverride != null
-          ? splitGroupTotal(totalAmountOverride, groupPets.length)
-          : bathVariants.map((v) => v.price);
-      const deposits = splitDeposit(
-        amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
-      );
-
-      // Sin pago en creación manual: el total queda como saldo pendiente,
-      // el admin registra el cobro después desde el detalle de la reserva.
-      const reservations = await prisma.$transaction(async (tx) => {
-        const created: CreatedReservation[] = [];
-        for (let i = 0; i < groupPets.length; i++) {
-          const isFirst = i === 0;
-          const res = await tx.reservation.create({
-            data: {
-              reservationType: "BATH",
-              appointmentAt: bathStarts[i],
-              durationMinutes: bathDurations[i],
-              ...(agendaWarnings.length > 0
-                ? {
-                    scheduleOverridden: true,
-                    scheduleOverrideReason: agendaWarnings.join(" "),
-                  }
-                : {}),
-              totalAmount: new Prisma.Decimal(amounts[i]).add(
-                isFirst ? deliveryFee : 0,
-              ),
-              notes,
-              internalNotes: internalNotes ?? null,
-              legalAccepted,
-              status: "CONFIRMED",
-              groupId,
-              ownerId,
-              petId: groupPets[i].id,
-              ...rowExtraData(isFirst, deposits?.[i]),
-            },
-            include: { pet: true, room: true },
-          });
-          // Addon para rastrear la variante contratada (el desglose conserva
-          // el precio de lista de la variante aunque el total sea manual).
-          await tx.reservationAddon.create({
-            data: {
-              reservationId: res.id,
-              variantId: bathVariants[i].id,
-              unitPrice: new Prisma.Decimal(bathVariants[i].price),
-              paidWith: "BOOKING",
-            },
-          });
-          created.push(res);
-        }
-        return created;
-      });
-      return sendCreated(reservations);
-    }
-
-    // ── Rama DAYCARE: día único cobrado por hora (tarifa única), sin cuarto
-    // y sin cartilla. appointmentAt se normaliza a mediodía UTC (convención
-    // del admin web); la hora real vive en checkInTime/checkOutTime.
-    if (reservationType === "DAYCARE") {
-      if (!appointmentAt || Number.isNaN(appointmentAt.getTime())) {
-        return reply
-          .status(400)
-          .send({ error: "appointmentAt es requerido para una guardería" });
-      }
-      const inTime = parsed.data.checkInTime ?? null;
-      const outTime = parsed.data.checkOutTime ?? null;
-      if (!inTime || !outTime) {
-        return reply.status(400).send({
-          error: "checkInTime y checkOutTime son requeridos para una guardería",
-        });
-      }
-      const hours = computeDaycareHours(inTime, outTime);
-      if (hours <= 0) {
-        return reply.status(400).send({
-          error: "La hora de salida debe ser posterior a la de entrada",
-        });
-      }
-
-      const dayAnchor = new Date(
-        Date.UTC(
-          appointmentAt.getUTCFullYear(),
-          appointmentAt.getUTCMonth(),
-          appointmentAt.getUTCDate(),
-          12
-        )
-      );
-
-      // Total sugerido = horas × tarifa única POR mascota; el admin puede
-      // sobrescribirlo con un total de grupo pactado (walk-in). El domicilio
-      // siempre se suma aparte, solo en la primera fila.
-      const pricingConfig = await getLodgingPricing(prisma);
-      const amounts =
-        totalAmountOverride != null
-          ? splitGroupTotal(totalAmountOverride, groupPets.length)
-          : groupPets.map(() => hours * pricingConfig.daycareHourPrice);
-      const deposits = splitDeposit(
-        amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
-      );
-
-      // Sin pago en creación manual: el total queda como saldo pendiente y el
-      // admin registra el cobro después (igual que la rama BATH).
-      const reservations = await prisma.$transaction(async (tx) => {
-        const created: CreatedReservation[] = [];
-        for (let i = 0; i < groupPets.length; i++) {
-          const isFirst = i === 0;
-          const res = await tx.reservation.create({
-            data: {
-              reservationType: "DAYCARE",
-              appointmentAt: dayAnchor,
-              checkInTime: inTime,
-              checkOutTime: outTime,
-              totalAmount: new Prisma.Decimal(amounts[i]).add(
-                isFirst ? deliveryFee : 0,
-              ),
-              notes,
-              internalNotes: internalNotes ?? null,
-              legalAccepted,
-              status: "CONFIRMED",
-              groupId,
-              ownerId,
-              petId: groupPets[i].id,
-              ...rowExtraData(isFirst, deposits?.[i]),
-            },
-            include: { pet: true, room: true },
-          });
-          created.push(res);
-        }
-        return created;
-      });
-      return sendCreated(reservations);
-    }
-
-    // ── Rama STAY (default): estancia con rango de fechas y cuarto.
-    if (!checkIn || !checkOut) {
-      return reply
-        .status(400)
-        .send({ error: "checkIn y checkOut son requeridos para una estancia" });
-    }
-    if (checkOut <= checkIn) {
-      return reply
-        .status(400)
-        .send({ error: "checkOut debe ser posterior a checkIn" });
-    }
-
-    // Cuarto por mascota: `roomIds` (uno por fila, en el orden de petIds) o el
-    // `roomId` único para todo el grupo. Los perros de un grupo no siempre
-    // caben juntos ni comparten talla, así que cada uno puede ir a su cuarto.
-    if (roomIds && roomIds.length !== groupPets.length) {
-      return reply.status(400).send({
-        error: "Indica un cuarto por mascota (roomIds debe tener el mismo largo que petIds)",
-      });
-    }
-    const roomIdByPet = roomIds ?? groupPets.map(() => roomId);
-    if (roomIdByPet.some((id) => !id)) {
-      return reply.status(400).send({ error: "roomId es requerido para una estancia" });
-    }
-
-    // Verify rooms exist (una consulta para los cuartos distintos del grupo)
-    const uniqueRoomIds = Array.from(new Set(roomIdByPet as string[]));
-    const rooms = await prisma.room.findMany({ where: { id: { in: uniqueRoomIds } } });
-    const roomById = new Map(rooms.map((r) => [r.id, r]));
-    for (const id of uniqueRoomIds) {
-      const room = roomById.get(id);
-      if (!room) {
-        return reply.status(404).send({ error: "Cuarto no encontrado" });
-      }
-      if (!room.isActive) {
-        return reply.status(400).send({ error: `El cuarto ${room.name} no está activo` });
-      }
-    }
-
-    // Capacity guard por cuarto: se cuenta cuántas mascotas del grupo entran a
-    // cada uno (varias pueden compartir) más lo ya ocupado en esas fechas.
-    for (const id of uniqueRoomIds) {
-      const room = roomById.get(id)!;
-      const delGrupo = roomIdByPet.filter((r) => r === id).length;
-      const taken = await countOverlappingForRoom(room.id, checkIn, checkOut);
-      if (taken + delGrupo > room.capacity) {
-        return reply.status(409).send({
-          error: `El cuarto ${room.name} no tiene capacidad disponible en esas fechas (${taken}/${room.capacity} ocupado).`,
-          code: "ROOM_AT_CAPACITY",
-        });
-      }
-    }
-
-    // Hospedaje: precio por día según peso × noches, POR mascota.
-    const diffMs = checkOut.getTime() - checkIn.getTime();
-    const totalDays = Math.ceil(diffMs / 86_400_000);
-    const pricingConfig = await getLodgingPricing(prisma);
-    const lodgingByPet = groupPets.map(
-      (p) => pricePerDayForWeight(p.weight, pricingConfig) * totalDays,
-    );
-
-    // Baño como complemento del hospedaje (opcional): variante por mascota.
-    let stayBathVariants: { id: string; price: number }[] | null = null;
-    if (bath) {
-      const bathType = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
-      if (!bathType) {
-        return reply.status(500).send({ error: "Servicio de baño no configurado" });
-      }
-      stayBathVariants = [];
-      for (const p of groupPets) {
-        const size = sizeFromWeight(p.weight ?? 0);
-        const variant = await prisma.serviceVariant.findUnique({
-          where: {
-            serviceTypeId_petSize_deslanado_corte: {
-              serviceTypeId: bathType.id,
-              petSize: size,
-              deslanado: bath.deslanado,
-              corte: bath.corte,
-            },
-          },
-        });
-        if (!variant || !variant.isActive) {
-          return reply
-            .status(400)
-            .send({ error: `Variante de baño no disponible para ${p.name}` });
-        }
-        stayBathVariants.push({ id: variant.id, price: Number(variant.price) });
-      }
-    }
-
-    // Monto por fila: total manual repartido, o el cálculo automático por
-    // mascota (hospedaje + recargo de medicamento +10% + baño). El fee de
-    // domicilio va SOLO en la primera fila del grupo.
-    const amounts =
-      totalAmountOverride != null
-        ? splitGroupTotal(totalAmountOverride, groupPets.length)
-        : lodgingByPet.map((lodging, i) => {
-            const medicationSurcharge = trimmedMedication ? lodging * 0.1 : 0;
-            const bathPrice = stayBathVariants?.[i]?.price ?? 0;
-            return lodging + medicationSurcharge + bathPrice;
-          });
-    const deposits = splitDeposit(
-      amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)),
-    );
-
-    const reservations = await prisma.$transaction(async (tx) => {
-      const created: CreatedReservation[] = [];
-      for (let i = 0; i < groupPets.length; i++) {
-        const isFirst = i === 0;
-        const res = await tx.reservation.create({
-          data: {
-            checkIn,
-            checkOut,
-            checkInTime: checkInTime ?? null,
-            checkOutTime: checkOutTime ?? null,
-            totalDays,
-            totalAmount: new Prisma.Decimal(amounts[i]).add(
-              isFirst ? deliveryFee : 0,
-            ),
-            // Desglose del cobro original (solo cuando el precio salió del
-            // cálculo automático; con total manual no hay desglose que contar).
-            ...(totalAmountOverride == null
-              ? {
-                  lodgingAmount: new Prisma.Decimal(lodgingByPet[i]),
-                  ...(trimmedMedication
-                    ? {
-                        medicationFee: new Prisma.Decimal(
-                          (lodgingByPet[i] * 0.1).toFixed(2),
-                        ),
-                      }
-                    : {}),
-                }
-              : {}),
-            notes,
-            internalNotes: internalNotes ?? null,
-            legalAccepted,
-            status: "CONFIRMED",
-            groupId,
-            ownerId,
-            petId: groupPets[i].id,
-            roomId: roomIdByPet[i],
-            ...rowExtraData(isFirst, deposits?.[i]),
-          },
-          include: { pet: true, room: true },
-        });
-        if (stayBathVariants) {
-          await tx.reservationAddon.create({
-            data: {
-              reservationId: res.id,
-              variantId: stayBathVariants[i].id,
-              unitPrice: new Prisma.Decimal(stayBathVariants[i].price),
-              paidWith: "BOOKING",
-            },
-          });
-        }
-        created.push(res);
-      }
-      return created;
-    });
-    return sendCreated(reservations);
   });
 
   // PATCH /reservations/:id/times — hora estimada de llegada/recogida.
@@ -1268,54 +538,6 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ── Máquina de estados de PATCH /reservations/:id/status ──────────────
-  // El enum real es CONFIRMED → CHECKED_IN → CHECKED_OUT (+ CANCELLED): no hay
-  // PENDING ni COMPLETED; "finalizada" es CHECKED_OUT para los tres tipos.
-  //   CONFIRMED   → CHECKED_IN (STAY/DAYCARE), CANCELLED,
-  //                 CHECKED_OUT (BATH/DAYCARE: concluyen sin check-in)
-  //   CHECKED_IN  → CHECKED_OUT
-  //   CHECKED_OUT → CONFIRMED | CHECKED_IN (STAY/DAYCARE) — "reabrir", SOLO
-  //                 ADMIN: corrige un check-out hecho por error, sin avisos ni
-  //                 pagos. Es el único camino de salida de CHECKED_OUT y lo usa
-  //                 la app admin por esta misma ruta.
-  //   CANCELLED   → nada (deshacer una cancelación implica dinero; no existe).
-  // Devuelve null si la transición es válida, o el mensaje del 409.
-  function statusTransitionVerdict(
-    from: PrismaResStatus,
-    to: PrismaResStatus,
-    type: string,
-    isAdmin: boolean,
-  ): string | null {
-    const hasCheckIn = type === "STAY" || type === "DAYCARE";
-    switch (from) {
-      case "CONFIRMED":
-        if (to === "CANCELLED") return null;
-        if (to === "CHECKED_IN") {
-          return hasCheckIn ? null : "Un baño no hace check-in; se concluye al cobrarlo.";
-        }
-        if (to === "CHECKED_OUT") {
-          return type === "STAY"
-            ? "Una estancia no puede finalizar sin check-in. Haz el check-in primero o cancélala."
-            : null;
-        }
-        return `Transición no válida: ${from} → ${to}`;
-      case "CHECKED_IN":
-        if (to === "CHECKED_OUT") return null;
-        if (to === "CANCELLED") {
-          return "Una reserva con la mascota en el hotel no se cancela: haz el check-out.";
-        }
-        return `Transición no válida: ${from} → ${to}`;
-      case "CHECKED_OUT":
-        if (to === "CONFIRMED" || (to === "CHECKED_IN" && hasCheckIn)) {
-          return isAdmin ? null : "Solo un administrador puede reabrir una reserva finalizada.";
-        }
-        return "Una reserva finalizada no se cancela por aquí; reábrela primero (solo admin).";
-      case "CANCELLED":
-        return "Una reserva cancelada no se puede reactivar. Crea una nueva.";
-      default:
-        return `Transición no válida: ${from} → ${to}`;
-    }
-  }
 
   // ── Helper: cuenta cuántas reservas activas (no CANCELLED/CHECKED_OUT) solapan
   // con la ventana [checkIn, checkOut) en un cuarto. Opcionalmente excluye un id
@@ -1600,17 +822,32 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const diffMs = checkOut.getTime() - checkIn.getTime();
-    const totalDays = Math.ceil(diffMs / 86_400_000);
+    // Noches en días-calendario UTC (computeDays): la misma cuenta que hizo
+    // create-intent al fijar el PI. Las estancias van ancladas a 00:00 UTC.
+    const totalDays = computeDays(checkIn, checkOut);
+    if (totalDays < 1) {
+      return reply.status(400).send({ error: "La estancia debe ser de al menos una noche" });
+    }
     const groupId = petIds.length > 1 ? randomUUID() : null;
     const pricingConfig = await getLodgingPricing(prisma);
 
-    // Determine sizes
-    const petSizes = pets.map((p) => ({
-      pet: p,
-      size: sizeFromWeight(p.weight ?? 0),
-      pricePerDay: pricePerDayForWeight(p.weight, pricingConfig),
-    }));
+    // Talla y hospedaje por mascota — UNA fórmula (computeStayPricing), la
+    // MISMA con la que /payments/create-intent fijó el monto del PI.
+    const petSizes = pets.map((p) => {
+      const stay = computeStayPricing({
+        petWeightKg: p.weight,
+        totalDays,
+        hasMedication: false,
+        sameDay: false,
+        config: pricingConfig,
+      });
+      return {
+        pet: p,
+        size: sizeFromWeight(p.weight ?? 0),
+        pricePerDay: stay.pricePerDay,
+        lodging: stay.lodging,
+      };
+    });
 
     // Find rooms
     type Assignment = { petId: string; roomId: string | null; amount: number };
@@ -1643,7 +880,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           assignments.push({
             petId: ps.pet.id,
             roomId: room.id,
-            amount: ps.pricePerDay * totalDays,
+            amount: ps.lodging,
           });
         }
       } else {
@@ -1674,7 +911,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           assignments.push({
             petId: ps.pet.id,
             roomId: chosen.id,
-            amount: ps.pricePerDay * totalDays,
+            amount: ps.lodging,
           });
         }
       }
@@ -1792,8 +1029,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Medication: validate notes present per-pet, compute +10% surcharge on lodging
-    const medicationSurchargeByPet = new Map<string, number>();
+    // Medicamento: notas obligatorias por mascota; el recargo
+    // (medicationSurchargePct de Config → Tarifas sobre SU hospedaje) lo pone
+    // computeStayPricing.
     const medicationNotesByPet = new Map<string, string>();
     if (medicationByPet && Object.keys(medicationByPet).length > 0) {
       for (const [petId, sel] of Object.entries(medicationByPet)) {
@@ -1803,18 +1041,27 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
             error: "Las instrucciones de administración del medicamento son obligatorias",
           });
         }
-        const a = assignments.find((x) => x.petId === petId);
-        if (!a) continue;
-        medicationSurchargeByPet.set(petId, a.amount * 0.10);
+        if (!assignments.some((x) => x.petId === petId)) continue;
         medicationNotesByPet.set(petId, trimmed);
       }
     }
 
-    // Create all reservations + payments in a transaction
-    const lodgingTotal = assignments.reduce((sum, a) => sum + a.amount, 0);
-    const bathTotal = Array.from(bathByPet.values()).reduce((s, b) => s + b.price, 0);
-    const medicationTotal = Array.from(medicationSurchargeByPet.values()).reduce((s, n) => s + n, 0);
-    const baseTotal = lodgingTotal + bathTotal + medicationTotal;
+    // Base por mascota (hospedaje + medicamento + baño) — la misma que
+    // create-intent usó para resolver y repartir el descuento.
+    const stayInputOf = (petId: string) => {
+      const ps = petSizes.find((x) => x.pet.id === petId);
+      return {
+        petWeightKg: ps?.pet.weight ?? null,
+        totalDays,
+        hasMedication: medicationNotesByPet.has(petId),
+        addonsAmount: bathByPet.get(petId)?.price ?? 0,
+        config: pricingConfig,
+      };
+    };
+    const baseByPet = assignments.map((a) =>
+      computeStayPricing({ ...stayInputOf(a.petId), sameDay: false }),
+    );
+    const baseTotal = roundMoney(baseByPet.reduce((sum, b) => sum + b.total, 0));
 
     // Descuento credit-only (sin PI): re-validar server-side contra el subtotal
     // del servicio. En el flujo Stripe ya se leyó del metadata del PI.
@@ -1830,7 +1077,6 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
     // Acotar defensivamente (el metadata del PI podría no cuadrar con la base).
     discountTotal = Math.min(Math.max(0, discountTotal), baseTotal);
-    const discountedBase = baseTotal - discountTotal;
 
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%.
     // Con PI se respeta lo que el intent cobró (un intent creado a las 23:50 y
@@ -1842,7 +1088,26 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       piSameDaySurcharge !== null
         ? piSameDaySurcharge
         : owner.role === "OWNER" && hoursUntilCheckIn < 24;
-    const surchargeMultiplier = sameDaySurcharge ? 1.20 : 1;
+
+    // Precio FINAL por mascota: descuento repartido en proporción a su base
+    // (allocateProportional, igual que create-intent) y recargo de mismo día
+    // sobre la base ya descontada. Es la MISMA función que fijó el monto del
+    // PI, así lo cobrado y lo persistido no dependen de redondeos distintos.
+    const discountByRow = allocateProportional(
+      discountTotal,
+      baseByPet.map((b) => b.total),
+    );
+    const pricingByPet = new Map<string, StayPricing>();
+    assignments.forEach((a, i) => {
+      pricingByPet.set(
+        a.petId,
+        computeStayPricing({
+          ...stayInputOf(a.petId),
+          sameDay: sameDaySurcharge,
+          discount: discountByRow[i],
+        }),
+      );
+    });
 
     // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (igual
     // que en /payments/create-intent). Costo logístico fijo: NO lleva el
@@ -1865,7 +1130,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const grandTotal = discountedBase * surchargeMultiplier + deliveryFee;
+    // Σ precio final por mascota + domicilio (costo fijo por grupo, sin recargo).
+    const grandTotal = roundMoney(
+      assignments.reduce((s, a) => s + (pricingByPet.get(a.petId)?.total ?? 0), 0) +
+        deliveryFee,
+    );
 
     const amountDue = paymentType === "DEPOSIT"
       ? Math.ceil(grandTotal * 0.20)
@@ -1941,10 +1210,6 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         const created: Prisma.ReservationGetPayload<{
           include: { pet: true; room: true };
         }>[] = [];
-        // Reparto del descuento del booking entre las reservas (proporcional a la
-        // base de cada una); la última fila absorbe el redondeo para que la suma
-        // de discountTotal sea exactamente el descuento total.
-        let allocatedDiscount = 0;
         // Saldo a favor por repartir entre los pagos de las filas.
         let remainingCredit = Number(creditApplied.toFixed(2));
         let piAttached = false;
@@ -1952,23 +1217,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         for (let i = 0; i < assignments.length; i++) {
           const a = assignments[i];
           const bath = bathByPet.get(a.petId);
-          const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
+          const row = pricingByPet.get(a.petId)!;
           const medNotes = medicationNotesByPet.get(a.petId) ?? null;
           // La fee de domicilio se adjunta SOLO a la primera reserva del grupo
           // (un viaje cubre a todas las mascotas del mismo dueño).
           const isFirst = i === 0;
           const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
-          const rowBase = a.amount + (bath?.price ?? 0) + medSurcharge;
-          const isLast = i === assignments.length - 1;
-          const rowDiscount =
-            discountTotal <= 0 || baseTotal <= 0
-              ? 0
-              : isLast
-                ? Math.max(0, Number((discountTotal - allocatedDiscount).toFixed(2)))
-                : Number(((discountTotal * rowBase) / baseTotal).toFixed(2));
-          allocatedDiscount += rowDiscount;
-          const reservationAmount =
-            (rowBase - rowDiscount) * surchargeMultiplier + deliveryForThis;
+          const rowDiscount = row.discount;
+          const reservationAmount = roundMoney(row.total + deliveryForThis);
 
           const res = await tx.reservation.create({
             data: {
@@ -1980,16 +1236,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               totalAmount: new Prisma.Decimal(reservationAmount),
               // Desglose del cobro original — la misma foto que el cliente vio
               // al reservar. totalAmount muta después; esto no se recalcula.
-              lodgingAmount: new Prisma.Decimal(a.amount),
-              ...(medSurcharge > 0
-                ? { medicationFee: new Prisma.Decimal(medSurcharge.toFixed(2)) }
+              lodgingAmount: new Prisma.Decimal(row.lodging),
+              ...(row.medicationFee > 0
+                ? { medicationFee: new Prisma.Decimal(row.medicationFee) }
                 : {}),
-              ...(sameDaySurcharge
-                ? {
-                    sameDayFee: new Prisma.Decimal(
-                      ((rowBase - rowDiscount) * 0.2).toFixed(2),
-                    ),
-                  }
+              ...(row.sameDayFee > 0
+                ? { sameDayFee: new Prisma.Decimal(row.sameDayFee) }
                 : {}),
               ...(discountCodeId
                 ? { discountCodeId, discountTotal: new Prisma.Decimal(rowDiscount) }

@@ -33,6 +33,8 @@ import daycareRoutes from "./routes/daycare";
 import guestDaycareRoutes from "./routes/guestDaycare";
 import quotesRoutes from "./routes/quotes";
 import telemetryRoutes from "./routes/telemetry";
+import internalReservationsRoutes from "./routes/internalReservations";
+import pricingRoutes from "./routes/pricing";
 
 // trustProxy: 1 → la API vive detrás del proxy de Railway (un salto). Sin
 // esto, `request.ip` es la IP interna del proxy y TODOS los clientes comparten
@@ -175,6 +177,8 @@ app.register(daycareRoutes);
 app.register(guestDaycareRoutes);
 app.register(quotesRoutes);
 app.register(telemetryRoutes);
+app.register(internalReservationsRoutes);
+app.register(pricingRoutes);
 
 const start = async () => {
   try {

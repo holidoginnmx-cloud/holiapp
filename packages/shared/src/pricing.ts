@@ -10,14 +10,41 @@
 export type SizeKey = "S" | "M" | "L" | "XL";
 
 /**
+ * Tramos de talla por peso: la ÚNICA tabla. `upToKg` es el tope INCLUSIVO del
+ * tramo (null = sin tope); el piso es el tope del tramo anterior, exclusivo.
+ *   S: ≤ 5 kg · M: 5–15 kg · L: 15–24 kg · XL: > 24 kg
+ * Exportada para que las UIs (admin web incluido, que copiaba la regla con
+ * otros cortes) pinten los rangos sin redefinirlos. `sizeFromWeight` itera esta
+ * misma tabla, así que no pueden divergir.
+ */
+export const SIZE_RANGES_KG: ReadonlyArray<{ size: SizeKey; upToKg: number | null }> = [
+  { size: "S", upToKg: 5 },
+  { size: "M", upToKg: 15 },
+  { size: "L", upToKg: 24 },
+  { size: "XL", upToKg: null },
+];
+
+/** Etiqueta legible del tramo ("≤ 5 kg", "5–15 kg", "> 24 kg"). */
+export function sizeRangeLabel(size: SizeKey): string {
+  const idx = SIZE_RANGES_KG.findIndex((r) => r.size === size);
+  const range = SIZE_RANGES_KG[idx];
+  const floor = idx > 0 ? SIZE_RANGES_KG[idx - 1].upToKg : null;
+  if (range.upToKg == null) return `> ${floor} kg`;
+  if (floor == null) return `≤ ${range.upToKg} kg`;
+  return `${floor}–${range.upToKg} kg`;
+}
+
+/**
  * Tamaño canónico a partir del peso (kg). El bucket más pequeño por peso es S
- * (XS no se infiere por peso). Misma tabla en toda la app.
+ * (XS no se infiere por peso). Misma tabla en toda la app (SIZE_RANGES_KG).
+ * Es la regla que el API aplica SIEMPRE al escribir `pets.size`: el `size`
+ * que mande un cliente se ignora (ver routes/pets.ts y lib/guestPet.ts).
  */
 export function sizeFromWeight(kg: number | null | undefined): SizeKey {
   const w = kg ?? 0;
-  if (w <= 5) return "S";
-  if (w <= 15) return "M";
-  if (w <= 24) return "L";
+  for (const range of SIZE_RANGES_KG) {
+    if (range.upToKg == null || w <= range.upToKg) return range.size;
+  }
   return "XL";
 }
 
@@ -71,11 +98,13 @@ export function computeDays(checkIn: Date, checkOut: Date): number {
  * día. Es la forma que usan las cotizaciones, donde el usuario elige DÍAS y no
  * instantes.
  *
- * Da el mismo número que `computeDays` y que el `Math.ceil(diffMs/86_400_000)`
- * de POST /reservations SIEMPRE QUE ambas fechas vayan ancladas a medianoche
- * UTC. Con horas del día distintas, el `ceil` de la ruta cuenta una noche de
- * más (check-in 09:00 → check-out 18:00 son 6 y no 5) — por eso una cotización
- * convertida en reserva DEBE mandar las fechas a las 00:00 UTC.
+ * Da el mismo número que `computeDays`, que es lo que usan TODAS las rutas de
+ * hospedaje (vía computeStayPricing). Las fechas de estancia van ancladas a
+ * medianoche UTC; con horas del día distintas, `computeDays` sigue contando
+ * días-calendario (check-in 09:00 → check-out 18:00 cinco días después son 5
+ * noches), a diferencia del viejo `Math.ceil(diffMs/86_400_000)` que contaba
+ * una de más. Una cotización convertida en reserva manda las fechas a las
+ * 00:00 UTC de todos modos.
  *
  * Devuelve NaN si alguna cadena no es una fecha válida.
  */
@@ -127,10 +156,19 @@ export const DEFAULT_LODGING_PRICING: LodgingPricingConfig = {
   daycareHourPrice: DEFAULT_DAYCARE_HOUR_PRICE,
 };
 
+/** Lo que necesita el cálculo de hospedaje (subconjunto de LodgingPricingConfig). */
+export type StayPricingConfig = Pick<
+  LodgingPricingConfig,
+  "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg" | "medicationSurchargePct"
+>;
+
 /** Precio por noche según peso (umbral de "grande" configurable). */
 export function pricePerDayForWeight(
   weightKg: number | null | undefined,
-  config: LodgingPricingConfig = DEFAULT_LODGING_PRICING
+  config: Pick<
+    LodgingPricingConfig,
+    "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg"
+  > = DEFAULT_LODGING_PRICING
 ): number {
   return weightKg && weightKg >= config.largeWeightKg
     ? config.pricePerDayLarge
@@ -228,4 +266,155 @@ export function hoursUntilHotelDay(
 ): number {
   const localMidnight = day.getTime() + tzOffsetHours * 3_600_000;
   return (localMidnight - now) / 3_600_000;
+}
+
+// ============================================================
+// Hospedaje (STAY) — UNA sola fórmula de precio por mascota.
+//
+// Antes el recargo por medicamento estaba quemado como 0.1 en cinco rutas
+// (aunque LodgingPricing.medicationSurchargePct es editable en Config →
+// Tarifas), cada una redondeaba distinto (Math.ceil / toFixed(2) / nada) y las
+// noches se contaban con Math.ceil(ms/86_400_000) en unas y computeDays en
+// otras. Todo lo que cobra o persiste un hospedaje pasa por aquí:
+// /payments/create-intent (lo que Stripe cobra), /reservations/multi (lo que
+// se persiste y se compara contra el PI), POST /reservations (equipo),
+// /guest/reservations/* (sitio público) y lib/reservationCreate.
+// ============================================================
+
+/** Recargo por reservar con menos de 24 h para el check-in (solo clientes). */
+export const SAME_DAY_SURCHARGE_PCT = 0.2;
+
+/**
+ * Quita el ruido de coma flotante ANTES de redondear: 385 × 0.2 puede dar
+ * 77.00000000000001 y un Math.ceil ingenuo lo sube a 78. Seis decimales
+ * bastan (los precios tienen dos) y no alteran ningún monto real.
+ */
+function cleanFloat(x: number): number {
+  return Math.round(x * 1_000_000) / 1_000_000;
+}
+
+/**
+ * REGLA DE REDONDEO de los recargos: hacia ARRIBA a peso entero, por concepto.
+ * Es lo que /payments/create-intent hizo siempre (lo que el cliente ve y lo
+ * que Stripe cobra); las rutas que persistían sin redondear guardaban
+ * centavos que nadie cobraba.
+ */
+export function ceilMoney(x: number): number {
+  return Math.ceil(cleanFloat(x));
+}
+
+/** Normaliza a centavos (2 decimales). No es un redondeo de negocio: solo limpia ruido. */
+export function roundMoney(x: number): number {
+  return Math.round(cleanFloat(x) * 100) / 100;
+}
+
+export interface StayPricingInput {
+  petWeightKg: number | null | undefined;
+  /** Noches. Si no viene, se calculan con `computeDays(checkIn, checkOut)`. */
+  totalDays?: number;
+  checkIn?: Date;
+  checkOut?: Date;
+  hasMedication: boolean;
+  /** Reserva a menos de 24 h del check-in (el caller decide: rol + reloj o metadata del PI). */
+  sameDay: boolean;
+  /**
+   * Servicios contratados CON la estancia para esta mascota (baño incluido en
+   * la reserva). Entran a la base del recargo de mismo día, como siempre.
+   */
+  addonsAmount?: number;
+  /** Descuento ya repartido a ESTA mascota (ver allocateProportional). Se resta antes del mismo día. */
+  discount?: number;
+  config: StayPricingConfig;
+}
+
+export interface StayPricing {
+  totalDays: number;
+  pricePerDay: number;
+  /** pricePerDay × totalDays. */
+  lodging: number;
+  /** ceil(lodging × medicationSurchargePct), 0 sin medicamento. */
+  medicationFee: number;
+  addonsAmount: number;
+  discount: number;
+  /** lodging + medicationFee + addonsAmount − discount (base del mismo día y del descuento). */
+  subtotal: number;
+  /** ceil(subtotal × SAME_DAY_SURCHARGE_PCT), 0 si no es mismo día. */
+  sameDayFee: number;
+  /** subtotal + sameDayFee. SIN domicilio: ese es un costo fijo por grupo que suma el caller. */
+  total: number;
+}
+
+/**
+ * Precio de la estancia de UNA mascota. Pura y determinista: misma entrada,
+ * mismo número, en el cliente, en create-intent y al confirmar — así el monto
+ * cobrado por Stripe y el persistido en `reservations` salen de la misma
+ * función y la comparación de PAYMENT_MISMATCH no depende de redondeos.
+ *
+ * Redondeo (ver ceilMoney): medicationFee y sameDayFee suben a peso entero,
+ * cada uno por su lado; lodging/subtotal/total solo se normalizan a centavos.
+ * Con la config por defecto (350/450 por noche, 10 %) todos los montos son
+ * enteros y el ceil no cambia nada; con tarifas con centavos o descuentos
+ * raros, la diferencia contra el cálculo viejo es de a lo más un peso por
+ * concepto y por mascota.
+ *
+ * `totalDays` nunca es negativo; el caller debe rechazar 0 (una estancia es
+ * de al menos una noche).
+ */
+export function computeStayPricing(input: StayPricingInput): StayPricing {
+  const { config } = input;
+  const days =
+    input.totalDays ??
+    (input.checkIn && input.checkOut ? computeDays(input.checkIn, input.checkOut) : 0);
+  const totalDays = Math.max(0, days);
+  const pricePerDay = pricePerDayForWeight(input.petWeightKg, config);
+  const lodging = roundMoney(pricePerDay * totalDays);
+  const medicationFee =
+    input.hasMedication && config.medicationSurchargePct > 0
+      ? ceilMoney(lodging * config.medicationSurchargePct)
+      : 0;
+  const addonsAmount = roundMoney(input.addonsAmount ?? 0);
+  const discount = roundMoney(input.discount ?? 0);
+  const subtotal = roundMoney(
+    Math.max(0, lodging + medicationFee + addonsAmount - discount)
+  );
+  const sameDayFee = input.sameDay ? ceilMoney(subtotal * SAME_DAY_SURCHARGE_PCT) : 0;
+  const total = roundMoney(subtotal + sameDayFee);
+  return {
+    totalDays,
+    pricePerDay,
+    lodging,
+    medicationFee,
+    addonsAmount,
+    discount,
+    subtotal,
+    sameDayFee,
+    total,
+  };
+}
+
+/**
+ * Reparte `amount` entre varias filas en proporción a `weights`, a centavos;
+ * la ÚLTIMA fila absorbe el redondeo para que la suma sea exactamente
+ * `amount`. Con pesos en cero se reparte en partes iguales. Es el reparto del
+ * descuento de un booking entre las mascotas del grupo (create-intent y /multi
+ * DEBEN repartir igual para que las filas cuadren con el PI) y del anticipo
+ * acordado en las reservas del equipo.
+ */
+export function allocateProportional(amount: number, weights: number[]): number[] {
+  const n = weights.length;
+  if (n === 0) return [];
+  if (n === 1) return [roundMoney(amount)];
+  const sum = weights.reduce((a, w) => a + w, 0);
+  const parts: number[] = [];
+  let allocated = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const part =
+      sum > 0
+        ? roundMoney((amount * (weights[i] ?? 0)) / sum)
+        : Math.floor((amount / n) * 100) / 100;
+    parts.push(part);
+    allocated += part;
+  }
+  parts.push(roundMoney(amount - allocated));
+  return parts;
 }

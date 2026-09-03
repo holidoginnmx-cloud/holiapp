@@ -8,7 +8,14 @@ import {
   notifyNewReservation,
   type NewReservationSource,
 } from "./notifyNewReservation";
-import { getLodgingPricing, pricePerDayForWeight, sizeFromWeight } from "./pricing";
+import {
+  getLodgingPricing,
+  sizeFromWeight,
+  computeDays,
+  computeStayPricing,
+  roundMoney,
+  type StayPricing,
+} from "./pricing";
 import { hoursUntilHotelDay } from "@holidoginn/shared";
 import { quoteDelivery, type DeliveryTripMode } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
@@ -93,6 +100,12 @@ export interface CreateReservationGroupParams {
   };
   /** PI de Stripe (null cuando el saldo cubrió todo). */
   stripePaymentIntentId: string | null;
+  /**
+   * Recargo de mismo día tal como lo cobró el PI (metadata `sameDaySurcharge`).
+   * Si viene, manda: un intent creado a las 23:50 y confirmado a las 00:05 no
+   * debe cambiar de precio. null/undefined = decidir con el reloj de ahora.
+   */
+  sameDaySurcharge?: boolean | null;
   /** Saldo a favor ya aplicado (0 en el flujo de invitado). */
   creditApplied?: number;
   notes?: string | null;
@@ -162,16 +175,31 @@ export async function createReservationGroup(
     return null;
   }
 
-  const diffMs = checkOut.getTime() - checkIn.getTime();
-  const totalDays = Math.ceil(diffMs / 86_400_000);
+  // Noches en días-calendario UTC (computeDays), igual que create-intent.
+  const totalDays = computeDays(checkIn, checkOut);
+  if (totalDays < 1) {
+    return { ok: false, status: 400, error: "La estancia debe ser de al menos una noche" };
+  }
   const groupId = pets.length > 1 ? randomUUID() : null;
   const pricingConfig = await getLodgingPricing(prisma);
 
-  const petSizes = pets.map((p) => ({
-    pet: p,
-    size: sizeFromWeight(p.weight ?? 0) as PetSize,
-    pricePerDay: pricePerDayForWeight(p.weight, pricingConfig),
-  }));
+  // Hospedaje por mascota — UNA fórmula (computeStayPricing), la misma con la
+  // que /guest/reservations/create-intent fijó el monto del PI.
+  const petSizes = pets.map((p) => {
+    const stay = computeStayPricing({
+      petWeightKg: p.weight,
+      totalDays,
+      hasMedication: false,
+      sameDay: false,
+      config: pricingConfig,
+    });
+    return {
+      pet: p,
+      size: sizeFromWeight(p.weight ?? 0) as PetSize,
+      pricePerDay: stay.pricePerDay,
+      lodging: stay.lodging,
+    };
+  });
 
   const assignments: { petId: string; roomId: string | null; amount: number }[] = [];
 
@@ -190,7 +218,7 @@ export async function createReservationGroup(
       };
     }
     for (const ps of petSizes) {
-      assignments.push({ petId: ps.pet.id, roomId: room.id, amount: ps.pricePerDay * totalDays });
+      assignments.push({ petId: ps.pet.id, roomId: room.id, amount: ps.lodging });
     }
   } else {
     const localUsage = new Map<string, number>();
@@ -216,7 +244,7 @@ export async function createReservationGroup(
           error: `No hay cuartos disponibles para ${ps.pet.name} (tamaño ${ps.size}) en las fechas seleccionadas`,
         };
       }
-      assignments.push({ petId: ps.pet.id, roomId: chosen.id, amount: ps.pricePerDay * totalDays });
+      assignments.push({ petId: ps.pet.id, roomId: chosen.id, amount: ps.lodging });
     }
   }
 
@@ -248,8 +276,8 @@ export async function createReservationGroup(
     }
   }
 
-  // Medicamento: notas requeridas + recargo 10% sobre hospedaje
-  const medicationSurchargeByPet = new Map<string, number>();
+  // Medicamento: notas requeridas; el recargo (medicationSurchargePct sobre el
+  // hospedaje de ESA mascota) lo pone computeStayPricing.
   const medicationNotesByPet = new Map<string, string>();
   if (medicationByPet && Object.keys(medicationByPet).length > 0) {
     for (const [petId, sel] of Object.entries(medicationByPet)) {
@@ -261,23 +289,36 @@ export async function createReservationGroup(
           error: "Las instrucciones de administración del medicamento son obligatorias",
         };
       }
-      const a = assignments.find((x) => x.petId === petId);
-      if (!a) continue;
-      medicationSurchargeByPet.set(petId, a.amount * 0.1);
+      if (!assignments.some((x) => x.petId === petId)) continue;
       medicationNotesByPet.set(petId, trimmed);
     }
   }
 
-  const lodgingTotal = assignments.reduce((sum, a) => sum + a.amount, 0);
-  const bathTotal = Array.from(bathByPet.values()).reduce((s, b) => s + b.price, 0);
-  const medicationTotal = Array.from(medicationSurchargeByPet.values()).reduce((s, n) => s + n, 0);
-  const baseTotal = lodgingTotal + bathTotal + medicationTotal;
-
   // Mismo día = menos de 24 h para la medianoche LOCAL del check-in (no para
-  // las 00:00 UTC, que son las 17:00 del día anterior en Hermosillo).
+  // las 00:00 UTC, que son las 17:00 del día anterior en Hermosillo). Con PI,
+  // manda lo que el intent cobró.
   const hoursUntilCheckIn = hoursUntilHotelDay(checkIn);
-  const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
-  const surchargeMultiplier = sameDaySurcharge ? 1.2 : 1;
+  const sameDaySurcharge =
+    params.sameDaySurcharge != null
+      ? params.sameDaySurcharge
+      : owner.role === "OWNER" && hoursUntilCheckIn < 24;
+
+  // Precio FINAL por mascota (hospedaje + medicamento + baño, + mismo día):
+  // la MISMA fórmula que create-intent. Sin descuento en este flujo.
+  const pricingByPet = new Map<string, StayPricing>();
+  for (const ps of petSizes) {
+    pricingByPet.set(
+      ps.pet.id,
+      computeStayPricing({
+        petWeightKg: ps.pet.weight,
+        totalDays,
+        hasMedication: medicationNotesByPet.has(ps.pet.id),
+        sameDay: sameDaySurcharge,
+        addonsAmount: bathByPet.get(ps.pet.id)?.price ?? 0,
+        config: pricingConfig,
+      })
+    );
+  }
 
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
@@ -296,7 +337,11 @@ export async function createReservationGroup(
     }
   }
 
-  const grandTotal = baseTotal * surchargeMultiplier + deliveryFee;
+  // Σ precio final por mascota + domicilio (costo fijo por grupo, sin recargo).
+  const grandTotal = roundMoney(
+    assignments.reduce((s, a) => s + (pricingByPet.get(a.petId)?.total ?? 0), 0) +
+      deliveryFee
+  );
 
   // Saldo a favor: el invitado nunca tiene, pero soportamos el caso general.
   const creditOnly = !stripePaymentIntentId;
@@ -316,13 +361,11 @@ export async function createReservationGroup(
       const created: typeof reservations = [];
       for (let i = 0; i < assignments.length; i++) {
         const a = assignments[i];
-        const bath = bathByPet.get(a.petId);
-        const medSurcharge = medicationSurchargeByPet.get(a.petId) ?? 0;
+        const row = pricingByPet.get(a.petId)!;
         const medNotes = medicationNotesByPet.get(a.petId) ?? null;
         const isFirst = i === 0;
         const deliveryForThis = isFirst && deliveryActive ? deliveryFee : 0;
-        const reservationAmount =
-          (a.amount + (bath?.price ?? 0) + medSurcharge) * surchargeMultiplier + deliveryForThis;
+        const reservationAmount = roundMoney(row.total + deliveryForThis);
         created.push(
           await tx.reservation.create({
             data: {
@@ -330,6 +373,15 @@ export async function createReservationGroup(
               checkOut,
               totalDays,
               totalAmount: new Prisma.Decimal(reservationAmount),
+              // Desglose del cobro original — la misma foto que el cliente vio
+              // al pagar en el sitio (igual que /reservations/multi).
+              lodgingAmount: new Prisma.Decimal(row.lodging),
+              ...(row.medicationFee > 0
+                ? { medicationFee: new Prisma.Decimal(row.medicationFee) }
+                : {}),
+              ...(row.sameDayFee > 0
+                ? { sameDayFee: new Prisma.Decimal(row.sameDayFee) }
+                : {}),
               notes,
               medicationNotes: medNotes,
               legalAccepted,

@@ -1,6 +1,8 @@
 import type { PrismaClient, Pet } from "@prisma/client";
 import type { GuestPet } from "@holidoginn/shared";
 import { findPetByName } from "./petName";
+import { sizeFromWeight } from "./pricing";
+import { derivePetSize } from "./petSize";
 
 // Datos de mascota inline del invitado (GuestPet del shared, sin ownerId).
 type GuestPetInput = GuestPet;
@@ -24,6 +26,9 @@ export async function resolveOrCreateGuestPet(
   const cartillaStatus = photos.length > 0 ? ("PENDING" as const) : null;
   const data = {
     ...gp,
+    // Talla derivada del peso en el servidor (escala única de shared); el
+    // `size` que manda el wizard se ignora. Mismo criterio que POST /pets.
+    size: gp.weight != null ? sizeFromWeight(gp.weight) : ("M" as const),
     ownerId,
     cartillaPhotos: photos,
     cartillaUrl: gp.cartillaUrl ?? photos[0] ?? null,
@@ -61,7 +66,17 @@ export async function resolveOrCreateGuestPet(
       // "sin dato", no "dato negativo" (p. ej. un isNeutered que capturó el
       // equipo no debe volverse false porque el invitado no lo marcó).
       if (value === false) continue;
+      // La talla no se copia del body: sale del peso (abajo).
+      if (key === "size") continue;
       patch[key] = value;
+    }
+    // Talla derivada, sin sacar al perro del cuarto de una estancia en curso.
+    if (gp.weight != null) {
+      patch.size = await derivePetSize(prisma, {
+        weight: gp.weight,
+        currentSize: existing.size,
+        petId: existing.id,
+      });
     }
     if (photos.length > 0 && existing.cartillaStatus !== "APPROVED") {
       patch.cartillaPhotos = photos;

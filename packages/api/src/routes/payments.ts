@@ -12,9 +12,12 @@ import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
   getLodgingPricing,
-  pricePerDayForWeight,
   sizeFromWeight,
   bathSizeKey,
+  computeDays,
+  computeStayPricing,
+  allocateProportional,
+  roundMoney,
 } from "../lib/pricing";
 import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { resolveDiscount } from "../lib/discounts";
@@ -213,9 +216,14 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: "checkOut debe ser posterior a checkIn" });
     }
 
-    const totalDays = Math.ceil(
-      (checkOutDate.getTime() - checkInDate.getTime()) / 86_400_000
-    );
+    // Noches en días-calendario UTC (computeDays): la misma cuenta que
+    // /reservations/multi hace al confirmar y que el admin usa al cambiar
+    // fechas. Las estancias van ancladas a las 00:00 UTC, así que coincide
+    // con el ceil de milisegundos que se usaba antes.
+    const totalDays = computeDays(checkInDate, checkOutDate);
+    if (totalDays < 1) {
+      return reply.status(400).send({ error: "La estancia debe ser de al menos una noche" });
+    }
 
     // Deposit requires at least 3 days before check-in AND a stay of 2+ nights
     if (paymentType === "DEPOSIT") {
@@ -233,17 +241,24 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Calculate total — lodging
-    const breakdown = pets.map((pet) => {
-      const pricePerDay = pricePerDayForWeight(pet.weight, pricingConfig);
-      return {
-        petId: pet.id,
-        petName: pet.name,
-        weight: pet.weight ?? 0,
-        pricePerDay,
-        subtotal: pricePerDay * totalDays,
-      };
-    });
+    // Hospedaje por mascota — UNA fórmula (computeStayPricing), la MISMA con
+    // la que /reservations/multi persiste la reserva y compara contra este PI.
+    const lodgingByPet = pets.map((pet) =>
+      computeStayPricing({
+        petWeightKg: pet.weight,
+        totalDays,
+        hasMedication: false,
+        sameDay: false,
+        config: pricingConfig,
+      })
+    );
+    const breakdown = pets.map((pet, i) => ({
+      petId: pet.id,
+      petName: pet.name,
+      weight: pet.weight ?? 0,
+      pricePerDay: lodgingByPet[i].pricePerDay,
+      subtotal: lodgingByPet[i].lodging,
+    }));
 
     // Add bath addons to total (if any)
     let bathTotal = 0;
@@ -284,9 +299,9 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Medication surcharge: +10% on lodging for each pet on medication (notes required)
-    const medicationBreakdown: Array<{ petId: string; surcharge: number }> = [];
-    let medicationTotal = 0;
+    // Medicamento: notas obligatorias; el recargo (medicationSurchargePct de
+    // Config → Tarifas sobre el hospedaje de ESA mascota) lo pone computeStayPricing.
+    const medicationPetIds = new Set<string>();
     if (medicationByPet && Object.keys(medicationByPet).length > 0) {
       for (const [petId, sel] of Object.entries(medicationByPet)) {
         if (!sel?.notes || sel.notes.trim().length === 0) {
@@ -294,15 +309,29 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
             error: "Las instrucciones de administración del medicamento son obligatorias",
           });
         }
-        const petLodging = breakdown.find((b) => b.petId === petId);
-        if (!petLodging) continue;
-        const surcharge = Math.ceil(petLodging.subtotal * 0.10);
-        medicationTotal += surcharge;
-        medicationBreakdown.push({ petId, surcharge });
+        if (pets.some((p) => p.id === petId)) medicationPetIds.add(petId);
       }
     }
 
-    const baseTotal = breakdown.reduce((sum, b) => sum + b.subtotal, 0) + bathTotal + medicationTotal;
+    // Base por mascota (hospedaje + medicamento + baño): sobre su suma se
+    // resuelve el código de descuento, y en proporción a ella se reparte.
+    const bathPriceByPet = new Map(bathBreakdown.map((b) => [b.petId, b.price]));
+    const stayInputOf = (pet: (typeof pets)[number]) => ({
+      petWeightKg: pet.weight,
+      totalDays,
+      hasMedication: medicationPetIds.has(pet.id),
+      addonsAmount: bathPriceByPet.get(pet.id) ?? 0,
+      config: pricingConfig,
+    });
+    const baseByPet = pets.map((pet) =>
+      computeStayPricing({ ...stayInputOf(pet), sameDay: false })
+    );
+    const medicationBreakdown: Array<{ petId: string; surcharge: number }> = pets
+      .map((pet, i) => ({ petId: pet.id, surcharge: baseByPet[i].medicationFee }))
+      .filter((m) => medicationPetIds.has(m.petId));
+    const medicationTotal = medicationBreakdown.reduce((s, m) => s + m.surcharge, 0);
+
+    const baseTotal = roundMoney(baseByPet.reduce((sum, b) => sum + b.total, 0));
 
     // Código de descuento (alcance reservas). Aplica sobre el subtotal del
     // servicio (hospedaje + baño + medicación); NO sobre el envío a domicilio.
@@ -315,13 +344,27 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: discount.error });
     }
     const discountTotal = discount.discountTotal;
-    const discountedBase = baseTotal - discountTotal;
 
     // Same-day surcharge: OWNER booking < 24h before check-in pays +20%
-    // (sobre la base YA descontada, para que cuadre con el cargo de Stripe).
+    // (sobre la base YA descontada de cada mascota, para que cuadre con el
+    // cargo de Stripe y con lo que /multi persiste fila por fila).
     const hoursUntilCheckIn = hoursUntilHotelDay(checkInDate);
     const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
-    const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
+
+    // Precio FINAL por mascota: descuento repartido en proporción a su base
+    // (mismo reparto que /multi: allocateProportional) y recargo de mismo día.
+    const discountByPet = allocateProportional(
+      discountTotal,
+      baseByPet.map((b) => b.total)
+    );
+    const finalByPet = pets.map((pet, i) =>
+      computeStayPricing({
+        ...stayInputOf(pet),
+        sameDay: sameDaySurcharge,
+        discount: discountByPet[i],
+      })
+    );
+    const surchargeAmount = finalByPet.reduce((s, f) => s + f.sameDayFee, 0);
 
     // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (no se
     // confía en el cliente). Es un costo logístico fijo: NO aplica el recargo
@@ -335,7 +378,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       deliveryDistanceKm = deliveryQuote.distanceKm;
     }
 
-    const grandTotal = discountedBase + surchargeAmount + deliveryFee;
+    // Σ precio final por mascota + domicilio (costo fijo por grupo, sin recargo).
+    const grandTotal = roundMoney(
+      finalByPet.reduce((s, f) => s + f.total, 0) + deliveryFee
+    );
     const depositAmountBase = paymentType === "DEPOSIT" ? Math.ceil(grandTotal * 0.20) : grandTotal;
 
     // Apply credit balance before Stripe charge

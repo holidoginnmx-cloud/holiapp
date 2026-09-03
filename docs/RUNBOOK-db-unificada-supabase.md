@@ -200,7 +200,7 @@ npm --workspace=@holidoginn/db run db:import:verify
 `dashboard_views.sql` ya **DROPea explícitamente** las 6 vistas legacy antes de recrearlas sobre tablas inglesas (necesario: `create or replace view` falla al cambiar columnas).
 ```bash
 export DIRECT_URL='postgresql://postgres.<REF>:<PW>@<HOST_POOLER>:5432/postgres?sslmode=require'
-DATABASE_URL="$DIRECT_URL" npm --workspace=@holidoginn/db run db:sql:views
+DATABASE_URL="$DIRECT_URL" npm --workspace=@holidoginn/db run db:sql:rls
 ```
 **Fallback** si `prisma db execute` falla con los bloques `DO $$` (dollar-quoting): aplica vía psql o el SQL Editor:
 ```bash

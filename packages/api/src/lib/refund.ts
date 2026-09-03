@@ -12,6 +12,15 @@ type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 export type ProcessRefundOpts = {
   reservationId: string;
   refundChoice: RefundChoice;
+  /**
+   * Avisar al dueño (push + correo). Default `true`.
+   *
+   * `false` es para capturar HISTORIAL: el panel registra una reserva del mes
+   * pasado que ya se canceló y se reembolsó en mostrador. El dinero y el
+   * ledger se aplican igual; lo que no sale es el push, porque avisar hoy de
+   * un reembolso de hace semanas confunde al cliente.
+   */
+  notify?: boolean;
 };
 
 type PaidPayment = {
@@ -235,6 +244,15 @@ export async function processRefund(
   // mascota: el dinero es de quien reservó y pagó. Decirle a un co-dueño "se
   // acreditaron $X a tu saldo" sería falso — su `creditBalance` es aparte. La
   // cancelación en sí sí se le avisa a los dos por otro lado.
+  if (opts.notify === false) {
+    return {
+      refundAmount,
+      refundChoice: opts.refundChoice,
+      refundedToCard,
+      creditedToBalance,
+    };
+  }
+
   const fmt = (n: number) => n.toLocaleString("es-MX");
   if (refundedToCard > 0 && creditedToBalance > 0) {
     await notifyUser(prisma, {

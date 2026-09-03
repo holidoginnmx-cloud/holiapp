@@ -8,6 +8,7 @@ import {
   type LodgingPricingConfig,
   computeDays,
   pricePerDayForWeight,
+  ceilMoney,
 } from "@holidoginn/shared";
 
 // Re-exporta las funciones/constantes puras de pricing desde el paquete
@@ -32,8 +33,21 @@ export {
   computeDaycareHours,
   computeDaycareExtraHours,
   isWithinDaycareHours,
+  // Hospedaje: UNA fórmula por mascota (ver packages/shared/src/pricing.ts).
+  SAME_DAY_SURCHARGE_PCT,
+  SIZE_RANGES_KG,
+  sizeRangeLabel,
+  ceilMoney,
+  roundMoney,
+  computeStayPricing,
+  allocateProportional,
 } from "@holidoginn/shared";
-export type { LodgingPricingConfig } from "@holidoginn/shared";
+export type {
+  LodgingPricingConfig,
+  StayPricing,
+  StayPricingConfig,
+  StayPricingInput,
+} from "@holidoginn/shared";
 
 /**
  * Lee la configuración de tarifas de hospedaje (singleton). Si la fila no
@@ -111,8 +125,9 @@ export function computeChangeTotal({
   config = DEFAULT_LODGING_PRICING,
 }: ChangeTotalInput): ChangeTotalResult {
   const pricePerDay = pricePerDayForWeight(petWeightKg, config);
+  // Mismo redondeo que computeStayPricing: hacia arriba a peso entero.
   const medFor = (lodging: number) =>
-    hasMedication ? Math.ceil(lodging * config.medicationSurchargePct) : 0;
+    hasMedication ? ceilMoney(lodging * config.medicationSurchargePct) : 0;
 
   const currentDays = computeDays(currentCheckIn, currentCheckOut);
   const currentLodging =

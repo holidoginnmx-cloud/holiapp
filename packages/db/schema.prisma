@@ -24,8 +24,22 @@ enum Role {
   ADMIN // Administrador / dueño del negocio
 }
 
+// ⚠️ DOS ESCALAS CONVIVEN Y NO SON LA MISMA. Los rangos de abajo son los
+// ORIGINALES, con los que se configuró `rooms.sizeAllowed` y con los que el
+// admin web escribía la talla. La escala VIGENTE en el código es la de
+// `sizeFromWeight` de @holidoginn/shared (S ≤5 · M ≤15 · L ≤24 · XL >24), que
+// es la que el API usa desde siempre para elegir cuarto y variante de baño en
+// el flujo del cliente, y desde sep-2026 también para derivar esta columna en
+// toda escritura (routes/pets.ts, lib/guestPet.ts).
+//
+// Consecuencia práctica: un perro de 24-35 kg es L en los rangos de abajo y XL
+// en la escala vigente, y los cuartos 09-18 no admiten XL. Por eso
+// `lib/petSize.ts` nunca cambia la talla si eso saca al perro del cuarto de una
+// estancia en curso, y por eso `scripts/fix-pet-sizes.ts` (que normalizaría el
+// padrón entero) NO se ha corrido: hacerlo es una decisión de operación —
+// aceptar la reclasificación o ampliar el `sizeAllowed` de esos cuartos.
 enum PetSize {
-  XS // Extra pequeño (< 5 kg)
+  XS // Extra pequeño (< 5 kg) — la escala vigente ya no lo asigna nunca
   S // Pequeño (5–10 kg)
   M // Mediano (10–20 kg)
   L // Grande (20–35 kg)
@@ -445,6 +459,7 @@ model Deworming {
   petId String
   pet   Pet    @relation(fields: [petId], references: [id])
 
+  @@index([petId]) // include de desparasitaciones por mascota (FK sin índice)
   @@map("dewormings")
 }
 
@@ -587,6 +602,7 @@ model Reservation {
   @@index([reservationType, status, appointmentAt]) // listas diarias de baños/guarderías (staff)
   @@index([ownerId, status, reviewRequestedAt]) // GET /reviews/pending + barrido de reseñas
   @@index([petId, status]) // reservas del co-dueño, overlap guard y GET /pets/:id/history
+  @@index([groupId]) // hermanas de una multireserva (idempotencia del PI, reseñas, avisos por visita)
   @@map("reservations")
 }
 
@@ -613,6 +629,8 @@ model StayUpdate {
   staff   User?   @relation("StaffUpdates", fields: [staffId], references: [id])
 
   @@index([reservationId, createdAt]) // última actualización por reserva (orderBy desc take 1)
+  @@index([petId]) // evidencias de toda la historia de una mascota (FK sin índice)
+  @@index([staffId]) // evidencias subidas por un staff (FK sin índice)
   @@map("stay_updates")
 }
 
@@ -732,6 +750,7 @@ model Review {
 
   @@index([groupKey])
   @@index([createdAt])
+  @@index([ownerId]) // reseñas de un cliente (FK sin índice)
   @@map("reviews")
 }
 
@@ -807,6 +826,7 @@ model Payment {
   @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
   @@index([orderId]) // ingresos de tienda por pedido (FK no indexada)
   @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
+  @@index([userId]) // pagos de un cliente / merge de cuentas (FK sin índice)
   @@map("payments")
 }
 
@@ -826,6 +846,7 @@ model Notification {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  @@index([userId]) // bandeja de avisos y conteo de no leídos (FK sin índice)
   @@map("notifications")
 }
 
@@ -843,6 +864,7 @@ model PushToken {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  @@index([userId]) // tokens de un usuario al mandar push (FK sin índice)
   @@map("push_tokens")
 }
 
@@ -965,6 +987,9 @@ model ReservationAddon {
   payment   Payment? @relation(fields: [paymentId], references: [id])
 
   @@index([scheduledAt]) // agenda del día: baños de perros hospedados
+  @@index([reservationId]) // include de add-ons en cada reserva (FK sin índice; el cascade también lo usa)
+  @@index([variantId]) // add-ons por variante (ingresos por servicio, FK sin índice)
+  @@index([paymentId]) // add-ons pagados con un pago (FK sin índice)
   @@map("reservation_addons")
 }
 
@@ -1312,6 +1337,14 @@ model ExpenseCategory {
   // Timestamptz para coincidir con la columna creada por SQL desde el admin web.
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
+  // ⚠️ ÍNDICE QUE PRISMA NO PUEDE EXPRESAR (existe en prod, NO en este schema):
+  //   create index if not exists expense_categories_name_lower_idx
+  //     on expense_categories (lower(name));
+  // Es un índice de EXPRESIÓN, creado por la migración 0013_expense_categories
+  // del admin web (repo HolidogInn-web_app). Prisma no modela índices de
+  // expresión: `prisma migrate dev` lo detecta como drift y PROPONE BORRARLO.
+  // No aceptar ese drop; tampoco está en packages/db/migrations a propósito
+  // (si estuviera, `migrate diff` nunca quedaría en 0).
   @@map("expense_categories")
 }
 
@@ -1678,6 +1711,13 @@ model TerminalCharge {
 
   @@index([reference], map: "terminal_charges_reference_idx")
   @@index([reservationId], map: "terminal_charges_reservation_idx")
+  // ⚠️ ÍNDICE QUE PRISMA NO PUEDE EXPRESAR (existe en prod, NO en este schema):
+  //   create index if not exists terminal_charges_pending_idx
+  //     on terminal_charges (status, "createdAt") where status = 'PENDING';
+  // Es un índice PARCIAL (barrido de intentos pendientes viejos → EXPIRED),
+  // creado por la migración 0022_terminal_charges del admin web (repo
+  // HolidogInn-web_app). Prisma no modela índices parciales: `prisma migrate
+  // dev` lo detecta como drift y PROPONE BORRARLO. No aceptar ese drop.
   @@map("terminal_charges")
 }
 

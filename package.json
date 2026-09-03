@@ -18,7 +18,8 @@
     "test": "turbo run test",
     "test:e2e": "maestro test e2e/flows/",
     "test:e2e:studio": "maestro studio",
-    "postinstall": "node postinstall.mjs"
+    "postinstall": "node postinstall.mjs",
+    "sync:shared": "./scripts/sync-shared.sh"
   },
   "devDependencies": {
     "patch-package": "^8.0.1",

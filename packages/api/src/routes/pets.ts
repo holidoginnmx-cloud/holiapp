@@ -16,6 +16,8 @@ import {
 } from "../lib/petAccess";
 import { findPetByName } from "../lib/petName";
 import { stripInternalFieldsList } from "../lib/stripInternal";
+import { sizeFromWeight } from "../lib/pricing";
+import { derivePetSize } from "../lib/petSize";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -255,6 +257,11 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       const pet = await prisma.pet.create({
         data: {
           ...parsed.data,
+          // La talla la deriva SIEMPRE el servidor del peso (escala única de
+          // shared: S ≤5, M ≤15, L ≤24, XL). El `size` del body se acepta por
+          // compatibilidad pero no se usa: cada app lo calculaba con otra
+          // tabla y de ahí salían cuartos y variantes de baño equivocados.
+          size: parsed.data.weight != null ? sizeFromWeight(parsed.data.weight) : "M",
           // Dato de operación: lo anota quien baña al perro, no el dueño.
           groomingMinutes: registradaPorEquipo
             ? (parsed.data.groomingMinutes ?? null)
@@ -305,6 +312,18 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       // Staff editando un perfil NO puede modificar cartilla (debe pasar por
       // el flujo de revisión de admin).
       const data: Record<string, unknown> = { ...parsed.data };
+      // Talla: derivada del peso en el servidor (ver POST /pets). Si llega un
+      // peso nuevo se recalcula; si no (o llega null), se conserva la actual.
+      // `derivePetSize` respeta el cuarto de una estancia en curso: no cambia
+      // la talla si eso dejaría al perro fuera del cuarto donde ya está.
+      delete data.size;
+      if (parsed.data.weight != null) {
+        data.size = await derivePetSize(prisma, {
+          weight: parsed.data.weight,
+          currentSize: pet.size,
+          petId: pet.id,
+        });
+      }
       if (request.userRole === "STAFF") {
         delete data.cartillaUrl;
         delete data.cartillaPhotos;
