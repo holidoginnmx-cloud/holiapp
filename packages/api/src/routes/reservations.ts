@@ -51,6 +51,7 @@ import { applyDeliveryUpdate } from "../lib/deliveryUpdate";
 import { lockRoomsAndVerifyCapacity, RoomTakenError } from "../lib/reservationCreate";
 import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeamCreate";
 import { statusTransitionVerdict } from "../lib/reservationStatus";
+import { parsePageRequest, prismaPageArgs, buildPage } from "../lib/pagination";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -87,15 +88,30 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
 
-  // GET /reservations — listar (acepta query ?ownerId= y ?status=)
+  // GET /reservations — listar (acepta query ?ownerId=, ?status=, ?limit=, ?cursor=)
   // OWNER siempre queda filtrado a sus propias reservas; STAFF/ADMIN pueden filtrar libremente.
+  //
+  // Paginación OPT-IN (ver lib/pagination.ts): sin `limit` ni `cursor` la
+  // respuesta sigue siendo el arreglo completo de siempre, porque los binarios
+  // ya instalados piden así y el OTA tarda días en llegar a todos. Con
+  // `limit`/`cursor` devuelve `{ items, nextCursor, hasMore }`.
   fastify.get<{
-    Querystring: { ownerId?: string; status?: ReservationStatus };
-  }>("/reservations", { preHandler: [authMiddleware] }, async (request) => {
+    Querystring: {
+      ownerId?: string;
+      status?: ReservationStatus;
+      limit?: string;
+      cursor?: string;
+    };
+  }>("/reservations", { preHandler: [authMiddleware] }, async (request, reply) => {
     // Mantenimiento (auto-checkout, anticipos vencidos, recordatorios) en
     // segundo plano y con throttle — ya no bloquea esta lectura.
     triggerMaintenance(prisma);
     const { ownerId: queryOwnerId, status } = request.query;
+    const parsedPage = parsePageRequest(request.query);
+    if (!parsedPage.ok) {
+      return reply.status(400).send({ error: parsedPage.error });
+    }
+    const pageReq = parsedPage.page;
     const isStaffOrAdmin =
       request.userRole === "ADMIN" || request.userRole === "STAFF";
     const effectiveOwnerId = isStaffOrAdmin ? queryOwnerId : request.userId;
@@ -162,11 +178,24 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      // `id` como desempate: sin él dos reservas creadas en el mismo
+      // milisegundo pueden intercambiarse entre página y página y el cursor
+      // se salta filas. Para la lectura sin paginar el orden visible no
+      // cambia (solo se vuelve determinista).
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      ...prismaPageArgs(pageReq),
     });
+
+    // La página se corta ANTES de filtrar las filas rotas, para que el cursor
+    // sea el id de la última fila realmente leída.
+    const page = pageReq.paginated
+      ? buildPage(reservations, pageReq.limit)
+      : null;
+    const fetched = page ? page.items : reservations;
+
     // Defensa: omite reservaciones con relaciones rotas (datos legacy con FK
     // huérfana) para no romper a los clientes que asumen pet/owner presentes.
-    const rows = reservations
+    const rows = fetched
       .filter((r) => r.pet && r.owner)
       .map(({ payments, changeRequests, updates, review, addons, ...r }) => {
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -188,7 +217,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     });
     // El `...r` de arriba arrastra TODA la fila, incluida la nota interna del
     // equipo: hay que quitarla antes de que salga hacia un dueño.
-    return stripInternalFieldsList(rows, isStaffOrAdmin);
+    const items = stripInternalFieldsList(rows, isStaffOrAdmin);
+    if (!page) return items;
+    return { items, nextCursor: page.nextCursor, hasMore: page.hasMore };
   });
 
   // GET /reservations/:id — obtener con relaciones completas (owner o staff/admin)

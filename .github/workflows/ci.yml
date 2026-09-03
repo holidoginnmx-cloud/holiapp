@@ -1,0 +1,129 @@
+name: CI
+
+# Integración continua del monorepo. Hasta ahora nada impedía que entrara a
+# `main` código que ni siquiera compila: el push a `main` dispara el deploy del
+# API en Railway, así que un `tsc` roto se enteraba en producción.
+#
+# Este workflow NO necesita secretos ni base de datos:
+#   · los tests de packages/api y packages/shared corren con Prisma falseado
+#     (fakes/`vi.mock`), nunca abren una conexión;
+#   · `prisma validate` solo exige que las variables del datasource EXISTAN,
+#     no que apunten a algo vivo — de ahí las URLs de mentira de abajo.
+# Si algún día un test necesita base real, va en otro workflow, no aquí.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Un push encima de otro cancela la corrida vieja: no tiene caso pagar CI por
+# un commit que ya quedó atrás.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # react-native 0.81 exige node >= 20.19.4. 22 es LTS y es lo más cercano a lo
+  # que se usa en local sin quedar en una versión sin soporte.
+  NODE_VERSION: "22"
+
+jobs:
+  # ── packages/api ───────────────────────────────────────────
+  # Necesita el cliente de Prisma generado y los dist/ de @holidoginn/db y
+  # @holidoginn/shared: los dos paquetes se consumen por `main`/`types`
+  # apuntando a dist/, que está en .gitignore y por lo tanto NO existe en un
+  # checkout limpio.
+  api:
+    name: api · tsc + tests
+    runs-on: ubuntu-latest
+    env:
+      # De mentira a propósito: `prisma generate` las pide, nadie se conecta.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Instalar (lockfile congelado)
+        run: npm ci
+      - name: Generar cliente de Prisma
+        run: npx prisma generate --schema=packages/db/schema.prisma
+      - name: Compilar dependencias del workspace
+        run: |
+          npm run build --workspace=@holidoginn/db
+          npm run build --workspace=@holidoginn/shared
+      - name: tsc --noEmit
+        working-directory: packages/api
+        run: npx tsc --noEmit
+      # `if: always()` para ver typecheck Y tests en la misma corrida: si el
+      # job muere en el primer paso, el reporte de tests se pierde y hay que
+      # arreglar a ciegas. El job igual queda en rojo.
+      - name: vitest run
+        if: ${{ !cancelled() }}
+        working-directory: packages/api
+        run: npx vitest run
+
+  # ── packages/shared ────────────────────────────────────────
+  # Autónomo: solo depende de zod, no toca Prisma.
+  shared:
+    name: shared · tsc + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Instalar (lockfile congelado)
+        run: npm ci
+      - name: tsc --noEmit
+        working-directory: packages/shared
+        run: npx tsc --noEmit
+      - name: vitest run
+        if: ${{ !cancelled() }}
+        working-directory: packages/shared
+        run: npx vitest run
+
+  # ── apps/mobile ────────────────────────────────────────────
+  # No compila dist/ de @holidoginn/shared: el tsconfig de Expo resuelve la
+  # condición "react-native" del package.json, que apunta a src/.
+  mobile:
+    name: mobile · tsc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Instalar (lockfile congelado)
+        run: npm ci
+      - name: tsc --noEmit
+        working-directory: apps/mobile
+        run: npx tsc --noEmit
+
+  # ── packages/db ────────────────────────────────────────────
+  db:
+    name: db · prisma validate
+    runs-on: ubuntu-latest
+    env:
+      # `prisma validate` NO se conecta; solo exige que las variables del
+      # bloque `datasource` estén definidas.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Instalar (lockfile congelado)
+        run: npm ci
+      - name: prisma validate
+        working-directory: packages/db
+        run: npx prisma validate

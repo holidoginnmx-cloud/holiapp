@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { createAuthMiddleware } from "../middleware/auth";
+import { parsePageRequest, prismaPageArgs, buildPage } from "../lib/pagination";
 
 export default async function notificationsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -8,13 +9,29 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
   const isAdmin = (role?: string) => role === "ADMIN";
 
   // GET /notifications/:userId — notificaciones de un usuario (self o admin)
-  fastify.get<{ Params: { userId: string } }>(
+  //
+  // Paginación OPT-IN (ver lib/pagination.ts): la app instalada pide esto cada
+  // 30 segundos SIN parámetros y espera un arreglo pelón con toda la bandeja;
+  // eso no se puede tocar hasta que el OTA llegue a todos los teléfonos. Con
+  // `?limit=` (y `?cursor=`) devuelve `{ items, nextCursor, hasMore,
+  // unreadCount }`. `unreadCount` es de la bandeja COMPLETA, no de la página:
+  // es lo que necesita el badge, que es justo lo que va a buscar el poll.
+  fastify.get<{
+    Params: { userId: string };
+    Querystring: { limit?: string; cursor?: string };
+  }>(
     "/notifications/:userId",
     { preHandler: [authMiddleware] },
     async (request, reply) => {
       if (!isAdmin(request.userRole) && request.params.userId !== request.userId) {
         return reply.status(403).send({ error: "No autorizado" });
       }
+
+      const parsedPage = parsePageRequest(request.query);
+      if (!parsedPage.ok) {
+        return reply.status(400).send({ error: parsedPage.error });
+      }
+      const pageReq = parsedPage.page;
 
       const user = await prisma.user.findUnique({
         where: { id: request.params.userId },
@@ -25,9 +42,24 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
 
       const notifications = await prisma.notification.findMany({
         where: { userId: request.params.userId },
-        orderBy: { createdAt: "desc" },
+        // `id` de desempate: el cursor necesita un orden determinista (varias
+        // notificaciones de la misma reserva se crean en el mismo instante).
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        ...prismaPageArgs(pageReq),
       });
-      return notifications;
+
+      if (!pageReq.paginated) return notifications;
+
+      const page = buildPage(notifications, pageReq.limit);
+      const unreadCount = await prisma.notification.count({
+        where: { userId: request.params.userId, isRead: false },
+      });
+      return {
+        items: page.items,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        unreadCount,
+      };
     }
   );
 
