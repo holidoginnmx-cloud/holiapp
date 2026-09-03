@@ -603,6 +603,11 @@ model Reservation {
   @@index([ownerId, status, reviewRequestedAt]) // GET /reviews/pending + barrido de reseñas
   @@index([petId, status]) // reservas del co-dueño, overlap guard y GET /pets/:id/history
   @@index([groupId]) // hermanas de una multireserva (idempotencia del PI, reseñas, avisos por visita)
+  // Orden por defecto de GET /reservations (createdAt desc, id desc como
+  // desempate del cursor). Sin él, la consulta del admin sin filtros ordena
+  // con un top-N heapsort sobre toda la tabla; con él es un index scan que
+  // solo toca la página pedida.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("reservations")
 }
 
