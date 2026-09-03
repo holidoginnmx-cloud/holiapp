@@ -17,17 +17,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import {
-  getPetsByOwner,
   createMultiReservation,
   createPaymentIntent,
-  validateReservationDiscount,
   getBathVariants,
   getAvailableRooms,
   getMe,
-  getDeliveryStatus,
-  getDeliveryAddress,
-  saveDeliveryAddress,
-  deliveryQuote,
   type DeliveryTrip,
   type BathVariant,
   type BathSelectionsByPet,
@@ -50,10 +44,7 @@ import {
   type ReservationTimes,
 } from "@/components/CheckInReminderModal";
 import { ErrorState } from "@/components/ErrorState";
-import {
-  DeliveryAddressPicker,
-  type SelectedAddress,
-} from "@/components/DeliveryAddressPicker";
+import { DeliveryAddressPicker } from "@/components/DeliveryAddressPicker";
 import { LevelSelector } from "@/components/LevelSelector";
 import {
   VIAJES_DOMICILIO,
@@ -61,7 +52,11 @@ import {
   viajeSufijo,
 } from "@/constants/delivery";
 import { formatName, formatCurrency, formatDayShort, formatDayShortYear, formatStayDay } from "@/lib/format";
+import { alertaDeError } from "@/lib/errorAlert";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+import { usePetSelection } from "@/hooks/usePetSelection";
+import { useHomeDelivery } from "@/hooks/useHomeDelivery";
+import { useDiscountCode } from "@/hooks/useDiscountCode";
 import { getPublicLodgingPricing } from "@/lib/api/pricing";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
@@ -114,7 +109,6 @@ function CreateReservationScreenContent() {
   const [checkOut, setCheckOut] = useState<Date | null>(null);
   const [showCheckInPicker, setShowCheckInPicker] = useState(false);
   const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
-  const [selectedPetIds, setSelectedPetIds] = useState<string[]>([]);
   const [roomPreference, setRoomPreference] = useState<"shared" | "separate">("shared");
   const [paymentType, setPaymentType] = useState<"FULL" | "DEPOSIT">("FULL");
   const [notes, setNotes] = useState("");
@@ -125,67 +119,37 @@ function CreateReservationScreenContent() {
   const [medicationByPet, setMedicationByPet] = useState<Record<string, MedicationState>>({});
 
   // ── Servicio a domicilio ──
-  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
-  // Qué viajes contrata. PICKUP (vamos por el perro) es lo que se cobró siempre.
-  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
-  const [discountCodeInput, setDiscountCodeInput] = useState("");
-  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
-  const [applyingDiscount, setApplyingDiscount] = useState(false);
-
-  // ¿El servicio está activo? Gate para mostrar la opción.
-  const { data: deliveryStatus } = useQuery({
-    queryKey: ["delivery-status"],
-    queryFn: getDeliveryStatus,
-    staleTime: 1000 * 60 * 10,
-  });
-  const deliveryServiceActive = deliveryStatus?.active === true;
-
-  // Precarga la dirección guardada del usuario (para futuras reservas).
-  const { data: savedAddress } = useQuery({
-    queryKey: ["delivery-address"],
-    queryFn: getDeliveryAddress,
-    enabled: deliveryServiceActive,
-  });
-  useEffect(() => {
-    if (
-      !deliveryAddress &&
-      savedAddress?.address &&
-      savedAddress.addressLat != null &&
-      savedAddress.addressLng != null
-    ) {
-      setDeliveryAddress({
-        address: savedAddress.address,
-        lat: savedAddress.addressLat,
-        lng: savedAddress.addressLng,
-        placeId: savedAddress.addressPlaceId ?? undefined,
-      });
-    }
-  }, [savedAddress, deliveryAddress]);
-
-  // Cotiza distancia + tarifa para la dirección seleccionada.
-  const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
-    enabled: homeDeliveryEnabled && !!deliveryAddress,
-  });
-  const deliveryActive =
-    homeDeliveryEnabled && !!deliveryAddress && deliveryQuoteData?.active === true;
-  const deliveryFee = deliveryActive ? deliveryQuoteData!.fee : 0;
-
-  // Fetch owner's pets
+  // Toda la mecánica (gate del servicio, dirección guardada, cotización por
+  // viaje y payload) vive en el hook; aquí solo se pinta.
+  const delivery = useHomeDelivery();
   const {
-    data: pets,
-    isLoading: loadingPets,
-    isError: petsError,
-    error: petsErrorObj,
-    refetch: refetchPets,
-  } = useQuery({
-    queryKey: ["pets", userId],
-    queryFn: () => getPetsByOwner(userId!),
-    enabled: !!userId,
-  });
+    deliveryServiceActive,
+    homeDeliveryEnabled,
+    setHomeDeliveryEnabled,
+    deliveryAddress,
+    setDeliveryAddress,
+    deliveryTrip,
+    setDeliveryTrip,
+    deliveryQuoteData,
+    deliveryQuoteLoading,
+    deliveryActive,
+    deliveryFee,
+    homeDeliveryPayload,
+    deliveryIncomplete,
+  } = delivery;
+
+  // Mascotas del dueño + selección. La regla de negocio (cartilla, traslapes,
+  // datos faltantes) sigue aquí abajo, envolviendo el toggle del hook.
+  const {
+    pets,
+    petsLoading: loadingPets,
+    petsError,
+    petsErrorObj,
+    refetchPets,
+    selectedPetIds,
+    setSelectedPetIds,
+    selectedPets,
+  } = usePetSelection({ userId });
   // validatePet decide con `cartillaStatus` de esta lista: si el equipo acaba
   // de aprobar la cartilla, el wizard no debe seguir bloqueando 5 min.
   useRefetchOnFocus(userId ? [["pets", userId]] : []);
@@ -299,7 +263,7 @@ function CreateReservationScreenContent() {
 
   // Toggle pet selection
   const togglePet = (petId: string) => {
-    const pet = pets?.find((p) => p.id === petId);
+    const pet = pets.find((p) => p.id === petId);
     const alreadySelected = selectedPetIds.includes(petId);
     if (!alreadySelected && pet) {
       const { blockReason, warnings } = validatePet(pet, checkIn, checkOut);
@@ -339,12 +303,6 @@ function CreateReservationScreenContent() {
       prev.includes(petId) ? prev.filter((id) => id !== petId) : [...prev, petId]
     );
   };
-
-  // Selected pets info
-  const selectedPets = useMemo(
-    () => pets?.filter((p) => selectedPetIds.includes(p.id)) ?? [],
-    [pets, selectedPetIds]
-  );
 
   // Price calculation. computeDays (UTC, redondeo) es la MISMA función que usa
   // el backend al cobrar → el estimado y el cargo no divergen en el nº de noches.
@@ -440,7 +398,16 @@ function CreateReservationScreenContent() {
 
   // Descuento aplicado (preview; el backend recalcula el monto autoritativo).
   // Aplica sobre el subtotal del servicio, NO sobre el envío a domicilio.
-  const discountTotal = appliedDiscount?.discountTotal ?? 0;
+  const discount = useDiscountCode(baseTotal);
+  const {
+    discountCodeInput,
+    setDiscountCodeInput,
+    appliedDiscount,
+    applyingDiscount,
+    applyDiscount,
+    removeDiscount,
+    discountTotal,
+  } = discount;
   const discountedBase = Math.max(0, baseTotal - discountTotal);
 
   // Same-day surcharge: OWNER reservando con menos de 24h de anticipación paga +20%.
@@ -480,39 +447,6 @@ function CreateReservationScreenContent() {
   const grandTotal = discountedBase + surchargeAmount + deliveryFee;
   const depositAmount = Math.ceil(grandTotal * 0.20);
 
-  async function applyDiscount() {
-    const code = discountCodeInput.trim();
-    if (!code || baseTotal <= 0) return;
-    setApplyingDiscount(true);
-    try {
-      const res = await validateReservationDiscount({ code, subtotal: baseTotal });
-      if (res.valid) {
-        setAppliedDiscount({ code: code.toUpperCase(), discountTotal: res.discountTotal });
-      } else {
-        setAppliedDiscount(null);
-        Alert.alert("Código de descuento", res.message);
-      }
-    } catch (err) {
-      Alert.alert(
-        "Código de descuento",
-        err instanceof Error ? err.message : "No se pudo validar el código"
-      );
-    } finally {
-      setApplyingDiscount(false);
-    }
-  }
-
-  function removeDiscount() {
-    setAppliedDiscount(null);
-    setDiscountCodeInput("");
-  }
-
-  // Si cambia el subtotal (mascotas, fechas, baños, medicamentos), el descuento
-  // previo puede quedar desactualizado; se limpia para volverlo a aplicar.
-  useEffect(() => {
-    setAppliedDiscount(null);
-  }, [baseTotal]);
-
   // Build payload for API (only enabled pets)
   const bathSelectionsPayload: BathSelectionsByPet | undefined = useMemo(() => {
     const entries = selectedPets
@@ -531,21 +465,6 @@ function CreateReservationScreenContent() {
     return entries.length > 0 ? Object.fromEntries(entries) : undefined;
   }, [selectedPets, medicationByPet]);
 
-  // Payload de domicilio — el backend recalcula la fee desde lat/lng.
-  const homeDeliveryPayload = useMemo(
-    () =>
-      deliveryActive && deliveryAddress
-        ? {
-            address: deliveryAddress.address,
-            lat: deliveryAddress.lat,
-            lng: deliveryAddress.lng,
-            placeId: deliveryAddress.placeId,
-            trip: deliveryTrip,
-          }
-        : undefined,
-    [deliveryActive, deliveryAddress, deliveryTrip],
-  );
-
   // Medication notes required if toggle is enabled
   const medicationNotesMissing = selectedPets.some(
     (p) => medicationByPet[p.id]?.enabled && medicationByPet[p.id]!.notes.trim().length === 0
@@ -562,9 +481,8 @@ function CreateReservationScreenContent() {
   }
 
   const allLegalAccepted = legalTerms && legalVaccines && legalIncidents;
-  // Si activó domicilio, exige una dirección con cotización válida antes de pagar
-  // (evita reservar sin el servicio que pidió).
-  const deliveryIncomplete = homeDeliveryEnabled && !deliveryActive;
+  // `deliveryIncomplete` (del hook): si activó domicilio, exige una dirección
+  // con cotización válida antes de pagar — evita reservar sin el servicio.
   const canSubmit =
     !!checkIn &&
     !!checkOut &&
@@ -659,14 +577,7 @@ function CreateReservationScreenContent() {
     },
   ) => {
     // Guarda la dirección para precargarla en futuras reservas (best-effort).
-    if (homeDeliveryPayload && deliveryAddress) {
-      saveDeliveryAddress({
-        address: deliveryAddress.address,
-        lat: deliveryAddress.lat,
-        lng: deliveryAddress.lng,
-        placeId: deliveryAddress.placeId,
-      }).catch(() => {});
-    }
+    delivery.persistAddress();
 
     queryClient.invalidateQueries({ queryKey: ["reservations"] });
 
@@ -804,7 +715,7 @@ function CreateReservationScreenContent() {
           ]
         );
       } else {
-        Alert.alert("Error", msg);
+        alertaDeError(err, { respaldo: msg });
       }
     } finally {
       setPaying(false);
@@ -835,7 +746,7 @@ function CreateReservationScreenContent() {
     checkIn && checkIn >= today ? checkIn : tomorrow;
 
   // Avisos de saldo pendiente — una tarjeta por mascota con anticipo sin pagar
-  const pendingBalanceAlerts = (pets ?? [])
+  const pendingBalanceAlerts = pets
     .map((p) => {
       const pending = p.reservations?.find(
         (r) => r.paymentType === "DEPOSIT" && r.hasBalance === true,
@@ -995,7 +906,7 @@ function CreateReservationScreenContent() {
       <View
         style={[
           styles.section,
-          selectedPetIds.length === 0 && pets?.length ? styles.petSectionHighlight : null,
+          selectedPetIds.length === 0 && pets.length ? styles.petSectionHighlight : null,
         ]}
       >
         <View style={styles.petTitleRow}>
@@ -1012,7 +923,7 @@ function CreateReservationScreenContent() {
             </View>
           )}
         </View>
-        {selectedPetIds.length === 0 && pets?.length ? (
+        {selectedPetIds.length === 0 && pets.length ? (
           <View style={styles.petCueBanner}>
             <Ionicons name="paw" size={18} color={COLORS.primary} />
             <Text style={styles.petCueBannerText}>
@@ -1026,7 +937,7 @@ function CreateReservationScreenContent() {
           <ErrorState error={petsErrorObj} onRetry={refetchPets} compact />
         ) : loadingPets ? (
           <ActivityIndicator color={COLORS.primary} />
-        ) : !pets?.length ? (
+        ) : pets.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>No tienes mascotas registradas</Text>
             <TouchableOpacity

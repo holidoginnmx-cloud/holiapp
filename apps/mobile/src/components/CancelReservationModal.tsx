@@ -15,6 +15,9 @@ import { cancelReservation, issueRefund } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { useTrackedModal } from "@/lib/modalPresentation";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
 interface CancelReservationModalProps {
@@ -78,7 +81,7 @@ export function CancelReservationModal({
       );
       onClose();
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const handleConfirm = () => {

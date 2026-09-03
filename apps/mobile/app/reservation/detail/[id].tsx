@@ -34,6 +34,9 @@ import {
 import { BathUpsellCard } from "@/components/BathUpsellCard";
 import { PaymentCardFlow } from "@/components/PaymentCardFlow";
 import { ReservationBreakdownCard } from "@/components/ReservationBreakdownCard";
+import { ReservationDateHero } from "@/components/reservation/ReservationDateHero";
+import { ReservationPaymentsCard } from "@/components/reservation/ReservationPaymentsCard";
+import { ReservationBalanceCard } from "@/components/reservation/ReservationBalanceCard";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
@@ -41,12 +44,7 @@ import {
   daysSinceVisitEnd,
   BALANCE_AFTER_CHECKOUT_MAX_DAYS,
   formatCurrency,
-  formatDayShort,
   formatStayDay,
-  formatWeekdayShort,
-  formatWeekdayDayShort,
-  formatTime,
-  formatTimeHHmm,
 } from "@/lib/format";
 import { ReviewPromptModal } from "@/components/ReviewPromptModal";
 import { PawRating } from "@/components/PawRating";
@@ -55,6 +53,7 @@ import { CancelReservationModal } from "@/components/CancelReservationModal";
 import { ReservationDeliveryModal } from "@/components/ReservationDeliveryModal";
 import { VIAJE_SUB_CLIENTE } from "@/constants/delivery";
 import { listChangeRequests, type ChangeRequest } from "@/lib/api";
+import { alertaDeError } from "@/lib/errorAlert";
 import { ErrorState } from "@/components/ErrorState";
 import { styles } from "@/styles/ownerReservationDetailStyles";
 import { cloudinaryResized } from "@/lib/cloudinary";
@@ -78,32 +77,6 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }>
   CHECKED_IN: { label: "En estancia", bg: COLORS.successBg, text: COLORS.successText },
   CHECKED_OUT: { label: "Concluida", bg: COLORS.bgSection, text: COLORS.textTertiary },
   CANCELLED: { label: "Cancelada", bg: COLORS.errorBg, text: COLORS.errorText },
-};
-
-const PAYMENT_STATUS: Record<
-  string,
-  { label: string; bg: string; color: string }
-> = {
-  UNPAID: {
-    label: "Sin pagar",
-    bg: COLORS.errorBg,
-    color: COLORS.errorText,
-  },
-  PARTIAL: {
-    label: "Anticipo",
-    bg: COLORS.warningBg,
-    color: COLORS.warningText,
-  },
-  PAID: {
-    label: "Pagado",
-    bg: COLORS.successBg,
-    color: COLORS.successText,
-  },
-  REFUNDED: {
-    label: "Reembolsado",
-    bg: COLORS.bgSection,
-    color: COLORS.textTertiary,
-  },
 };
 
 export default function ReservationDetailScreen() {
@@ -401,7 +374,7 @@ function ReservationDetailScreenContent() {
     } catch (err: any) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
-      Alert.alert("Error", err.message || "No se pudo procesar el pago");
+      alertaDeError(err, { respaldo: "No se pudo procesar el pago" });
     } finally {
       setPayingBalance(false);
     }
@@ -563,171 +536,13 @@ function ReservationDetailScreenContent() {
 
       {/* Info card */}
       <View style={styles.card}>
-        {reservation.reservationType === "DAYCARE" ? (
-          <View style={styles.bathHero}>
-            <View style={styles.bathBadge}>
-              <Ionicons name="sunny" size={14} color={COLORS.primary} />
-              <Text style={styles.bathBadgeText}>Guardería</Text>
-            </View>
-            {reservation.appointmentAt && (
-              <View style={styles.bathInfoRow}>
-                <Text style={styles.bathDay}>
-                  {formatWeekdayDayShort(reservation.appointmentAt)}
-                </Text>
-                {reservation.checkInTime && reservation.checkOutTime && (
-                  <Text style={styles.bathTime}>
-                    {formatTimeHHmm(reservation.checkInTime)}–
-                    {formatTimeHHmm(reservation.checkOutTime)}
-                  </Text>
-                )}
-              </View>
-            )}
-          </View>
-        ) : reservation.reservationType === "BATH" ? (
-          <View style={styles.bathHero}>
-            <View style={styles.bathBadge}>
-              <Ionicons name="water" size={14} color={COLORS.primary} />
-              <Text style={styles.bathBadgeText}>Cita de baño</Text>
-            </View>
-            {reservation.appointmentAt && (
-              <View style={styles.bathInfoRow}>
-                <Text style={styles.bathDay}>
-                  {formatWeekdayDayShort(reservation.appointmentAt)}
-                </Text>
-                <Text style={styles.bathTime}>
-                  {formatTime(reservation.appointmentAt)}
-                </Text>
-              </View>
-            )}
-          </View>
-        ) : (
-          reservation.checkIn &&
-          reservation.checkOut && (
-            <View style={styles.dateHero}>
-              <View style={styles.datePill}>
-                <Text style={styles.datePillLabel}>CHECK-IN</Text>
-                <Text style={styles.datePillDay}>
-                  {formatDayShort(reservation.checkIn, { timeZone: "UTC" })}
-                </Text>
-                <Text style={styles.datePillSub}>
-                  {formatWeekdayShort(reservation.checkIn, { timeZone: "UTC" })}
-                </Text>
-                {(canEditCheckInTime || reservation.checkInTime) && (
-                  <TouchableOpacity
-                    style={[
-                      styles.timeChip,
-                      reservation.checkInTime && styles.timeChipSet,
-                    ]}
-                    onPress={() => setTimePickerFor("in")}
-                    disabled={!canEditCheckInTime}
-                    activeOpacity={0.7}
-                    testID="reservation-checkin-time-chip"
-                  >
-                    <Ionicons
-                      name="time-outline"
-                      size={11}
-                      color={reservation.checkInTime ? COLORS.primary : COLORS.textTertiary}
-                    />
-                    <Text
-                      style={[
-                        styles.timeChipText,
-                        reservation.checkInTime && styles.timeChipTextSet,
-                      ]}
-                    >
-                      {reservation.checkInTime
-                        ? formatTimeHHmm(reservation.checkInTime)
-                        : "Indicar hora"}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <View style={styles.dateConnector}>
-                <View style={styles.connectorLine} />
-                {reservation.totalDays != null && (
-                  <View style={styles.nightsBadge}>
-                    <Ionicons name="moon" size={12} color={COLORS.primary} />
-                    <Text style={styles.nightsBadgeText}>
-                      {reservation.totalDays}{" "}
-                      {reservation.totalDays === 1 ? "noche" : "noches"}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.connectorLine} />
-              </View>
-
-              <View style={styles.datePill}>
-                <Text style={styles.datePillLabel}>CHECK-OUT</Text>
-                <Text style={styles.datePillDay}>
-                  {formatDayShort(reservation.checkOut, { timeZone: "UTC" })}
-                </Text>
-                <Text style={styles.datePillSub}>
-                  {formatWeekdayShort(reservation.checkOut, { timeZone: "UTC" })}
-                </Text>
-                {(canEditCheckOutTime || reservation.checkOutTime) && (
-                  <TouchableOpacity
-                    style={[
-                      styles.timeChip,
-                      reservation.checkOutTime && styles.timeChipSet,
-                    ]}
-                    onPress={() => setTimePickerFor("out")}
-                    disabled={!canEditCheckOutTime}
-                    activeOpacity={0.7}
-                    testID="reservation-checkout-time-chip"
-                  >
-                    <Ionicons
-                      name="time-outline"
-                      size={11}
-                      color={reservation.checkOutTime ? COLORS.primary : COLORS.textTertiary}
-                    />
-                    <Text
-                      style={[
-                        styles.timeChipText,
-                        reservation.checkOutTime && styles.timeChipTextSet,
-                      ]}
-                    >
-                      {reservation.checkOutTime
-                        ? formatTimeHHmm(reservation.checkOutTime)
-                        : "Indicar hora"}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          )
-        )}
-
-        {reservation.reservationType === "STAY" && (
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <View style={styles.metaIconWrap}>
-                <Ionicons
-                  name="bed-outline"
-                  size={16}
-                  color={COLORS.primary}
-                />
-              </View>
-              <Text style={styles.metaLabel}>Habitación</Text>
-              <Text style={styles.metaValue} numberOfLines={1}>
-                {reservation.room?.name ?? "Por asignar"}
-              </Text>
-            </View>
-            {!groupedReservations && reservation.pet?.breed && (
-              <>
-                <View style={styles.metaDivider} />
-                <View style={styles.metaItem}>
-                  <View style={styles.metaIconWrap}>
-                    <Ionicons name="paw" size={16} color={COLORS.primary} />
-                  </View>
-                  <Text style={styles.metaLabel}>Raza</Text>
-                  <Text style={styles.metaValue} numberOfLines={1}>
-                    {reservation.pet.breed}
-                  </Text>
-                </View>
-              </>
-            )}
-          </View>
-        )}
+        <ReservationDateHero
+          reservation={reservation}
+          hasGroup={!!groupedReservations}
+          canEditCheckInTime={canEditCheckInTime}
+          canEditCheckOutTime={canEditCheckOutTime}
+          onPickTime={setTimePickerFor}
+        />
 
         {/* Qué incluye el cobro. En multi-mascota es el desglose de ESTA
             mascota; el reparto del grupo ya sale en el card "Mascotas". */}
@@ -805,71 +620,19 @@ function ReservationDetailScreenContent() {
           después del check-out: antes desaparecía ahí y la visita se quedaba sin
           forma de cobrarse desde la app. */}
       {hasBalance && (
-        <View style={styles.balanceBanner}>
-          <View style={styles.balanceBannerHeader}>
-            <Ionicons name="warning-outline" size={20} color={COLORS.warningText} />
-            <Text style={styles.balanceBannerTitle}>
-              {balanceFromExtension ? "Saldo por extensión" : "Saldo pendiente"}
-            </Text>
-          </View>
-          <Text style={styles.balanceBannerAmount}>
-            {formatCurrency(remainingBalance)} MXN
-          </Text>
-          {balanceAfterCheckout ? (
-            <Text style={styles.balanceBannerWarning}>
-              La visita de {formatName(reservation.pet?.name ?? "tu mascota")} ya
-              terminó y quedó este saldo por cubrir. Puedes pagarlo aquí mismo.
-            </Text>
-          ) : balanceFromExtension ? (
-            <Text style={styles.balanceBannerWarning}>
-              Corresponde a los días agregados tras la extensión aprobada.
-            </Text>
-          ) : (
-            <Text style={styles.balanceBannerWarning}>
-              Puedes liquidarlo aquí en la app o al entregar a tu mascota en la sucursal de Holidog Inn.
-            </Text>
-          )}
-
-          {/* Qué se está pagando: total, lo ya cubierto y el desglose de
-              conceptos. Antes solo se veía la cifra del saldo, sin explicación. */}
-          {totalPaid > 0 && (
-            <View style={styles.balancePaidRow}>
-              <Text style={styles.balancePaidLabel}>Ya pagaste</Text>
-              <Text style={styles.balancePaidValue}>
-                {formatCurrency(totalPaid)}
-              </Text>
-            </View>
-          )}
-          <ReservationBreakdownCard
-            reservation={reservation}
-            variant="payment"
-            title="Qué estás pagando"
-          />
-
-          <TouchableOpacity
-            style={[
-              styles.balanceButton,
-              (payingBalance || pendingConfirm.hasPending) && { opacity: 0.5 },
-            ]}
-            onPress={handlePayBalance}
-            disabled={payingBalance || pendingConfirm.hasPending}
-            activeOpacity={0.8}
-          >
-            {payingBalance ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons name="card-outline" size={20} color={COLORS.white} />
-                <Text style={styles.balanceButtonText}>
-                  {balanceAfterCheckout ? "Pagar saldo" : "Liquidar saldo"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
+        <ReservationBalanceCard
+          reservation={reservation}
+          remainingBalance={remainingBalance}
+          totalPaid={totalPaid}
+          balanceAfterCheckout={!!balanceAfterCheckout}
+          balanceFromExtension={balanceFromExtension}
+          paying={payingBalance}
+          disabled={payingBalance || pendingConfirm.hasPending}
+          onPay={handlePayBalance}
+        >
           {checkout.stuckNotice}
           {pendingConfirm.notice}
-        </View>
+        </ReservationBalanceCard>
       )}
 
       {/* La nota de la reserva ya NO se le muestra al dueño: el campo `notes`
@@ -1114,56 +877,7 @@ function ReservationDetailScreenContent() {
       )}
 
       {/* Payment status — última sección */}
-      {reservation.payments && reservation.payments.length > 0 && (
-        <View style={styles.card}>
-          <View style={styles.sectionCardHeader}>
-            <Text style={styles.cardTitle}>Pagos</Text>
-            <View style={styles.countChip}>
-              <Text style={styles.countChipText}>
-                {reservation.payments.length}
-              </Text>
-            </View>
-          </View>
-          {reservation.payments.map((p, idx) => {
-            const pConfig = PAYMENT_STATUS[p.status] ?? PAYMENT_STATUS.UNPAID;
-            const methodIcon: keyof typeof Ionicons.glyphMap =
-              p.method === "CASH"
-                ? "cash-outline"
-                : p.method === "TRANSFER"
-                ? "swap-horizontal-outline"
-                : "card-outline";
-            const isLast = idx === reservation.payments.length - 1;
-            return (
-              <View
-                key={p.id}
-                style={[styles.paymentRowNew, isLast && styles.paymentRowLast]}
-              >
-                <View style={styles.paymentIconWrap}>
-                  <Ionicons name={methodIcon} size={18} color={COLORS.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.paymentAmount}>
-                    {formatCurrency(p.amount)}
-                  </Text>
-                  <Text style={styles.paymentMeta}>
-                    {p.method}
-                    {p.paidAt ? ` · ${formatDayShort(p.paidAt)}` : ""}
-                  </Text>
-                </View>
-                <View
-                  style={[styles.paymentBadge, { backgroundColor: pConfig.bg }]}
-                >
-                  <Text
-                    style={[styles.paymentBadgeText, { color: pConfig.color }]}
-                  >
-                    {pConfig.label}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
+      <ReservationPaymentsCard payments={reservation.payments} />
 
       {canCancel && (
         <View style={styles.actionsRow}>

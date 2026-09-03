@@ -21,6 +21,9 @@ import { PawRating, RATING_LABELS } from "./PawRating";
 import { maybePromptStoreReview } from "@/lib/storeReview";
 import { useTrackedModal } from "@/lib/modalPresentation";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 export type ReviewTarget = {
   /** Reservaciones de la visita (una por mascota). Se califica UNA vez. */
   reservationIds: string[];
@@ -86,7 +89,7 @@ export function ReviewPromptModal({
         },
       ]);
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const snooze = useMutation({

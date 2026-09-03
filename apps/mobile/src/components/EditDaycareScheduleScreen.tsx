@@ -36,6 +36,9 @@ import {
   DAYCARE_CLOSE_HOUR,
 } from "@holidoginn/shared/src/pricing";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 // Date → "HH:mm" (hora local del dispositivo, que corre en hora del hotel).
 function toHHmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -176,7 +179,7 @@ export function EditDaycareScheduleScreen({ id }: { id: string }) {
     onError: (e: Error) => {
       // Día pasado o sin cupo llegan como error del server; el switch
       // "Guardar de todos modos" los destranca.
-      Alert.alert("No se pudo cambiar el horario", e.message);
+      alertaDeError(e, { titulo: "No se pudo cambiar el horario" });
     },
   });
 

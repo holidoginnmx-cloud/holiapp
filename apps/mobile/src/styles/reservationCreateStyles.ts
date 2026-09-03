@@ -10,7 +10,7 @@ export const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 12,
   },
-  title: { fontSize: 24, fontWeight: "800", color: COLORS.textPrimary },
+  title: { fontSize: 24, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   pendingBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -24,7 +24,7 @@ export const styles = StyleSheet.create({
   },
   pendingBannerTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
     marginBottom: 2,
   },
@@ -45,9 +45,9 @@ export const styles = StyleSheet.create({
     elevation: 2,
     gap: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: COLORS.textPrimary },
+  sectionTitle: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   hint: { fontSize: 13, color: COLORS.textTertiary, marginTop: -8 },
-  label: { fontSize: 13, fontWeight: "600", color: COLORS.textTertiary, marginBottom: 4 },
+  label: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary, marginBottom: 4 },
   dateRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   dateCol: { flex: 1 },
   dateButton: {
@@ -62,7 +62,7 @@ export const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   dateText: { fontSize: 15, color: COLORS.textPrimary },
-  nightsText: { fontSize: 14, fontWeight: "600", color: COLORS.primary, textAlign: "center" },
+  nightsText: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.primary, textAlign: "center" },
   datePickersRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -85,7 +85,7 @@ export const styles = StyleSheet.create({
   },
   requiredAsterisk: {
     color: COLORS.errorText,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   petCountBadge: {
     flexDirection: "row",
@@ -98,7 +98,7 @@ export const styles = StyleSheet.create({
   },
   petCountBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   petCueBanner: {
@@ -114,7 +114,7 @@ export const styles = StyleSheet.create({
   petCueBannerText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   petRow: { flexDirection: "row", gap: 12, paddingVertical: 4 },
@@ -140,7 +140,7 @@ export const styles = StyleSheet.create({
   },
   cartillaChipWarn: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
     textAlign: "center",
     marginTop: 4,
@@ -152,13 +152,13 @@ export const styles = StyleSheet.create({
     marginBottom: 6,
     backgroundColor: COLORS.bgSection,
   },
-  petChipName: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
+  petChipName: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   petChipNameSelected: { color: COLORS.white },
   petChipWeight: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
   emptyBox: { alignItems: "center", gap: 8, padding: 12 },
   emptyText: { fontSize: 14, color: COLORS.textDisabled, textAlign: "center" },
   linkButton: { flexDirection: "row", alignItems: "center", gap: 6 },
-  linkText: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
+  linkText: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.primary },
   // Room preference
   prefRow: { flexDirection: "row", gap: 10 },
   prefButton: {
@@ -173,7 +173,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   prefButtonSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  prefText: { fontSize: 14, fontWeight: "600", color: COLORS.textTertiary },
+  prefText: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
   prefTextSelected: { color: COLORS.white },
   // Price
   priceCard: {
@@ -185,10 +185,10 @@ export const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     gap: 8,
   },
-  priceTitle: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  priceTitle: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   priceLabel: { fontSize: 14, color: COLORS.textTertiary },
-  priceValue: { fontSize: 14, fontWeight: "600", color: COLORS.textSecondary },
+  priceValue: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textSecondary },
   discountRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   discountInput: {
     flex: 1,
@@ -212,21 +212,21 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
   },
   discountApplyBtnDisabled: { opacity: 0.5 },
-  discountApplyText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  discountApplyText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
   discountAppliedValue: { flexDirection: "row", alignItems: "center", gap: 8 },
-  discountValueText: { fontSize: 14, fontWeight: "700", color: COLORS.successText },
+  discountValueText: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.successText },
   priceTotalRow: {
     borderTopWidth: 1,
     borderTopColor: COLORS.primary,
     paddingTop: 8,
     marginTop: 4,
   },
-  priceTotalLabel: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
-  priceTotalValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
+  priceTotalLabel: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
+  priceTotalValue: { fontSize: 20, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   // Legal
   checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   checkText: { fontSize: 14, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
-  checkLink: { color: COLORS.primary, fontWeight: "600", textDecorationLine: "underline" },
+  checkLink: { color: COLORS.primary, fontFamily: "PlusJakartaSans_600SemiBold", textDecorationLine: "underline" },
   // Notes
   input: {
     backgroundColor: COLORS.white,
@@ -250,11 +250,11 @@ export const styles = StyleSheet.create({
     paddingVertical: 16,
     marginTop: 8,
   },
-  submitText: { fontSize: 17, fontWeight: "700", color: COLORS.white },
+  submitText: { fontSize: 17, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.white },
   // Deposit
   depositDisabledHint: { fontSize: 12, color: COLORS.textDisabled, marginTop: -4 },
   depositInfo: { gap: 6, marginTop: 4 },
-  depositCharge: { fontSize: 15, fontWeight: "700", color: COLORS.successText },
+  depositCharge: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.successText },
   depositRemaining: { fontSize: 14, color: COLORS.textTertiary },
   depositWarning: {
     flexDirection: "row",
@@ -282,7 +282,7 @@ export const styles = StyleSheet.create({
   },
   surchargeWarningText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.warningText,
     flex: 1,
     lineHeight: 18,
@@ -295,7 +295,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: COLORS.errorText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   medicationErrorRow: {
     flexDirection: "row",
@@ -316,7 +316,7 @@ export const styles = StyleSheet.create({
   },
   availabilityTitle: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
   },
   availabilityBody: {
@@ -340,12 +340,12 @@ export const styles = StyleSheet.create({
   bathPetName: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   bathPrice: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathOptionsRow: {
@@ -377,13 +377,13 @@ export const styles = StyleSheet.create({
   },
   bathChipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     letterSpacing: 0.2,
   },
   bathChipTextSelected: {
     color: COLORS.primary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   bathExtrasNote: {
     flexDirection: "row",
@@ -398,7 +398,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: COLORS.warningText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     lineHeight: 17,
   },
   creditHint: {
@@ -414,7 +414,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     color: COLORS.successText,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   totalWithCredit: {
     flexDirection: "row",
@@ -423,7 +423,7 @@ export const styles = StyleSheet.create({
   },
   priceTotalStrike: {
     fontSize: 16,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textDisabled,
     textDecorationLine: "line-through",
   },
@@ -439,7 +439,7 @@ export const styles = StyleSheet.create({
   deliveryQuoteText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
 });

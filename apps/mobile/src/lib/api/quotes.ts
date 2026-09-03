@@ -182,28 +182,9 @@ export const getQuotes = (params?: {
 export const getQuote = (id: string) =>
   apiFetch<QuoteDetail>(`${ENDPOINTS.quotes}/${id}`);
 
-export const updateQuote = (id: string, patch: Record<string, unknown>) =>
-  apiFetch<QuoteDetail>(`${ENDPOINTS.quotes}/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
-
 /** Sella el envío (DRAFT → SENT). Se llama al compartir el link o el PDF. */
 export const markQuoteSent = (id: string) =>
   apiFetch<QuoteDetail>(`${ENDPOINTS.quotes}/${id}/send`, { method: "POST" });
 
 export const cancelQuote = (id: string) =>
   apiFetch<QuoteDetail>(`${ENDPOINTS.quotes}/${id}/cancel`, { method: "POST" });
-
-export const deleteQuote = (id: string) =>
-  apiFetch<void>(`${ENDPOINTS.quotes}/${id}`, { method: "DELETE" });
-
-/**
- * El documento tal como lo ve el cliente. `target: "pdf"` esconde los botones.
- * El HTML lo renderiza la API (no la app) para que el diseño se pueda iterar
- * con un deploy y un binario viejo nunca produzca un PDF con otro formato.
- */
-export const getQuoteHtml = (id: string, target: "web" | "pdf" = "pdf") =>
-  apiFetch<{ quote: unknown; html: string; publicUrl: string }>(
-    `${ENDPOINTS.quotes}/${id}/html?target=${target}`,
-  );

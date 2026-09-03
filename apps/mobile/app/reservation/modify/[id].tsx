@@ -29,6 +29,9 @@ import {
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type RefundChoice = "STRIPE_REFUND" | "CREDIT";
 
 function startOfDay(d: Date): Date {
@@ -120,7 +123,7 @@ export default function ModifyReservationScreen() {
       }
       Alert.alert(title, body, [{ text: "OK", onPress: () => router.back() }]);
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const handleSubmit = () => {

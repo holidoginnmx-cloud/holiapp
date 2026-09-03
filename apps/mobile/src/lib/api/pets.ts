@@ -113,37 +113,6 @@ export type Deworming = {
   createdAt: string;
 };
 
-export const getDewormings = (petId: string) =>
-  apiFetch<Deworming[]>(`${ENDPOINTS.pets}/${petId}/dewormings`);
-
-export const addDeworming = (
-  petId: string,
-  data: {
-    type: DewormingType;
-    productName?: string | null;
-    appliedAt: string;
-    expiresAt?: string | null;
-    vetName?: string | null;
-    fileUrl?: string | null;
-    notes?: string | null;
-  },
-) =>
-  apiFetch<Deworming>(`${ENDPOINTS.pets}/${petId}/dewormings`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-
-export const deleteDeworming = (petId: string, id: string) =>
-  apiFetch<void>(`${ENDPOINTS.pets}/${petId}/dewormings/${id}`, {
-    method: "DELETE",
-  });
-
-export const addVaccine = (petId: string, data: Record<string, unknown>) =>
-  apiFetch<Vaccine>(`${ENDPOINTS.pets}/${petId}/vaccines`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-
 export type PetHistory = {
   pet: Pet;
   reservations: (Reservation & {

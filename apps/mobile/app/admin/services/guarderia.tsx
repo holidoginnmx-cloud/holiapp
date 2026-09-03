@@ -17,6 +17,9 @@ import { getAdminLodgingPricing, updateAdminLodgingPricing } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const KEY = ["admin", "lodging-pricing"] as const;
 
 export default function AdminGuarderia() {
@@ -48,7 +51,7 @@ export default function AdminGuarderia() {
       qc.setQueryData(KEY, next);
       Alert.alert("Tarifa actualizada", "Solo aplicará a reservas nuevas.");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   if (isError) {

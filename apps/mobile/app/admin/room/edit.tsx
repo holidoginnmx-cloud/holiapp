@@ -17,6 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { getRooms, createRoom, updateRoom } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const SIZE_OPTIONS = [
   { key: "XS", label: "XS" },
   { key: "S", label: "S" },
@@ -105,7 +108,7 @@ export default function RoomEditScreen() {
         router.replace("/admin/rooms" as any);
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "No se pudo guardar");
+      alertaDeError(err, { respaldo: "No se pudo guardar" });
     } finally {
       setLoading(false);
     }
@@ -226,17 +229,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 16,
-    color: COLORS.primary,
-    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   title: {
     fontSize: 24,

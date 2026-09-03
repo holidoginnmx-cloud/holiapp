@@ -28,6 +28,9 @@ import {
 import { formatCurrencyExact, formatArrivalDate } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 /** Etiqueta legible de cada tipo de movimiento de Stripe. */
 function tipoLabel(type: string): string {
   if (type === "charge" || type === "payment") return "Cobro";
@@ -79,10 +82,10 @@ export default function PayoutDetailScreen() {
       );
     },
     onError: (e) =>
-      Alert.alert(
-        "No se pudo registrar",
-        e instanceof Error ? e.message : "Intenta de nuevo en un momento.",
-      ),
+      alertaDeError(e, {
+        titulo: "No se pudo registrar",
+        respaldo: "Intenta de nuevo en un momento.",
+      }),
   });
 
   const confirmarRegistro = (l: PayoutLine) => {

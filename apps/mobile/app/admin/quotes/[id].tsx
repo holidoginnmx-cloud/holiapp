@@ -27,6 +27,9 @@ import {
 import { buildWhatsappUrlTo } from "@/constants/business";
 import { formatCurrency, formatWeekdayDayShort } from "@/lib/format";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 function folioLegible(folio: number): string {
@@ -84,7 +87,7 @@ export default function AdminQuoteDetail() {
       refrescar(detalle);
       await Linking.openURL(url);
     } catch (err) {
-      Alert.alert("No se pudo abrir WhatsApp", err instanceof Error ? err.message : "");
+      alertaDeError(err, { titulo: "No se pudo abrir WhatsApp" });
     } finally {
       setTrabajando(false);
     }
@@ -105,7 +108,7 @@ export default function AdminQuoteDetail() {
         refrescar(detalle);
       }
     } catch (err) {
-      Alert.alert("No se pudo compartir", err instanceof Error ? err.message : "");
+      alertaDeError(err, { titulo: "No se pudo compartir" });
     }
   }, [data, refrescar]);
 
@@ -127,7 +130,7 @@ export default function AdminQuoteDetail() {
             const detalle = await cancelQuote(data.quote.id);
             refrescar(detalle);
           } catch (err) {
-            Alert.alert("No se pudo cancelar", err instanceof Error ? err.message : "");
+            alertaDeError(err, { titulo: "No se pudo cancelar" });
           } finally {
             setTrabajando(false);
           }

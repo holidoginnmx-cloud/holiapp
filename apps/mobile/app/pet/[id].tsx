@@ -30,6 +30,9 @@ import { PetPhotoViewer } from "@/components/PetPhotoViewer";
 import { sharedLabel } from "@/components/PetCard";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
   S: "Pequeño",
@@ -122,10 +125,10 @@ export default function PetDetailScreen() {
       setTimeout(() => router.back(), 1100);
     },
     onError: (err: Error) => {
-      Alert.alert(
-        "No se pudo eliminar",
-        err.message || "Ocurrió un error al eliminar a tu mascota."
-      );
+      alertaDeError(err, {
+        titulo: "No se pudo eliminar",
+        respaldo: "Ocurrió un error al eliminar a tu mascota.",
+      });
     },
   });
 
@@ -141,10 +144,10 @@ export default function PetDetailScreen() {
       qc.invalidateQueries({ queryKey: ["admin", "pets"] });
     },
     onError: (err: Error) => {
-      Alert.alert(
-        "No se pudo actualizar la foto",
-        err.message || "Inténtalo de nuevo."
-      );
+      alertaDeError(err, {
+        titulo: "No se pudo actualizar la foto",
+        respaldo: "Inténtalo de nuevo.",
+      });
     },
   });
 
@@ -168,10 +171,10 @@ export default function PetDetailScreen() {
       setGroomingOpen(false);
     },
     onError: (err: Error) => {
-      Alert.alert(
-        "No se pudo guardar la duración",
-        err.message || "Inténtalo de nuevo."
-      );
+      alertaDeError(err, {
+        titulo: "No se pudo guardar la duración",
+        respaldo: "Inténtalo de nuevo.",
+      });
     },
   });
 
@@ -213,7 +216,7 @@ export default function PetDetailScreen() {
       });
       if (url) photoMutation.mutate(url);
     } catch (err: any) {
-      Alert.alert("Error", err.message || "No se pudo subir la imagen");
+      alertaDeError(err, { respaldo: "No se pudo subir la imagen" });
     } finally {
       setPhotoUploading(false);
     }
@@ -1538,17 +1541,6 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: COLORS.white,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    fontSize: 14,
   },
   groomingOverlay: {
     flex: 1,

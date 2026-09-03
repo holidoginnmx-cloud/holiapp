@@ -243,10 +243,6 @@ export default function StaffStays() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bgPage,
-  },
   center: {
     flex: 1,
     justifyContent: "center",

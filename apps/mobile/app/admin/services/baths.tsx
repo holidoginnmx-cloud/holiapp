@@ -23,6 +23,9 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const SIZE_LABELS: Record<string, string> = {
   S: "Chico",
   M: "Mediano",
@@ -63,7 +66,7 @@ export default function AdminBaths() {
       setNewPrice("");
       Alert.alert("Precio actualizado");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const toggleVariantMutation = useMutation({

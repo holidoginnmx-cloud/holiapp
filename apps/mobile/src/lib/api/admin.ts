@@ -366,12 +366,6 @@ export const adminUpdateReservationAddon = (
     { method: "PATCH", body: JSON.stringify(data) }
   );
 
-export const adminAdjustCredit = (userId: string, amount: number, description: string) =>
-  apiFetch<{ creditBalance: number }>(`/admin/users/${userId}/credit-adjust`, {
-    method: "POST",
-    body: JSON.stringify({ amount, description }),
-  });
-
 // ─── Admin Services ─────────────────────────────────────
 
 export type AdminServiceType = {
@@ -392,23 +386,11 @@ export type AdminServiceType = {
 export const getAdminServices = () =>
   apiFetch<AdminServiceType[]>("/admin/services");
 
-export const createAdminService = (data: { code: string; name: string }) =>
-  apiFetch("/admin/services", { method: "POST", body: JSON.stringify(data) });
-
 export const updateAdminService = (id: string, data: { name?: string; isActive?: boolean }) =>
   apiFetch(`/admin/services/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const updateServiceVariant = (id: string, data: { price?: number; isActive?: boolean }) =>
   apiFetch(`/admin/services/variants/${id}`, { method: "PATCH", body: JSON.stringify(data) });
-
-export const createServiceVariant = (data: {
-  serviceTypeId: string;
-  petSize: string;
-  deslanado: boolean;
-  corte: boolean;
-  price: number;
-}) =>
-  apiFetch("/admin/services/variants", { method: "POST", body: JSON.stringify(data) });
 
 // ─── Lodging pricing (admin) ─────────────────────────────
 export interface AdminLodgingPricing {

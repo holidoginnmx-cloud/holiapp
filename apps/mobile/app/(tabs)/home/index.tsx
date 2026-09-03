@@ -625,12 +625,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 24,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.bgPage,
-  },
   greeting: {
     fontSize: 28,
     fontFamily: "Outfit_600SemiBold",
@@ -889,16 +883,5 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.dangerText,
     marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: COLORS.white,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    fontSize: 14,
   },
 });

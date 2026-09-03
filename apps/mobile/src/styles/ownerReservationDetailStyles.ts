@@ -39,11 +39,11 @@ export const styles = StyleSheet.create({
   petName: {
     flex: 1,
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  badgeText: { fontSize: 13, fontWeight: "700" },
+  badgeText: { fontSize: 13, fontFamily: "PlusJakartaSans_700Bold" },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
@@ -55,7 +55,7 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: COLORS.textPrimary },
+  cardTitle: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -63,7 +63,7 @@ export const styles = StyleSheet.create({
   },
   infoLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   infoLabel: { fontSize: 14, color: COLORS.textTertiary },
-  infoValue: { fontSize: 14, fontWeight: "600", color: COLORS.textPrimary },
+  infoValue: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textPrimary },
   // Date hero
   dateHero: {
     flexDirection: "row",
@@ -80,14 +80,14 @@ export const styles = StyleSheet.create({
   },
   datePillLabel: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.6,
     color: COLORS.textTertiary,
     marginBottom: 4,
   },
   datePillDay: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
@@ -112,7 +112,7 @@ export const styles = StyleSheet.create({
   },
   timeChipText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   timeChipTextSet: {
@@ -141,7 +141,7 @@ export const styles = StyleSheet.create({
   },
   nightsBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Bath hero
@@ -164,7 +164,7 @@ export const styles = StyleSheet.create({
   },
   bathBadgeText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathInfoRow: {
@@ -174,13 +174,13 @@ export const styles = StyleSheet.create({
   },
   bathDay: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
   bathTime: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
   },
   // Meta row
@@ -210,13 +210,13 @@ export const styles = StyleSheet.create({
   },
   metaLabel: {
     fontSize: 10,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
   },
   metaValue: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
@@ -238,14 +238,14 @@ export const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   totalAmount: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   totalRow: {
@@ -257,7 +257,7 @@ export const styles = StyleSheet.create({
     paddingTop: 10,
     marginTop: 4,
   },
-  totalValue: { fontSize: 20, fontWeight: "800", color: COLORS.primary },
+  totalValue: { fontSize: 20, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   // Payments card
   sectionCardHeader: {
     flexDirection: "row",
@@ -275,7 +275,7 @@ export const styles = StyleSheet.create({
   },
   countChipText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   paymentIconWrap: {
@@ -300,7 +300,7 @@ export const styles = StyleSheet.create({
   },
   paymentAmount: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   paymentMeta: {
@@ -315,7 +315,7 @@ export const styles = StyleSheet.create({
   },
   paymentBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   paymentRow: {
@@ -323,11 +323,6 @@ export const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 4,
-  },
-  paymentRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
   },
   refundPill: {
     flexDirection: "row",
@@ -343,7 +338,7 @@ export const styles = StyleSheet.create({
   },
   refundPillText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   refundBanner: {
@@ -357,7 +352,7 @@ export const styles = StyleSheet.create({
   },
   refundBannerTitle: {
     color: COLORS.white,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     fontSize: 15,
   },
   refundBannerSub: {
@@ -377,8 +372,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
-  pendingBannerText: { flex: 1, gap: 2 },
-  pendingBannerTitle: { fontSize: 14, fontWeight: "700", color: COLORS.warningText },
+  pendingBannerTitle: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.warningText },
   pendingBannerBody: { fontSize: 13, color: COLORS.warningText, lineHeight: 18, opacity: 0.85 },
   notesCard: {
     flexDirection: "row",
@@ -398,7 +392,7 @@ export const styles = StyleSheet.create({
     borderColor: COLORS.reviewBorder,
     gap: 8,
   },
-  reviewTitle: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  reviewTitle: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   pawRow: { flexDirection: "row", gap: 4 },
   reviewComment: {
     fontSize: 14,
@@ -419,7 +413,7 @@ export const styles = StyleSheet.create({
   reviewCTAText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   // Servicio a domicilio
@@ -432,7 +426,7 @@ export const styles = StyleSheet.create({
   deliveryAddress: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   deliveryFee: {
@@ -449,7 +443,7 @@ export const styles = StyleSheet.create({
   deliveryCTAText: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   // Group pets
@@ -461,7 +455,7 @@ export const styles = StyleSheet.create({
   },
   groupPetName: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   groupPetBreed: {
@@ -471,7 +465,7 @@ export const styles = StyleSheet.create({
   },
   groupPetAmount: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   groupTotalRow: {
@@ -484,12 +478,12 @@ export const styles = StyleSheet.create({
   },
   groupTotalLabel: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   groupTotalValue: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Balance banner
@@ -509,17 +503,13 @@ export const styles = StyleSheet.create({
   },
   balanceBannerTitle: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   balanceBannerAmount: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
-  },
-  balanceBannerDeadline: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
   },
   balanceBannerWarning: {
     fontSize: 13,
@@ -536,12 +526,12 @@ export const styles = StyleSheet.create({
   },
   balancePaidLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.warningText,
   },
   balancePaidValue: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     fontVariant: ["tabular-nums"],
   },
@@ -557,7 +547,7 @@ export const styles = StyleSheet.create({
   },
   balanceButtonText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   actionsRow: {
@@ -580,7 +570,7 @@ export const styles = StyleSheet.create({
   secondaryButtonText: {
     color: COLORS.primary,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   dangerButton: {
     flex: 1,
@@ -597,7 +587,7 @@ export const styles = StyleSheet.create({
   dangerButtonText: {
     color: COLORS.errorText,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   pendingChangeBanner: {
     backgroundColor: COLORS.warningBg,
@@ -615,13 +605,13 @@ export const styles = StyleSheet.create({
   },
   pendingChangeTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   pendingChangeBody: {
     fontSize: 13,
     color: COLORS.textPrimary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   pendingChangeSubtitle: {
     fontSize: 12,
@@ -653,7 +643,7 @@ export const styles = StyleSheet.create({
   },
   checklistsTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   checklistsSubtitle: {
@@ -686,7 +676,7 @@ export const styles = StyleSheet.create({
   },
   bathServicesTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   bathServicesChips: {
@@ -705,7 +695,7 @@ export const styles = StyleSheet.create({
   },
   bathServiceChipText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathServicesNoteBox: {
@@ -721,7 +711,7 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.infoText,
     lineHeight: 17,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   bathServicesCardPaid: {
     borderColor: COLORS.successText,
@@ -735,7 +725,7 @@ export const styles = StyleSheet.create({
   },
   bathServicesPaidPillText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
     letterSpacing: 0.3,
   },
@@ -760,12 +750,12 @@ export const styles = StyleSheet.create({
   },
   bathServicesRowLabel: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   bathServicesRowValue: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   bathServicesTotalRow: {
@@ -777,14 +767,14 @@ export const styles = StyleSheet.create({
   },
   bathServicesTotalLabel: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   bathServicesTotalValue: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
 });

@@ -17,6 +17,9 @@ import { deleteRoom, getAdminRoomStatus } from "@/lib/api";
 import { formatName, formatDayShort } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
   S: "Pequeño",
@@ -51,7 +54,7 @@ export default function RoomDetailScreen() {
       router.replace("/admin/rooms" as any);
     },
     onError: (err: Error) => {
-      Alert.alert("No se pudo eliminar", err.message);
+      alertaDeError(err, { titulo: "No se pudo eliminar" });
     },
   });
 

@@ -5,6 +5,9 @@ import { updatePet } from "@/lib/api";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { formatName } from "@/lib/format";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Cambiar (o quitar) la foto de perfil de una mascota.
  *
@@ -36,10 +39,10 @@ export function usePetPhoto(opts: {
       onSaved?.(photoUrl);
     },
     onError: (err: Error) =>
-      Alert.alert(
-        "No se pudo actualizar la foto",
-        err.message || "Inténtalo de nuevo.",
-      ),
+      alertaDeError(err, {
+        titulo: "No se pudo actualizar la foto",
+        respaldo: "Inténtalo de nuevo.",
+      }),
   });
 
   const confirmRemove = () => {
@@ -68,7 +71,7 @@ export function usePetPhoto(opts: {
       });
       if (url) mutation.mutate(url);
     } catch (err: any) {
-      Alert.alert("Error", err.message || "No se pudo subir la imagen");
+      alertaDeError(err, { respaldo: "No se pudo subir la imagen" });
     } finally {
       setUploading(false);
     }

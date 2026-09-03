@@ -11,9 +11,6 @@ export type AdminUserListItem = User & { hasApp: boolean };
 export const getUsers = () =>
   apiFetch<AdminUserListItem[]>(ENDPOINTS.users);
 
-export const getUserById = (id: string) =>
-  apiFetch<User & { pets: Pet[] }>(`${ENDPOINTS.users}/${id}`);
-
 /** Alta de cliente walk-in desde el admin. Sin email, el backend genera un
  * placeholder @holidoginn.local (igual que el admin web); con teléfono, el
  * cliente podrá reclamar su cuenta al descargar la app. */

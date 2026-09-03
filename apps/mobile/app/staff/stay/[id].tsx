@@ -59,6 +59,9 @@ import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import { usePetPhoto } from "@/hooks/usePetPhoto";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const ALERT_TYPES: { key: AlertType; label: string; icon: string }[] = [
   { key: "NOT_EATING", label: "No está comiendo", icon: "restaurant-outline" },
   { key: "LETHARGIC", label: "Está decaído", icon: "sad-outline" },
@@ -123,7 +126,7 @@ export default function StayDetail() {
       invalidateStay();
       showSuccess("Te has asignado como responsable");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // Foto del perro: el mismo hook que la guardería y el baño (usePetPhoto).
@@ -173,7 +176,7 @@ export default function StayDetail() {
       queryClient.invalidateQueries({ queryKey: ["staff", "me", "stats"] });
       showSuccess("Check-in realizado — se notificó al dueño");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const confirmPickupPaidMutation = useMutation({
@@ -182,7 +185,7 @@ export default function StayDetail() {
       invalidateStay();
       showSuccess("Pago registrado — se notificó al dueño");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const manualPaymentMutation = useMutation({
@@ -197,7 +200,7 @@ export default function StayDetail() {
       setPaymentModalVisible(false);
       showSuccess(`Pago de ${formatCurrency(res.amount)} registrado`);
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   function closePaymentModal() {
@@ -219,7 +222,7 @@ export default function StayDetail() {
         showSuccess("Check-out realizado — se notificó al dueño");
       }
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const alertMutation = useMutation({
@@ -236,7 +239,7 @@ export default function StayDetail() {
       setAlertDescription("");
       showSuccess("Alerta enviada a los administradores");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const tagMutation = useMutation({
@@ -253,7 +256,7 @@ export default function StayDetail() {
       setSelectedTagKey(null);
       setTagNotes("");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // Optimista: la etiqueta desaparece al confirmar; si falla, reaparece.
@@ -324,7 +327,7 @@ export default function StayDetail() {
       invalidateStay();
       showSuccess("Baño marcado como completado");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const [completingBathId, setCompletingBathId] = useState<string | null>(null);
@@ -364,10 +367,7 @@ export default function StayDetail() {
       const cloud = await uploadToCloudinary(uri, "baths");
       await completeAddonMutation.mutateAsync({ addonId, mediaUrl: cloud.secure_url });
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "No se pudo completar el baño",
-      );
+      alertaDeError(err, { respaldo: "No se pudo completar el baño" });
     } finally {
       setCompletingBathId(null);
     }
@@ -402,7 +402,7 @@ export default function StayDetail() {
       invalidateStay();
       showSuccess("Evidencia subida correctamente");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "No se pudo subir la evidencia");
+      alertaDeError(error, { respaldo: "No se pudo subir la evidencia" });
     } finally {
       setUploadingEvidence(false);
     }

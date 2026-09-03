@@ -14,8 +14,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAdminDeliveryConfig, updateAdminDeliveryConfig } from "@/lib/api";
+import { alertaDeError } from "@/lib/errorAlert";
 import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+
 
 export default function AdminDeliveryConfig() {
   const queryClient = useQueryClient();
@@ -60,8 +62,7 @@ export default function AdminDeliveryConfig() {
       queryClient.invalidateQueries({ queryKey: ["admin", "delivery-config"] });
       Alert.alert("Guardado", "La configuración de domicilio se actualizó.");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo guardar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo guardar" });
     } finally {
       setSaving(false);
     }

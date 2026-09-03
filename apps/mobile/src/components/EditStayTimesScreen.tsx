@@ -18,6 +18,9 @@ import { DateTimeField } from "@/components/DateTimeField";
 import { ErrorState } from "@/components/ErrorState";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 // Date → "HH:mm" (hora local del dispositivo, que corre en hora del hotel).
 function toHHmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -118,7 +121,7 @@ export function EditStayTimesScreen({ id }: { id: string }) {
       ]);
     },
     onError: (e: Error) => {
-      Alert.alert("No se pudo cambiar el horario", e.message);
+      alertaDeError(e, { titulo: "No se pudo cambiar el horario" });
     },
   });
 

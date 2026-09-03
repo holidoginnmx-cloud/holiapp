@@ -24,6 +24,9 @@ import {
   DEFAULT_PRICE_PER_DAY_LARGE,
 } from "@holidoginn/shared/src/pricing";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type Field =
   | "pricePerDaySmall"
   | "pricePerDayLarge"
@@ -95,7 +98,7 @@ export default function AdminHospedajes() {
       qc.setQueryData(KEY, next);
       Alert.alert("Tarifas actualizadas", "Solo aplicará a reservas nuevas.");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   if (isError) {

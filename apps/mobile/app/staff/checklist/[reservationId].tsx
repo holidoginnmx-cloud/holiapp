@@ -29,6 +29,9 @@ import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { reservationHref } from "@/lib/reservationHref";
 import { useAuthStore } from "@/store/authStore";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const { width: SCREEN_W } = Dimensions.get("window");
 
 const MOOD_OPTIONS: { key: MoodLevel; emoji: string; label: string }[] = [
@@ -224,7 +227,7 @@ export default function ChecklistForm() {
         );
       }, 3000);
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   if (isError) {
@@ -599,12 +602,6 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
   },
-  photoPreview: {
-    width: "100%",
-    aspectRatio: 4 / 3,
-    borderRadius: 12,
-    backgroundColor: COLORS.bgSection,
-  },
   photoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -673,22 +670,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontFamily: "PlusJakartaSans_700Bold",
-  },
-  normalDayButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.primaryLight,
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 10,
-  },
-  normalDayText: {
-    fontSize: 14,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.primary,
   },
   handoffHeader: {
     flexDirection: "row",

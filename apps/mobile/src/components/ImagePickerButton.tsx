@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
+
+
+import { alertaDeError } from "@/lib/errorAlert";
 
 type Props = {
   /** Current image URL (from Cloudinary or existing) */
@@ -52,7 +54,7 @@ export function ImagePickerButton({
       });
       if (url) onImageUploaded(url);
     } catch (error: any) {
-      Alert.alert("Error", error.message || "No se pudo subir la imagen");
+      alertaDeError(error, { respaldo: "No se pudo subir la imagen" });
     } finally {
       setUploading(false);
     }

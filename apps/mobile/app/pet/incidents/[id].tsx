@@ -22,6 +22,9 @@ import { formatName, formatDayShortYear, formatStayDayYear } from "@/lib/format"
 import { reservationHref } from "@/lib/reservationHref";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const ALERT_LABELS: Record<string, string> = {
   NOT_EATING: "No está comiendo",
   LETHARGIC: "Está decaído",
@@ -113,7 +116,7 @@ export default function PetIncidentsScreen() {
       qc.invalidateQueries({ queryKey: ["pet", "alerts", id] });
       qc.invalidateQueries({ queryKey: ["admin", "alerts"] });
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const askResolve = (alertId: string) => {
@@ -378,22 +381,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     backgroundColor: COLORS.bgPage,
   },
-  tabsRow: {
-    flexDirection: "row",
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bgSection,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: { borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
-  tabTextActive: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold" },
   list: { padding: 16, paddingBottom: 32 },
   card: {
     backgroundColor: COLORS.white,

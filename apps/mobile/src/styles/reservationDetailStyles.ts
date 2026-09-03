@@ -34,7 +34,7 @@ export const styles = StyleSheet.create({
   },
   toastText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
@@ -61,7 +61,7 @@ export const styles = StyleSheet.create({
   backText: {
     fontSize: 16,
     color: COLORS.primary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   header: {
     flexDirection: "row",
@@ -90,7 +90,7 @@ export const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   ownerName: {
@@ -105,7 +105,7 @@ export const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   card: {
     backgroundColor: COLORS.white,
@@ -146,7 +146,7 @@ export const styles = StyleSheet.create({
   // Como datePillDay pero SIN capitalize: "1:00 pm" se volvería "1:00 Pm".
   daycareTime: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   bathHero: {
@@ -173,7 +173,7 @@ export const styles = StyleSheet.create({
   },
   bathExtraChipText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   petMetaStrip: {
@@ -185,7 +185,7 @@ export const styles = StyleSheet.create({
   petMetaText: {
     fontSize: 13,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     flex: 1,
   },
   bathStaffStrip: {
@@ -197,16 +197,16 @@ export const styles = StyleSheet.create({
   bathStaffText: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   bathStaffName: {
     color: COLORS.primary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   bathStaffDate: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "500",
+    fontFamily: "PlusJakartaSans_500Medium",
   },
   petNotesBox: {
     flexDirection: "row",
@@ -220,7 +220,7 @@ export const styles = StyleSheet.create({
   },
   petNotesLabel: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.notesText,
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -242,7 +242,7 @@ export const styles = StyleSheet.create({
   },
   bathBadgeText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   bathInfoRow: {
@@ -252,13 +252,13 @@ export const styles = StyleSheet.create({
   },
   bathDay: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
   bathTime: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   datePill: {
@@ -271,14 +271,14 @@ export const styles = StyleSheet.create({
   },
   datePillLabel: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.6,
     color: COLORS.textTertiary,
     marginBottom: 4,
   },
   datePillDay: {
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textTransform: "capitalize",
   },
@@ -291,7 +291,7 @@ export const styles = StyleSheet.create({
   // Hora estimada indicada por el cliente.
   datePillTime: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     marginTop: 3,
   },
@@ -325,7 +325,7 @@ export const styles = StyleSheet.create({
   },
   nightsBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Meta row (cuarto + staff)
@@ -355,13 +355,13 @@ export const styles = StyleSheet.create({
   },
   metaLabel: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.5,
     color: COLORS.textTertiary,
   },
   metaValue: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
@@ -374,7 +374,7 @@ export const styles = StyleSheet.create({
   unassigned: {
     color: COLORS.textDisabled,
     fontStyle: "italic",
-    fontWeight: "500",
+    fontFamily: "PlusJakartaSans_500Medium",
   },
   metaValueRow: {
     flexDirection: "row",
@@ -419,11 +419,11 @@ export const styles = StyleSheet.create({
   staffAvatarText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   staffName: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   staffEmail: {
@@ -444,7 +444,7 @@ export const styles = StyleSheet.create({
   currentPillText: {
     color: COLORS.white,
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   // Total footer
@@ -458,7 +458,7 @@ export const styles = StyleSheet.create({
   },
   breakdownTitle: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -477,7 +477,7 @@ export const styles = StyleSheet.create({
   },
   breakdownValue: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
     fontVariant: ["tabular-nums"],
   },
@@ -495,14 +495,14 @@ export const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   totalAmount: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Servicio a domicilio
@@ -518,7 +518,7 @@ export const styles = StyleSheet.create({
   deliveryTexts: { flex: 1 },
   deliveryLabel: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.4,
     color: COLORS.textTertiary,
     textTransform: "uppercase",
@@ -526,12 +526,12 @@ export const styles = StyleSheet.create({
   },
   deliveryValue: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   deliveryEmpty: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
   },
   // Notes
@@ -545,7 +545,7 @@ export const styles = StyleSheet.create({
   },
   notesLabel: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.4,
     color: COLORS.notesText,
     marginBottom: 4,
@@ -573,7 +573,7 @@ export const styles = StyleSheet.create({
   actionText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   cancelButton: {
     flexDirection: "row",
@@ -601,12 +601,12 @@ export const styles = StyleSheet.create({
   completeBathBtnText: {
     color: COLORS.white,
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   cancelButtonText: {
     color: COLORS.errorText,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   // Reabrir una reserva finalizada (deshacer un check-out equivocado)
   reopenButton: {
@@ -624,7 +624,7 @@ export const styles = StyleSheet.create({
   reopenButtonText: {
     color: COLORS.primary,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   // Section card (servicios + pagos)
   sectionCard: {
@@ -646,7 +646,7 @@ export const styles = StyleSheet.create({
   },
   sectionCardTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   countChip: {
@@ -659,7 +659,7 @@ export const styles = StyleSheet.create({
   },
   countChipText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   emptyText: {
@@ -692,7 +692,7 @@ export const styles = StyleSheet.create({
   },
   addonLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   addonMetaRow: {
@@ -718,7 +718,7 @@ export const styles = StyleSheet.create({
   },
   metaPillText: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
     textTransform: "uppercase",
   },
@@ -728,7 +728,7 @@ export const styles = StyleSheet.create({
   },
   addonPrice: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Cortesía: el precio de catálogo se conserva pero tachado — se ve cuánto se
@@ -750,7 +750,7 @@ export const styles = StyleSheet.create({
   },
   addAddonText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Bath photos
@@ -781,7 +781,7 @@ export const styles = StyleSheet.create({
   },
   photoCaption: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginTop: 6,
   },
@@ -812,7 +812,7 @@ export const styles = StyleSheet.create({
   },
   extrasGroupTitle: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -827,7 +827,7 @@ export const styles = StyleSheet.create({
   },
   extraPriceInline: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   extrasGroupDivider: {
@@ -835,7 +835,7 @@ export const styles = StyleSheet.create({
   },
   paymentAmount: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   paymentMeta: {
@@ -850,7 +850,7 @@ export const styles = StyleSheet.create({
   },
   paymentBadgeText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
   },
   checklistsCard: {
@@ -877,7 +877,7 @@ export const styles = StyleSheet.create({
   },
   checklistsTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   checklistsSubtitle: {
@@ -900,7 +900,7 @@ export const styles = StyleSheet.create({
   },
   registerPaymentText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   modalOverlay: {
@@ -916,13 +916,13 @@ export const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginTop: 10,
@@ -955,7 +955,7 @@ export const styles = StyleSheet.create({
   },
   methodChipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalButtons: {
@@ -972,7 +972,7 @@ export const styles = StyleSheet.create({
   },
   modalBtnCancelText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalBtnConfirm: {
@@ -984,7 +984,7 @@ export const styles = StyleSheet.create({
   },
   modalBtnConfirmText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
 });

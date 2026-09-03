@@ -24,6 +24,7 @@ import {
 import { ENDPOINTS } from "@/constants/api";
 import { useAuthStore } from "@/store/authStore";
 import { getDaycareAvailability, createDaycareIntent, confirmDaycare } from "@/lib/api";
+import { alertaDeError } from "@/lib/errorAlert";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
 import { ErrorState } from "@/components/ErrorState";
 import { PetPickerStep } from "@/components/wizard/PetPickerStep";
@@ -227,9 +228,7 @@ function CreateDaycareScreenContent() {
     } catch (err) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
-      const msg =
-        err instanceof Error ? err.message : "No se pudo reservar la guardería";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo reservar la guardería" });
     } finally {
       setSubmitting(false);
     }

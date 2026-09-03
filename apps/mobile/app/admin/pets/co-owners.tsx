@@ -28,6 +28,8 @@ import {
   NO_EMAIL_LABEL,
 } from "@/lib/format";
 
+import { alertaDeError } from "@/lib/errorAlert";
+
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 /**
@@ -114,7 +116,7 @@ export default function AdminPetCoOwnersScreen() {
       );
     },
     onError: (err: any) => {
-      Alert.alert("No se pudo", err?.body?.message ?? err?.message ?? "Intenta de nuevo.");
+      alertaDeError(err, { titulo: "No se pudo", respaldo: "Intenta de nuevo." });
     },
   });
 
@@ -122,7 +124,7 @@ export default function AdminPetCoOwnersScreen() {
     mutationFn: (userId: string) => removePetCoOwner(petId!, userId),
     onSuccess: invalidate,
     onError: (err: any) => {
-      Alert.alert("No se pudo", err?.message ?? "Intenta de nuevo.");
+      alertaDeError(err, { titulo: "No se pudo", respaldo: "Intenta de nuevo." });
     },
   });
 

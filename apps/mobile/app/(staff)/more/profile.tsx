@@ -268,10 +268,6 @@ function StatTile({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bgPage,
-  },
   content: {
     padding: 16,
   },

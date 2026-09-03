@@ -361,17 +361,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 12,
-  },
-  backText: {
-    fontSize: 16,
-    color: COLORS.primary,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",

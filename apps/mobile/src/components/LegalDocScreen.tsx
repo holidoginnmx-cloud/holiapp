@@ -7,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -16,6 +15,9 @@ import {
   getLegalDocuments,
   type LegalDocType,
 } from "@/lib/api";
+
+
+import { alertaDeError } from "@/lib/errorAlert";
 
 type Props = {
   documentType: LegalDocType;
@@ -87,7 +89,7 @@ export function LegalDocScreen({
       }
     },
     onError: (err: Error) => {
-      Alert.alert("Error", err.message);
+      alertaDeError(err);
     },
   });
 

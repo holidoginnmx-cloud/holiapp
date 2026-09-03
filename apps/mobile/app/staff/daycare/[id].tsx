@@ -38,6 +38,9 @@ import {
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 const STATUS_LABEL: Record<string, { label: string; bg: string; text: string }> = {
   CONFIRMED: { label: "Confirmada", bg: COLORS.infoBg, text: COLORS.infoText },
   CHECKED_IN: { label: "En guardería", bg: COLORS.successBg, text: COLORS.successText },
@@ -103,7 +106,7 @@ export default function StaffDaycareDetail() {
   const checkInMutation = useMutation({
     mutationFn: () => checkInStaffDaycare(id),
     onSuccess: invalidate,
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const checkOutMutation = useMutation({
@@ -124,7 +127,7 @@ export default function StaffDaycareDetail() {
         );
       }
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const payMutation = useMutation({
@@ -140,7 +143,7 @@ export default function StaffDaycareDetail() {
           : `Se registró ${formatCurrency(res.amount)}.`,
       );
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // Evidencia suelta (sin reporte): la foto del momento que el dueño ve en su
@@ -185,7 +188,7 @@ export default function StaffDaycareDetail() {
       qc.invalidateQueries({ queryKey: ["stay-updates", id] });
       Alert.alert("Listo", "La foto ya está en la reservación del dueño.");
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "No se pudo subir la evidencia");
+      alertaDeError(e, { respaldo: "No se pudo subir la evidencia" });
     } finally {
       setUploadingEvidence(false);
     }

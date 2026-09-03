@@ -34,6 +34,44 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-h",
+    title: "Los arreglos ya no tardan días en llegarte",
+    items: [
+      {
+        icon: "arrow-down-circle-outline",
+        title: "Aviso de «hay una versión nueva»",
+        body:
+          "Cuando publicamos un arreglo, la app tardaba días en tomarlo: solo " +
+          "entraba si matabas la app y la volvías a abrir, así que nadie sabía " +
+          "qué versión traía cada teléfono. Ahora la app lo descarga sola y te " +
+          "sale abajo un aviso chiquito con «Actualizar ahora». Tú decides " +
+          "cuándo: nunca se reinicia sola, y el aviso no aparece si estás " +
+          "cobrando. Si lo cierras, vuelve más tarde.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "information-circle-outline",
+        title: "Los errores ya dicen qué hacer",
+        body:
+          "Se acabaron los avisos que decían «Error 429» o «Error 401». Ahora " +
+          "cada uno explica el caso: sin internet, sin permiso para esa acción, " +
+          "o «espera un momento» cuando hiciste demasiadas cosas seguidas. " +
+          "Cuando el sistema ya explicaba el motivo (por ejemplo, que el cuarto " +
+          "está lleno), ese mensaje se respeta tal cual.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "log-out-outline",
+        title: "Si tu sesión vence, la app te lleva al login",
+        body:
+          "Antes, con la sesión vencida, la app se quedaba adentro mostrando " +
+          "errores en cada pantalla y con datos viejos. Ahora te avisa una sola " +
+          "vez, cierra la sesión limpia y te deja en la pantalla de entrar.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-g",
     title: "El estimado de hospedaje ya usa las tarifas reales",
     items: [

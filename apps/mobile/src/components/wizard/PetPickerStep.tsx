@@ -26,6 +26,15 @@ type PetPickerStepProps<T extends PickerPet> = {
   emptyText: string;
   /** Prefijo del testID de cada tarjeta: `${testIDPrefix}-${pet.id}`. */
   testIDPrefix: string;
+  /**
+   * Cómo se pinta la selección:
+   * - "multi" (default): checkbox a la izquierda (guardería).
+   * - "single": sin checkbox; palomita al final de la fila (baño).
+   *
+   * Es solo presentación — quién puede estar seleccionado lo decide el wizard
+   * con `selectedPetIds` / `onToggle`.
+   */
+  mode?: "multi" | "single";
 };
 
 /**
@@ -45,6 +54,7 @@ export function PetPickerStep<T extends PickerPet>({
   onToggle,
   emptyText,
   testIDPrefix,
+  mode = "multi",
 }: PetPickerStepProps<T>) {
   if (isError) {
     return <ErrorState error={error} onRetry={onRetry} compact />;
@@ -71,11 +81,13 @@ export function PetPickerStep<T extends PickerPet>({
             onPress={() => onToggle(p.id)}
             testID={`${testIDPrefix}-${p.id}`}
           >
-            <Ionicons
-              name={selected ? "checkbox" : "square-outline"}
-              size={22}
-              color={selected ? COLORS.primary : COLORS.textTertiary}
-            />
+            {mode === "multi" && (
+              <Ionicons
+                name={selected ? "checkbox" : "square-outline"}
+                size={22}
+                color={selected ? COLORS.primary : COLORS.textTertiary}
+              />
+            )}
             <View style={styles.petAvatar}>
               <Ionicons name="paw" size={20} color={COLORS.primary} />
             </View>
@@ -86,6 +98,9 @@ export function PetPickerStep<T extends PickerPet>({
                 {p.breed || "Sin raza"}
               </Text>
             </View>
+            {mode === "single" && selected && (
+              <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />
+            )}
           </TouchableOpacity>
         );
       })}

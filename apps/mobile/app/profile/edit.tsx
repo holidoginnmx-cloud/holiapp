@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +18,9 @@ import { getMe, updateMe } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { formatName, formatPhoneInput } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+
+
+import { alertaDeError } from "@/lib/errorAlert";
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -66,10 +68,7 @@ export default function EditProfileScreen() {
       await syncUser();
       router.back();
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "No se pudo actualizar tu perfil.",
-      );
+      alertaDeError(err, { respaldo: "No se pudo actualizar tu perfil." });
     } finally {
       setSaving(false);
     }

@@ -151,12 +151,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 88,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 60,
-  },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -219,23 +213,6 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.primary,
     lineHeight: 18,
-  },
-  errorText: {
-    fontSize: 16,
-    fontFamily: "PlusJakartaSans_400Regular",
-    color: COLORS.dangerText,
-    marginBottom: 12,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: COLORS.white,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    fontSize: 14,
   },
   fab: {
     position: "absolute",

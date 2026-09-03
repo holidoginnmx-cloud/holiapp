@@ -55,6 +55,9 @@ import {
   type DewormingRow,
 } from "@/components/cartilla/helpers";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 // Convierte una fecha ISO "YYYY-MM-DD" (del OCR) a Date local; null si no es válida.
 function parseOcrDate(iso: string | null): Date | null {
   if (!iso) return null;
@@ -286,7 +289,7 @@ export default function AdminCartillas() {
         );
       }
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // OCR: lee las fotos con Claude y prellena las filas de captura.
@@ -313,7 +316,7 @@ export default function AdminCartillas() {
         );
       }
     },
-    onError: (e: Error) => Alert.alert("No se pudo leer", e.message),
+    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo leer" }),
   });
 
   const invalidateAfterVaccineChange = () => {
@@ -342,7 +345,7 @@ export default function AdminCartillas() {
       if (refreshed) setSelectedPet(refreshed);
       cancelEdit();
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const deleteVaccineMutation = useMutation({
@@ -357,7 +360,7 @@ export default function AdminCartillas() {
       if (refreshed) setSelectedPet(refreshed);
       cancelEdit();
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const cancelEdit = () => {

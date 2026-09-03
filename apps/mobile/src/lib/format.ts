@@ -406,17 +406,6 @@ export function formatWeekdayShort(
   });
 }
 
-/** `martes` */
-export function formatWeekdayLong(
-  date: string | Date,
-  opts?: DateFmtOpts,
-): string {
-  return new Date(date).toLocaleDateString(MX_LOCALE, {
-    weekday: "long",
-    ...opts,
-  });
-}
-
 /** `mar 16 de jun` (día corto con día de semana) */
 export function formatWeekdayDayShort(
   date: string | Date,

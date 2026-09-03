@@ -38,9 +38,6 @@ export const getLegalDocuments = () =>
 export const getMyLegalStatus = () =>
   apiFetch<LegalStatus>(`${ENDPOINTS.legal}/me/status`);
 
-export const getMyLegalAcceptances = () =>
-  apiFetch<LegalAcceptance[]>(`${ENDPOINTS.legal}/me/acceptances`);
-
 export const acceptLegalDocument = (
   documentType: LegalDocType,
   version: string

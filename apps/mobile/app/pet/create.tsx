@@ -26,6 +26,9 @@ import { formatName, formatPhoneInput, formatDayLongYear } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 function sizeLabel(size: string): string {
   switch (size) {
     case "S": return "Perro Chico (1-5kg)";
@@ -332,7 +335,7 @@ export default function CreatePetScreen() {
         );
         return;
       }
-      Alert.alert("Error", e.message);
+      alertaDeError(e);
     },
   });
 

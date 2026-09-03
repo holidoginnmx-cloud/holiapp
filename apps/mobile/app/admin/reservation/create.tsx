@@ -75,6 +75,9 @@ import {
   formatDurationMin,
 } from "@/hooks/useBathConflict";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 type ReservationType = "STAY" | "BATH" | "DAYCARE";
@@ -810,10 +813,7 @@ export default function AdminCreateReservation() {
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (err) {
-      Alert.alert(
-        "No se pudo crear",
-        err instanceof Error ? err.message : "Error desconocido",
-      );
+      alertaDeError(err, { titulo: "No se pudo crear", respaldo: "Error desconocido" });
     } finally {
       setSubmitting(false);
     }

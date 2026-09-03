@@ -306,12 +306,6 @@ export const getChecklists = (reservationId: string) =>
     `/staff/checklists/${reservationId}`
   );
 
-export const updateChecklist = (id: string, data: Partial<CreateDailyChecklist>) =>
-  apiFetch<DailyChecklist>(`/staff/checklists/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-
 export const createStaffUpdate = (data: CreateStayUpdate) =>
   apiFetch<StayUpdate>("/staff/stay-updates", {
     method: "POST",
@@ -329,11 +323,6 @@ export const addBehaviorTag = (data: CreateBehaviorTag) =>
     method: "POST",
     body: JSON.stringify(data),
   });
-
-export const getBehaviorTags = (petId: string) =>
-  apiFetch<(BehaviorTag & { staff: { id: string; firstName: string; lastName: string } })[]>(
-    `/staff/behavior-tags/${petId}`
-  );
 
 export const deleteBehaviorTag = (tagId: string) =>
   apiFetch<{ ok: true }>(`/staff/behavior-tags/${tagId}`, {

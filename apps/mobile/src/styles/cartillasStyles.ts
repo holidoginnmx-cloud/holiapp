@@ -17,7 +17,7 @@ export const styles = StyleSheet.create({
     borderBottomColor: "transparent",
   },
   tabActive: { borderBottomColor: COLORS.primary },
-  tabText: { fontSize: 14, fontWeight: "600", color: COLORS.textTertiary },
+  tabText: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
   tabTextActive: { color: COLORS.primary },
   list: { padding: 16, gap: 10 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -57,7 +57,7 @@ export const styles = StyleSheet.create({
   },
   thumbPhotoCountText: {
     fontSize: 10,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   galleryPage: {
@@ -81,11 +81,11 @@ export const styles = StyleSheet.create({
   },
   galleryIndexText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   cardInfo: { flex: 1, gap: 2 },
-  petName: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  petName: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   ownerName: { fontSize: 13, color: COLORS.textSecondary },
   metaText: { fontSize: 12, color: COLORS.textTertiary },
   rejectionReason: { fontSize: 12, color: COLORS.errorText, marginTop: 2 },
@@ -135,11 +135,11 @@ export const styles = StyleSheet.create({
   },
   toastText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     textAlign: "center",
   },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: COLORS.textPrimary },
+  modalTitle: { fontSize: 20, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   modalSubtitle: { fontSize: 14, color: COLORS.textTertiary, marginTop: 4 },
   fullImage: {
     width: "100%",
@@ -156,7 +156,7 @@ export const styles = StyleSheet.create({
   },
   prevReasonLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
     marginBottom: 2,
   },
@@ -170,7 +170,7 @@ export const styles = StyleSheet.create({
   },
   sentNoteLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
     marginBottom: 2,
   },
@@ -190,9 +190,9 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
-  noteChipText: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
-  label: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary, marginTop: 8 },
-  labelHint: { fontWeight: "400", color: COLORS.textTertiary, fontSize: 12 },
+  noteChipText: { fontSize: 13, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
+  label: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textSecondary, marginTop: 8 },
+  labelHint: { fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, fontSize: 12 },
   input: {
     borderWidth: 1,
     borderColor: COLORS.borderLight,
@@ -218,11 +218,11 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
-  btnText: { fontSize: 14, fontWeight: "700" },
+  btnText: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold" },
   // Captura de vacunas
   captureTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
@@ -247,7 +247,7 @@ export const styles = StyleSheet.create({
   },
   vaccineRowTitle: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   selectRow: {
@@ -272,7 +272,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
-  pickerDoneText: { color: COLORS.primary, fontWeight: "700" },
+  pickerDoneText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold" },
   addRowBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -285,7 +285,7 @@ export const styles = StyleSheet.create({
     borderStyle: "dashed",
     marginTop: 12,
   },
-  addRowText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  addRowText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
   // Catalog picker overlay (absoluto, dentro del Modal principal)
   pickerOverlay: {
     position: "absolute",
@@ -310,7 +310,7 @@ export const styles = StyleSheet.create({
   },
   pickerTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 8,
   },
@@ -322,7 +322,7 @@ export const styles = StyleSheet.create({
   },
   pickerOptionText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
   },
   pickerOptionMeta: {
@@ -339,7 +339,7 @@ export const styles = StyleSheet.create({
   },
   vaccinesSectionTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 8,
   },
@@ -359,7 +359,7 @@ export const styles = StyleSheet.create({
   vaccineCardName: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   vaccineBadge: {
@@ -369,7 +369,7 @@ export const styles = StyleSheet.create({
   },
   vaccineBadgeText: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   vaccineCardRow: {
     flexDirection: "row",
@@ -415,7 +415,7 @@ export const styles = StyleSheet.create({
   },
   dewormingChipText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   dewormingInput: {

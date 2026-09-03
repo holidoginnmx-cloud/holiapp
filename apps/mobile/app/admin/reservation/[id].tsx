@@ -71,6 +71,8 @@ import { LIVE_OPS } from "@/lib/queryOptions";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
+import { alertaDeError } from "@/lib/errorAlert";
+
 const STATUS_CONFIG: Record<
   string,
   { label: string; bg: string; text: string }
@@ -240,9 +242,7 @@ export default function AdminReservationDetail() {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-baths"] });
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "No se pudo completar el baño";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar el baño" });
     } finally {
       setCompletingBath(false);
     }
@@ -257,9 +257,7 @@ export default function AdminReservationDetail() {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-baths"] });
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "No se pudo completar el baño";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar el baño" });
     } finally {
       setCompletingBath(false);
     }
@@ -378,7 +376,7 @@ export default function AdminReservationDetail() {
         showSuccess("Reserva reabierta");
       }
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const cancelMutation = useMutation({
@@ -392,7 +390,7 @@ export default function AdminReservationDetail() {
           : "La reserva fue cancelada. No había monto pagado por reembolsar."
       );
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const paymentMutation = useMutation({
@@ -408,7 +406,7 @@ export default function AdminReservationDetail() {
       setPaymentModalVisible(false);
       showSuccess("Pago registrado y notificado al dueño");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // Corregir el total. NO usa useOptimisticMutation a propósito: es dinero, y
@@ -431,7 +429,7 @@ export default function AdminReservationDetail() {
       }
       showSuccess(`${partes.join(" · ")}.`);
     },
-    onError: (e: Error) => Alert.alert("No se pudo cambiar el total", e.message),
+    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo cambiar el total" }),
   });
 
   // Servicio a domicilio: la tarifa la recalcula el servidor y mueve el total.
@@ -457,7 +455,9 @@ export default function AdminReservationDetail() {
       }
       showSuccess(`${partes.join(" · ")}.`);
     },
-    onError: (e: Error) => Alert.alert("No se pudo actualizar el domicilio", e.message),
+    onError: (e: Error) => alertaDeError(e, {
+      titulo: "No se pudo actualizar el domicilio",
+    }),
   });
 
   // Notas: texto, reversible y sin dinero de por medio → sí van optimistas.
@@ -518,7 +518,9 @@ export default function AdminReservationDetail() {
           : `Cortesía quitada · ${cambio}`,
       );
     },
-    onError: (e: Error) => Alert.alert("No se pudo actualizar el servicio", e.message),
+    onError: (e: Error) => alertaDeError(e, {
+      titulo: "No se pudo actualizar el servicio",
+    }),
   });
 
   const addonNoteMutation = useMutation({
@@ -531,7 +533,7 @@ export default function AdminReservationDetail() {
       setAddonNoteId(null);
       showSuccess("Nota del servicio guardada");
     },
-    onError: (e: Error) => Alert.alert("No se pudo guardar la nota", e.message),
+    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo guardar la nota" }),
   });
 
   // Lista de staff activos — solo se carga cuando se abre el modal.

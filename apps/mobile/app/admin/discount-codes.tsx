@@ -23,6 +23,9 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type TypeKey = "PERCENT" | "FIXED";
 
 const EMPTY = {
@@ -99,7 +102,7 @@ export default function AdminDiscountCodes() {
       invalidate();
       closeForm();
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "No se pudo guardar");
+      alertaDeError(err, { respaldo: "No se pudo guardar" });
     } finally {
       setSaving(false);
     }
@@ -110,7 +113,7 @@ export default function AdminDiscountCodes() {
       await updateAdminDiscountCode(d.id, { isActive: !d.isActive });
       invalidate();
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "No se pudo actualizar");
+      alertaDeError(err, { respaldo: "No se pudo actualizar" });
     }
   }
 
@@ -125,7 +128,7 @@ export default function AdminDiscountCodes() {
             await deleteAdminDiscountCode(d.id);
             invalidate();
           } catch (err) {
-            Alert.alert("Error", err instanceof Error ? err.message : "No se pudo eliminar");
+            alertaDeError(err, { respaldo: "No se pudo eliminar" });
           }
         },
       },

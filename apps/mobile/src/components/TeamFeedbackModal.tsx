@@ -17,6 +17,9 @@ import { useMutation } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { sendTeamFeedback } from "@/lib/api";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -45,7 +48,7 @@ export function TeamFeedbackModal({ open, onClose, screen }: Props) {
       );
     },
     onError: (e: Error) =>
-      Alert.alert("No se pudo enviar", e.message || "Inténtalo de nuevo."),
+      alertaDeError(e, { titulo: "No se pudo enviar", respaldo: "Inténtalo de nuevo." }),
   });
 
   const puedeEnviar = text.trim().length >= 3 && !mutation.isPending;

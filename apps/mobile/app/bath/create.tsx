@@ -25,39 +25,25 @@ import {
 import { ENDPOINTS } from "@/constants/api";
 import { useAuthStore } from "@/store/authStore";
 import {
-  getPetsByOwner,
   getBathVariants,
   getBathSlots,
   createBathIntent,
   confirmBath,
-  validateReservationDiscount,
-  getDeliveryStatus,
-  getDeliveryAddress,
-  saveDeliveryAddress,
-  deliveryQuote,
-  type DeliveryTrip,
   BATH_DEPOSIT_AMOUNT,
   BATH_LATE_TOLERANCE_MIN,
 } from "@/lib/api";
-import {
-  DeliveryAddressPicker,
-  type SelectedAddress,
-} from "@/components/DeliveryAddressPicker";
-import { LevelSelector } from "@/components/LevelSelector";
-import {
-  VIAJES_DOMICILIO,
-  VIAJE_SUB_CLIENTE,
-  viajeSufijo,
-} from "@/constants/delivery";
-import { ErrorState } from "@/components/ErrorState";
+import { PetPickerStep } from "@/components/wizard/PetPickerStep";
+import { HomeDeliverySection } from "@/components/wizard/HomeDeliverySection";
+import { DiscountCodeRow } from "@/components/wizard/DiscountCodeRow";
+import { usePetSelection } from "@/hooks/usePetSelection";
+import { useDaySelection } from "@/hooks/useDaySelection";
+import { useHomeDelivery } from "@/hooks/useHomeDelivery";
+import { useDiscountCode } from "@/hooks/useDiscountCode";
+import { wizardStyles } from "@/styles/wizardStyles";
 
-import { formatName, formatCurrency, formatTime, formatDateLong } from "@/lib/format";
+import { formatCurrency, formatTime, formatDateLong } from "@/lib/format";
+import { alertaDeError } from "@/lib/errorAlert";
 import { sizeFromWeight, bathSizeKey } from "@holidoginn/shared/src/pricing";
-
-function toYMD(d: Date): string {
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
 
 function formatDurationMin(min: number): string {
   const h = Math.floor(min / 60);
@@ -85,91 +71,48 @@ function CreateBathScreenContent() {
   const userId = useAuthStore((s) => s.userId);
   const checkout = usePaymentCheckout("bath");
 
-  const [selectedPetId, setSelectedPetId] = useState<string | null>(
-    params.petId ?? null,
-  );
+  // El baño no exige cartilla aprobada (a diferencia del hospedaje): se listan
+  // todas las mascotas del dueño. La selección es de UNA sola mascota, así que
+  // el arreglo del hook nunca pasa de un elemento.
+  const {
+    pets: selectablePets,
+    petsLoading,
+    petsError,
+    petsErrorObj,
+    refetchPets,
+    selectedPetIds,
+    setSelectedPetIds,
+    selectedPets,
+  } = usePetSelection({
+    userId,
+    initialPetIds: params.petId ? [params.petId] : [],
+  });
+  const selectedPetId = selectedPetIds[0] ?? null;
+  const selectedPet = selectedPets[0] ?? null;
+  // Single-select: volver a tocar la mascota elegida NO la deselecciona.
+  const selectPet = (petId: string) => setSelectedPetIds([petId]);
+
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
   const [corteNotas, setCorteNotas] = useState("");
   const [paymentType, setPaymentType] = useState<"DEPOSIT" | "FULL">("DEPOSIT");
-  const [date, setDate] = useState<Date>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const {
+    date,
+    setDate,
+    showDatePicker,
+    setShowDatePicker,
+    dateYMD,
+    minDate,
+    maxDate,
+    pickerValue,
+  } = useDaySelection({ minOffsetDays: 1, maxOffsetDays: 30 });
   const [selectedSlotIso, setSelectedSlotIso] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Servicio a domicilio ──
-  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
-  // Qué viajes contrata. PICKUP (vamos por el perro) es lo que se cobró siempre.
-  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
-  const [discountCodeInput, setDiscountCodeInput] = useState("");
-  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; discountTotal: number } | null>(null);
-  const [applyingDiscount, setApplyingDiscount] = useState(false);
-
-  const { data: deliveryStatus } = useQuery({
-    queryKey: ["delivery-status"],
-    queryFn: getDeliveryStatus,
-    staleTime: 1000 * 60 * 10,
-  });
-  const deliveryServiceActive = deliveryStatus?.active === true;
-
-  const { data: savedAddress } = useQuery({
-    queryKey: ["delivery-address"],
-    queryFn: getDeliveryAddress,
-    enabled: deliveryServiceActive,
-  });
-  useEffect(() => {
-    if (
-      !deliveryAddress &&
-      savedAddress?.address &&
-      savedAddress.addressLat != null &&
-      savedAddress.addressLng != null
-    ) {
-      setDeliveryAddress({
-        address: savedAddress.address,
-        lat: savedAddress.addressLat,
-        lng: savedAddress.addressLng,
-        placeId: savedAddress.addressPlaceId ?? undefined,
-      });
-    }
-  }, [savedAddress, deliveryAddress]);
-
-  const { data: deliveryQuoteData, isLoading: deliveryQuoteLoading } = useQuery({
-    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
-    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
-    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
-    enabled: homeDeliveryEnabled && !!deliveryAddress,
-  });
-  const deliveryActive =
-    homeDeliveryEnabled && !!deliveryAddress && deliveryQuoteData?.active === true;
-  const deliveryFee = deliveryActive ? deliveryQuoteData!.fee : 0;
-  const homeDeliveryPayload =
-    deliveryActive && deliveryAddress
-      ? {
-          address: deliveryAddress.address,
-          lat: deliveryAddress.lat,
-          lng: deliveryAddress.lng,
-          placeId: deliveryAddress.placeId,
-          trip: deliveryTrip,
-        }
-      : undefined;
-
-  const {
-    data: pets,
-    isLoading: petsLoading,
-    isError: petsError,
-    error: petsErrorObj,
-    refetch: refetchPets,
-  } = useQuery({
-    queryKey: ["pets", userId],
-    queryFn: () => getPetsByOwner(userId!),
-    enabled: !!userId,
-  });
+  const delivery = useHomeDelivery();
+  const { deliveryActive, deliveryFee, homeDeliveryPayload, deliveryIncomplete } =
+    delivery;
 
   const {
     data: variants,
@@ -180,8 +123,6 @@ function CreateBathScreenContent() {
     queryKey: ["bath-variants"],
     queryFn: getBathVariants,
   });
-
-  const dateYMD = useMemo(() => toYMD(date), [date]);
 
   // Los horarios dependen del servicio elegido: un baño con corte tarda más y
   // por eso cabe en menos huecos (y el último del día es más temprano).
@@ -195,15 +136,6 @@ function CreateBathScreenContent() {
       }),
   });
 
-  const selectedPet = useMemo(
-    () => pets?.find((p) => p.id === selectedPetId) ?? null,
-    [pets, selectedPetId],
-  );
-
-  // El baño no exige cartilla aprobada (a diferencia del hospedaje): se listan
-  // todas las mascotas del dueño.
-  const selectablePets = useMemo(() => pets ?? [], [pets]);
-
   const variant = useMemo(() => {
     if (!selectedPet || !variants) return null;
     const petSize = bathSizeKey(sizeFromWeight(selectedPet.weight ?? 0));
@@ -213,8 +145,10 @@ function CreateBathScreenContent() {
     ) ?? null;
   }, [selectedPet, variants, deslanado, corte]);
 
-  // Si activó domicilio, exige una dirección con cotización válida antes de pagar.
-  const deliveryIncomplete = homeDeliveryEnabled && !deliveryActive;
+  // El descuento aplica sobre el precio del baño; el domicilio va aparte.
+  const discount = useDiscountCode(variant ? Number(variant.price) : 0);
+  const { appliedDiscount, discountTotal } = discount;
+
   const canSubmit =
     !!selectedPet &&
     !!variant &&
@@ -222,42 +156,8 @@ function CreateBathScreenContent() {
     !deliveryIncomplete &&
     !submitting;
 
-  async function applyDiscount() {
-    if (!variant) return;
-    const code = discountCodeInput.trim();
-    if (!code) return;
-    setApplyingDiscount(true);
-    try {
-      const res = await validateReservationDiscount({
-        code,
-        subtotal: Number(variant.price),
-      });
-      if (res.valid) {
-        setAppliedDiscount({ code: code.toUpperCase(), discountTotal: res.discountTotal });
-      } else {
-        setAppliedDiscount(null);
-        Alert.alert("Código de descuento", res.message);
-      }
-    } catch (err) {
-      Alert.alert(
-        "Código de descuento",
-        err instanceof Error ? err.message : "No se pudo validar el código"
-      );
-    } finally {
-      setApplyingDiscount(false);
-    }
-  }
-
-  function removeDiscount() {
-    setAppliedDiscount(null);
-    setDiscountCodeInput("");
-  }
-
-  // Si cambia el precio (mascota u opciones de baño), el descuento previo puede
-  // quedar desactualizado; se limpia para que el usuario lo vuelva a aplicar.
+  // El horario elegido puede haber dejado de caber al cambiar el servicio.
   useEffect(() => {
-    setAppliedDiscount(null);
-    // El horario elegido puede haber dejado de caber al cambiar el servicio.
     setSelectedSlotIso(null);
   }, [selectedPetId, deslanado, corte]);
 
@@ -265,14 +165,7 @@ function CreateBathScreenContent() {
   // reintento de una confirmación que quedó pendiente.
   const finishBath = () => {
     // Guarda la dirección para precargarla en futuras reservas (best-effort).
-    if (homeDeliveryPayload && deliveryAddress) {
-      saveDeliveryAddress({
-        address: deliveryAddress.address,
-        lat: deliveryAddress.lat,
-        lng: deliveryAddress.lng,
-        placeId: deliveryAddress.placeId,
-      }).catch(() => {});
-    }
+    delivery.persistAddress();
 
     queryClient.invalidateQueries({ queryKey: ["reservations"] });
     queryClient.invalidateQueries({ queryKey: ["bath-slots", dateYMD] });
@@ -347,25 +240,11 @@ function CreateBathScreenContent() {
     } catch (err) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
-      const msg = err instanceof Error ? err.message : "No se pudo reservar el baño";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo reservar el baño" });
     } finally {
       setSubmitting(false);
     }
   }
-
-  const { minDate, maxDate } = useMemo(() => {
-    const min = new Date();
-    min.setDate(min.getDate() + 1);
-    min.setHours(0, 0, 0, 0);
-    const max = new Date();
-    max.setDate(max.getDate() + 30);
-    max.setHours(23, 59, 59, 999);
-    return { minDate: min, maxDate: max };
-  }, []);
-
-  const pickerValue =
-    date < minDate ? minDate : date > maxDate ? maxDate : date;
 
   return (
     <KeyboardAvoidingView
@@ -373,72 +252,38 @@ function CreateBathScreenContent() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
+        style={wizardStyles.container}
+        contentContainerStyle={wizardStyles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         testID="bath-create-screen"
       >
         {/* Paso 1: mascota */}
-        <Text style={styles.sectionTitle}>1. ¿Para quién?</Text>
-        {petsError || variantsError ? (
-          <ErrorState
-            error={petsErrorObj ?? variantsErrorObj}
-            onRetry={() => {
-              refetchPets();
-              refetchVariants();
-            }}
-            compact
-          />
-        ) : petsLoading ? (
-          <ActivityIndicator color={COLORS.primary} />
-        ) : selectablePets.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="paw-outline" size={28} color={COLORS.primary} />
-            <Text style={styles.emptyText}>
-              Necesitas registrar una mascota para agendar baño.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.petList}>
-            {selectablePets.map((p) => {
-              const selected = p.id === selectedPetId;
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.petCard, selected && styles.petCardSelected]}
-                  onPress={() => setSelectedPetId(p.id)}
-                  testID={`bath-pet-${p.id}`}
-                >
-                  <View style={styles.petAvatar}>
-                    <Ionicons name="paw" size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.petName}>{formatName(p.name)}</Text>
-                    <Text style={styles.petMeta}>
-                      {p.weight ? `${p.weight} kg · ` : ""}
-                      {p.breed || "Sin raza"}
-                    </Text>
-                  </View>
-                  {selected && (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={22}
-                      color={COLORS.primary}
-                    />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
+        <Text style={wizardStyles.sectionTitle}>1. ¿Para quién?</Text>
+        <PetPickerStep
+          mode="single"
+          pets={selectablePets}
+          isLoading={petsLoading}
+          // El catálogo de precios es igual de indispensable que las mascotas:
+          // si cualquiera de los dos falla, se ofrece reintentar los dos.
+          isError={petsError || variantsError}
+          error={petsErrorObj ?? variantsErrorObj}
+          onRetry={() => {
+            refetchPets();
+            refetchVariants();
+          }}
+          selectedPetIds={selectedPetIds}
+          onToggle={selectPet}
+          emptyText="Necesitas registrar una mascota para agendar baño."
+          testIDPrefix="bath-pet"
+        />
 
         {/* Paso 2: opciones de servicio */}
         {selectedPet && (
           <>
-            <Text style={styles.sectionTitle}>2. Servicios adicionales</Text>
+            <Text style={wizardStyles.sectionTitle}>2. Servicios adicionales</Text>
             <TouchableOpacity
-              style={[styles.toggleRow, deslanado && styles.toggleRowActive]}
+              style={[wizardStyles.toggleRow, deslanado && wizardStyles.toggleRowActive]}
               onPress={() => setDeslanado((v) => !v)}
               testID="bath-deslanado"
             >
@@ -448,14 +293,14 @@ function CreateBathScreenContent() {
                 color={deslanado ? COLORS.primary : COLORS.textTertiary}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitle}>Deslanado</Text>
-                <Text style={styles.toggleSub}>
+                <Text style={wizardStyles.toggleTitle}>Deslanado</Text>
+                <Text style={wizardStyles.toggleSub}>
                   Eliminación de pelo muerto con herramientas especiales
                 </Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.toggleRow, corte && styles.toggleRowActive]}
+              style={[wizardStyles.toggleRow, corte && wizardStyles.toggleRowActive]}
               onPress={() =>
                 setCorte((v) => {
                   if (v) setCorteNotas("");
@@ -470,8 +315,8 @@ function CreateBathScreenContent() {
                 color={corte ? COLORS.primary : COLORS.textTertiary}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitle}>Corte</Text>
-                <Text style={styles.toggleSub}>
+                <Text style={wizardStyles.toggleTitle}>Corte</Text>
+                <Text style={wizardStyles.toggleSub}>
                   Corte de pelo al estilo tradicional
                 </Text>
               </View>
@@ -516,70 +361,11 @@ function CreateBathScreenContent() {
               </View>
             )}
 
-            {deliveryServiceActive && (
-              <>
-                <Text style={styles.sectionTitle}>Servicio a domicilio</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleRow,
-                    homeDeliveryEnabled && styles.toggleRowActive,
-                  ]}
-                  onPress={() => setHomeDeliveryEnabled((v) => !v)}
-                  testID="bath-delivery-toggle"
-                >
-                  <Ionicons
-                    name={homeDeliveryEnabled ? "checkbox" : "square-outline"}
-                    size={22}
-                    color={homeDeliveryEnabled ? COLORS.primary : COLORS.textTertiary}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.toggleTitle}>
-                      Servicio a domicilio
-                    </Text>
-                    {/* Antes prometía "vamos por ella y la regresamos" cobrando
-                        UN traslado: el redondo son dos viajes y ahora se elige. */}
-                    <Text style={styles.toggleSub}>
-                      {VIAJE_SUB_CLIENTE[deliveryTrip]}
-                    </Text>
-                  </View>
-                  {deliveryActive && (
-                    <Text style={styles.bathDeliveryFee}>
-                      {formatCurrency(deliveryFee)}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                {homeDeliveryEnabled && (
-                  <View style={{ gap: 8, marginBottom: 8 }}>
-                    <LevelSelector
-                      label="¿Qué viaje necesitas?"
-                      options={VIAJES_DOMICILIO}
-                      selected={deliveryTrip}
-                      onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
-                    />
-                    <DeliveryAddressPicker
-                      value={deliveryAddress}
-                      onChange={setDeliveryAddress}
-                    />
-                    {deliveryAddress && deliveryQuoteLoading && (
-                      <Text style={styles.toggleSub}>Calculando distancia…</Text>
-                    )}
-                    {deliveryActive && (
-                      <View style={styles.deliveryQuoteRow}>
-                        <Ionicons name="navigate" size={14} color={COLORS.primary} />
-                        <Text style={styles.deliveryQuoteText}>
-                          {deliveryQuoteData!.distanceKm} km ·{" "}
-                          {formatCurrency(deliveryFee)} {viajeSufijo(deliveryTrip)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
+            {/* Servicio a domicilio */}
+            <HomeDeliverySection delivery={delivery} testID="bath-delivery-toggle" />
 
             {variant && (() => {
               const price = Number(variant.price);
-              const discountTotal = appliedDiscount?.discountTotal ?? 0;
               const discountedPrice = Math.max(0, price - discountTotal);
               const total = discountedPrice + deliveryFee;
               const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
@@ -587,64 +373,24 @@ function CreateBathScreenContent() {
               const payNow = paymentType === "FULL" ? total : baseDeposit;
               const payLater = total - payNow;
               return (
-                <View style={styles.priceCard}>
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>Precio del baño</Text>
-                    <Text style={styles.priceLineValue}>
+                <View style={wizardStyles.priceCard}>
+                  <View style={wizardStyles.priceRow}>
+                    <Text style={wizardStyles.priceLabel}>Precio del baño</Text>
+                    <Text style={wizardStyles.priceLineValue}>
                       {formatCurrency(price)}
                     </Text>
                   </View>
                   {deliveryActive && (
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceLabel}>Servicio a domicilio</Text>
-                      <Text style={styles.priceLineValue}>
+                    <View style={wizardStyles.priceRow}>
+                      <Text style={wizardStyles.priceLabel}>Servicio a domicilio</Text>
+                      <Text style={wizardStyles.priceLineValue}>
                         {formatCurrency(deliveryFee)}
                       </Text>
                     </View>
                   )}
 
                   {/* Código de descuento */}
-                  {appliedDiscount ? (
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceLabel}>
-                        Descuento ({appliedDiscount.code})
-                      </Text>
-                      <View style={styles.discountAppliedValue}>
-                        <Text style={styles.discountValueText}>
-                          −{formatCurrency(discountTotal)}
-                        </Text>
-                        <TouchableOpacity onPress={removeDiscount} hitSlop={8}>
-                          <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.discountRow}>
-                      <TextInput
-                        style={styles.discountInput}
-                        placeholder="Código de descuento"
-                        placeholderTextColor={COLORS.textTertiary}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        value={discountCodeInput}
-                        onChangeText={setDiscountCodeInput}
-                        editable={!applyingDiscount}
-                      />
-                      <TouchableOpacity
-                        style={[
-                          styles.discountApplyBtn,
-                          (applyingDiscount || !discountCodeInput.trim()) &&
-                            styles.discountApplyBtnDisabled,
-                        ]}
-                        onPress={applyDiscount}
-                        disabled={applyingDiscount || !discountCodeInput.trim()}
-                      >
-                        <Text style={styles.discountApplyText}>
-                          {applyingDiscount ? "…" : "Aplicar"}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <DiscountCodeRow discount={discount} />
 
                   {hasBalance && (
                     <View style={styles.payChoiceRow}>
@@ -710,17 +456,17 @@ function CreateBathScreenContent() {
                     </View>
                   )}
 
-                  <View style={styles.priceDivider} />
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>Pagas ahora</Text>
-                    <Text style={styles.priceValue}>
+                  <View style={wizardStyles.priceDivider} />
+                  <View style={wizardStyles.priceRow}>
+                    <Text style={wizardStyles.priceLabel}>Pagas ahora</Text>
+                    <Text style={wizardStyles.priceValue}>
                       {formatCurrency(payNow)}
                     </Text>
                   </View>
                   {payLater > 0 && (
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceLabel}>Saldo al entregar</Text>
-                      <Text style={styles.priceLineValue}>
+                    <View style={wizardStyles.priceRow}>
+                      <Text style={wizardStyles.priceLabel}>Saldo al entregar</Text>
+                      <Text style={wizardStyles.priceLineValue}>
                         {formatCurrency(payLater)}
                       </Text>
                     </View>
@@ -745,14 +491,14 @@ function CreateBathScreenContent() {
         {/* Paso 3: fecha */}
         {selectedPet && variant && (
           <>
-            <Text style={styles.sectionTitle}>3. Fecha</Text>
+            <Text style={wizardStyles.sectionTitle}>3. Fecha</Text>
             <TouchableOpacity
-              style={styles.dateRow}
+              style={wizardStyles.dateRow}
               onPress={() => setShowDatePicker(true)}
               testID="bath-date-picker-button"
             >
               <Ionicons name="calendar-outline" size={22} color={COLORS.primary} />
-              <Text style={styles.dateText}>{formatDateLong(date)}</Text>
+              <Text style={wizardStyles.dateText}>{formatDateLong(date)}</Text>
               <Ionicons name="chevron-down" size={20} color={COLORS.textTertiary} />
             </TouchableOpacity>
             {showDatePicker && (
@@ -779,7 +525,7 @@ function CreateBathScreenContent() {
         {/* Paso 4: slot */}
         {selectedPet && variant && (
           <>
-            <Text style={styles.sectionTitle}>4. Horario</Text>
+            <Text style={wizardStyles.sectionTitle}>4. Horario</Text>
             {slotsData?.durationMinutes != null && (
               <Text style={styles.slotDurationText}>
                 Este servicio toma unas {formatDurationMin(slotsData.durationMinutes)}.
@@ -829,8 +575,9 @@ function CreateBathScreenContent() {
         {selectedPet && variant && selectedSlotIso && (
           <TouchableOpacity
             style={[
-              styles.payButton,
-              (!canSubmit || pendingConfirm.hasPending) && styles.payButtonDisabled,
+              wizardStyles.payButton,
+              (!canSubmit || pendingConfirm.hasPending) &&
+                wizardStyles.payButtonDisabled,
             ]}
             onPress={handleSubmit}
             disabled={!canSubmit || pendingConfirm.hasPending}
@@ -840,7 +587,7 @@ function CreateBathScreenContent() {
               <ActivityIndicator color={COLORS.white} />
             ) : (() => {
               const price = Number(variant.price);
-              const discountedPrice = Math.max(0, price - (appliedDiscount?.discountTotal ?? 0));
+              const discountedPrice = Math.max(0, price - discountTotal);
               const total = discountedPrice + deliveryFee;
               const baseDeposit = Math.min(BATH_DEPOSIT_AMOUNT, total);
               const payNow = paymentType === "FULL" ? total : baseDeposit;
@@ -848,7 +595,7 @@ function CreateBathScreenContent() {
               return (
                 <>
                   <Ionicons name="card" size={20} color={COLORS.white} />
-                  <Text style={styles.payButtonText}>
+                  <Text style={wizardStyles.payButtonText}>
                     {isFull
                       ? `Pagar ${formatCurrency(payNow)} y confirmar`
                       : `Pagar anticipo ${formatCurrency(payNow)} y confirmar`}
@@ -866,67 +613,9 @@ function CreateBathScreenContent() {
   );
 }
 
+// Estilos propios del baño (notas de corte, elección anticipo/total, slots y
+// tolerancia). Lo compartido con los otros wizards vive en wizardStyles.
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bgPage },
-  content: { padding: 20, paddingBottom: 60, gap: 8 },
-  sectionTitle: {
-    fontSize: 15,
-    fontFamily: "PlusJakartaSans_700Bold",
-    color: COLORS.textPrimary,
-    marginTop: 18,
-    marginBottom: 8,
-  },
-  petList: { gap: 8 },
-  petCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  petCardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
-  petAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  petName: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  petMeta: { fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
-  emptyCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.warningBg,
-    padding: 14,
-    borderRadius: 12,
-  },
-  emptyText: { flex: 1, fontSize: 13, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.warningText },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  toggleRowActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
-  },
-  toggleTitle: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  toggleSub: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
   corteNotasWrap: { marginTop: 2, marginBottom: 8 },
   corteNotasLabel: {
     fontSize: 13,
@@ -963,62 +652,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontFamily: "PlusJakartaSans_600SemiBold",
   },
-  priceCard: {
-    backgroundColor: COLORS.white,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 6,
-    gap: 8,
-  },
-  priceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  priceLabel: { fontSize: 14, color: COLORS.textTertiary, fontFamily: "PlusJakartaSans_600SemiBold" },
-  priceValue: { fontSize: 20, fontFamily: "Outfit_600SemiBold", color: COLORS.primary },
-  priceLineValue: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  discountRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  discountInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    fontFamily: "PlusJakartaSans_400Regular",
-    color: COLORS.textPrimary,
-    backgroundColor: "#fff",
-  },
-  discountApplyBtn: {
-    height: 40,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  discountApplyBtnDisabled: { opacity: 0.5 },
-  discountApplyText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold", fontSize: 14 },
-  discountAppliedValue: { flexDirection: "row", alignItems: "center", gap: 8 },
-  discountValueText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.successText },
-  bathDeliveryFee: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
-  deliveryQuoteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  deliveryQuoteText: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.primary,
-  },
   payChoiceRow: {
     gap: 8,
     marginTop: 12,
@@ -1049,11 +682,6 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginTop: 2,
   },
-  priceDivider: {
-    height: 1,
-    backgroundColor: COLORS.bgSection,
-    marginVertical: 12,
-  },
   toleranceNote: {
     flexDirection: "row",
     alignItems: "center",
@@ -1075,15 +703,6 @@ const styles = StyleSheet.create({
     color: COLORS.dangerText,
     marginTop: 4,
   },
-  dateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-  },
-  dateText: { flex: 1, fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   noSlotsText: {
     fontSize: 13,
     fontFamily: "PlusJakartaSans_400Regular",
@@ -1123,22 +742,4 @@ const styles = StyleSheet.create({
   slotText: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   slotTextDisabled: { color: COLORS.textDisabled, textDecorationLine: "line-through" },
   slotTextSelected: { color: COLORS.primary },
-  payButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 24,
-  },
-  payButtonDisabled: {
-    backgroundColor: COLORS.textDisabled,
-  },
-  payButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontFamily: "PlusJakartaSans_700Bold",
-  },
 });

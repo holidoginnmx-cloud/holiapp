@@ -23,7 +23,7 @@ export const styles = StyleSheet.create({
   },
   petName: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   ownerName: {
@@ -38,7 +38,7 @@ export const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   card: {
     backgroundColor: COLORS.white,
@@ -68,7 +68,7 @@ export const styles = StyleSheet.create({
   },
   editPetButtonText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   petPhoto: {
@@ -111,7 +111,7 @@ export const styles = StyleSheet.create({
   },
   petBreed: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   petDetail: {
@@ -144,7 +144,7 @@ export const styles = StyleSheet.create({
   },
   internalNoteLabel: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.notesText,
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -166,7 +166,7 @@ export const styles = StyleSheet.create({
   },
   bathLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   bathDetail: {
@@ -176,7 +176,7 @@ export const styles = StyleSheet.create({
   },
   bathPrice: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   vaccinesSection: {
@@ -185,7 +185,7 @@ export const styles = StyleSheet.create({
   },
   subsectionTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
     marginBottom: 8,
   },
@@ -233,12 +233,12 @@ export const styles = StyleSheet.create({
   payTitle: {
     flex: 1,
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   payTotal: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   payBreakdown: {
@@ -256,17 +256,17 @@ export const styles = StyleSheet.create({
   payRowLabel: {
     fontSize: 13,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   payRowValue: {
     fontSize: 13,
     color: COLORS.textPrimary,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   payRowValueDiscount: {
     fontSize: 13,
     color: COLORS.successText,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   registerPaymentBtn: {
     flexDirection: "row",
@@ -283,97 +283,12 @@ export const styles = StyleSheet.create({
   },
   registerPaymentText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
   // Modal pago manual
   modalKav: {
     width: "100%",
-  },
-  payModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  payModalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 32,
-  },
-  payModalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    marginBottom: 16,
-  },
-  payInputLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  payModalInput: {
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    textAlignVertical: "top",
-  },
-  payMethodRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  payMethodChip: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-  },
-  payMethodChipActive: {
-    backgroundColor: COLORS.primary,
-  },
-  payMethodChipText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textTertiary,
-  },
-  payModalButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-  },
-  payModalBtnCancel: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-    alignItems: "center",
-  },
-  payModalBtnCancelText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textTertiary,
-  },
-  payModalBtnConfirm: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-  },
-  payModalBtnConfirmText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.white,
   },
   stayInfoItem: {
     alignItems: "center",
@@ -381,19 +296,19 @@ export const styles = StyleSheet.create({
   stayInfoLabel: {
     fontSize: 11,
     color: COLORS.textDisabled,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     textTransform: "uppercase",
   },
   stayInfoValue: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginTop: 2,
   },
   // Hora estimada indicada por el cliente (bajo la fecha de entrada/salida).
   stayInfoTime: {
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
     marginTop: 1,
   },
@@ -431,7 +346,7 @@ export const styles = StyleSheet.create({
   actionButtonText: {
     color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   actionsRow: {
     flexDirection: "row",
@@ -455,7 +370,7 @@ export const styles = StyleSheet.create({
   pickupChargeBtnText: {
     color: COLORS.warningText,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   actionButtonSmall: {
     flex: 1,
@@ -469,7 +384,7 @@ export const styles = StyleSheet.create({
   actionButtonSmallText: {
     color: COLORS.white,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   section: {
     marginHorizontal: 16,
@@ -493,7 +408,7 @@ export const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   emptyText: {
@@ -501,37 +416,6 @@ export const styles = StyleSheet.create({
     color: COLORS.textDisabled,
     textAlign: "center",
     paddingVertical: 12,
-  },
-  evidenceItem: {
-    marginRight: 10,
-  },
-  evidenceImageWrap: {
-    width: 100,
-    height: 100,
-    position: "relative",
-  },
-  evidenceImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 10,
-    backgroundColor: COLORS.bgSection,
-  },
-  evidencePlayOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    borderRadius: 10,
-  },
-  evidenceCaption: {
-    fontSize: 11,
-    color: COLORS.textTertiary,
-    marginTop: 4,
-    width: 100,
   },
   tagsRow: {
     flexDirection: "row",
@@ -548,7 +432,7 @@ export const styles = StyleSheet.create({
   },
   alertType: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textSecondary,
   },
   alertDesc: {
@@ -588,12 +472,12 @@ export const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.borderLight,
   },
-  roomRowName: { fontSize: 15, fontWeight: "600", color: COLORS.textPrimary },
+  roomRowName: { fontSize: 15, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textPrimary },
   roomRowSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
-  roomRowCurrent: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+  roomRowCurrent: { fontSize: 12, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   modalDescription: {
@@ -617,7 +501,7 @@ export const styles = StyleSheet.create({
   },
   alertTypeChipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   textArea: {
@@ -645,7 +529,7 @@ export const styles = StyleSheet.create({
   },
   modalButtonCancelText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textTertiary,
   },
   modalButtonConfirm: {
@@ -657,7 +541,7 @@ export const styles = StyleSheet.create({
   },
   modalButtonConfirmText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   tagsGrid: {
@@ -677,7 +561,7 @@ export const styles = StyleSheet.create({
   },
   tagNotesLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
     marginBottom: 6,
   },
@@ -689,7 +573,7 @@ export const styles = StyleSheet.create({
   },
   ownerStripName: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   ownerStripContact: {
@@ -713,7 +597,7 @@ export const styles = StyleSheet.create({
   },
   medicationTitle: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.errorText,
   },
   medicationNotes: {
@@ -741,7 +625,7 @@ export const styles = StyleSheet.create({
   },
   completeBathText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.white,
   },
   bathCompletedDate: {
@@ -759,12 +643,6 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Evidence date
-  evidenceDate: {
-    fontSize: 10,
-    color: COLORS.textDisabled,
-    marginTop: 3,
-  },
   missingReportBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -777,7 +655,7 @@ export const styles = StyleSheet.create({
   missingReportText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.warningText,
   },
   checklistsCard: {
@@ -805,7 +683,7 @@ export const styles = StyleSheet.create({
   },
   checklistsTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   checklistsSubtitle: {

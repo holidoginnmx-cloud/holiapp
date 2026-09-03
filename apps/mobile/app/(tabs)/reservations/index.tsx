@@ -516,10 +516,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  filterContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
   underlineFilterWrap: {
     marginTop: 8,
   },

@@ -12,30 +12,90 @@ import { Platform } from "react-native";
  * saber si a quien reportó el pago colgado le había llegado el arreglo publicado
  * dos horas antes.
  *
- * Aquí se resuelven las dos mitades del problema: aplicar el update sin esperar
- * a que el cliente mate la app, y poder saber qué versión trae puesta.
+ * Aquí se resuelven las dos mitades del problema: enterarse de que hay bundle
+ * nuevo (y tenerlo descargado) sin esperar a que el cliente mate la app, y poder
+ * saber qué versión trae puesta.
+ *
+ * REGLA: la app NUNCA se recarga sola. Recargar es perder lo que la persona
+ * estuviera escribiendo — o peor, cortar un cobro a media hoja de Stripe. Aquí
+ * solo se descarga y se levanta la bandera; quien decide es quien toca
+ * "Actualizar ahora" en el aviso (src/components/UpdateBanner.tsx).
  */
 
-/** La app no se recarga si estuvo fuera menos de esto: se sentiría como un salto. */
-const MIN_BACKGROUND_MS = 30 * 60 * 1000;
+// ── Estado observable ───────────────────────────────────────────────────────
+//
+// Un mini-store de módulo en vez de zustand/context: esto lo consume un solo
+// componente y tiene que poder escribirse desde fuera de React (el check corre
+// en un listener de AppState).
+
+type Listener = () => void;
+
+const listeners = new Set<Listener>();
+
+/** Hay un bundle nuevo descargado y listo para aplicarse con un reload. */
+let updateReady = false;
+/** Mientras `Date.now()` sea menor, el aviso no se muestra (lo pospusieron). */
+let snoozedUntil = 0;
+/** Flujos que no se pueden interrumpir (cobros). El aviso se esconde. */
+let criticalFlows = 0;
+/** Última comprobación, para no preguntar en cada vuelta a primer plano. */
+let lastCheckAt = 0;
+/** Una sola comprobación en vuelo. */
+let checkInFlight: Promise<boolean> | null = null;
+let snoozeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Al posponer, el aviso vuelve más tarde: no se pierde, solo no estorba. */
+const SNOOZE_MS = 2 * 60 * 60 * 1000; // 2 h
+/** Piso entre comprobaciones: volver de segundo plano 10 veces no son 10 checks. */
+const CHECK_THROTTLE_MS = 15 * 60 * 1000; // 15 min
+
+function notify() {
+  listeners.forEach((l) => l());
+}
+
+export function subscribeToUpdates(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 /**
- * Candado de flujos que no se pueden interrumpir. Recargar a media hoja de pago
- * sería peor que el problema que arregla.
+ * ¿Se debe ver el aviso ahora mismo? Devuelve un booleano (primitivo) a
+ * propósito: es lo que `useSyncExternalStore` puede comparar sin sobresaltos.
  */
-let criticalFlows = 0;
+export function isUpdateNoticeVisible(): boolean {
+  if (!updateReady) return false;
+  if (criticalFlows > 0) return false;
+  return Date.now() >= snoozedUntil;
+}
 
+/**
+ * Candado de flujos que no se pueden interrumpir. Enseñar "Actualizar ahora"
+ * junto a la hoja de pago sería una invitación a perder un cobro a la mitad.
+ */
 export function beginCriticalFlow() {
   criticalFlows += 1;
+  notify();
 }
 
 export function endCriticalFlow() {
   criticalFlows = Math.max(0, criticalFlows - 1);
+  notify();
 }
 
-export function isCriticalFlowActive() {
-  return criticalFlows > 0;
+/** "Ahora no". El aviso desaparece y vuelve en un par de horas. */
+export function snoozeUpdateNotice() {
+  snoozedUntil = Date.now() + SNOOZE_MS;
+  if (snoozeTimer) clearTimeout(snoozeTimer);
+  // Sin este timer, el aviso solo reaparecería la próxima vez que algo más
+  // provocara un notify(): podría no volver nunca en esa sesión.
+  snoozeTimer = setTimeout(() => {
+    snoozeTimer = null;
+    notify();
+  }, SNOOZE_MS);
+  notify();
 }
+
+// ── Diagnóstico ─────────────────────────────────────────────────────────────
 
 /** Datos de build para soporte: "mándame esto por WhatsApp". */
 export function buildInfo() {
@@ -77,36 +137,67 @@ export function buildDiagnostics() {
   ].join("\n");
 }
 
+// ── Comprobación y descarga ─────────────────────────────────────────────────
+
 /**
- * Busca y descarga un update. No recarga: eso lo decide quien llama.
- * Devuelve true si quedó uno listo para aplicarse.
+ * Busca y descarga un update. NO recarga: solo levanta la bandera para que
+ * aparezca el aviso.
+ *
+ * Nunca lanza: un fallo de red aquí no es un problema del que enterar a nadie,
+ * y desde luego no puede romper el arranque. Se reintenta la próxima vez que la
+ * app vuelva a primer plano.
+ *
+ * @param force Ignora el throttle (para un botón manual de "buscar ahora").
  */
-export async function checkAndFetch(): Promise<boolean> {
-  if (__DEV__ || !Updates.isEnabled) return false;
-  try {
-    const check = await Updates.checkForUpdateAsync();
-    if (!check.isAvailable) return false;
-    const fetched = await Updates.fetchUpdateAsync();
-    return fetched.isNew;
-  } catch {
-    // Sin red, o servidor de updates caído: no es un error del que enterar al
-    // cliente. Se reintenta la próxima vez que vuelva a la app.
-    return false;
+export function checkForUpdate(force = false): Promise<boolean> {
+  // En desarrollo el bundle lo sirve Metro: preguntar por updates no tiene
+  // sentido y `checkForUpdateAsync` además revienta.
+  if (__DEV__ || !Updates.isEnabled) return Promise.resolve(false);
+  if (updateReady) return Promise.resolve(true);
+  if (checkInFlight) return checkInFlight;
+  if (!force && lastCheckAt && Date.now() - lastCheckAt < CHECK_THROTTLE_MS) {
+    return Promise.resolve(false);
   }
+
+  const run = (async () => {
+    try {
+      const check = await Updates.checkForUpdateAsync();
+      if (!check.isAvailable) return false;
+      const fetched = await Updates.fetchUpdateAsync();
+      if (!fetched.isNew) return false;
+      updateReady = true;
+      // Un update nuevo cancela cualquier "ahora no" anterior: es otra versión,
+      // y probablemente la que trae el arreglo que se está esperando.
+      snoozedUntil = 0;
+      if (snoozeTimer) {
+        clearTimeout(snoozeTimer);
+        snoozeTimer = null;
+      }
+      notify();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      lastCheckAt = Date.now();
+      checkInFlight = null;
+    }
+  })();
+
+  checkInFlight = run;
+  return run;
 }
 
 /**
- * Aplica un update ya descargado, pero solo si es un momento seguro: nada de
- * flujos críticos en curso y con la app suficientemente tiempo en segundo plano
- * como para que recargar se sienta igual que abrirla de nuevo.
+ * Aplica el update descargado. Solo debe llamarse desde el botón del aviso:
+ * es la persona la que elige el momento.
  */
-export async function applyIfSafe(backgroundedMs: number): Promise<boolean> {
-  if (isCriticalFlowActive()) return false;
-  if (backgroundedMs < MIN_BACKGROUND_MS) return false;
+export async function applyUpdateNow(): Promise<boolean> {
   try {
     await Updates.reloadAsync();
     return true;
   } catch {
+    // Si el reload falla (raro), el aviso se queda donde estaba y se puede
+    // volver a intentar; en el peor caso entra en el próximo arranque.
     return false;
   }
 }

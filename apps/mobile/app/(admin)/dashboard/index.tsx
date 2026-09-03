@@ -559,18 +559,6 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: "PlusJakartaSans_700Bold",
-    color: COLORS.textPrimary,
-    marginBottom: 12,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
   sectionHeaderPressable: {
     flexDirection: "row",
     alignItems: "center",
@@ -638,11 +626,4 @@ const styles = StyleSheet.create({
   },
   changeRequestsTitle: { color: COLORS.white, fontFamily: "PlusJakartaSans_700Bold", fontSize: 15 },
   changeRequestsSubtitle: { color: COLORS.white, opacity: 0.85, fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", marginTop: 2 },
-  seeAll: {
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.primary,
-    textAlign: "center",
-    paddingVertical: 8,
-  },
 });

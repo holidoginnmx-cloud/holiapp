@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { QuotePreviewInput } from "@holidoginn/shared";
 import { previewQuote, type QuotePreviewResult } from "@/lib/api";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+
 /**
  * Total en vivo de una cotización, calculado SIEMPRE por el servidor.
  *
@@ -42,7 +44,7 @@ export function useQuotePreview(input: QuotePreviewInput | null, delayMs = 450) 
       } catch (err) {
         if (mine !== seq.current) return;
         setResult(null);
-        setError(err instanceof Error ? err.message : "No se pudo calcular el total");
+        setError(mensajeDeError(err, "No se pudo calcular el total"));
       } finally {
         if (mine === seq.current) setLoading(false);
       }

@@ -30,6 +30,9 @@ import {
 import { ErrorState } from "@/components/ErrorState";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 // Pantalla admin: modifica las fechas de una estadía directamente (sin flujo
 // de aprobación). El total se recalcula por delta de hospedaje en el server;
 // los pagos NO se ajustan solos — el admin los gestiona desde el detalle.
@@ -104,7 +107,7 @@ export default function AdminEditDatesScreen() {
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const handleSubmit = () => {

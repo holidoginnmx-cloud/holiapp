@@ -18,6 +18,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { createUser } from "@/lib/api";
 import { formatFullName, formatPhoneInput } from "@/lib/format";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Alta de cliente walk-in desde el admin: clientes que llegan sin la app
  * (teléfono/WhatsApp). Con su teléfono capturado, cuando descarguen la app
@@ -74,7 +77,7 @@ export default function AdminCreateClient() {
         [{ text: "OK", onPress: () => router.back() }],
       );
     },
-    onError: (e: Error) => Alert.alert("No se pudo crear", e.message),
+    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo crear" }),
   });
 
   return (

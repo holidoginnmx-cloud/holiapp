@@ -71,6 +71,3 @@ export const registerManualPayment = (data: {
   });
 
 // ─── Payments ────────────────────────────────────────────
-
-export const getPayments = (reservationId: string) =>
-  apiFetch<Payment[]>(`${ENDPOINTS.payments}/${reservationId}`);

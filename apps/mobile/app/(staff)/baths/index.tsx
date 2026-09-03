@@ -47,6 +47,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
+import { alertaDeError } from "@/lib/errorAlert";
+
 type BathTypeFilter = "loose" | "stay";
 
 
@@ -191,7 +193,7 @@ export default function StaffBaths() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const { data, isLoading, isError, error, isRefetching, refetch } = useQuery({
@@ -272,8 +274,7 @@ export default function StaffBaths() {
       await completeStaffBath(bath.id, cloud.secure_url);
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo completar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar" });
     } finally {
       setCompletingId(null);
     }
@@ -286,8 +287,7 @@ export default function StaffBaths() {
       await completeStaffBath(bath.id);
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo completar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar" });
     } finally {
       setCompletingId(null);
     }
@@ -687,7 +687,7 @@ function ExtrasPriceModal({
       return setBathExtrasPrice(addonId, payload);
     },
     onSuccess: () => onSuccess(),
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   return (
@@ -906,21 +906,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: -4,
     marginBottom: 8,
-  },
-  callBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  callBtnText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_700Bold",
   },
   completeBtn: {
     flex: 1,

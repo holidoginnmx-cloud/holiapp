@@ -863,16 +863,6 @@ function BathCard({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bgPage,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
   sectionHeaderPressable: {
     flexDirection: "row",
     alignItems: "center",
@@ -1136,18 +1126,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: COLORS.white,
-  },
-  bathTypePill: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  bathTypePillText: {
-    fontSize: 10,
-    fontFamily: "PlusJakartaSans_700Bold",
-    letterSpacing: 0.5,
-    color: COLORS.white,
   },
   bathTimeRow: {
     flexDirection: "row",

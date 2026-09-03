@@ -45,33 +45,33 @@ export const styles = StyleSheet.create({
   },
   title: {
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   titlePaid: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   titlePickup: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   subtitle: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     marginTop: 2,
   },
   subtle: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   price: {
     fontSize: 22,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   hint: {
@@ -94,12 +94,12 @@ export const styles = StyleSheet.create({
   breakdownLabel: {
     flex: 1,
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textSecondary,
   },
   breakdownAmount: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
   },
   breakdownDivider: {
@@ -108,12 +108,12 @@ export const styles = StyleSheet.create({
   },
   totalLabel: {
     color: COLORS.textPrimary,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   totalAmount: {
     color: COLORS.warningText,
     fontSize: 16,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   actions: {
     flexDirection: "row",
@@ -134,7 +134,7 @@ export const styles = StyleSheet.create({
   btnPrimaryText: {
     color: COLORS.white,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   btnSecondary: {
     backgroundColor: COLORS.primaryLight,
@@ -142,6 +142,6 @@ export const styles = StyleSheet.create({
   btnSecondaryText: {
     color: COLORS.primary,
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
 });

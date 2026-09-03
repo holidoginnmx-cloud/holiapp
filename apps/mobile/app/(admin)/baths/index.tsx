@@ -425,27 +425,6 @@ const styles = StyleSheet.create({
   bathBlock: {
     marginBottom: 4,
   },
-  actionsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: -4,
-    marginBottom: 12,
-  },
-  callBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  callBtnText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_700Bold",
-  },
   emptyCard: {
     alignItems: "center",
     padding: 24,

@@ -14,6 +14,9 @@ import {
   type PaymentSession,
 } from "@/lib/telemetry";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Cobro con Stripe, con red de seguridad. Único punto por el que pasan los seis
  * flujos de pago de la app.
@@ -229,7 +232,7 @@ export function usePaymentCheckout(flow: PaymentFlow) {
         code: initError.code,
         detail: initError.message,
       });
-      Alert.alert("Error", initError.message);
+      alertaDeError(initError);
       return settle("failed");
     }
     session.track("init_ok");
@@ -299,7 +302,7 @@ export function usePaymentCheckout(flow: PaymentFlow) {
         resolveRef.current = resolve;
         attempt().catch((err: any) => {
           const message =
-            err instanceof Error ? err.message : "No se pudo abrir la ventana de pago";
+            mensajeDeError(err, "No se pudo abrir la ventana de pago");
           session.track("init_error", { detail: message });
           Alert.alert("Error", message);
           settle("failed");
@@ -343,7 +346,7 @@ export function usePaymentCheckout(flow: PaymentFlow) {
         setStuck(null);
         return attempt().catch((err: any) => {
           const message =
-            err instanceof Error ? err.message : "No se pudo abrir la ventana de pago";
+            mensajeDeError(err, "No se pudo abrir la ventana de pago");
           Alert.alert("Error", message);
           settle("failed");
         });

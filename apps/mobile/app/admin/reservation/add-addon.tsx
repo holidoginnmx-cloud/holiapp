@@ -27,6 +27,9 @@ import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import { bathSizeKey, sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import { useAuthStore } from "@/store/authStore";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Agrega un servicio a una reserva que ya existe: el caso que faltaba para
  * poder regalar un baño ("que salga en la agenda y lo bañen, pero no se
@@ -155,7 +158,7 @@ export default function AdminAddAddonScreen() {
         { text: "OK", onPress: () => router.back() },
       ]);
     },
-    onError: (e: Error) => Alert.alert("No se pudo agregar", e.message),
+    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo agregar" }),
   });
 
   if (isLoading) {
@@ -169,7 +172,7 @@ export default function AdminAddAddonScreen() {
   if (isError || !reservation) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : "No se pudo cargar"}
+        message={mensajeDeError(error, "No se pudo cargar")}
         onRetry={refetch}
       />
     );

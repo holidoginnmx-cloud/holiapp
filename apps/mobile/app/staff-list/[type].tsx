@@ -337,7 +337,6 @@ export default function StaffListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bgPage },
   content: { padding: 16, paddingBottom: 40 },
   center: {
     flex: 1,

@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -125,12 +125,12 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.textPrimary,
     fontVariant: ["tabular-nums"],
   },
   valueOnBanner: {
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
   },
   negative: {
     color: COLORS.successText,
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   courtesyText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.successText,
   },
   bannerTotalRow: {
@@ -161,12 +161,12 @@ const styles = StyleSheet.create({
   },
   bannerTotalLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.warningText,
   },
   bannerTotalValue: {
     fontSize: 15,
-    fontWeight: "800",
+    fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     fontVariant: ["tabular-nums"],
   },

@@ -14,7 +14,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBathConfig, updateBathConfig, type BathConfig } from "@/lib/api";
+import { alertaDeError } from "@/lib/errorAlert";
 import { ErrorState } from "@/components/ErrorState";
+
 
 function hoursLabel(h: number): string {
   if (h === 0) return "12:00 AM";
@@ -88,8 +90,7 @@ export default function AdminBathConfig() {
       queryClient.invalidateQueries({ queryKey: ["bath-config"] });
       Alert.alert("Guardado", "La configuración de baños se actualizó.");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo guardar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo guardar" });
     } finally {
       setSaving(false);
     }

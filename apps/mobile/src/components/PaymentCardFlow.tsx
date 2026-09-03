@@ -33,6 +33,9 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { styles } from "@/styles/paymentCardStyles";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Tarjeta unificada de cobro de saldo pendiente. Fusiona la lógica idéntica de
  * pago (Stripe PaymentSheet + "pagar al recoger") que antes estaba duplicada en
@@ -203,7 +206,7 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
   const pickupMutation = useMutation({
     mutationFn: () => cfg.payOnPickupApi(),
     onSuccess: invalidate,
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   async function handlePayNow() {
@@ -233,7 +236,7 @@ export function PaymentCardFlow(props: PaymentCardFlowProps) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
       const msg =
-        err instanceof Error ? err.message : "No se pudo procesar el pago";
+        mensajeDeError(err, "No se pudo procesar el pago");
       Alert.alert("Error", msg);
     } finally {
       setPaying(false);

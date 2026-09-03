@@ -24,6 +24,9 @@ import { formatName, formatDayShort, formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
 import { useSuccessBanner } from "@/components/SuccessBanner";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 function formatDate(d: string): string {
   // Fechas de estadía (checkIn/checkOut/newCheck*) se guardan a medianoche UTC:
   // formatear en UTC evita el corrimiento de un día al oeste de UTC.
@@ -56,7 +59,7 @@ export default function AdminChangeRequestsScreen() {
       qc.invalidateQueries({ queryKey: ["admin", "change-requests"] });
       showSuccess("Solicitud aprobada");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   const rejectMutation = useMutation({
@@ -68,7 +71,7 @@ export default function AdminChangeRequestsScreen() {
       setRejectReason("");
       showSuccess("Solicitud rechazada — se notificó al dueño");
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   if (isError) {

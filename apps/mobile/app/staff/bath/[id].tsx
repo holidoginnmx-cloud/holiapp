@@ -52,6 +52,8 @@ import {
 } from "@/lib/bathStatus";
 import { MediaViewer } from "@/components/MediaViewer";
 
+import { alertaDeError } from "@/lib/errorAlert";
+
 const SIZE_LABEL: Record<string, string> = {
   XS: "Extra chico",
   S: "Chico",
@@ -120,7 +122,7 @@ export default function StaffBathDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     },
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   // Optimista: la foto desaparece al confirmar; si el server falla, reaparece.
@@ -199,8 +201,7 @@ export default function StaffBathDetail() {
       await completeStaffBath(bath.id, cloud.secure_url);
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo completar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar" });
     } finally {
       setCompleting(false);
     }
@@ -216,8 +217,7 @@ export default function StaffBathDetail() {
       await completeStaffBath(bath.id);
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo completar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo completar" });
     } finally {
       setCompleting(false);
     }
@@ -270,8 +270,7 @@ export default function StaffBathDetail() {
       });
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo subir la foto";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo subir la foto" });
     } finally {
       setAddingPhoto(false);
     }
@@ -863,8 +862,7 @@ function ManualPaymentSection({
           : `Recibido ${formatCurrency(res.amount)}`,
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo registrar";
-      Alert.alert("Error", msg);
+      alertaDeError(err, { respaldo: "No se pudo registrar" });
     } finally {
       setRegistering(false);
     }
@@ -1012,7 +1010,7 @@ function ExtrasPriceModal({
       return setBathExtrasPrice(addonId, payload);
     },
     onSuccess: () => onSuccess(),
-    onError: (e: Error) => Alert.alert("Error", e.message),
+    onError: (e: Error) => alertaDeError(e),
   });
 
   return (

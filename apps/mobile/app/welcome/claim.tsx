@@ -28,6 +28,8 @@ import {
 import { formatPhoneInput } from "@/lib/format";
 import { buildWhatsappUrl } from "@/constants/business";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+
 export const CLAIM_SEEN_KEY = "welcome-claim-seen";
 
 export default function ClaimAccountScreen() {
@@ -145,7 +147,7 @@ export default function ClaimAccountScreen() {
         });
       }
     } catch (e: any) {
-      setError(e?.message ?? "No pudimos buscar tu cuenta. Intenta de nuevo.");
+      setError(mensajeDeError(e, "No pudimos buscar tu cuenta. Intenta de nuevo."));
     } finally {
       setLoading(false);
     }
@@ -170,7 +172,7 @@ export default function ClaimAccountScreen() {
       setSelectedPetIds(new Set());
       setChallenge(null);
     } catch (e: any) {
-      setError(e?.message ?? "No pudimos validar el código. Intenta de nuevo.");
+      setError(mensajeDeError(e, "No pudimos validar el código. Intenta de nuevo."));
     } finally {
       setVerifying(false);
     }
@@ -203,7 +205,7 @@ export default function ClaimAccountScreen() {
     } catch (e: any) {
       setSubmitting(false);
       setError(
-        e?.message ?? "No pudimos vincular tu cuenta. Intenta de nuevo.",
+        mensajeDeError(e, "No pudimos vincular tu cuenta. Intenta de nuevo."),
       );
     }
   };
@@ -662,21 +664,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
-  },
-  petRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  petChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 20,
-    paddingRight: 12,
-    paddingLeft: 4,
-    paddingVertical: 4,
   },
   petPhoto: {
     width: 28,

@@ -1,9 +1,10 @@
-import { Alert } from "react-native";
 import {
   useMutation,
   useQueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
+
+import { alertaDeError } from "@/lib/errorAlert";
 
 type Patch<TVars> = {
   /** Entrada de caché a parchear (key exacta, no prefijo). */
@@ -50,7 +51,7 @@ export function useOptimisticMutation<TData, TVars>(opts: {
     },
     onError: (err, _vars, ctx) => {
       ctx?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data));
-      Alert.alert(opts.errorTitle ?? "Error", err.message);
+      alertaDeError(err, { titulo: opts.errorTitle });
     },
     onSuccess: opts.onSuccess,
     onSettled: () => {

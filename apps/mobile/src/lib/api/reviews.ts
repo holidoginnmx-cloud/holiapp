@@ -14,9 +14,6 @@ export const createReview = (data: {
     body: JSON.stringify(data),
   });
 
-export const getReviewByReservation = (reservationId: string) =>
-  apiFetch<Review>(`${ENDPOINTS.reviews}/${reservationId}`);
-
 /**
  * La visita finalizada que aún espera calificación (o `null`). Devuelve una
  * sola: encadenar modales para quien lleva varias sin reseñar es la mejor forma

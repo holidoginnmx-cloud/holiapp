@@ -20,6 +20,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { getUsers, sendAdminNotification } from "@/lib/api";
 import { formatName } from "@/lib/format";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 type AudienceRole = "OWNER" | "STAFF" | "ADMIN";
 const ROLE_OPTIONS: { key: AudienceRole; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "OWNER", label: "Clientes", icon: "people" },
@@ -67,7 +70,7 @@ export default function SendNotificationScreen() {
     },
     onError: (err: Error) => {
       Keyboard.dismiss();
-      Alert.alert("Error", err.message ?? "No se pudo enviar la notificacion");
+      alertaDeError(err, { respaldo: "No se pudo enviar la notificacion" });
     },
   });
 
@@ -322,17 +325,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 12,
-  },
-  backText: {
-    fontSize: 16,
-    color: COLORS.primary,
-    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   title: {
     fontSize: 24,

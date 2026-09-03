@@ -28,6 +28,9 @@ import {
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 function findVariant(
   variants: BathVariant[] | undefined,
   petWeight: number | null | undefined,
@@ -175,7 +178,7 @@ export function BathUpsellCard({ reservation }: Props) {
     } catch (err: any) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
-      Alert.alert("Error", err.message || "No se pudo contratar el baño");
+      alertaDeError(err, { respaldo: "No se pudo contratar el baño" });
     } finally {
       setPaying(false);
     }

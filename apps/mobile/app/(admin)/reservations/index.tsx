@@ -163,10 +163,6 @@ export default function AdminReservations() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.bgPage,
-  },
   center: {
     flex: 1,
     justifyContent: "center",

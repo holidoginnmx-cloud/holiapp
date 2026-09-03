@@ -24,6 +24,9 @@ import {
   formatDurationMin,
 } from "@/hooks/useBathConflict";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 // Reagendar una cita de baño suelta (appointmentAt). Compartida entre el
 // detalle admin y el de staff: cada stack la registra con un wrapper de ruta
 // de ~10 líneas; toda la lógica vive aquí.
@@ -103,7 +106,7 @@ export function EditBathAppointmentScreen({ id }: { id: string }) {
     onError: (e: Error) => {
       // El 409 del server trae la hora concreta del choque; el switch
       // "Agendar de todos modos" lo destranca.
-      Alert.alert("No se pudo reagendar", e.message);
+      alertaDeError(e, { titulo: "No se pudo reagendar" });
     },
   });
 

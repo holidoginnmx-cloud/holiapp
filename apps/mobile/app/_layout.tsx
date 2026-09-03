@@ -6,7 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 // Puente AppState → focusManager de React Query. Import por efecto de módulo:
 // sin él `refetchOnWindowFocus` no hace nada en React Native.
 import "@/lib/queryFocus";
-import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
+import { ClerkProvider, useAuth, useClerk } from "@clerk/clerk-expo";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AppState, InteractionManager, StyleSheet } from "react-native";
@@ -35,7 +35,12 @@ import {
   type NotificationRouteData,
 } from "@/lib/notificationRoute";
 import { notificationInvalidationKeys } from "@/lib/notificationInvalidate";
-import { applyIfSafe, checkAndFetch } from "@/lib/appUpdates";
+import { checkForUpdate } from "@/lib/appUpdates";
+import { UpdateBanner } from "@/components/UpdateBanner";
+import {
+  rearmSessionExpiry,
+  setSessionExpiredHandler,
+} from "@/lib/api/sessionExpiry";
 import {
   recoverPendingConfirmation,
   reservationIdOf,
@@ -434,36 +439,68 @@ function PendingConfirmationRecovery() {
 }
 
 /**
- * Aplica las actualizaciones por aire sin esperar a que el cliente mate la app.
+ * Avisa cuando hay código nuevo, sin recargar por su cuenta.
  *
  * Sin esto, un `eas update` solo entra en el siguiente arranque en frío: un
  * arreglo urgente puede tardar días en llegarle a quien deja la app abierta en
- * segundo plano. La recarga solo ocurre al volver de un rato largo fuera y
- * nunca con un cobro en curso, así que se siente igual que abrir la app.
+ * segundo plano. Aquí se descarga en cuanto está (al abrir y al volver de
+ * segundo plano) y se levanta la bandera que pinta `UpdateBanner`.
+ *
+ * Lo que NO hace, a propósito: reiniciar solo. Recargar a media reservación o a
+ * media hoja de pago sería peor que el problema que arregla.
  */
 function OtaUpdater() {
-  const backgroundedAt = useRef<number | null>(null);
-
   useEffect(() => {
-    // Al arrancar ya se descarga lo que haya, para que esté listo la próxima vez.
-    void checkAndFetch();
+    void checkForUpdate();
 
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        const since = backgroundedAt.current;
-        backgroundedAt.current = null;
-        void (async () => {
-          const hasUpdate = await checkAndFetch();
-          if (!hasUpdate || since === null) return;
-          await applyIfSafe(Date.now() - since);
-        })();
-      } else if (state === "background") {
-        backgroundedAt.current = Date.now();
-      }
+      if (state !== "active") return;
+      // `checkForUpdate` trae su propio throttle: volver a la app diez veces en
+      // una hora no son diez viajes al servidor de updates.
+      void checkForUpdate();
     });
 
     return () => sub.remove();
   }, []);
+
+  return null;
+}
+
+/**
+ * Cierre de sesión ordenado cuando el API contesta 401.
+ *
+ * El cliente HTTP no puede hacerlo solo: quien sabe cerrar la sesión es Clerk, y
+ * `useClerk` solo existe dentro del provider. Este puente registra el handler
+ * real y `src/lib/api/client.ts` lo dispara —una sola vez, aunque fallen seis
+ * peticiones a la vez—. Sin esto, un token vencido dejaba la app llena de
+ * "Error 401" con datos de una sesión que ya no existe.
+ */
+function SessionExpiryBridge() {
+  const { signOut } = useClerk();
+  const router = useRouter();
+
+  useEffect(() => {
+    setSessionExpiredHandler(async () => {
+      try {
+        await signOut();
+      } catch {
+        // Aunque Clerk falle hay que limpiar: lo que no se puede es quedarse
+        // dentro con una sesión muerta.
+      }
+      // Store + caché de react-query: el rol es lo que hacía que la cuenta
+      // siguiente saltara al área equivocada.
+      clearSessionState();
+      router.replace("/(auth)/login");
+      Alert.alert(
+        "Tu sesión expiró",
+        "Por seguridad cerramos tu sesión. Vuelve a iniciar sesión para continuar.",
+      );
+      // Se rearma AL FINAL: el store ya está limpio, así que ningún 401 rezagado
+      // vuelve a disparar esto, pero un vencimiento futuro sí tendrá salida.
+      rearmSessionExpiry();
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [signOut, router]);
 
   return null;
 }
@@ -493,6 +530,7 @@ export default function RootLayout() {
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <ClerkTokenSync />
+        <SessionExpiryBridge />
         <OtaUpdater />
         <PushNavigationHandler />
         <PushCacheInvalidator />
@@ -518,6 +556,7 @@ export default function RootLayout() {
               La reseña se captura en `ReviewPromptModal`: desde el Inicio
               (GlobalReviewPrompt) o desde el detalle de la reservación. */}
         </Stack>
+        <UpdateBanner />
         <DevRoleSwitcher />
         <SplashGate />
       </QueryClientProvider>

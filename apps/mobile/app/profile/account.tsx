@@ -19,6 +19,9 @@ import { clearSessionState } from "@/lib/session";
 import { formatName } from "@/lib/format";
 import { buildDiagnostics, buildLabel } from "@/lib/appUpdates";
 
+import { mensajeDeError } from "@/lib/errorMessages";
+import { alertaDeError } from "@/lib/errorAlert";
+
 export default function AccountScreen() {
   const router = useRouter();
   const { signOut } = useClerk();
@@ -51,10 +54,7 @@ export default function AccountScreen() {
       router.replace("/(auth)/login");
     } catch (err) {
       setSigningOut(false);
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "No se pudo cerrar sesión.",
-      );
+      alertaDeError(err, { respaldo: "No se pudo cerrar sesión." });
     }
   }
 
@@ -68,10 +68,7 @@ export default function AccountScreen() {
         message: json,
       });
     } catch (err) {
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "No se pudo exportar tus datos.",
-      );
+      alertaDeError(err, { respaldo: "No se pudo exportar tus datos." });
     } finally {
       setExporting(false);
     }
@@ -115,14 +112,14 @@ export default function AccountScreen() {
     } catch (err) {
       setDeleting(false);
       const message =
-        err instanceof Error ? err.message : "No se pudo eliminar tu cuenta.";
+        mensajeDeError(err, "No se pudo eliminar tu cuenta.");
       if (message.includes("ACTIVE_RESERVATION")) {
         Alert.alert(
           "Tienes una reservación activa",
           "Debes cancelar tus reservaciones activas o próximas antes de poder eliminar tu cuenta.",
         );
       } else {
-        Alert.alert("Error", message);
+        alertaDeError(err, { respaldo: "No se pudo eliminar tu cuenta." });
       }
     }
   }

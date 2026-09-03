@@ -44,6 +44,9 @@ import {
 import { useQuotePreview } from "@/hooks/useQuotePreview";
 import type { QuotePreviewInput } from "@holidoginn/shared";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
 type ServiceType = "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
@@ -359,10 +362,7 @@ export default function AdminCreateQuote() {
       // lista, no al formulario que acaba de guardarse.
       router.replace(`/admin/quotes/${detalle.quote.id}`);
     } catch (err) {
-      Alert.alert(
-        "No se pudo guardar",
-        err instanceof Error ? err.message : "Intenta de nuevo.",
-      );
+      alertaDeError(err, { titulo: "No se pudo guardar", respaldo: "Intenta de nuevo." });
     } finally {
       setSubmitting(false);
     }

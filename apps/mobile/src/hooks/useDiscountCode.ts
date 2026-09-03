@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { validateReservationDiscount } from "@/lib/api";
 
+
+import { alertaDeError } from "@/lib/errorAlert";
+
 /**
  * Código de descuento de los wizards de creación (guardería, baño,
  * hospedaje): input + validación en vivo contra la API + descuento aplicado.
@@ -34,10 +37,10 @@ export function useDiscountCode(subtotal: number) {
         Alert.alert("Código de descuento", res.message);
       }
     } catch (err) {
-      Alert.alert(
-        "Código de descuento",
-        err instanceof Error ? err.message : "No se pudo validar el código"
-      );
+      alertaDeError(err, {
+        titulo: "Código de descuento",
+        respaldo: "No se pudo validar el código",
+      });
     } finally {
       setApplyingDiscount(false);
     }
