@@ -153,7 +153,8 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       const owner = resolved.user;
 
       const ipAddress =
-        (request.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+        (request.headers["x-visitor-ip"] as string | undefined)?.split(",")[0]?.trim() ||
+          (request.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
         request.ip ||
         null;
       const userAgent =

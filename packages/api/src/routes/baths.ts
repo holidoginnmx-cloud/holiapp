@@ -1521,6 +1521,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           trip?: DeliveryTripMode;
         };
         discountCode?: string;
+        // Solo en el flujo sin PI (saldo a favor): qué se paga ahora.
+        paymentType?: "DEPOSIT" | "FULL";
       };
 
       let ownerId: string;
@@ -1550,6 +1552,21 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         const parsed = ConfirmBathSchema.safeParse(body);
         if (!parsed.success) {
           return reply.status(400).send({ error: parsed.error.flatten() });
+        }
+        // IDEMPOTENCIA: si este PI ya creó la cita (el cliente reintentó tras
+        // perder la red), devolverla tal cual. Sin esto el reintento chocaba
+        // con su propia cita ("El slot ya fue tomado") y la app creaba OTRO
+        // intent: doble cobro.
+        const existingPayment = await prisma.payment.findFirst({
+          where: { stripePaymentIntentId: parsed.data.paymentIntentId },
+          include: { reservation: true },
+        });
+        if (existingPayment?.reservation) {
+          return reply.send({
+            success: true,
+            reservation: existingPayment.reservation,
+            idempotent: true,
+          });
         }
         const pi = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
         if (pi.status !== "succeeded") {
@@ -1639,6 +1656,34 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       }
       // Acotar defensivamente al precio de la variante.
       discountTotal = Math.min(Math.max(0, discountTotal), Number(variant.price));
+
+      // Flujo 100% crédito: el saldo a favor TIENE que cubrir lo que se paga
+      // ahora (anticipo o total, según eligió). Antes `creditApplied` se
+      // quedaba en 0 y la cita quedaba CONFIRMED sin anticipo ni pago.
+      if (!paymentIntentId) {
+        if (body.paymentType === "FULL") chosenPaymentType = "FULL";
+        const totalNow = Number(variant.price) - discountTotal + deliveryFee;
+        const dueNow =
+          chosenPaymentType === "FULL" ? totalNow : Math.min(BATH_DEPOSIT_AMOUNT, totalNow);
+        const payer = await prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { creditBalance: true },
+        });
+        const available = Number(payer?.creditBalance ?? 0);
+        if (dueNow > 0 && available + 0.005 < dueNow) {
+          request.log.warn(
+            { tag: "bath-credit-insufficient", ownerId, dueNow, available },
+            "[pago] intento de agendar baño con saldo insuficiente y sin PaymentIntent",
+          );
+          return reply.status(402).send({
+            error: "Tu saldo a favor no cubre el anticipo del baño. Paga con tarjeta para agendar.",
+            code: "CREDIT_INSUFFICIENT",
+            amountDue: dueNow,
+            creditAvailable: available,
+          });
+        }
+        creditApplied = Number(dueNow.toFixed(2));
+      }
 
       const schedule = toScheduleCfg(cfg);
       // La del intent viene calculada en el checkout (ya con la excepción del

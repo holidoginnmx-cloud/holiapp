@@ -401,22 +401,29 @@ async function handleChargeRefunded(
     return;
   }
 
-  // Si ya hay un Payment REFUNDED del mismo monto para esta reservación (o para
-  // este pedido), saltar — el flujo de /cancel ya lo creó.
-  // El filtro se elige según de qué cuelga el pago original: con `reservationId`
-  // NULL (venta de tienda), filtrar por esa columna matchearía CUALQUIER
-  // reembolso sin reserva del mismo monto y se saltaría uno legítimo.
-  const refundAmount = charge.amount_refunded / 100;
-  const existingRefund = await prisma.payment.findFirst({
-    where: {
-      status: "REFUNDED",
-      amount: { equals: new Prisma.Decimal(refundAmount) },
-      ...(originalPayment.reservationId
-        ? { reservationId: originalPayment.reservationId }
-        : { orderId: originalPayment.orderId }),
-    },
+  // `amount_refunded` es el ACUMULADO del charge, no el monto de este
+  // reembolso. Se registra solo la diferencia entre ese acumulado y lo que ya
+  // está asentado como REFUNDED en el mismo ámbito: la reserva y sus hermanas
+  // de grupo (un solo PI cobra a todo el grupo y cada fila reembolsa lo suyo
+  // contra ese PI) o el pedido de tienda. Así ni se duplica lo que /cancel ya
+  // creó, ni un segundo reembolso parcial se asienta con el total acumulado.
+  // Con `reservationId` NULL (venta de tienda) se filtra por `orderId`: filtrar
+  // por reservationId NULL matchearía CUALQUIER reembolso sin reserva.
+  const refundedTotal = charge.amount_refunded / 100;
+  const groupId = originalPayment.reservation?.groupId ?? null;
+  const scope: Prisma.PaymentWhereInput = originalPayment.reservationId
+    ? groupId
+      ? { reservation: { groupId } }
+      : { reservationId: originalPayment.reservationId }
+    : { orderId: originalPayment.orderId };
+  const already = await prisma.payment.aggregate({
+    _sum: { amount: true },
+    where: { status: "REFUNDED", ...scope },
   });
-  if (existingRefund) return;
+  const refundAmount = Number(
+    (refundedTotal - Number(already._sum.amount ?? 0)).toFixed(2),
+  );
+  if (refundAmount <= 0.005) return;
 
   await prisma.payment.create({
     data: {

@@ -337,6 +337,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         | { address: string; lat: number; lng: number }
         | undefined;
       let paymentIntentId: string | null = null;
+      let stripeChargedAmount: number | undefined;
 
       if (body.paymentIntentId) {
         // Idempotencia: si el PI ya creó reservas, devolverlas tal cual.
@@ -380,6 +381,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
           discountTotal: Number(pi.metadata.discountTotal || 0),
         };
         paymentIntentId = pi.id;
+        stripeChargedAmount = pi.amount / 100;
         if (pi.metadata?.deliveryFee) {
           deliveryOverride = {
             fee: Number(pi.metadata.deliveryFee),
@@ -455,6 +457,7 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         checkOutTime,
         homeDelivery,
         stripePaymentIntentId: paymentIntentId,
+        stripeChargedAmount,
         creditApplied,
         discount,
         deliveryOverride,

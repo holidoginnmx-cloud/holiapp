@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError } from "fastify";
+import Fastify, { type FastifyError, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import compress from "@fastify/compress";
@@ -34,7 +34,17 @@ import guestDaycareRoutes from "./routes/guestDaycare";
 import quotesRoutes from "./routes/quotes";
 import telemetryRoutes from "./routes/telemetry";
 
-const app = Fastify({ logger: true });
+// trustProxy: 1 → la API vive detrás del proxy de Railway (un salto). Sin
+// esto, `request.ip` es la IP interna del proxy y TODOS los clientes comparten
+// un solo cubo de rate limit (100 req/min para toda la app). Con un salto de
+// confianza, `request.ip` toma la última IP que el proxy anexó a
+// x-forwarded-for: la del cliente real, y no una que el cliente pueda inventar.
+// (Función en vez de `trustProxy: 1` porque los tipos de Fastify 5.12 no
+// aceptan número; `hop === 0` es exactamente "confía en un salto".)
+const app = Fastify({
+  logger: true,
+  trustProxy: (_address: string, hop: number) => hop === 0,
+});
 
 // CORS: lista cerrada desde ALLOWED_ORIGINS (separada por comas).
 // En desarrollo, si no se configura, se permite localhost y la red LAN
@@ -52,7 +62,7 @@ const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const lanRegex = /^https?:\/\/(10|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+(:\d+)?$/;
 
 app.register(cors, {
-  origin: (origin, cb) => {
+  origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
     // Permitir requests sin Origin (Expo dev client, curl, server-to-server)
     if (!origin) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
@@ -74,11 +84,36 @@ app.register(helmet, {
 // listas sobre redes móviles. Solo comprime payloads mayores a ~1KB.
 app.register(compress, { global: true, threshold: 1024 });
 
-// Rate limit global: 100 req/min por IP
+// Rate limit global: 200 req/min por IP real. La app móvil de un admin activo
+// (tablero cada 60 s, avisos cada 30 s, refetch por foco) ronda las decenas
+// por minuto; 100 quedaba justo.
+//
+// Llave: el sitio público y el admin web llaman a la API desde SUS servidores
+// (Vercel), así que para ellos `request.ip` es la IP de Vercel y todos sus
+// visitantes caerían en un mismo cubo. Reenvían la IP del visitante en
+// `x-visitor-ip` y se usa como llave cuando viene.
+//
+// Para que un cliente directo no rote ese header y se salte su límite, si
+// existe VISITOR_IP_SECRET solo se honra cuando viene acompañado de
+// `x-visitor-ip-secret` con ese valor (el sitio lo manda desde su servidor).
+// Sin la variable configurada se honra siempre (mejor eso que un cubo global).
+const visitorIpSecret = process.env.VISITOR_IP_SECRET?.trim() || null;
 app.register(rateLimit, {
-  max: 100,
+  max: 200,
   timeWindow: "1 minute",
   allowList: isDev ? ["127.0.0.1", "::1"] : [],
+  keyGenerator: (request: FastifyRequest) => {
+    const visitor = request.headers["x-visitor-ip"];
+    const first = Array.isArray(visitor) ? visitor[0] : visitor;
+    const ip = first?.split(",")[0]?.trim();
+    if (!ip || ip.length > 64) return request.ip;
+    if (visitorIpSecret) {
+      const given = request.headers["x-visitor-ip-secret"];
+      const secret = Array.isArray(given) ? given[0] : given;
+      if (secret !== visitorIpSecret) return request.ip;
+    }
+    return ip;
+  },
 });
 
 // Raw body capture (solo para el webhook de Stripe — requiere el body original

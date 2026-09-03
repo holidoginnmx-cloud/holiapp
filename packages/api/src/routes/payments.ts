@@ -392,6 +392,11 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       currency: "mxn",
       automatic_payment_methods: { enabled: true },
       metadata: {
+        // /reservations/multi confirma SOLO contra este metadata: tipo de
+        // intent, dueño, mascotas, fechas, baños y medicamento tienen que
+        // coincidir con lo que se manda al confirmar, y el monto cobrado con
+        // lo que la reserva cuesta.
+        type: "stay",
         ownerId,
         petIds: petIds.join(","),
         checkIn,
@@ -399,6 +404,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         roomPreference,
         totalDays: String(totalDays),
         paymentType,
+        medicationPetIds: medicationBreakdown.map((m) => m.petId).join(","),
         bathBreakdown: bathBreakdown.length > 0 ? JSON.stringify(bathBreakdown) : "",
         sameDaySurcharge: sameDaySurcharge ? "1" : "0",
         creditApplied: String(creditApplied),
@@ -519,9 +525,28 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: "No autorizado" });
     }
 
+    // IDEMPOTENCIA: si este PI ya quedó registrado (la app reintenta cuando
+    // la respuesta se perdió), no hay nada que hacer. Sin esto el reintento
+    // chocaba con el @unique del PI y devolvía 500 para siempre.
+    const already = await prisma.payment.findFirst({
+      where: { stripePaymentIntentId },
+      select: { id: true },
+    });
+    if (already) {
+      return reply.send({ success: true, idempotent: true });
+    }
+
     const paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
     if (paymentIntent.status !== "succeeded") {
       return reply.status(400).send({ error: "El pago no fue completado" });
+    }
+    // El PI debe ser de ESTA reserva (pay-balance lo marca en metadata; los
+    // intents viejos sin `reservationId` en metadata siguen pasando).
+    if (
+      paymentIntent.metadata?.reservationId &&
+      paymentIntent.metadata.reservationId !== reservationId
+    ) {
+      return reply.status(400).send({ error: "El pago no corresponde a esta reservación" });
     }
 
     await prisma.payment.create({

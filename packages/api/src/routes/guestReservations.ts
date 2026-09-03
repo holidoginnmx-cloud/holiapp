@@ -74,6 +74,7 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
 
         // 2) Registrar consentimiento legal (para que el flujo respete LFPDPPP).
         const ipAddress =
+          (request.headers["x-visitor-ip"] as string | undefined)?.split(",")[0]?.trim() ||
           (request.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
           request.ip ||
           null;

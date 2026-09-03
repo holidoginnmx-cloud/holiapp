@@ -110,6 +110,12 @@ export interface CreateDaycareGroupParams {
   stripePaymentIntentId: string | null;
   /** Saldo a favor ya aplicado (viene del intent; 0 para invitados). */
   creditApplied?: number;
+  /**
+   * Lo que Stripe cobró en pesos (`pi.amount / 100`). Solo se usa si por
+   * redondeo el crédito cubrió todas las filas y hay que colgar el PI de
+   * un pago por la diferencia.
+   */
+  stripeChargedAmount?: number;
   /** Descuento YA resuelto por el caller (del metadata del PI o re-validado). */
   discount?: { discountCodeId: string | null; discountTotal: number };
   /** Fee de domicilio YA cotizada (del metadata del PI); si falta se recotiza. */
@@ -217,14 +223,27 @@ export async function createDaycareGroup(
 
   const creditOnly = !stripePaymentIntentId;
   let creditApplied = params.creditApplied ?? 0;
-  if (creditOnly && creditApplied === 0) {
+  if (creditOnly) {
+    // Sin PaymentIntent, el saldo a favor TIENE que cubrir el total: si no,
+    // el cliente debe pagar con tarjeta (create-intent lo manda a Stripe).
+    // Antes bastaba con no mandar PI para dejar la guardería "pagada" con
+    // saldo $0.
     const ownerCredit = Number(owner.creditBalance || 0);
-    creditApplied = Math.min(ownerCredit, grandTotal);
+    if (ownerCredit + 0.005 < grandTotal) {
+      return {
+        ok: false,
+        status: 402,
+        error:
+          "Tu saldo a favor no cubre el total de la guardería. Paga con tarjeta para confirmar.",
+      };
+    }
+    creditApplied = grandTotal;
   }
 
   let reservations: Array<
     Prisma.ReservationGetPayload<{ include: { pet: true } }>
   >;
+  let ownerClerkIdToInvalidate: string | null = null;
   try {
     reservations = await prisma.$transaction(async (tx) => {
       // Lock por día (namespace 43 = cupo de guardería): serializa
@@ -296,6 +315,91 @@ export async function createDaycareGroup(
         });
       }
 
+      // Pagos DENTRO de la misma transacción que las reservas: si dos confirms
+      // con el mismo PI entran a la vez (reintento en pantalla + recuperación
+      // al arrancar), el segundo revienta en el @unique del PI y el rollback
+      // se lleva también sus reservas; antes quedaban reservas duplicadas sin
+      // pago. El estimado se cobra completo al reservar; el saldo a favor
+      // aplicado se registra APARTE como pago CREDIT (se agota fila por fila)
+      // para que el pago STRIPE valga exactamente lo que Stripe cobró.
+      let remainingCredit = Number(creditApplied.toFixed(2));
+      let piAttached = false;
+      for (let i = 0; i < created.length; i++) {
+        const res = created[i];
+        const rowTotal = Number(res.totalAmount);
+        const creditPart = creditOnly
+          ? rowTotal
+          : Number(Math.min(remainingCredit, rowTotal).toFixed(2));
+        remainingCredit = Number((remainingCredit - creditPart).toFixed(2));
+        const stripePart = Number((rowTotal - creditPart).toFixed(2));
+        if (creditPart > 0) {
+          await tx.payment.create({
+            data: {
+              amount: new Prisma.Decimal(creditPart),
+              method: "CREDIT",
+              status: "PAID",
+              paidAt: new Date(),
+              notes: "Guardería — pago con saldo a favor",
+              reservationId: res.id,
+              userId: ownerId,
+            },
+          });
+        }
+        if (stripePart > 0) {
+          await tx.payment.create({
+            data: {
+              amount: new Prisma.Decimal(stripePart),
+              method: "STRIPE",
+              status: "PAID",
+              stripePaymentIntentId: piAttached ? null : stripePaymentIntentId,
+              paidAt: new Date(),
+              notes: `Guardería — ${hours} h estimadas`,
+              reservationId: res.id,
+              userId: ownerId,
+            },
+          });
+          piAttached = true;
+        }
+      }
+      // Stripe cobró (aunque sean centavos de redondeo) y ninguna fila se
+      // llevó el PI: no puede quedar huérfano (idempotencia y reembolsos).
+      if (stripePaymentIntentId && !piAttached && created[0]) {
+        await tx.payment.create({
+          data: {
+            amount: new Prisma.Decimal(
+              params.stripeChargedAmount != null && params.stripeChargedAmount > 0
+                ? params.stripeChargedAmount
+                : 0.01,
+            ),
+            method: "STRIPE",
+            status: "PAID",
+            stripePaymentIntentId,
+            paidAt: new Date(),
+            notes: "Diferencia de redondeo cobrada con tarjeta",
+            reservationId: created[0].id,
+            userId: ownerId,
+          },
+        });
+      }
+
+      if (creditApplied > 0) {
+        const updatedOwner = await tx.user.update({
+          where: { id: ownerId },
+          data: { creditBalance: { decrement: creditApplied }, lastCreditEntryAt: new Date() },
+        });
+        ownerClerkIdToInvalidate = updatedOwner.clerkId;
+        await tx.creditLedger.create({
+          data: {
+            userId: ownerId,
+            type: "CREDIT_APPLIED",
+            amount: -creditApplied,
+            balanceAfter: Number(updatedOwner.creditBalance),
+            description: "Saldo aplicado en guardería",
+            reservationId: created[0]?.id ?? null,
+          },
+        });
+      }
+
       return created;
     });
   } catch (err) {
@@ -309,42 +413,8 @@ export async function createDaycareGroup(
     throw err;
   }
 
-  // Pagos: el estimado se cobra completo al reservar (misma convención que
-  // createReservationGroup: un Payment por reserva; el PI queda en la primera).
-  for (let i = 0; i < reservations.length; i++) {
-    const res = reservations[i];
-    await prisma.payment.create({
-      data: {
-        amount: res.totalAmount,
-        method: creditOnly ? "CREDIT" : "STRIPE",
-        status: "PAID",
-        stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
-        paidAt: new Date(),
-        notes: creditOnly
-          ? "Guardería — pago con saldo a favor"
-          : `Guardería — ${hours} h estimadas`,
-        reservationId: res.id,
-        userId: ownerId,
-      },
-    });
-  }
-
   if (creditApplied > 0) {
-    const updatedOwner = await prisma.user.update({
-      where: { id: ownerId },
-      data: { creditBalance: { decrement: creditApplied }, lastCreditEntryAt: new Date() },
-    });
-    invalidateAuthCache(updatedOwner.clerkId);
-    await prisma.creditLedger.create({
-      data: {
-        userId: ownerId,
-        type: "CREDIT_APPLIED",
-        amount: -creditApplied,
-        balanceAfter: Number(updatedOwner.creditBalance),
-        description: "Saldo aplicado en guardería",
-        reservationId: reservations[0]?.id ?? null,
-      },
-    });
+    if (ownerClerkIdToInvalidate) invalidateAuthCache(ownerClerkIdToInvalidate);
     await notifyUser(prisma, {
       userId: ownerId,
       type: "CREDIT_APPLIED",

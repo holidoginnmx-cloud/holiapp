@@ -54,6 +54,33 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
 });
 
+// Igualdad de conjuntos de ids (sin importar orden ni repetidos).
+function sameStringSet(a: string[], b: string[]): boolean {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  if (sa.size !== sb.size) return false;
+  for (const x of sa) if (!sb.has(x)) return false;
+  return true;
+}
+
+// `bathBreakdown` del metadata del PI: JSON [{petId, variantId, price}].
+// Devuelve petId → variantId (vacío si el intent no traía baños; null si el
+// intent es tan viejo que no trae la llave, para no exigir nada).
+function parseBathBreakdown(raw: unknown): Map<string, string> | null {
+  if (typeof raw !== "string") return null;
+  if (raw.trim() === "") return new Map();
+  try {
+    const arr = JSON.parse(raw) as Array<{ petId?: string; variantId?: string }>;
+    const map = new Map<string, string>();
+    for (const b of arr) {
+      if (b?.petId && b?.variantId) map.set(String(b.petId), String(b.variantId));
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
 // Reparte un total de grupo pactado manualmente en n filas con 2 decimales;
 // la primera fila absorbe el residuo de redondeo para que la suma sea exacta.
 function splitGroupTotal(total: number, n: number): number[] {
@@ -1313,6 +1340,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     // fijado en create-intent); en credit-only se re-valida más abajo.
     let discountTotal = 0;
     let discountCodeId: string | null = null;
+    // Con PI: el recargo de mismo día y los baños se toman del intent (lo que
+    // el cliente vio y pagó), no se recalculan con el reloj de ahora.
+    let piSameDaySurcharge: boolean | null = null;
+    let piBathVariantByPet: Map<string, string> | null = null;
     if (stripePaymentIntentId) {
       // IDEMPOTENCIA: si este PaymentIntent ya generó reservación(es) (p. ej. el
       // cliente reintentó tras 3DS o recargó la página de confirmación), devolver
@@ -1341,14 +1372,54 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       if (paymentIntent.status !== "succeeded") {
         return reply.status(400).send({ error: "El pago no fue completado" });
       }
-      // ANTI-REPLAY: el PI debe pertenecer al mismo dueño que reserva (create-intent
-      // guarda ownerId en metadata). Evita reusar el PI de otra cuenta/booking.
-      if (paymentIntent.metadata?.ownerId && paymentIntent.metadata.ownerId !== ownerId) {
+      // ANTI-REPLAY / ANTI-TAMPER: el PI es la autoridad de lo que se cobró.
+      // Debe ser un intent de hospedaje (create-intent marca `type: "stay"`;
+      // los intents viejos no traen `type` pero sí `ownerId` y `petIds`), del
+      // mismo dueño, y lo que fija el precio (mascotas, fechas, tipo de pago,
+      // cuarto, baños, medicamento) tiene que ser lo mismo que se cotizó al
+      // crear el intent. Sin esto, con un PI de 1 noche se confirmaban 10.
+      const md = paymentIntent.metadata ?? {};
+      if (md.type && md.type !== "stay") {
+        return reply.status(400).send({ error: "El pago no es de un hospedaje" });
+      }
+      if (!md.ownerId || md.ownerId !== ownerId) {
         return reply.status(403).send({ error: "El pago no corresponde a esta cuenta" });
       }
-      creditApplied = Number(paymentIntent.metadata?.creditApplied ?? 0);
-      discountTotal = Number(paymentIntent.metadata?.discountTotal ?? 0);
-      discountCodeId = paymentIntent.metadata?.discountCodeId || null;
+      const mismatch = (what: string) => {
+        request.log.warn(
+          { tag: "multi-pi-mismatch", paymentIntentId: stripePaymentIntentId, ownerId, what },
+          "[pago] el body de /multi no coincide con el PaymentIntent",
+        );
+        return reply.status(400).send({
+          error: "Los datos de la reservación no coinciden con el pago realizado. Vuelve a cotizar.",
+          code: "PAYMENT_MISMATCH",
+        });
+      };
+      const mdPetIds = String(md.petIds ?? "").split(",").filter(Boolean);
+      if (!sameStringSet(mdPetIds, petIds)) return mismatch("petIds");
+      if (md.checkIn && new Date(md.checkIn).getTime() !== checkIn.getTime()) {
+        return mismatch("checkIn");
+      }
+      if (md.checkOut && new Date(md.checkOut).getTime() !== checkOut.getTime()) {
+        return mismatch("checkOut");
+      }
+      if (md.paymentType && md.paymentType !== paymentType) return mismatch("paymentType");
+      if (md.roomPreference && md.roomPreference !== roomPreference) {
+        return mismatch("roomPreference");
+      }
+      if (typeof md.medicationPetIds === "string") {
+        const bodyMedPets = Object.entries(medicationByPet ?? {})
+          .filter(([, sel]) => (sel?.notes?.trim() ?? "").length > 0)
+          .map(([petId]) => petId);
+        if (!sameStringSet(md.medicationPetIds.split(",").filter(Boolean), bodyMedPets)) {
+          return mismatch("medication");
+        }
+      }
+      creditApplied = Number(md.creditApplied ?? 0);
+      discountTotal = Number(md.discountTotal ?? 0);
+      discountCodeId = md.discountCodeId || null;
+      piSameDaySurcharge = md.sameDaySurcharge === "1";
+      piBathVariantByPet = parseBathBreakdown(md.bathBreakdown);
     }
     // creditOnly = true when the deposit/total was fully covered by the
     // owner's saldo a favor and no Stripe charge was created. We compute the
@@ -1528,6 +1599,24 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         bathByPet.set(petId, { variantId: variant.id, price: Number(variant.price) });
       }
     }
+    // Con PI, los baños contratados deben ser exactamente los del intent.
+    if (piBathVariantByPet) {
+      const same =
+        piBathVariantByPet.size === bathByPet.size &&
+        Array.from(piBathVariantByPet.entries()).every(
+          ([petId, variantId]) => bathByPet.get(petId)?.variantId === variantId,
+        );
+      if (!same) {
+        request.log.warn(
+          { tag: "multi-pi-mismatch", paymentIntentId: stripePaymentIntentId, ownerId, what: "bath" },
+          "[pago] los baños de /multi no coinciden con el PaymentIntent",
+        );
+        return reply.status(400).send({
+          error: "Los datos de la reservación no coinciden con el pago realizado. Vuelve a cotizar.",
+          code: "PAYMENT_MISMATCH",
+        });
+      }
+    }
 
     // Medication: validate notes present per-pet, compute +10% surcharge on lodging
     const medicationSurchargeByPet = new Map<string, number>();
@@ -1569,9 +1658,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     discountTotal = Math.min(Math.max(0, discountTotal), baseTotal);
     const discountedBase = baseTotal - discountTotal;
 
-    // Same-day surcharge: OWNER booking < 24h before check-in pays +20%
+    // Same-day surcharge: OWNER booking < 24h before check-in pays +20%.
+    // Con PI se respeta lo que el intent cobró (un intent creado a las 23:50 y
+    // confirmado a las 00:05 no debe cambiar de precio).
     const hoursUntilCheckIn = (checkIn.getTime() - Date.now()) / (60 * 60 * 1000);
-    const sameDaySurcharge = owner.role === "OWNER" && hoursUntilCheckIn < 24;
+    const sameDaySurcharge =
+      piSameDaySurcharge !== null
+        ? piSameDaySurcharge
+        : owner.role === "OWNER" && hoursUntilCheckIn < 24;
     const surchargeMultiplier = sameDaySurcharge ? 1.20 : 1;
 
     // Servicio a domicilio — fee RE-CALCULADA server-side desde lat/lng (igual
@@ -1597,15 +1691,55 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
 
     const grandTotal = discountedBase * surchargeMultiplier + deliveryFee;
 
+    const amountDue = paymentType === "DEPOSIT"
+      ? Math.ceil(grandTotal * 0.20)
+      : grandTotal;
+
     // Credit-only path: owner's saldo covers the deposit/total and no Stripe
-    // charge was created. Recompute creditApplied here so we register the
-    // payment as CREDIT (not STRIPE) and decrement the user's balance.
+    // charge was created. El saldo TIENE que cubrir el monto completo; si no,
+    // el cliente debe pagar con tarjeta (create-intent lo manda a Stripe). Sin
+    // este candado, cualquiera con saldo $0 confirmaba reservas "pagadas".
     if (creditOnly) {
-      const amountDue = paymentType === "DEPOSIT"
-        ? Math.ceil(grandTotal * 0.20)
-        : grandTotal;
       const ownerCredit = Number(owner.creditBalance || 0);
-      creditApplied = Math.min(ownerCredit, amountDue);
+      if (ownerCredit + 0.005 < amountDue) {
+        request.log.warn(
+          { tag: "multi-credit-insufficient", ownerId, amountDue, ownerCredit },
+          "[pago] intento de confirmar con saldo insuficiente y sin PaymentIntent",
+        );
+        return reply.status(402).send({
+          error: "Tu saldo a favor no cubre el monto de la reservación. Paga con tarjeta para confirmar.",
+          code: "CREDIT_INSUFFICIENT",
+          amountDue,
+          creditAvailable: ownerCredit,
+        });
+      }
+      creditApplied = amountDue;
+    } else if (paymentIntent) {
+      // Lo que Stripe cobró debe ser lo que esta reserva cuesta (menos el
+      // saldo aplicado en el intent). Tolerancia de $5 por los redondeos
+      // distintos entre create-intent (ceil) y este cálculo (proporcional).
+      const expectedCharge = amountDue - creditApplied;
+      const charged = paymentIntent.amount / 100;
+      // $5 o 1% (grupos grandes con medicamento y mismo día acumulan más
+      // diferencia de redondeo); un fraude real es de otro orden de magnitud.
+      if (Math.abs(charged - expectedCharge) > Math.max(5, amountDue * 0.01)) {
+        request.log.warn(
+          {
+            tag: "multi-pi-amount-mismatch",
+            paymentIntentId: stripePaymentIntentId,
+            ownerId,
+            charged,
+            expectedCharge,
+            amountDue,
+            creditApplied,
+          },
+          "[pago] el monto cobrado no corresponde a la reservación",
+        );
+        return reply.status(400).send({
+          error: "El monto pagado no corresponde a esta reservación. Vuelve a cotizar.",
+          code: "PAYMENT_MISMATCH",
+        });
+      }
     }
 
     // Reserva + pago + addon de baño + descuento de saldo en UNA transacción
@@ -1621,6 +1755,9 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       // base de cada una); la última fila absorbe el redondeo para que la suma
       // de discountTotal sea exactamente el descuento total.
       let allocatedDiscount = 0;
+      // Saldo a favor por repartir entre los pagos de las filas.
+      let remainingCredit = Number(creditApplied.toFixed(2));
+      let piAttached = false;
 
       for (let i = 0; i < assignments.length; i++) {
         const a = assignments[i];
@@ -1695,23 +1832,48 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         created.push(res);
 
         const paidAmount = isDeposit
-          ? new Prisma.Decimal(Number(res.totalAmount) * 0.20)
-          : res.totalAmount;
-        const payment = await tx.payment.create({
-          data: {
-            amount: paidAmount,
-            // CREDIT when no Stripe charge was created (saldo a favor cubrió todo).
-            method: creditOnly ? "CREDIT" : "STRIPE",
-            status: isDeposit ? "PARTIAL" : "PAID",
-            stripePaymentIntentId: i === 0 && !creditOnly ? stripePaymentIntentId : null,
-            paidAt: new Date(),
-            notes: isDeposit
-              ? (creditOnly ? "Anticipo 20% (saldo a favor)" : "Anticipo 20%")
-              : (creditOnly ? "Pago con saldo a favor" : null),
-            reservationId: res.id,
-            userId: ownerId,
-          },
-        });
+          ? Number((Number(res.totalAmount) * 0.20).toFixed(2))
+          : Number(res.totalAmount);
+        // El pago de cada fila se reparte entre el saldo a favor aplicado (se
+        // agota fila por fila) y lo que cobró Stripe. Así `payments.amount` de
+        // un pago STRIPE es exactamente lo que Stripe cobró (bruto), y un
+        // reembolso nunca pide a Stripe dinero que salió del saldo.
+        const creditPart = creditOnly
+          ? paidAmount
+          : Number(Math.min(remainingCredit, paidAmount).toFixed(2));
+        remainingCredit = Number((remainingCredit - creditPart).toFixed(2));
+        const stripePart = Number((paidAmount - creditPart).toFixed(2));
+        const paymentStatus = isDeposit ? "PARTIAL" : "PAID";
+        let payment: { id: string } | null = null;
+        if (creditPart > 0) {
+          payment = await tx.payment.create({
+            data: {
+              amount: new Prisma.Decimal(creditPart),
+              method: "CREDIT",
+              status: paymentStatus,
+              paidAt: new Date(),
+              notes: isDeposit ? "Anticipo 20% (saldo a favor)" : "Pago con saldo a favor",
+              reservationId: res.id,
+              userId: ownerId,
+            },
+          });
+        }
+        if (stripePart > 0) {
+          payment = await tx.payment.create({
+            data: {
+              amount: new Prisma.Decimal(stripePart),
+              method: "STRIPE",
+              status: paymentStatus,
+              // El PI cuelga del PRIMER pago Stripe del grupo (idempotencia).
+              stripePaymentIntentId: piAttached ? null : stripePaymentIntentId,
+              paidAt: new Date(),
+              notes: isDeposit ? "Anticipo 20%" : null,
+              reservationId: res.id,
+              userId: ownerId,
+            },
+          });
+          piAttached = true;
+        }
 
         // Persist bath addon attached to this reservation's payment
         if (bath) {
@@ -1721,10 +1883,30 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
               variantId: bath.variantId,
               unitPrice: new Prisma.Decimal(bath.price),
               paidWith: "BOOKING",
-              paymentId: payment.id,
+              paymentId: payment?.id ?? null,
             },
           });
         }
+      }
+
+      // Si Stripe cobró (aunque sean centavos por redondeo entre el ceil del
+      // intent y el reparto por filas) y ningún pago se llevó el PI, el cargo
+      // no puede quedar huérfano: sin fila STRIPE, un reintento del confirm no
+      // encuentra la reserva y un reembolso nunca devuelve ese cargo.
+      if (paymentIntent && !piAttached && created[0]) {
+        await tx.payment.create({
+          data: {
+            amount: new Prisma.Decimal(paymentIntent.amount / 100),
+            method: "STRIPE",
+            status: isDeposit ? "PARTIAL" : "PAID",
+            stripePaymentIntentId,
+            paidAt: new Date(),
+            notes: "Diferencia de redondeo cobrada con tarjeta",
+            reservationId: created[0].id,
+            userId: ownerId,
+          },
+        });
+        piAttached = true;
       }
 
       // Deduct credit applied (if any) and write ledger entry — atómico con lo anterior.
@@ -1889,21 +2071,25 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { status: "CANCELLED" },
-      });
-
+      // Primero el reembolso, luego la cancelación: si Stripe rechaza el
+      // reembolso, la reserva se queda CONFIRMED y el cliente puede volver a
+      // intentar (antes quedaba CANCELLED sin reembolso).
+      let result: Awaited<ReturnType<typeof processRefund>>;
       try {
-        const result = await processRefund(prisma, {
+        result = await processRefund(prisma, {
           reservationId: reservation.id,
           refundChoice,
         });
-        return reply.send({ success: true, ...result });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Error procesando reembolso";
         return reply.status(409).send({ error: message });
       }
+
+      await prisma.reservation.update({
+        where: { id: reservation.id },
+        data: { status: "CANCELLED" },
+      });
+      return reply.send({ success: true, ...result });
     }
   );
 

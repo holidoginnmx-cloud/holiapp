@@ -98,7 +98,8 @@ export default async function guestDaycareRoutes(fastify: FastifyInstance) {
       const owner = resolved.user;
 
       const ipAddress =
-        (request.headers["x-forwarded-for"] as string | undefined)
+        (request.headers["x-visitor-ip"] as string | undefined)?.split(",")[0]?.trim() ||
+          (request.headers["x-forwarded-for"] as string | undefined)
           ?.split(",")[0]
           ?.trim() ||
         request.ip ||

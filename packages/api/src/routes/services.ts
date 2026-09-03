@@ -169,6 +169,25 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       }
       const { paymentIntentId } = parsed.data;
 
+      // IDEMPOTENCIA: si este PI ya registró el add-on (la app reintenta cuando
+      // la respuesta se perdió), devolver lo existente. Antes el reintento caía
+      // en "ya tiene un baño contratado" (409) aunque el baño sí quedó.
+      const existingPayment = await prisma.payment.findFirst({
+        where: { stripePaymentIntentId: paymentIntentId },
+      });
+      if (existingPayment) {
+        const existingAddon = await prisma.reservationAddon.findFirst({
+          where: { paymentId: existingPayment.id },
+          include: { variant: { include: { serviceType: true } } },
+        });
+        return reply.send({
+          success: true,
+          addon: existingAddon,
+          payment: existingPayment,
+          idempotent: true,
+        });
+      }
+
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
       if (paymentIntent.status !== "succeeded") {
         return reply.status(400).send({ error: "El pago no fue completado" });

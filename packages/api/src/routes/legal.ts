@@ -94,7 +94,8 @@ export default async function legalRoutes(fastify: FastifyInstance) {
 
       // IP y user-agent para trazabilidad (evidencia legal).
       const ipAddress =
-        (request.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+        (request.headers["x-visitor-ip"] as string | undefined)?.split(",")[0]?.trim() ||
+          (request.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
         request.ip ||
         null;
       const userAgent =

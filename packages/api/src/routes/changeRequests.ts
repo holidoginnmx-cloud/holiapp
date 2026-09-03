@@ -43,25 +43,32 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       },
     });
     if (!reservation) return { error: "Reservación no encontrada" as const };
-    if (reservation.reservationType !== "STAY") {
+    if (
+      reservation.reservationType !== "STAY" ||
+      !reservation.checkIn ||
+      !reservation.checkOut
+    ) {
       return { error: "Solo se pueden modificar fechas de hospedajes" as const };
     }
 
-    const existingBathTotal = reservation.addons.reduce(
-      (sum, a) => sum + Number(a.unitPrice),
-      0
-    );
     const pricingConfig = await getLodgingPricing(prisma);
-    const { newTotalDays, newTotal } = computeChangeTotal({
+    const currentTotal = Number(reservation.totalAmount);
+    // Por delta: solo cambia el hospedaje (y su recargo de medicamento). El
+    // domicilio, el descuento, el mismo día y los add-ons no se tocan.
+    const { newTotalDays, newTotal, delta } = computeChangeTotal({
       petWeightKg: reservation.pet.weight,
+      currentCheckIn: reservation.checkIn,
+      currentCheckOut: reservation.checkOut,
       newCheckIn,
       newCheckOut,
       hasMedication: !!reservation.medicationNotes,
-      existingBathTotal,
+      currentTotal,
+      currentLodgingAmount:
+        reservation.lodgingAmount != null ? Number(reservation.lodgingAmount) : null,
+      currentMedicationFee:
+        reservation.medicationFee != null ? Number(reservation.medicationFee) : null,
       config: pricingConfig,
     });
-    const currentTotal = Number(reservation.totalAmount);
-    const delta = newTotal - currentTotal;
     const lastPaid = reservation.payments
       .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
       .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0))[0];
@@ -315,13 +322,19 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         lastStripePaymentIntentId = lastStripePayment.stripePaymentIntentId;
       }
 
-      // Refund Stripe (fuera de la transacción de DB para no bloquear).
+      // Refund Stripe (fuera de la transacción de DB para no bloquear). La
+      // llave de idempotencia ata el reembolso a ESTA solicitud: si la
+      // transacción de abajo falla y el admin vuelve a aprobar, Stripe
+      // devuelve el mismo refund en vez de emitir otro.
       let stripeRefundId: string | null = null;
       if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
-        const refund = await stripe.refunds.create({
-          payment_intent: lastStripePaymentIntentId!,
-          amount: Math.round(refundAmount * 100),
-        });
+        const refund = await stripe.refunds.create(
+          {
+            payment_intent: lastStripePaymentIntentId!,
+            amount: Math.round(refundAmount * 100),
+          },
+          { idempotencyKey: `cr-refund-${cr.id}` },
+        );
         stripeRefundId = refund.id;
       }
 

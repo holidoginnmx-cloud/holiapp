@@ -60,10 +60,21 @@ export async function getLodgingPricing(
 
 interface ChangeTotalInput {
   petWeightKg: number | null;
+  /** Fechas actuales de la reserva (para calcular el hospedaje que ya paga). */
+  currentCheckIn: Date;
+  currentCheckOut: Date;
   newCheckIn: Date;
   newCheckOut: Date;
   hasMedication: boolean;
-  existingBathTotal: number;
+  /** Total actual de la reserva (con domicilio, descuento, add-ons, recargos). */
+  currentTotal: number;
+  /**
+   * Hospedaje y recargo de medicamento persistidos al crear (foto original).
+   * Si vienen, se usan como "lo que ya paga" en vez de recalcular con la
+   * tarifa de hoy, para que un cambio de tarifa no se cuele en el delta.
+   */
+  currentLodgingAmount?: number | null;
+  currentMedicationFee?: number | null;
   config?: LodgingPricingConfig;
 }
 
@@ -72,30 +83,62 @@ export interface ChangeTotalResult {
   newLodging: number;
   newMedicationSurcharge: number;
   newTotal: number;
+  delta: number;
 }
 
 /**
- * Recompute the total for a single-pet reservation when dates change.
- * Bath addons are preserved (flat per-stay) and medication surcharge
- * is re-applied proportionally to new lodging. Same-day surcharge is
- * never re-applied on changes.
+ * Nuevo total de un hospedaje cuando cambian las fechas: se calcula POR
+ * DELTA sobre el total actual (igual que el flujo del admin en
+ * `buildAdminDatesChange`). Solo cambian el hospedaje (tarifa × noches) y su
+ * recargo por medicamento; el domicilio, el descuento, el recargo de mismo
+ * día y los add-ons (incluidos los de cortesía, que nunca sumaron) se quedan
+ * exactamente como están.
+ *
+ * Antes se recalculaba desde cero sumando TODOS los add-ons y omitiendo
+ * domicilio/descuento: extender 2→3 noches con $260 de domicilio daba un
+ * delta de +$90 en vez de +$350.
  */
 export function computeChangeTotal({
   petWeightKg,
+  currentCheckIn,
+  currentCheckOut,
   newCheckIn,
   newCheckOut,
   hasMedication,
-  existingBathTotal,
+  currentTotal,
+  currentLodgingAmount,
+  currentMedicationFee,
   config = DEFAULT_LODGING_PRICING,
 }: ChangeTotalInput): ChangeTotalResult {
-  const newTotalDays = computeDays(newCheckIn, newCheckOut);
   const pricePerDay = pricePerDayForWeight(petWeightKg, config);
+  const medFor = (lodging: number) =>
+    hasMedication ? Math.ceil(lodging * config.medicationSurchargePct) : 0;
+
+  const currentDays = computeDays(currentCheckIn, currentCheckOut);
+  const currentLodging =
+    currentLodgingAmount != null && currentLodgingAmount > 0
+      ? currentLodgingAmount
+      : pricePerDay * currentDays;
+  const currentMed =
+    currentMedicationFee != null && currentMedicationFee > 0
+      ? currentMedicationFee
+      : medFor(currentLodging);
+
+  const newTotalDays = computeDays(newCheckIn, newCheckOut);
   const newLodging = pricePerDay * newTotalDays;
-  const newMedicationSurcharge = hasMedication
-    ? Math.ceil(newLodging * config.medicationSurchargePct)
-    : 0;
-  const newTotal = newLodging + newMedicationSurcharge + existingBathTotal;
-  return { newTotalDays, newLodging, newMedicationSurcharge, newTotal };
+  const newMedicationSurcharge = medFor(newLodging);
+
+  const delta = Number(
+    (newLodging - currentLodging + (newMedicationSurcharge - currentMed)).toFixed(2),
+  );
+  const newTotal = Math.max(0, Number((currentTotal + delta).toFixed(2)));
+  return {
+    newTotalDays,
+    newLodging,
+    newMedicationSurcharge,
+    newTotal,
+    delta: Number((newTotal - currentTotal).toFixed(2)),
+  };
 }
 
 // Backwards-compatible exports for callers que aún no usan config dinámica.
