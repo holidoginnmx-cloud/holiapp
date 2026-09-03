@@ -18,7 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/authStore";
 import { getPetAlerts, resolveAdminAlert, type PetAlert } from "@/lib/api";
-import { formatName, formatDayShortYear } from "@/lib/format";
+import { formatName, formatDayShortYear, formatStayDayYear } from "@/lib/format";
 import { reservationHref } from "@/lib/reservationHref";
 import { FilterTabsUnderline } from "@/components/FilterTabsUnderline";
 
@@ -54,7 +54,7 @@ function reservationDates(r: PetAlert["reservation"]): string {
     return formatDayShortYear(r.appointmentAt) + " · Baño";
   }
   if (r.checkIn && r.checkOut) {
-    return `${formatDayShortYear(r.checkIn)} → ${formatDayShortYear(r.checkOut)}`;
+    return `${formatStayDayYear(r.checkIn)} → ${formatStayDayYear(r.checkOut)}`;
   }
   return "—";
 }

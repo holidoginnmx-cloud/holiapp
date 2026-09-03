@@ -27,7 +27,17 @@ import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
-import { formatName, formatDateLong, formatDayShort, formatTime, formatTimeHHmm, formatWeekdayDayShort } from "@/lib/format";
+import {
+  formatName,
+  formatDateLong,
+  formatStayDay,
+  formatTime,
+  formatTimeHHmm,
+  formatWeekdayDayShort,
+  hotelTodayYMD,
+  utcDayKey,
+  dayKeyDelta,
+} from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 
 type SectionKey = "baths" | "active" | "unassigned" | "upcoming";
@@ -145,13 +155,15 @@ export default function StaffDashboard() {
   const totalAlerts =
     staysWithoutChecklist.length + staysWithBath.length + staysWithMedication.length;
 
-  // Check-ins/outs programados hoy
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Check-ins/outs programados hoy. "Hoy" es el día del HOTEL (Hermosillo),
+  // no el día UTC del teléfono: `toISOString()` marcaba mañana como hoy a
+  // partir de las 5 p.m. checkIn/checkOut son días a medianoche UTC.
+  const todayStr = hotelTodayYMD();
   const checkInsToday = (confirmedStays ?? []).filter(
-    (s) => s.checkIn && new Date(s.checkIn).toISOString().slice(0, 10) === todayStr
+    (s) => s.checkIn && utcDayKey(s.checkIn) === todayStr
   );
   const checkOutsToday = (activeStays ?? []).filter(
-    (s) => s.checkOut && new Date(s.checkOut).toISOString().slice(0, 10) === todayStr
+    (s) => s.checkOut && utcDayKey(s.checkOut) === todayStr
   );
 
   // Progreso de reportes
@@ -471,14 +483,9 @@ type StayCardStay = {
   }>;
 };
 
+// Días de estadía: medianoche UTC → se muestran en UTC a propósito.
 function shortDate(d: Date | string): string {
-  return formatDayShort(d);
-}
-
-function dayDelta(a: Date, b: Date): number {
-  const aUtc = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-  const bUtc = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-  return Math.round((bUtc - aUtc) / 86_400_000);
+  return formatStayDay(d);
 }
 
 function StayCard({
@@ -498,27 +505,31 @@ function StayCard({
   onPress: () => void;
   variant: "active" | "upcoming";
 }) {
-  const checkInDate = stay.checkIn ? new Date(stay.checkIn) : null;
-  const checkOutDate = stay.checkOut ? new Date(stay.checkOut) : null;
+  const checkInDate = stay.checkIn ?? null;
+  const checkOutDate = stay.checkOut ?? null;
+  // Todo en claves "YYYY-MM-DD": el día de estadía se lee en UTC (así se
+  // guarda) y "hoy" es el del hotel. Con `new Date()` en local, después de las
+  // 5 p.m. la salida de mañana salía como "Sale hoy".
+  const checkInKey = checkInDate ? utcDayKey(checkInDate) : null;
+  const checkOutKey = checkOutDate ? utcDayKey(checkOutDate) : null;
   const totalNights =
-    checkInDate && checkOutDate ? Math.max(1, dayDelta(checkInDate, checkOutDate)) : null;
+    checkInKey && checkOutKey ? Math.max(1, dayKeyDelta(checkInKey, checkOutKey)) : null;
 
-  const today = new Date();
+  const todayKey = hotelTodayYMD();
   // Para "active": en qué día de la estancia estamos (1-based, cap a totalNights+1).
   const dayInStay =
-    variant === "active" && checkInDate
+    variant === "active" && checkInKey
       ? Math.min(
           (totalNights ?? 1) + 1,
-          Math.max(1, dayDelta(checkInDate, today) + 1)
+          Math.max(1, dayKeyDelta(checkInKey, todayKey) + 1)
         )
       : null;
-  const checkOutToday =
-    checkOutDate && dayDelta(today, checkOutDate) === 0;
+  const checkOutToday = !!checkOutKey && checkOutKey === todayKey;
 
   // Para "upcoming": cuántos días faltan al check-in.
   const daysUntilCheckIn =
-    variant === "upcoming" && checkInDate
-      ? Math.max(0, dayDelta(today, checkInDate))
+    variant === "upcoming" && checkInKey
+      ? Math.max(0, dayKeyDelta(todayKey, checkInKey))
       : null;
 
   const hasPendingBath = (stay.addons ?? []).some(

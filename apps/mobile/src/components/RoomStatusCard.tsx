@@ -2,7 +2,7 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { RoomWithStatus } from "@/lib/api";
-import { formatName, formatDayShort } from "@/lib/format";
+import { formatName, formatStayDay } from "@/lib/format";
 
 interface RoomStatusCardProps {
   room: RoomWithStatus;
@@ -91,7 +91,7 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
                   color={COLORS.errorText}
                 />
                 <Text style={styles.checkoutText}>
-                  Sale {formatDayShort(occupant.checkOut)}
+                  Sale {formatStayDay(occupant.checkOut)}
                 </Text>
               </View>
             </View>

@@ -60,12 +60,14 @@ import {
   VIAJE_SUB_CLIENTE,
   viajeSufijo,
 } from "@/constants/delivery";
-import { formatName, formatCurrency, formatDayShort, formatDayShortYear } from "@/lib/format";
+import { formatName, formatCurrency, formatDayShort, formatDayShortYear, formatStayDay } from "@/lib/format";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
   sizeFromWeight,
   pricePerDayForWeight,
   computeDays,
+  hoursUntilHotelDay,
 } from "@holidoginn/shared/src/pricing";
 
 function findBathVariant(
@@ -179,6 +181,9 @@ function CreateReservationScreenContent() {
     queryFn: () => getPetsByOwner(userId!),
     enabled: !!userId,
   });
+  // validatePet decide con `cartillaStatus` de esta lista: si el equipo acaba
+  // de aprobar la cartilla, el wizard no debe seguir bloqueando 5 min.
+  useRefetchOnFocus(userId ? [["pets", userId]] : []);
 
   // Fetch bath price catalog (rarely changes)
   const { data: bathVariants } = useQuery({
@@ -255,8 +260,8 @@ function CreateReservationScreenContent() {
         return ci < rangeEnd && co > rangeStart;
       });
       if (conflict) {
-        const ci = formatDayShort(conflict.checkIn);
-        const co = formatDayShort(conflict.checkOut);
+        const ci = formatStayDay(conflict.checkIn);
+        const co = formatStayDay(conflict.checkOut);
         conflictDates = `${ci} — ${co}`;
         return {
           blockReason: `${formatName(pet.name)} ya tiene una reservación del ${ci} al ${co}. Elige fechas que no se traslapen.`,
@@ -423,10 +428,11 @@ function CreateReservationScreenContent() {
   const discountTotal = appliedDiscount?.discountTotal ?? 0;
   const discountedBase = Math.max(0, baseTotal - discountTotal);
 
-  // Same-day surcharge: OWNER reservando con menos de 24h de anticipación paga +20%
-  const hoursUntilCheckIn = checkIn
-    ? (checkIn.getTime() - Date.now()) / (60 * 60 * 1000)
-    : Infinity;
+  // Same-day surcharge: OWNER reservando con menos de 24h de anticipación paga +20%.
+  // Contra la MEDIANOCHE LOCAL del check-in (igual que el servidor): checkIn
+  // está a las 00:00 UTC = 17:00 del día anterior en Hermosillo, y la resta a
+  // secas pintaba el recargo un día antes de lo que el servidor cobraba.
+  const hoursUntilCheckIn = checkIn ? hoursUntilHotelDay(checkIn) : Infinity;
   const sameDaySurcharge = role === "OWNER" && hoursUntilCheckIn < 24;
   const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
 
@@ -509,9 +515,7 @@ function CreateReservationScreenContent() {
   // Anticipo only available if check-in is 3+ days away AND stay is 2+ nights
   const MIN_DAYS_FOR_DEPOSIT = 3;
   const canDeposit =
-    !!checkIn &&
-    totalDays >= 2 &&
-    (checkIn.getTime() - Date.now()) / 86_400_000 >= MIN_DAYS_FOR_DEPOSIT;
+    !!checkIn && totalDays >= 2 && hoursUntilCheckIn >= MIN_DAYS_FOR_DEPOSIT * 24;
 
   // Reset to FULL if deposit no longer valid
   if (paymentType === "DEPOSIT" && !canDeposit) {
@@ -801,8 +805,8 @@ function CreateReservationScreenContent() {
       return {
         petName: p.name,
         reservationId: pending.id,
-        checkIn: formatDayShort(pending.checkIn),
-        checkOut: formatDayShort(pending.checkOut),
+        checkIn: formatStayDay(pending.checkIn),
+        checkOut: formatStayDay(pending.checkOut),
         totalAmount: Number(pending.totalAmount ?? 0),
       };
     })

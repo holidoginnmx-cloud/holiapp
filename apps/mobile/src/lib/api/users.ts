@@ -41,20 +41,43 @@ export type ClaimCandidate = {
   }[];
 };
 
+export type ClaimLookupResult = {
+  found: boolean;
+  /** "email": se mandó un código al correo de la ficha; "none": no hay a dónde. */
+  channel: "email" | "none";
+  candidates: ClaimCandidate[];
+  maskedEmails?: string[];
+  challengeToken?: string;
+  expiresInMinutes?: number;
+  message?: string;
+};
+
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
- * por teléfono y, como respaldo, por correo. */
+ * por teléfono y, como respaldo, por correo. Si la encuentra, el servidor manda
+ * un código al correo que YA tiene la ficha; las mascotas se ven hasta
+ * verificarlo. */
 export const lookupExistingAccount = (data: { phone?: string; email?: string }) =>
-  apiFetch<{ candidates: ClaimCandidate[] }>("/users/claim/lookup", {
+  apiFetch<ClaimLookupResult>("/users/claim/lookup", {
     method: "POST",
-    body: JSON.stringify(data),
+    // `v: 2` = esta app sabe pedir el código; sin él el servidor no manda el
+    // correo (la app anterior mostraría "no encontramos").
+    body: JSON.stringify({ ...data, v: 2 }),
   });
+
+/** Verifica el código recibido por correo; devuelve las fichas (nombre +
+ * mascotas) y el token que exige `confirmClaim`. */
+export const verifyClaimCode = (data: { challengeToken: string; code: string }) =>
+  apiFetch<{ candidates: ClaimCandidate[]; claimToken: string }>(
+    "/users/claim/verify",
+    { method: "POST", body: JSON.stringify(data) },
+  );
 
 /** Confirma el claim: reúne las mascotas seleccionadas (pueden venir de varios
  * registros duplicados) bajo la cuenta del usuario. */
 export const confirmClaim = (data: {
   petIds: string[];
+  claimToken: string;
   phone?: string;
-  email?: string;
 }) =>
   apiFetch<User>("/users/claim/confirm", {
     method: "POST",

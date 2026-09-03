@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getStaffStays } from "@/lib/api";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
-import { formatName } from "@/lib/format";
+import { formatName, hotelTodayYMD, utcDayKey } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { TeamFeedbackModal } from "@/components/TeamFeedbackModal";
@@ -68,15 +68,11 @@ function MenuItem({
   );
 }
 
-function isSameLocalDay(date: Date | string | null | undefined): boolean {
+// checkIn/checkOut son días a medianoche UTC; compararlos en hora local del
+// teléfono los corría al día anterior (UTC-7). "Hoy" es el día del hotel.
+function isHotelToday(date: Date | string | null | undefined): boolean {
   if (!date) return false;
-  const d = new Date(date);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+  return utcDayKey(date) === hotelTodayYMD();
 }
 
 export default function StaffMore() {
@@ -111,8 +107,8 @@ export default function StaffMore() {
   );
 
   const hospedados = active.length;
-  const checkinsHoy = confirmed.filter((s) => isSameLocalDay(s.checkIn)).length;
-  const checkoutsHoy = active.filter((s) => isSameLocalDay(s.checkOut)).length;
+  const checkinsHoy = confirmed.filter((s) => isHotelToday(s.checkIn)).length;
+  const checkoutsHoy = active.filter((s) => isHotelToday(s.checkOut)).length;
   const sinReporte = active.filter((s) => s.checklists.length === 0).length;
 
   return (

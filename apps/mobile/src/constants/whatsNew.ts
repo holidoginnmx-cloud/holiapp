@@ -34,6 +34,76 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-f",
+    title: "Candados de cobro, fechas en hora de Hermosillo y arranque más firme",
+    items: [
+      {
+        icon: "today-outline",
+        title: "El tablero ya cuenta 'hoy' con la hora del hotel",
+        body:
+          "Después de las 5 de la tarde, 'Check-ins hoy' y 'Check-outs hoy' " +
+          "contaban los de mañana, y en 'Más' salía otro número. Las tarjetas " +
+          "de estancia mostraban un día antes la entrada y la salida. Ya no: " +
+          "todo se calcula con el día de Hermosillo y las fechas de hospedaje " +
+          "se muestran tal cual se reservaron.",
+        route: "/(staff)/dashboard",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "shield-checkmark-outline",
+        title: "Cambiar el estado de una reserva ya tiene reglas",
+        body:
+          "Desde el detalle solo se permiten los pasos que tienen sentido " +
+          "(confirmada → en curso → finalizada). Cancelar una reserva que ya " +
+          "tiene dinero cobrado desde el selector de estado ya no se puede: " +
+          "usa 'Cancelar' con reembolso o saldo a favor, que avisa al cliente y " +
+          "deja el dinero cuadrado. Reabrir una reserva finalizada sigue " +
+          "siendo cosa del admin.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "cash-outline",
+        title: "El anticipo de un baño ya se descuenta del saldo",
+        body:
+          "Cuando el cliente pagaba el anticipo de $150 desde la app, la cita " +
+          "seguía mostrando el saldo completo y se podía cobrar de más. Ahora " +
+          "el saldo ya lo descuenta y la cita se cierra sola al cobrar el resto.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "cloud-offline-outline",
+        title: "Si la app no alcanza al servidor, te lo dice",
+        body:
+          "Antes, si el servidor tardaba en despertar, la app te metía a la " +
+          "pantalla del cliente (vacía, sin tu nombre) y ahí te dejaba. Ahora " +
+          "recuerda quién eres, muestra 'Conectando…' y reintenta sola; si no " +
+          "puede, te deja reintentar o cerrar sesión con un botón.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "alert-circle-outline",
+        title: "Aviso si un cobro se devuelve por falta de cupo",
+        body:
+          "Si dos clientes pagan el último lugar de un cuarto casi al mismo " +
+          "tiempo, el segundo recibe su dinero de vuelta automáticamente y a " +
+          "los admins les llega un aviso con el detalle. Antes ese cobro se " +
+          "quedaba en Stripe sin reserva y sin que nadie se enterara.",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "mail-outline",
+        title: "Vincular una ficha ya pide un código por correo",
+        body:
+          "Cuando un cliente busca su ficha en la app ('¿Ya eres cliente?'), " +
+          "ya no basta con saber el teléfono: le llega un código al correo que " +
+          "TÚ tienes en su ficha. Si la ficha no tiene correo real, la app le " +
+          "pide que nos escriba: ponle el correo desde el panel y podrá " +
+          "vincularse.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-e",
     title: "Tus reportes y tus fotos ya se ven desde la computadora",
     items: [

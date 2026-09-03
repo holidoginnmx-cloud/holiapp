@@ -42,6 +42,7 @@ import {
   BALANCE_AFTER_CHECKOUT_MAX_DAYS,
   formatCurrency,
   formatDayShort,
+  formatStayDay,
   formatWeekdayShort,
   formatWeekdayDayShort,
   formatTime,
@@ -788,9 +789,9 @@ function ReservationDetailScreenContent() {
           </View>
           <Text style={styles.pendingChangeBody}>
             Nuevas fechas:{" "}
-            {formatDayShort(pendingChange.newCheckIn)}{" "}
+            {formatStayDay(pendingChange.newCheckIn)}{" "}
             →{" "}
-            {formatDayShort(pendingChange.newCheckOut)}{" "}
+            {formatStayDay(pendingChange.newCheckOut)}{" "}
             (+{formatCurrency(pendingChange.deltaAmount)})
           </Text>
           <Text style={styles.pendingChangeSubtitle}>

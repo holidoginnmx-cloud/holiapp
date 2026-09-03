@@ -3,7 +3,7 @@ import { COLORS } from "@/constants/colors";
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { Pet, Vaccine } from "@holidoginn/shared";
-import { formatName, formatDayShort } from "@/lib/format";
+import { formatName, formatStayDay } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 
 const SIZE_LABELS: Record<string, string> = {
@@ -104,7 +104,7 @@ function buildStatusChips(pet: PetWithContext, viewerId?: string | null): Chip[]
   } else if (upcoming) {
     chips.push({
       icon: "calendar-outline",
-      label: `Hotel el ${formatDayShort(upcoming.checkIn)}`,
+      label: `Hotel el ${formatStayDay(upcoming.checkIn)}`,
       bg: COLORS.infoBg,
       fg: COLORS.infoText,
     });

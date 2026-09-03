@@ -118,6 +118,12 @@ function ClerkTokenSync() {
         // Primer tap tras reabrir la app: que no pague el refresh.
         refresh();
         if (!interval) interval = setInterval(forceRefresh, 40_000);
+        // Si /users/me se agotó (Railway dormido, sin red), volver a la app es
+        // el momento natural de reintentar; el store dedupe si ya hay uno en
+        // vuelo y su backoff largo no dispara en segundo plano.
+        if (useAuthStore.getState().syncStatus === "failed") {
+          void useAuthStore.getState().syncUser();
+        }
       } else if (interval) {
         clearInterval(interval);
         interval = null;
@@ -315,10 +321,15 @@ function PushNavigationHandler() {
     if (__DEV__) {
       console.log("[push] tap →", JSON.stringify(request.content.data));
     }
-    setPending({
-      type,
-      data: (request.content.data ?? null) as NotificationRouteData,
-    });
+    const data = (request.content.data ?? null) as NotificationRouteData;
+    // El push que LLEGÓ con la app en background/cerrada no pasó por
+    // PushCacheInvalidator (solo escucha en primer plano): al tocarlo se
+    // invalidan aquí las mismas keys, para que la pantalla destino (p. ej. el
+    // perro con la cartilla recién aprobada) no muestre la caché de 5 min.
+    for (const queryKey of notificationInvalidationKeys(type, data)) {
+      queryClient.invalidateQueries({ queryKey });
+    }
+    setPending({ type, data });
     // Limpia la respuesta cacheada para que un relanzamiento normal de la app
     // (sin tap) no vuelva a navegar a la misma pantalla.
     try {

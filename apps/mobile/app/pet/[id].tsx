@@ -28,6 +28,7 @@ import { cloudinaryResized } from "@/lib/cloudinary";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { PetPhotoViewer } from "@/components/PetPhotoViewer";
 import { sharedLabel } from "@/components/PetCard";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 const SIZE_LABELS: Record<string, string> = {
   XS: "Extra pequeño",
@@ -101,6 +102,10 @@ export default function PetDetailScreen() {
     queryFn: () => getPetById(id),
     enabled: !!id,
   });
+  // Al entrar (p. ej. desde el push de "cartilla aprobada") se revalida en
+  // segundo plano: la caché se pinta al instante y el estado de la cartilla
+  // llega fresco en vez de esperar los 5 min de staleTime.
+  useRefetchOnFocus(id ? [["pet", id]] : []);
 
   const deleteMutation = useMutation({
     mutationFn: () => deletePet(id!),

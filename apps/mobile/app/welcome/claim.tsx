@@ -20,6 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import {
   lookupExistingAccount,
+  verifyClaimCode,
   confirmClaim,
   getPetsByOwner,
   type ClaimCandidate,
@@ -47,6 +48,18 @@ export default function ClaimAccountScreen() {
   const [searched, setSearched] = useState(false);
   const [candidates, setCandidates] = useState<ClaimCandidate[]>([]);
   const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
+  // Verificación: la ficha se muestra hasta que el cliente escribe el código
+  // que el servidor mandó al correo que YA tenía la ficha. Conocer el
+  // teléfono no basta para reclamarla (ver /users/claim/* en la API).
+  const [challenge, setChallenge] = useState<{
+    token: string;
+    masked: string[];
+    minutes: number;
+  } | null>(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [claimToken, setClaimToken] = useState<string | null>(null);
+  const [noEmailMessage, setNoEmailMessage] = useState<string | null>(null);
 
   // Mascotas de TODOS los candidatos: un teléfono puede traer varios registros
   // duplicados del mismo cliente (o de un familiar que comparte teléfono).
@@ -109,13 +122,57 @@ export default function ClaimAccountScreen() {
     setLoading(true);
     try {
       const res = await lookupExistingAccount(payload);
-      setCandidates(res.candidates);
+      setCandidates([]);
       setSelectedPetIds(new Set());
+      setClaimToken(null);
+      setCode("");
       setSearched(true);
+      if (!res.found) {
+        setChallenge(null);
+        setNoEmailMessage(null);
+      } else if (res.channel !== "email" || !res.challengeToken) {
+        setChallenge(null);
+        setNoEmailMessage(
+          res.message ??
+            "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
+        );
+      } else {
+        setNoEmailMessage(null);
+        setChallenge({
+          token: res.challengeToken,
+          masked: res.maskedEmails ?? [],
+          minutes: res.expiresInMinutes ?? 10,
+        });
+      }
     } catch (e: any) {
       setError(e?.message ?? "No pudimos buscar tu cuenta. Intenta de nuevo.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    if (!challenge) return;
+    const digits = code.replace(/\D/g, "");
+    if (digits.length !== 6) {
+      setError("Escribe el código de 6 dígitos que te llegó por correo.");
+      return;
+    }
+    setError(null);
+    setVerifying(true);
+    try {
+      const res = await verifyClaimCode({
+        challengeToken: challenge.token,
+        code: digits,
+      });
+      setCandidates(res.candidates);
+      setClaimToken(res.claimToken);
+      setSelectedPetIds(new Set());
+      setChallenge(null);
+    } catch (e: any) {
+      setError(e?.message ?? "No pudimos validar el código. Intenta de nuevo.");
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -129,14 +186,14 @@ export default function ClaimAccountScreen() {
   };
 
   const handleConfirm = async () => {
-    if (selectedPetIds.size === 0) return;
+    if (selectedPetIds.size === 0 || !claimToken) return;
     setError(null);
     setSubmitting(true);
     try {
       await confirmClaim({
         petIds: [...selectedPetIds],
+        claimToken,
         phone: useEmail ? undefined : phone.trim() || undefined,
-        email: useEmail ? email.trim().toLowerCase() || undefined : undefined,
       });
       // Refrescar el usuario (ahora apunta al registro consolidado) y la lista
       // de mascotas antes de salir.
@@ -233,6 +290,10 @@ export default function ClaimAccountScreen() {
             setSearched(false);
             setCandidates([]);
             setSelectedPetIds(new Set());
+            setChallenge(null);
+            setClaimToken(null);
+            setNoEmailMessage(null);
+            setCode("");
           }}
           style={styles.linkBtn}
         >
@@ -241,8 +302,89 @@ export default function ClaimAccountScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Ficha encontrada: pedir el código que llegó al correo de la ficha */}
+        {challenge && (
+          <View style={styles.candidateCard} testID="claim-code-card">
+            <Text style={styles.candidateName}>Encontramos tu ficha</Text>
+            <Text style={styles.pickHint}>
+              Te enviamos un código de 6 dígitos a{" "}
+              {challenge.masked.length > 0 ? challenge.masked.join(" y ") : "tu correo"}
+              . Escríbelo aquí para ver tus mascotas (vence en {challenge.minutes}{" "}
+              minutos).
+            </Text>
+            <TextInput
+              style={[styles.input, styles.codeInput]}
+              placeholder="000000"
+              placeholderTextColor={COLORS.textDisabled}
+              value={code}
+              onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              maxLength={6}
+              editable={!verifying}
+              testID="claim-code-input"
+            />
+            <TouchableOpacity
+              style={[
+                styles.confirmButton,
+                (code.length !== 6 || verifying) && styles.buttonDisabled,
+              ]}
+              onPress={handleVerify}
+              activeOpacity={0.85}
+              disabled={code.length !== 6 || verifying}
+              testID="claim-verify-button"
+            >
+              {verifying ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.confirmButtonText}>Verificar código</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSearch}
+              style={styles.linkBtn}
+              disabled={loading || verifying}
+            >
+              <Text style={styles.linkText}>
+                {loading ? "Enviando…" : "No me llegó, volver a enviar"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Ficha encontrada pero sin correo real: no hay cómo probar que es suya */}
+        {noEmailMessage && (
+          <View style={styles.noResult} testID="claim-no-email">
+            <Ionicons
+              name="information-circle-outline"
+              size={20}
+              color={COLORS.textTertiary}
+            />
+            <Text style={styles.noResultText}>{noEmailMessage}</Text>
+          </View>
+        )}
+        {noEmailMessage && (
+          <TouchableOpacity
+            style={styles.sharedHelp}
+            onPress={() =>
+              Linking.openURL(
+                buildWhatsappUrl(
+                  "Hola 👋 Quiero vincular la app con la ficha de mi mascota, pero no tiene mi correo registrado.",
+                ),
+              )
+            }
+            activeOpacity={0.7}
+          >
+            <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
+            <Text style={styles.sharedHelpText}>
+              Escríbenos por WhatsApp y te la vinculamos.
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Resultados */}
-        {searched && candidates.length === 0 && (
+        {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
           <View style={styles.noResult}>
             <Ionicons
               name="information-circle-outline"
@@ -262,7 +404,7 @@ export default function ClaimAccountScreen() {
             siguiente paso natural sería registrarlo otra vez. Compartir una
             mascota entre dos cuentas lo hace el equipo, así que ofrecemos el
             atajo justo en el momento en que la búsqueda falla. */}
-        {searched && candidates.length === 0 && (
+        {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
           <TouchableOpacity
             style={styles.sharedHelp}
             onPress={() =>
@@ -395,6 +537,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignSelf: "center",
     marginBottom: 4,
+  },
+  codeInput: {
+    marginTop: 10,
+    textAlign: "center",
+    fontSize: 24,
+    letterSpacing: 8,
   },
   title: {
     fontSize: 24,

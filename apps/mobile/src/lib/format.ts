@@ -230,6 +230,24 @@ export function hotelYMD(value: string | Date): string {
   return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** "YYYY-MM-DD" de HOY en el hotel (America/Hermosillo). */
+export function hotelTodayYMD(): string {
+  return hotelYMD(new Date());
+}
+
+/**
+ * Días de `a` a `b`, ambos como "YYYY-MM-DD" (positivo si `b` es después).
+ * Para comparar un día de estadía (`utcDayKey(checkIn)`) contra
+ * `hotelTodayYMD()` sin que la zona del teléfono mueva el resultado.
+ */
+export function dayKeyDelta(a: string, b: string): number {
+  const toMs = (ymd: string) => {
+    const [y, m, d] = ymd.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toMs(b) - toMs(a)) / 86_400_000);
+}
+
 type DateFmtOpts = { timeZone?: string };
 
 /**
@@ -302,6 +320,22 @@ export function formatDayShort(
     month: "short",
     ...opts,
   });
+}
+
+/**
+ * Día de ESTADÍA (`checkIn`/`checkOut`, guardados a medianoche UTC): `16 jun`.
+ *
+ * Fuerza `timeZone: "UTC"`: formatearlos en hora local los corría al día
+ * anterior en Hermosillo (UTC-7). Úsala para fechas de hospedaje; NO para
+ * `appointmentAt` de baños/guardería, que es un instante real y va en local.
+ */
+export function formatStayDay(date: string | Date): string {
+  return formatDayShort(date, { timeZone: "UTC" });
+}
+
+/** `16 jun 2026` para un día de estadía (ver `formatStayDay`). */
+export function formatStayDayYear(date: string | Date): string {
+  return formatDayShortYear(date, { timeZone: "UTC" });
 }
 
 /** `16 jun 2026` */
