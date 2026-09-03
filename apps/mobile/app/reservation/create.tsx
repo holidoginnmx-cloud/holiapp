@@ -62,12 +62,17 @@ import {
 } from "@/constants/delivery";
 import { formatName, formatCurrency, formatDayShort, formatDayShortYear, formatStayDay } from "@/lib/format";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+import { getPublicLodgingPricing } from "@/lib/api/pricing";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
   sizeFromWeight,
   pricePerDayForWeight,
   computeDays,
   hoursUntilHotelDay,
+  allocateProportional,
+  ceilMoney,
+  SAME_DAY_SURCHARGE_PCT,
+  DEFAULT_LODGING_PRICING,
 } from "@holidoginn/shared/src/pricing";
 
 function findBathVariant(
@@ -345,13 +350,22 @@ function CreateReservationScreenContent() {
   // el backend al cobrar → el estimado y el cargo no divergen en el nº de noches.
   const totalDays = checkIn && checkOut ? computeDays(checkIn, checkOut) : 0;
 
+  // Tarifas vigentes (Config → Tarifas). Mientras llegan se usan los defaults
+  // de shared; el cobro real lo calcula el servidor con la misma config.
+  const { data: lodgingPricing } = useQuery({
+    queryKey: ["pricing", "lodging"],
+    queryFn: getPublicLodgingPricing,
+    staleTime: 5 * 60 * 1000,
+  });
+  const pricingConfig = lodgingPricing ?? DEFAULT_LODGING_PRICING;
+
   const priceBreakdown = useMemo(
     () =>
       selectedPets.map((pet) => {
-        const perNight = pricePerDayForWeight(pet.weight ?? null);
+        const perNight = pricePerDayForWeight(pet.weight ?? null, pricingConfig);
         return { pet, perNight, subtotal: perNight * totalDays };
       }),
-    [selectedPets, totalDays]
+    [selectedPets, totalDays, pricingConfig]
   );
 
   // Live room availability check (once dates + pets are set)
@@ -406,16 +420,17 @@ function CreateReservationScreenContent() {
 
   const bathTotal = Object.values(bathPriceByPet).reduce((s, n) => s + n, 0);
 
-  // Medication surcharge: +10% on lodging for each pet on medication
+  // Recargo por medicamento sobre el hospedaje de cada mascota (porcentaje de
+  // la config; mismo redondeo hacia arriba que el servidor).
   const medicationSurchargeByPet = useMemo(() => {
     const out: Record<string, number> = {};
     for (const row of priceBreakdown) {
       if (medicationByPet[row.pet.id]?.enabled) {
-        out[row.pet.id] = Math.ceil(row.subtotal * 0.10);
+        out[row.pet.id] = Math.ceil(row.subtotal * pricingConfig.medicationSurchargePct);
       }
     }
     return out;
-  }, [priceBreakdown, medicationByPet]);
+  }, [priceBreakdown, medicationByPet, pricingConfig]);
   const medicationTotal = Object.values(medicationSurchargeByPet).reduce(
     (s, n) => s + n,
     0
@@ -434,7 +449,31 @@ function CreateReservationScreenContent() {
   // secas pintaba el recargo un día antes de lo que el servidor cobraba.
   const hoursUntilCheckIn = checkIn ? hoursUntilHotelDay(checkIn) : Infinity;
   const sameDaySurcharge = role === "OWNER" && hoursUntilCheckIn < 24;
-  const surchargeAmount = sameDaySurcharge ? Math.ceil(discountedBase * 0.20) : 0;
+  // El servidor cobra el recargo POR MASCOTA (un redondeo hacia arriba en cada
+  // una) sobre su base ya descontada; un solo ceil del grupo se quedaba corto
+  // hasta N−1 pesos y el cliente veía menos de lo que pagaba.
+  const surchargeAmount = useMemo(() => {
+    if (!sameDaySurcharge) return 0;
+    const bases = selectedPets.map(
+      (pet) =>
+        (priceBreakdown.find((r) => r.pet.id === pet.id)?.subtotal ?? 0) +
+        (medicationSurchargeByPet[pet.id] ?? 0) +
+        (bathPriceByPet[pet.id] ?? 0)
+    );
+    const discounts = allocateProportional(discountTotal, bases);
+    return bases.reduce(
+      (sum, base, i) =>
+        sum + ceilMoney(Math.max(0, base - (discounts[i] ?? 0)) * SAME_DAY_SURCHARGE_PCT),
+      0
+    );
+  }, [
+    sameDaySurcharge,
+    selectedPets,
+    priceBreakdown,
+    medicationSurchargeByPet,
+    bathPriceByPet,
+    discountTotal,
+  ]);
 
   // La fee de domicilio es un costo logístico fijo: no lleva el recargo
   // mismo-día, pero sí entra en la base del anticipo (igual que el backend).
@@ -1227,12 +1266,14 @@ function CreateReservationScreenContent() {
       {selectedPets.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>¿Alguna mascota toma medicamento?</Text>
-          <Text style={styles.hint}>Opcional. Incluye un cargo extra del 10% por mascota.</Text>
+          <Text style={styles.hint}>
+            Opcional. Incluye un cargo extra del{" "}
+            {Math.round(pricingConfig.medicationSurchargePct * 100)}% por mascota.
+          </Text>
           {selectedPets.map((pet) => {
             const state = medicationByPet[pet.id] ?? { enabled: false, notes: "" };
-            const petSubtotal =
-              priceBreakdown.find((r) => r.pet.id === pet.id)?.subtotal ?? 0;
-            const surcharge = Math.ceil(petSubtotal * 0.10);
+            // Mismo número que el resumen: sale de la config, no de un 10% fijo.
+            const surcharge = medicationSurchargeByPet[pet.id] ?? 0;
             const notesEmpty = state.enabled && state.notes.trim().length === 0;
             return (
               <View key={pet.id} style={styles.bathPetBlock}>

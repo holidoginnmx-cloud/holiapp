@@ -7,9 +7,8 @@ import { previewQuote, type QuotePreviewResult } from "@/lib/api";
  *
  * La pantalla no suma nada por su cuenta: así el número que ve el operador
  * mientras captura es exactamente el que se va a guardar y a prometerle al
- * cliente. (La pantalla de crear reservación sí calcula local, y por eso su
- * estimado se desincroniza cuando alguien edita las tarifas: ver el 450/350
- * hardcodeado en app/admin/reservation/create.tsx.)
+ * cliente. (La pantalla de crear reservación del equipo estima en local, pero
+ * con las tarifas de GET /admin/lodging-pricing: sin números quemados.)
  *
  * El debounce evita una petición por tecla. Las respuestas viejas se descartan
  * por número de secuencia: sin eso, una petición lenta puede pisar el resultado

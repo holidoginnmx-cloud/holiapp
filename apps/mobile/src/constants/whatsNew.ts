@@ -34,6 +34,47 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-g",
+    title: "El estimado de hospedaje ya usa las tarifas reales",
+    items: [
+      {
+        icon: "bed-outline",
+        title: "Si el último lugar de un cuarto se ocupa, te lo dice",
+        body:
+          "Al registrar una estancia, si alguien más ocupó el último lugar de " +
+          "ese cuarto mientras capturabas, ahora sale un aviso claro en vez de " +
+          "guardar una reserva en un cuarto lleno. Vuelve a elegir cuarto y " +
+          "listo.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "resize-outline",
+        title: "La talla del perro la calcula el sistema, no cada pantalla",
+        body:
+          "La talla sale del peso con una sola regla, la misma en la app, el " +
+          "panel y la página. Si editas el peso de un perro que está " +
+          "hospedado, su talla no cambia si eso lo dejaría fuera del cuarto " +
+          "donde ya está.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "pricetag-outline",
+        title: "El estimado al crear una reservación ya sale de las tarifas de Config",
+        body:
+          "Al registrar una estancia, el 'Estimado hospedaje' y el 'Total base' " +
+          "tenían la tarifa metida a mano en la app ($350 / $450 y el umbral de " +
+          "20 kg): si alguien cambiaba las tarifas en Config → Tarifas, la " +
+          "pantalla seguía sugiriendo el número viejo y el cobro real salía " +
+          "distinto. Ahora el estimado se calcula con las tarifas vigentes " +
+          "(precio chico/grande, umbral de peso y recargo por medicamento). " +
+          "Mientras carga verás 'Calculando…'; puedes crear la reserva de " +
+          "todos modos, el servidor recalcula el total al guardar.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-f",
     title: "Candados de cobro, fechas en hora de Hermosillo y arranque más firme",
     items: [

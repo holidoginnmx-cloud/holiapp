@@ -26,14 +26,7 @@ import {
   type ReservationDetail,
 } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-
-function bathSizeFromWeight(kg: number | null | undefined): "S" | "M" | "L" | "XL" {
-  const w = kg ?? 0;
-  if (w <= 5) return "S";
-  if (w <= 15) return "M";
-  if (w <= 24) return "L";
-  return "XL";
-}
+import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 
 function findVariant(
   variants: BathVariant[] | undefined,
@@ -42,7 +35,8 @@ function findVariant(
   corte: boolean
 ): BathVariant | undefined {
   if (!variants) return undefined;
-  const size = bathSizeFromWeight(petWeight);
+  // Talla por peso: la misma tabla que usa el servidor (shared), sin copia local.
+  const size = sizeFromWeight(petWeight);
   return variants.find(
     (v) => v.petSize === size && v.deslanado === deslanado && v.corte === corte
   );

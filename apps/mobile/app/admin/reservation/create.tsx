@@ -61,7 +61,10 @@ import {
 } from "@/lib/format";
 import {
   sizeFromWeight,
+  pricePerDayForWeight,
   computeDaycareHours,
+  computeDays,
+  ceilMoney,
   DAYCARE_OPEN_HOUR,
   DAYCARE_CLOSE_HOUR,
 } from "@holidoginn/shared/src/pricing";
@@ -402,11 +405,19 @@ export default function AdminCreateReservation() {
 
   const bathConflict = useBathConflict(bathSlots, appointmentAt);
 
-  // Tarifa por hora de guardería (para sugerir el total). Se recalcula server-side.
-  const { data: lodgingPricing } = useQuery({
+  // Tarifas vigentes (Config → Tarifas): precio por noche chico/grande, umbral
+  // de peso, recargo por medicamento y hora de guardería. Aquí NO hay ningún
+  // número quemado: si el admin cambia una tarifa, el estimado cambia con
+  // ella. El servidor recalcula el total real al crear de todos modos.
+  const {
+    data: lodgingPricing,
+    isPending: lodgingPricingPending,
+    isError: lodgingPricingError,
+    refetch: refetchLodgingPricing,
+  } = useQuery({
     queryKey: ["admin", "lodging-pricing"],
     queryFn: getAdminLodgingPricing,
-    enabled: reservationType === "DAYCARE",
+    enabled: reservationType === "STAY" || reservationType === "DAYCARE",
   });
   const daycareHourPrice = lodgingPricing?.daycareHourPrice ?? 0;
 
@@ -451,20 +462,44 @@ export default function AdminCreateReservation() {
       reservationType !== "STAY" ||
       !checkIn ||
       !checkOut ||
-      selectedPets.length === 0
+      selectedPets.length === 0 ||
+      !lodgingPricing
     )
       return null;
-    const days = Math.ceil(
-      (checkOut.getTime() - checkIn.getTime()) / 86_400_000,
-    );
+    // computeDays es la MISMA función con la que el servidor cuenta noches:
+    // un ceil de milisegundos promete una noche de más en cuanto una de las
+    // dos fechas trae hora del día.
+    const days = computeDays(checkIn, checkOut);
     if (days <= 0) return null;
-    // Suma por mascota (la tarifa por día depende del peso de cada una).
-    const total = selectedPets.reduce(
-      (sum, p) => sum + ((p.weight ?? 0) >= 20 ? 450 : 350) * days,
+    // Suma por mascota: la tarifa por noche depende del peso de cada una y del
+    // umbral configurado (pricePerDayForWeight con la config del servidor).
+    const perPet = selectedPets.map(
+      (p) => pricePerDayForWeight(p.weight, lodgingPricing) * days,
+    );
+    const total = perPet.reduce(
+      (sum, n) => sum + n,
       0,
     );
-    return { days, total };
-  }, [reservationType, checkIn, checkOut, selectedPets]);
+    return { days, total, perPet };
+  }, [reservationType, checkIn, checkOut, selectedPets, lodgingPricing]);
+
+  // Ya hay con qué estimar una estancia pero las tarifas todavía no llegan:
+  // se muestra "Calculando…" sin bloquear el botón de crear.
+  const stayEstimateLoading =
+    reservationType === "STAY" &&
+    !!checkIn &&
+    !!checkOut &&
+    selectedPets.length > 0 &&
+    !lodgingPricing &&
+    lodgingPricingPending;
+
+  // Si las tarifas no cargan, antes el estimado simplemente desaparecía y el
+  // equipo capturaba a ciegas. Ahora se dice y se ofrece reintentar; crear
+  // sigue habilitado porque el total real lo calcula el servidor.
+  const stayEstimateFailed =
+    (reservationType === "STAY" || reservationType === "DAYCARE") &&
+    !lodgingPricing &&
+    lodgingPricingError;
 
   // Suma de la variante de baño de CADA mascota (talla propia); null si a
   // alguna le falta variante configurada.
@@ -503,7 +538,13 @@ export default function AdminCreateReservation() {
     if (reservationType === "STAY") {
       if (!stayEstimate) return null;
       const lodging = stayEstimate.total;
-      const med = medEnabled ? lodging * 0.1 : 0;
+      // El servidor aplica el recargo POR MASCOTA con un redondeo hacia arriba
+      // en cada una (lib/reservationTeamCreate.ts); un solo ceil del grupo se
+      // queda corto hasta N−1 pesos.
+      const pct = lodgingPricing?.medicationSurchargePct ?? 0;
+      const med = medEnabled
+        ? stayEstimate.perPet.reduce((sum, n) => sum + ceilMoney(n * pct), 0)
+        : 0;
       const bath = stayBathEnabled ? stayBathPrice ?? 0 : 0;
       return lodging + med + bath;
     }
@@ -513,6 +554,7 @@ export default function AdminCreateReservation() {
     selectedPets.length,
     reservationType,
     stayEstimate,
+    lodgingPricing,
     medEnabled,
     stayBathEnabled,
     stayBathPrice,
@@ -1161,6 +1203,20 @@ export default function AdminCreateReservation() {
                 {stayEstimate.days === 1 ? "" : "s"} · ${stayEstimate.total}
               </Text>
             )}
+            {!stayEstimate && stayEstimateLoading && (
+              <Text style={styles.estimate}>Estimado hospedaje: calculando…</Text>
+            )}
+            {!stayEstimate && stayEstimateFailed && (
+              <TouchableOpacity
+                onPress={() => void refetchLodgingPricing()}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.estimate}>
+                  No se pudieron cargar las tarifas. Toca para reintentar; puedes
+                  crear la reservación y el sistema calculará el total.
+                </Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
 
@@ -1404,6 +1460,18 @@ export default function AdminCreateReservation() {
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total base</Text>
             <Text style={styles.totalValue}>${grandTotalEstimate.toFixed(2)}</Text>
+          </View>
+        )}
+        {petIds.length > 0 && grandTotalEstimate == null && stayEstimateLoading && (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total base</Text>
+            <Text style={styles.totalValue}>Calculando…</Text>
+          </View>
+        )}
+        {petIds.length > 0 && grandTotalEstimate == null && stayEstimateFailed && (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total base</Text>
+            <Text style={styles.totalValue}>Sin tarifas</Text>
           </View>
         )}
 

@@ -19,6 +19,10 @@ import {
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import {
+  DEFAULT_PRICE_PER_DAY_SMALL,
+  DEFAULT_PRICE_PER_DAY_LARGE,
+} from "@holidoginn/shared/src/pricing";
 
 type Field =
   | "pricePerDaySmall"
@@ -156,7 +160,7 @@ export default function AdminHospedajes() {
               setDraft((d) => ({ ...d, pricePerDaySmall: v }))
             }
             keyboardType="decimal-pad"
-            placeholder="350"
+            placeholder={String(DEFAULT_PRICE_PER_DAY_SMALL)}
             placeholderTextColor={COLORS.textDisabled}
           />
           <Text style={styles.unit}>/ noche</Text>
@@ -178,7 +182,7 @@ export default function AdminHospedajes() {
               setDraft((d) => ({ ...d, pricePerDayLarge: v }))
             }
             keyboardType="decimal-pad"
-            placeholder="450"
+            placeholder={String(DEFAULT_PRICE_PER_DAY_LARGE)}
             placeholderTextColor={COLORS.textDisabled}
           />
           <Text style={styles.unit}>/ noche</Text>
