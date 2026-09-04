@@ -54,21 +54,42 @@ export function bathSizeKey(size: "XS" | SizeKey): SizeKey {
 }
 
 /**
- * Talla para cotizar el DESPARASITANTE a partir del peso (kg). Escala PROPIA
- * del desparasitante: sus tramos NO coinciden con `sizeFromWeight` (baño) ni
- * con la talla general del perro — no unificar. Mismos tramos que
+ * Tramos de peso del DESPARASITANTE: escala PROPIA, sus cortes NO coinciden con
+ * `SIZE_RANGES_KG` (baño/talla general) — no unificar. A diferencia de aquella,
+ * ésta tiene piso y techo explícitos y deja huecos a propósito (< 3.6 kg,
+ * > 60 kg y los decimales entre tramos no tienen tarifa). Mismos tramos que
  * `dewormSizeKey` del admin web (lib/desparasitante.ts, repo aparte).
- * Devuelve null si falta el peso o cae fuera del rango cubierto (3.6–60 kg):
- * en ese caso no hay tarifa y no se debe cotizar.
+ */
+export const DEWORM_RANGES_KG: ReadonlyArray<{
+  size: SizeKey;
+  minKg: number;
+  maxKg: number;
+}> = [
+  { size: "S", minKg: 3.6, maxKg: 7.5 },
+  { size: "M", minKg: 7.6, maxKg: 15 },
+  { size: "L", minKg: 15.1, maxKg: 30 },
+  { size: "XL", minKg: 30.1, maxKg: 60 },
+];
+
+/** Etiqueta legible del tramo de desparasitante ("3.6–7.5 kg"). */
+export function dewormSizeRangeLabel(size: SizeKey): string {
+  const range = DEWORM_RANGES_KG.find((r) => r.size === size);
+  if (!range) return "";
+  return `${range.minKg}–${range.maxKg} kg`;
+}
+
+/**
+ * Talla para cotizar el DESPARASITANTE a partir del peso (kg), según
+ * `DEWORM_RANGES_KG`. Devuelve null si falta el peso o cae fuera de los tramos
+ * cubiertos: en ese caso no hay tarifa y no se debe cotizar.
  */
 export function dewormSizeFromWeight(
   kg: number | null | undefined
 ): SizeKey | null {
   if (kg == null || Number.isNaN(kg)) return null;
-  if (kg >= 3.6 && kg <= 7.5) return "S";
-  if (kg >= 7.6 && kg <= 15) return "M";
-  if (kg >= 15.1 && kg <= 30) return "L";
-  if (kg >= 30.1 && kg <= 60) return "XL";
+  for (const range of DEWORM_RANGES_KG) {
+    if (kg >= range.minKg && kg <= range.maxKg) return range.size;
+  }
   return null;
 }
 

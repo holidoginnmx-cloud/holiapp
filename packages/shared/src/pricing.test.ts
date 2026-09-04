@@ -15,6 +15,9 @@ import {
   sizeFromWeight,
   SIZE_RANGES_KG,
   sizeRangeLabel,
+  DEWORM_RANGES_KG,
+  dewormSizeRangeLabel,
+  dewormSizeFromWeight,
   SAME_DAY_SURCHARGE_PCT,
   ceilMoney,
   roundMoney,
@@ -250,6 +253,29 @@ describe("SIZE_RANGES_KG", () => {
     expect(sizeRangeLabel("M")).toBe("5–15 kg");
     expect(sizeRangeLabel("L")).toBe("15–24 kg");
     expect(sizeRangeLabel("XL")).toBe("> 24 kg");
+  });
+});
+
+describe("DEWORM_RANGES_KG", () => {
+  it("etiqueta cada tramo con su peso", () => {
+    expect(dewormSizeRangeLabel("S")).toBe("3.6–7.5 kg");
+    expect(dewormSizeRangeLabel("M")).toBe("7.6–15 kg");
+    expect(dewormSizeRangeLabel("L")).toBe("15.1–30 kg");
+    expect(dewormSizeRangeLabel("XL")).toBe("30.1–60 kg");
+  });
+
+  it("la tabla y dewormSizeFromWeight no divergen", () => {
+    for (const { size, minKg, maxKg } of DEWORM_RANGES_KG) {
+      expect(dewormSizeFromWeight(minKg)).toBe(size);
+      expect(dewormSizeFromWeight(maxKg)).toBe(size);
+    }
+  });
+
+  it("deja fuera lo que no tiene tarifa", () => {
+    expect(dewormSizeFromWeight(3.5)).toBeNull();
+    expect(dewormSizeFromWeight(7.55)).toBeNull(); // hueco entre S y M
+    expect(dewormSizeFromWeight(60.1)).toBeNull();
+    expect(dewormSizeFromWeight(null)).toBeNull();
   });
 });
 

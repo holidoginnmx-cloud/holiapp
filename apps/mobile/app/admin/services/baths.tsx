@@ -25,6 +25,11 @@ import { ErrorState } from "@/components/ErrorState";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
+import {
+  dewormSizeRangeLabel,
+  sizeRangeLabel,
+  type SizeKey,
+} from "@holidoginn/shared/src/pricing";
 
 const SIZE_LABELS: Record<string, string> = {
   S: "Chico",
@@ -32,6 +37,21 @@ const SIZE_LABELS: Record<string, string> = {
   L: "Grande",
   XL: "Extra grande",
 };
+
+/**
+ * Encabezado de cada tramo: "Chico (3.6–7.5 kg)". Se pide el peso, no la letra,
+ * porque el equipo cotiza por teléfono con el peso del perro en la mano.
+ * El desparasitante tiene su PROPIA escala de peso (DEWORM_RANGES_KG), distinta
+ * a la del baño y las horas extra — por eso el rango depende del servicio.
+ */
+function sizeHeading(serviceCode: string, size: string): string {
+  const label = SIZE_LABELS[size] ?? size;
+  const range =
+    serviceCode === "DEWORMING"
+      ? dewormSizeRangeLabel(size as SizeKey)
+      : sizeRangeLabel(size as SizeKey);
+  return range ? `${label} (${range})` : label;
+}
 
 function describeVariant(v: { deslanado: boolean; corte: boolean }): string {
   const parts: string[] = ["Baño"];
@@ -128,9 +148,7 @@ export default function AdminBaths() {
 
             return (
               <View key={size} style={styles.sizeGroup}>
-                <Text style={styles.sizeLabel}>
-                  {SIZE_LABELS[size] ?? size} ({size})
-                </Text>
+                <Text style={styles.sizeLabel}>{sizeHeading(service.code, size)}</Text>
                 {sizeVariants.map((v) => (
                   <View key={v.id} style={styles.variantRow}>
                     <View style={styles.variantInfo}>
@@ -149,7 +167,7 @@ export default function AdminBaths() {
                         setEditModal({
                           variantId: v.id,
                           currentPrice: v.price,
-                          label: `${describeVariant(v)} — ${SIZE_LABELS[size] ?? size}`,
+                          label: `${describeVariant(v)} — ${sizeHeading(service.code, size)}`,
                         });
                         setNewPrice(String(v.price));
                       }}
@@ -293,10 +311,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   sizeLabel: {
+    // Sin uppercase: el rango de peso viene en la etiqueta y "3.6–7.5 KG" se lee
+    // peor que "3.6–7.5 kg".
     fontSize: 13,
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textTertiary,
-    textTransform: "uppercase",
     marginBottom: 6,
   },
   variantRow: {

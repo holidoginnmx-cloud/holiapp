@@ -34,6 +34,25 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-03-i",
+    title: "Los precios ya dicen los kilos, no la talla",
+    items: [
+      {
+        icon: "pricetags-outline",
+        title: "Servicios y precios: cada tramo con su rango de peso",
+        body:
+          "En «Servicios y precios» los precios salían por talla (Chico (S), " +
+          "Mediano (M)…), y para cotizar por teléfono lo que tienes a la mano " +
+          "es el peso del perro, no la letra. Ahora cada tramo dice los kilos: " +
+          "«Chico (≤ 5 kg)», «Mediano (5–15 kg)». Ojo con el desparasitante: " +
+          "tiene su propia escala («Chico (3.6–7.5 kg)»), distinta a la del " +
+          "baño, así que revisa el rango del servicio que estás cotizando.",
+        route: "/admin/services/baths",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-h",
     title: "Los arreglos ya no tardan días en llegarte",
     items: [
