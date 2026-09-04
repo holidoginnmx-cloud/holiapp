@@ -22,7 +22,17 @@ import { invalidateAuthCache } from "../middleware/auth";
 
 type ReservationStatusType = import("@holidoginn/db").ReservationStatus;
 
-/** Namespace del advisory lock de cupo de HOSPEDAJE (42 = baños, 43 = guardería). */
+/**
+ * Namespace del advisory lock de cupo de HOSPEDAJE (42 = baños, 43 = guardería).
+ *
+ * OJO al usarlo en un `$executeRaw`: va como PARÁMETRO, y Prisma manda los
+ * enteros de JS como int8/bigint. Como `hashtext()` devuelve int4, Postgres
+ * acaba buscando `pg_advisory_xact_lock(bigint, integer)`, que NO EXISTE (solo
+ * hay `(bigint)` y `(integer, integer)`) y tumba la transacción con un 42883.
+ * Por eso el `::int` de abajo es OBLIGATORIO: no es cosmético. Las llamadas de
+ * baños y guardería no lo necesitan porque escriben el 42/43 literal dentro del
+ * SQL, donde Postgres ya lo lee como int4.
+ */
 export const ROOM_LOCK_NAMESPACE = 44;
 
 /**
@@ -60,7 +70,8 @@ export async function lockRoomsAndVerifyCapacity(
   }
   const roomIds = Array.from(adding.keys()).sort();
   for (const roomId of roomIds) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK_NAMESPACE}, hashtext(${roomId}))`;
+    // El `::int` es obligatorio, ver ROOM_LOCK_NAMESPACE.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ROOM_LOCK_NAMESPACE}::int, hashtext(${roomId}))`;
   }
   for (const roomId of roomIds) {
     const room = await tx.room.findUnique({

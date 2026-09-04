@@ -34,6 +34,26 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-04",
+    title: "Ya se pueden volver a registrar estancias",
+    items: [
+      {
+        icon: "bed-outline",
+        title: "Las estancias volvieron a guardarse",
+        body:
+          "Desde el 2 de septiembre, al guardar una reservación de HOSPEDAJE " +
+          "salía «No pudimos conectar con Holidog Inn. El servidor no " +
+          "responde», y no era la señal ni el internet: era un error nuestro " +
+          "al apartar el cuarto. Ya está arreglado. Los baños, la guardería y " +
+          "el domicilio nunca se vieron afectados. Si en estos dos días una " +
+          "reservación de hotel se quedó sin guardar, hay que capturarla de " +
+          "nuevo: ninguna alcanzó a registrarse.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-03-i",
     title: "Los precios ya dicen los kilos, no la talla",
     items: [

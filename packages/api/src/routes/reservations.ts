@@ -949,16 +949,19 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       return { assignments };
     };
 
-    // Sin cuarto y con el PaymentIntent YA cobrado: antes se respondía 4xx y
-    // el dinero quedaba en Stripe sin reserva, sin fila en `payments`, sin
-    // reembolso y sin aviso (solo un log). Ahora se devuelve el cobro de
-    // inmediato (idempotente por PI) y se avisa a los admins; si el reembolso
-    // falla, el aviso lo dice para que se haga a mano en Stripe.
-    const failWithoutRoom = async (message: string) => {
-      if (!paymentIntent) {
-        return reply.status(409).send({ error: message, code: "ROOM_TAKEN" });
-      }
-      const piId = paymentIntent.id;
+    // Devuelve un cobro que se quedó sin reserva y avisa a los admins.
+    // Idempotente por PaymentIntent: si la petición se reintenta, Stripe no
+    // genera un segundo reembolso.
+    //
+    // `cause` separa los dos motivos por los que un cobro puede quedar
+    // huérfano, porque al admin no le sirve el mismo aviso: si se acabó el
+    // cupo no hay nada que arreglar, si reventó la transacción hay un bug que
+    // alguien tiene que mirar.
+    const refundOrphanCharge = async (
+      pi: Stripe.PaymentIntent,
+      cause: "room-taken" | "tx-failed",
+    ): Promise<boolean> => {
+      const piId = pi.id;
       let refunded = false;
       try {
         await stripe.refunds.create(
@@ -968,32 +971,54 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         refunded = true;
       } catch (e) {
         request.log.error(
-          { tag: "multi-orphan-refund-failed", ownerId, paymentIntentId: piId, err: String(e) },
+          { tag: "multi-orphan-refund-failed", ownerId, paymentIntentId: piId, cause, err: String(e) },
           "[reservas] no se pudo reembolsar el cobro sin reserva",
         );
       }
       request.log.warn(
-        { tag: "multi-orphan-charge", ownerId, paymentIntentId: piId, refunded },
-        "[reservas] cobro sin reserva por falta de cuarto",
+        { tag: "multi-orphan-charge", ownerId, paymentIntentId: piId, cause, refunded },
+        "[reservas] cobro sin reserva",
       );
       try {
         const admins = await prisma.user.findMany({
           where: { role: "ADMIN" },
           select: { id: true },
         });
-        const amount = (paymentIntent.amount_received ?? paymentIntent.amount) / 100;
+        const amount = (pi.amount_received ?? pi.amount) / 100;
+        const motivo =
+          cause === "room-taken"
+            ? "el cuarto se ocupó antes de crear la reserva"
+            : "falló la creación de la reserva por un error del sistema";
+        const titulo = refunded
+          ? cause === "room-taken"
+            ? "Cobro devuelto: se acabó el cupo"
+            : "Cobro devuelto: falló crear la reserva"
+          : "Cobro sin reserva: revisar en Stripe";
         await notifyUsers(prisma, admins.map((a) => a.id), {
           type: "STAFF_ALERT",
-          title: refunded ? "Cobro devuelto: se acabó el cupo" : "Cobro sin reserva: revisar en Stripe",
+          title: titulo,
           body: refunded
-            ? `Un cliente pagó $${amount.toFixed(2)} por la app pero el cuarto se ocupó antes de crear la reserva. El pago ya se reembolsó (${piId}).`
-            : `Un cliente pagó $${amount.toFixed(2)} por la app, el cuarto se ocupó antes de crear la reserva y el reembolso automático falló. Devuélvelo en Stripe: ${piId}.`,
-          data: { paymentIntentId: piId, refunded },
+            ? `Un cliente pagó $${amount.toFixed(2)} por la app pero ${motivo}. El pago ya se reembolsó (${piId}).`
+            : `Un cliente pagó $${amount.toFixed(2)} por la app, ${motivo} y el reembolso automático falló. Devuélvelo en Stripe: ${piId}.`,
+          data: { paymentIntentId: piId, refunded, cause },
           priority: "high",
         });
       } catch (e) {
         request.log.error({ err: String(e) }, "[reservas] no se pudo avisar a los admins del cobro sin reserva");
       }
+      return refunded;
+    };
+
+    // Sin cuarto y con el PaymentIntent YA cobrado: antes se respondía 4xx y
+    // el dinero quedaba en Stripe sin reserva, sin fila en `payments`, sin
+    // reembolso y sin aviso (solo un log). Ahora se devuelve el cobro de
+    // inmediato (idempotente por PI) y se avisa a los admins; si el reembolso
+    // falla, el aviso lo dice para que se haga a mano en Stripe.
+    const failWithoutRoom = async (message: string) => {
+      if (!paymentIntent) {
+        return reply.status(409).send({ error: message, code: "ROOM_TAKEN" });
+      }
+      const refunded = await refundOrphanCharge(paymentIntent, "room-taken");
       return reply.status(409).send({
         error:
           message +
@@ -1417,7 +1442,34 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       });
       break;
     } catch (err) {
-      if (!(err instanceof RoomTakenError)) throw err;
+      // Cualquier fallo que NO sea "se acabó el cupo" es un error del sistema
+      // (un raw query mal tipado, la DB caída, un timeout de la transacción).
+      // Antes se relanzaba tal cual: el manejador global respondía 500 y el
+      // cobro se quedaba en Stripe sin reserva, sin reembolso y sin que nadie
+      // se enterara — que es justo lo que pasó con el advisory lock de cuartos
+      // (42883) entre el 2 y el 4 de septiembre de 2026. El dinero del cliente
+      // no se queda ahí por un bug nuestro: se devuelve igual que cuando se
+      // acaba el cupo, y el aviso al admin dice que fue un error del sistema.
+      if (!(err instanceof RoomTakenError)) {
+        request.log.error(
+          {
+            tag: "multi-reservation-tx-failed",
+            ownerId,
+            paymentIntentId: stripePaymentIntentId,
+            attempt,
+            err,
+          },
+          "[reservas] falló la transacción que crea las reservas",
+        );
+        if (!paymentIntent) throw err;
+        const refunded = await refundOrphanCharge(paymentIntent, "tx-failed");
+        return reply.status(500).send({
+          error: refunded
+            ? "No pudimos completar tu reservación por un problema nuestro. Tu pago se devolvió automáticamente; el reembolso aparece en tu tarjeta en unos días."
+            : "No pudimos completar tu reservación por un problema nuestro. Tu pago quedó registrado y el equipo te contactará para devolverlo.",
+          code: refunded ? "RESERVATION_FAILED_REFUNDED" : "RESERVATION_FAILED_UNREFUNDED",
+        });
+      }
       request.log.warn(
         { tag: "multi-room-taken", ownerId, room: err.roomName, paymentIntentId: stripePaymentIntentId, attempt },
         "[reservas] el cuarto se ocupó entre la búsqueda y la transacción",

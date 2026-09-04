@@ -15,7 +15,7 @@ import { ApiError, ApiNetworkError, ApiTimeoutError } from "@/lib/api/client";
 
 /** Mensajes que no dicen nada y hay que sustituir por uno útil. */
 const OPAQUE_MESSAGE =
-  /^(error \d{3}|bad request|unauthorized|forbidden|not found|internal server error|too many requests|request failed.*)$/i;
+  /^(error \d{3}|bad request|unauthorized|forbidden|not found|internal server error|error interno del servidor|too many requests|request failed.*)$/i;
 
 /** Errores de red que llegan como `TypeError` del fetch nativo. */
 const NETWORK_MESSAGE =
@@ -103,8 +103,17 @@ export function mensajeDeError(error: unknown, respaldo?: string): string {
   }
 
   // Servidor caído o roto: distinto de un dato mal capturado.
+  //
+  // Un 5xx casi siempre trae el genérico del manejador global ("Error interno
+  // del servidor"), que no le dice nada a nadie, y por eso se sustituye. Pero
+  // algunos 5xx SÍ vienen explicados y son justo los que más importa leer: el
+  // que avisa que la reserva no se pudo crear y que el cobro YA SE DEVOLVIÓ
+  // (RESERVATION_FAILED_REFUNDED). Tapar eso con "el servidor no responde"
+  // hacía que el cliente creyera que perdió su dinero y volviera a pagar.
   if ((status !== undefined && status >= 500) || /^error 5\d\d$/i.test(message)) {
-    return "No pudimos conectar con Holidog Inn. El servidor no responde; intenta de nuevo en un momento.";
+    return esMensajeUtil(message)
+      ? message
+      : "No pudimos conectar con Holidog Inn. El servidor no responde; intenta de nuevo en un momento.";
   }
 
   // 4xx con explicación del API (en español): es el mensaje más útil que hay.
@@ -118,8 +127,17 @@ export function mensajeDeError(error: unknown, respaldo?: string): string {
  * menos separa "no hay internet" de "el dato está mal".
  */
 export function tituloDeError(error: unknown, respaldo = "No se pudo completar"): string {
-  if (esErrorDeConexion(error)) return "Sin conexión";
   const status = (error as { status?: unknown } | null)?.status;
+  const message = (error as { message?: unknown } | null)?.message;
+  // Un 5xx que viene EXPLICADO no es un problema de red del usuario: coronarlo
+  // con "Sin conexión" contradice al mensaje (que puede estar diciéndole que su
+  // cobro ya se devolvió) y lo manda a revisar su wifi para nada.
+  const cincoConExplicacion =
+    typeof status === "number" &&
+    status >= 500 &&
+    typeof message === "string" &&
+    esMensajeUtil(message);
+  if (!cincoConExplicacion && esErrorDeConexion(error)) return "Sin conexión";
   if (status === 401) return "Tu sesión expiró";
   if (status === 403) return "Sin permiso";
   if (status === 429) return "Espera un momento";
