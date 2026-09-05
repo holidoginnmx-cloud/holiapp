@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ReservationCard } from "./ReservationCard";
-import { formatDayLong } from "@/lib/format";
+import { formatDayLong, utcDayKey } from "@/lib/format";
 
 // ─── Status → dot color ──────────────────────────────────
 const STATUS_DOT: Record<string, string> = {
@@ -80,11 +80,19 @@ function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function dateInRange(day: Date, checkIn: Date, checkOut: Date): boolean {
-  const d = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-  const ci = new Date(checkIn.getFullYear(), checkIn.getMonth(), checkIn.getDate()).getTime();
-  const co = new Date(checkOut.getFullYear(), checkOut.getMonth(), checkOut.getDate()).getTime();
-  return d >= ci && d <= co;
+/**
+ * ¿Cae el día `dayKey` dentro de la estadía? Los tres son "YYYY-MM-DD", que se
+ * comparan directo porque el formato es lexicográfico.
+ *
+ * Las keys de la estadía DEBEN venir de `utcDayKey`: `checkIn`/`checkOut` se
+ * guardan como medianoche UTC del día calendario (`toUTCDayISO`), así que
+ * leerlos con los getters locales corría toda la estadía un día hacia atrás en
+ * cualquier zona al oeste de UTC (Hermosillo es UTC-7) y la reservación
+ * desaparecía del día de SALIDA: la tarjeta decía "5 sep" (ella sí formatea en
+ * UTC) y el calendario la pintaba el 4.
+ */
+function dateInRange(dayKey: string, ciKey: string, coKey: string): boolean {
+  return dayKey >= ciKey && dayKey <= coKey;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -143,12 +151,11 @@ export function CalendarView({
       }
       // Hospedaje: aparece en todos los días entre checkIn y checkOut.
       if (!r.checkIn || !r.checkOut) continue;
-      const ci = new Date(r.checkIn);
-      const co = new Date(r.checkOut);
+      const ciKey = utcDayKey(r.checkIn);
+      const coKey = utcDayKey(r.checkOut);
       for (let d = 1; d <= daysInMonth; d++) {
-        const day = new Date(year, month, d);
-        if (dateInRange(day, ci, co)) {
-          const key = toDateKey(day);
+        const key = toDateKey(new Date(year, month, d));
+        if (dateInRange(key, ciKey, coKey)) {
           if (!map[key]) map[key] = [];
           map[key].push(r);
         }

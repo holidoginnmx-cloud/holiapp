@@ -34,6 +34,26 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-05",
+    title: "El calendario ya pone las estancias en sus días reales",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "La estancia ya aparece el día que el perro se va",
+        body:
+          "En el calendario, cada hospedaje salía pintado un día ANTES de lo " +
+          "que dice su tarjeta: si un perro entraba el 1 y salía el 5 de " +
+          "septiembre, el calendario lo mostraba del 31 de agosto al 4, y al " +
+          "picar el 5 —el día que se va— no aparecía su tarjeta. Ya quedó: los " +
+          "días del calendario coinciden con las fechas de la reservación, " +
+          "incluido el de salida. Los baños y la guardería siempre estuvieron " +
+          "en su día correcto; esto era solo de hospedaje.",
+        route: "/(admin)/reservations",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-04",
     title: "Ya se pueden volver a registrar estancias",
     items: [
