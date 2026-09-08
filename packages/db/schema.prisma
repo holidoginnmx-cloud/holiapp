@@ -1227,6 +1227,11 @@ model BathConfig {
   lastStartHour              Int?
   // Limpieza/preparación entre perro y perro.
   bufferMinutes              Int      @default(0)
+  // Días de la semana en que la estética NO abre (0 = domingo … 6 = sábado, la
+  // numeración de getUTCDay de JS). Vacío = abre todos los días. Distinto de
+  // isActive: esto cierra el lunes, aquello apaga la agenda completa.
+  // El día se resuelve en hora del HOTEL (UTC-7), nunca en la del servidor.
+  closedWeekdays             Int[]    @default([])
   updatedAt                  DateTime @updatedAt
 
   @@map("bath_config")

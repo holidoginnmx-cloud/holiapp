@@ -15,10 +15,13 @@ import {
   MAX_BATH_DURATION_MIN,
   SlotReason,
   buildStartCandidates,
+  closedDayMessage,
   dayRangeUtc,
   endOf,
   evaluateStart,
+  isClosedWeekday,
   isValidDateYMD,
+  weekdayOfYMD,
 } from "./bathAvailability";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -37,6 +40,8 @@ export type BathConfigRow = {
   defaultBathDurationMinutes: number;
   lastStartHour: number | null;
   bufferMinutes: number;
+  /** Días cerrados (0 = domingo … 6 = sábado). */
+  closedWeekdays: number[];
   updatedAt: Date;
 };
 
@@ -70,6 +75,12 @@ export function toScheduleCfg(row: BathConfigRow): BathScheduleCfg {
     lastStartHour: row.lastStartHour,
     bufferMinutes: row.bufferMinutes ?? 0,
     maxConcurrentBaths: row.maxConcurrentBaths || 1,
+    // Se normaliza aquí, una sola vez, para que el motor pueda asumir días
+    // válidos y sin repetir: la columna es un array libre y puede traer basura
+    // de una edición vieja o de un cliente que mande un 7.
+    closedWeekdays: [...new Set(row.closedWeekdays ?? [])]
+      .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+      .sort((a, b) => a - b),
     isActive: row.isActive,
   };
 }
@@ -362,6 +373,16 @@ export type SlotsPayload = {
    * reciben siempre `false` y la misma rejilla de antes.
    */
   durationResolved: boolean;
+  /**
+   * `true` = ese día de la semana la estética no abre. Se manda aparte de
+   * `slots: []` para que la pantalla pueda decir POR QUÉ en vez de dejar un
+   * hueco. Opcional a propósito: los clientes que no lo conocen (builds sin
+   * OTA) ven la lista vacía y su mensaje genérico, igual que con la agenda
+   * apagada.
+   */
+  closedDay?: boolean;
+  /** "Los lunes no hay servicio de estética." — listo para pintar. */
+  closedReason?: string;
   slots: SlotDto[];
 };
 
@@ -383,6 +404,22 @@ export async function buildSlotsPayload(
   const { durationMinutes, resolved } = await resolveBathDuration(prisma, q, cfg);
   if (!cfg.isActive) {
     return { config, durationMinutes, durationResolved: resolved, slots: [] };
+  }
+
+  // Día cerrado: no hay rejilla que construir ni ocupación que consultar. Se
+  // devuelve el motivo para que la pantalla lo diga en vez de mostrar un hueco.
+  if (isValidDateYMD(dateYMD)) {
+    const weekday = weekdayOfYMD(dateYMD);
+    if (isClosedWeekday(cfg, weekday)) {
+      return {
+        config,
+        durationMinutes,
+        durationResolved: resolved,
+        closedDay: true,
+        closedReason: closedDayMessage(weekday),
+        slots: [],
+      };
+    }
   }
 
   const [candidates, busy] = await Promise.all([

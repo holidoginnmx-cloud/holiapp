@@ -20,7 +20,9 @@ import {
   evaluateStart,
   formatDuration,
   localMinutesOfDay,
+  localWeekday,
   localYMD,
+  weekdayOfYMD,
   ymdAtLocalMinutes,
 } from "../lib/bathAvailability";
 
@@ -36,6 +38,7 @@ const cfg: BathScheduleCfg = {
   lastStartHour: null,
   bufferMinutes: 0,
   maxConcurrentBaths: 1,
+  closedWeekdays: [],
   isActive: true,
 };
 
@@ -225,6 +228,42 @@ console.log("\n8. Formato de duraciones");
   check("90 min → 1 h 30 min", formatDuration(90) === "1 h 30 min");
   check("120 min → 2 h", formatDuration(120) === "2 h");
   check("45 min → 45 min", formatDuration(45) === "45 min");
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+console.log("\n9. Días de la semana cerrados (\"los lunes no hay baños\")");
+// ───────────────────────────────────────────────────────────────────────────
+{
+  // DIA (2026-08-10) es lunes; 2026-08-11 martes y 2026-08-09 domingo.
+  const sinLunes: BathScheduleCfg = { ...cfg, closedWeekdays: [1] };
+  const MARTES = "2026-08-11";
+  const DOMINGO = "2026-08-09";
+
+  check("el lunes se numera como 1", weekdayOfYMD(DIA) === 1);
+  check(
+    "el lunes cerrado no ofrece ni un horario",
+    buildStartCandidates(DIA, sinLunes, 60).length === 0
+  );
+  check(
+    "el martes sigue completo",
+    buildStartCandidates(MARTES, sinLunes, 60).length > 0
+  );
+
+  const v = evaluateStart(ymdAtLocalMinutes(DIA, 10 * 60), 60, sinLunes, [], AHORA);
+  check(
+    "y agendarlo a mano se rechaza con el motivo correcto",
+    !v.ok && v.reason === "CLOSED_DAY" && v.message === "Los lunes no hay servicio de estética.",
+    v.ok ? "lo aceptó" : v.message
+  );
+
+  // El corrimiento de zona: la última cita del domingo ya es lunes en UTC.
+  const domingoTarde = ymdAtLocalMinutes(DOMINGO, 17 * 60);
+  check(
+    "cerrar el lunes NO mata la última cita del domingo",
+    localWeekday(domingoTarde) === 0 &&
+      evaluateStart(domingoTarde, 60, sinLunes, [], AHORA).ok,
+    `en UTC ese instante es ${domingoTarde.toISOString()} (lunes)`
+  );
 }
 
 console.log(`\n${fallos === 0 ? "✅" : "❌"} ${pasadas} verificaciones pasaron, ${fallos} fallaron.\n`);

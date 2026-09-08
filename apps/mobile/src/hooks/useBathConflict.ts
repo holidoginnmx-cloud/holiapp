@@ -19,7 +19,9 @@ export function formatDurationMin(min: number): string {
  * conflicto para el equipo, o null si el horario es viable.
  *
  * Se compara contra el horario exacto de la rejilla; si el operador eligió
- * una hora fuera de ella, se revisa el traslape con los slots ocupados.
+ * una hora fuera de ella, se revisa el traslape con los slots ocupados. Los
+ * días en que la estética no abre se atajan aparte: ahí la rejilla viene
+ * vacía y no hay nada contra qué comparar.
  * El pasado también cuenta como conflicto (se avisa y se deja forzar: el
  * equipo registra baños que ya ocurrieron).
  *
@@ -32,12 +34,20 @@ export function useBathConflict(
 ): string | null {
   return useMemo(() => {
     if (!bathSlots || !appointmentAt) return null;
+    // Día cerrado: la rejilla viene vacía, así que el respaldo de más abajo
+    // ("¿pasa del último viable?") diría que cabe por falta de evidencia. Se
+    // corta aquí, y va antes que el pasado porque el problema es el DÍA.
+    if (bathSlots.closedDay) {
+      return bathSlots.closedReason ?? "Ese día la estética no abre.";
+    }
     const t = appointmentAt.getTime();
     if (t <= Date.now()) return "Ese horario ya pasó.";
     const exact = bathSlots.slots.find((s) => new Date(s.startUtc).getTime() === t);
     if (exact) {
       if (exact.available) return null;
-      return exact.reason === "CAPACITY"
+      return exact.reason === "CLOSED_DAY"
+        ? (bathSlots.closedReason ?? "Ese día la estética no abre.")
+        : exact.reason === "CAPACITY"
         ? "Se encima con otra cita."
         : exact.reason === "CLOSES_TOO_LATE"
           ? "No alcanza a terminar antes de que salga la estilista."

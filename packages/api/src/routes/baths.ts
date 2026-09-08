@@ -254,6 +254,13 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           error: "La hora de la última cita debe estar dentro del horario de atención",
         });
       }
+      // Cerrar los siete días es apagar la agenda; para eso está `isActive`,
+      // que además es lo que el resto del sistema sabe interpretar.
+      if (next.closedWeekdays.length >= 7) {
+        return reply.status(400).send({
+          error: "No se pueden cerrar los 7 días; apaga la agenda con «Agenda activa»",
+        });
+      }
       const updated = await prisma.bathConfig.update({
         where: { id: BATH_CONFIG_ID },
         data: parsed.data,
