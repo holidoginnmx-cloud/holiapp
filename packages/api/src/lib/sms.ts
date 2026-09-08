@@ -103,3 +103,23 @@ export async function sendSms(args: { to: string; body: string }): Promise<SmsRe
 export function claimCodeSms(d: { code: string; minutes: number }): string {
   return `HolidogInn: tu codigo para vincular tu cuenta es ${d.code}. Vence en ${d.minutes} min. Si no lo pediste, ignora este mensaje.`;
 }
+
+/**
+ * ¿Hay proveedor de SMS configurado ahora mismo?
+ *
+ * No basta con mirar si el envío falla: la pantalla ofrece "mejor mándenmelo
+ * por SMS" como canal alterno ANTES de intentar nada. Sin esta comprobación,
+ * con Twilio apagado le ofreceríamos al cliente un canal inexistente y, al
+ * pulsarlo, le llegaría otro correo — desconcertante y sin arreglo a la vista.
+ *
+ * Se lee del entorno en cada llamada, a propósito: así encender el SMS es
+ * poner las variables y reiniciar, sin desplegar código.
+ */
+export function smsConfigurado(): boolean {
+  if (process.env.SMS_ENABLED === "0") return false;
+  return Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      (process.env.TWILIO_SMS_FROM || process.env.TWILIO_MESSAGING_SERVICE_SID),
+  );
+}

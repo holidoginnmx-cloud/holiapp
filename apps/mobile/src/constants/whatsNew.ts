@@ -35,47 +35,47 @@ export type WhatsNewRelease = {
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
     id: "2026-09-08",
-    title: "Los clientes de siempre ya pueden vincularse solos, por SMS",
+    title: "Ahora ustedes pueden vincular la ficha de un cliente de siempre",
     items: [
       {
-        icon: "chatbox-ellipses-outline",
-        title: "El teléfono de la ficha ahora vale para vincular la cuenta",
+        icon: "link-outline",
+        title: "Configuración → «Vincular fichas»",
         body:
-          "Cuando un cliente de toda la vida instala la app y busca su ficha, " +
-          "el código de verificación le llega por SMS al teléfono que ya tiene " +
-          "registrado (antes solo por correo, y 8 de cada 10 fichas no tienen " +
-          "correo: esos clientes acababan escribiéndoles a ustedes para que se " +
-          "los vincularan a mano). Si la ficha no trae teléfono usable, el " +
-          "cliente sigue viendo el botón de WhatsApp y lo vinculan ustedes.",
-        route: "/(admin)/clients",
-        roles: ["ADMIN", "STAFF"],
+          "Cuando un cliente de toda la vida instala la app, tiene que " +
+          "encontrar su ficha para no empezar de cero. El problema: el código " +
+          "de verificación se manda por correo, y 8 de cada 10 fichas no " +
+          "tienen uno. Esos clientes veían «escríbenos por WhatsApp» y ustedes " +
+          "lo resolvían a mano, sin ninguna herramienta. Ahora el cliente lo " +
+          "pide desde la app, les llega el aviso, y ahí ven quién lo pidió, " +
+          "con qué datos se buscó y qué mascotas coinciden: marcan las suyas y " +
+          "listo. Si no aparece ninguna, pueden buscarla por nombre.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "shield-checkmark-outline",
+        title: "Antes de aprobar: asegúrense de que sí es esa persona",
+        body:
+          "Vincular una ficha le entrega a esa cuenta el historial, las " +
+          "reservas, las fotos y el saldo del cliente. La app ya no puede " +
+          "comprobar quién es (justo por eso llega a ustedes), así que la " +
+          "verificación son ustedes: si no reconocen el nombre o algo no " +
+          "cuadra, háblenle antes de aprobar. Solo el ADMIN puede aprobar, y " +
+          "queda registrado quién lo hizo.",
+        roles: ["ADMIN"],
       },
       {
         icon: "call-outline",
-        title: "Por eso: captura SIEMPRE el teléfono, y con lada si es de fuera",
+        title: "Capturen SIEMPRE el teléfono, y con lada si el cliente es de fuera",
         body:
-          "Al dar de alta un cliente, el teléfono es opcional pero es lo que " +
-          "le va a permitir entrar solo a la app. Escríbelo a 10 dígitos. Y si " +
-          "el cliente es de otro país, ponle su lada (+1 602…): un número " +
-          "extranjero sin lada se toma como mexicano, y el código se le " +
-          "mandaría a otra persona.",
+          "Al dar de alta un cliente el teléfono es opcional, pero es lo que " +
+          "le va a permitir entrar solo a la app: ya está listo el envío del " +
+          "código por SMS y se encenderá en cuanto quede la contratación del " +
+          "servicio de mensajes. Escríbanlo a 10 dígitos. Y si el cliente es " +
+          "de otro país, pónganle su lada (+1 602…): un número extranjero sin " +
+          "lada se toma como mexicano y el código acabaría en otro teléfono.",
         route: "/admin/users/create",
         roles: ["ADMIN", "STAFF"],
-      },
-      {
-        icon: "link-outline",
-        title: "Y si aun así no se puede: «Vincular fichas»",
-        body:
-          "Hay clientes cuya ficha no tiene NI correo ni un teléfono al que se " +
-          "le pueda mandar un código. Antes la app les decía «escríbenos por " +
-          "WhatsApp» y ustedes lo resolvían a mano sin herramienta. Ahora el " +
-          "cliente pide la vinculación desde la app, les llega el aviso, y en " +
-          "Configuración → Vincular fichas ven quién lo pidió, con qué se buscó " +
-          "y qué mascotas coinciden: marcan las suyas y listo. Ojo: vincular le " +
-          "da acceso al historial y al saldo de esa ficha, así que asegúrense " +
-          "de que de verdad es esa persona antes de aprobar.",
-        route: "/admin/claim-requests",
-        roles: ["ADMIN"],
       },
     ],
   },

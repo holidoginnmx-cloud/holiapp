@@ -28,7 +28,7 @@ import {
   verifyChallenge,
 } from "../lib/claimChallenge";
 import { claimCodeTemplate, emailConfigurado, sendEmail } from "../lib/email";
-import { claimCodeSms, sendSms } from "../lib/sms";
+import { claimCodeSms, sendSms, smsConfigurado } from "../lib/sms";
 import { equipoActivoIds, notifyUsers } from "../lib/notify";
 
 // Correos de walk-in que crea el equipo (no son un buzón real).
@@ -230,7 +230,11 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       // La app en tienda (v:2) espera `channel:"email"`: si le devolviéramos
       // "sms" pagaríamos el mensaje y ella igual mostraría "no tiene correo".
       // Con v:2 se conserva exactamente el comportamiento de antes.
-      const puedeSms = v >= 3;
+      // `smsConfigurado()` y no solo la versión: sin proveedor, ofrecer el SMS
+      // como canal alterno mandaría al cliente a pulsar un botón que le
+      // devuelve otro correo. Sin él, el comportamiento es exactamente el de
+      // antes de esta entrega, y encenderlo es poner las variables.
+      const puedeSms = v >= 3 && smsConfigurado();
       const smsTarget = puedeSms ? pickSmsTarget(owners, phone) : ({ ok: false, reason: "no-phone" } as const);
       // `sendEmail` traga sus errores y devuelve void, así que sin esta
       // comprobación marcaríamos el correo como enviado cuando ni siquiera hay

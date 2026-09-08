@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { claimCodeSms, sendSms } from "./sms";
+import { claimCodeSms, sendSms, smsConfigurado } from "./sms";
 
 const ENV = { ...process.env };
 
@@ -152,5 +152,38 @@ describe("claimCodeSms", () => {
     expect(txt).toContain("10 min");
     // "codigo" + 6 dígitos seguidos = lo que busca el autofill de iOS.
     expect(txt).toMatch(/codigo[^0-9]*483920/);
+  });
+});
+
+describe("smsConfigurado", () => {
+  it("es false sin credenciales: el canal alterno no se puede ofrecer", () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    delete process.env.TWILIO_SMS_FROM;
+    delete process.env.TWILIO_MESSAGING_SERVICE_SID;
+    delete process.env.SMS_ENABLED;
+    expect(smsConfigurado()).toBe(false);
+  });
+
+  it("es false si faltan credenciales a medias", () => {
+    process.env.TWILIO_ACCOUNT_SID = "AC123";
+    delete process.env.TWILIO_AUTH_TOKEN;
+    process.env.TWILIO_SMS_FROM = "+15005550006";
+    expect(smsConfigurado()).toBe(false);
+  });
+
+  it("es true con las tres variables", () => {
+    process.env.TWILIO_ACCOUNT_SID = "AC123";
+    process.env.TWILIO_AUTH_TOKEN = "tok";
+    process.env.TWILIO_SMS_FROM = "+15005550006";
+    expect(smsConfigurado()).toBe(true);
+  });
+
+  it("el interruptor de pánico lo apaga aunque haya credenciales", () => {
+    process.env.TWILIO_ACCOUNT_SID = "AC123";
+    process.env.TWILIO_AUTH_TOKEN = "tok";
+    process.env.TWILIO_SMS_FROM = "+15005550006";
+    process.env.SMS_ENABLED = "0";
+    expect(smsConfigurado()).toBe(false);
   });
 });
