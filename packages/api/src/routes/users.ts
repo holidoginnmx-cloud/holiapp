@@ -16,6 +16,7 @@ import { alternateChannel, planChannel } from "../lib/claimChannel";
 import {
   claimPetsIntoAccount,
   ClaimUnavailableError,
+  ClaimDiscardError,
   ClaimForbiddenError,
 } from "../lib/userMerge";
 import {
@@ -382,13 +383,37 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         rows.map(async (r) => {
           // Sin requesterId la cuenta ya no existe (se consolidó), así que
           // no hay a quién vincular ni candidatos que calcular.
-          if (r.status !== "PENDING" || !r.requesterId) return { ...r, candidates: [] };
+          if (r.status !== "PENDING" || !r.requesterId) {
+            return { ...r, candidates: [], requesterPets: [] };
+          }
           const ids = await findLegacyCandidates(
             normalizePhone(r.typedPhone),
             r.typedEmail,
             r.requesterId,
           );
-          return { ...r, candidates: await candidatesPayload(ids) };
+          // Lo que YA registró en su cuenta nueva. El ADMIN necesita verlo:
+          // casi siempre es el mismo perro que está en la ficha, y sin esto
+          // vincularía a ciegas y le dejaría el perro duplicado. `reservas`
+          // dice si se puede descartar (con historial propio, no).
+          const suyas = await prisma.pet.findMany({
+            where: { ownerId: r.requesterId, isActive: true },
+            select: {
+              id: true,
+              name: true,
+              breed: true,
+              photoUrl: true,
+              _count: { select: { reservations: true } },
+            },
+            orderBy: { createdAt: "asc" },
+          });
+          return {
+            ...r,
+            candidates: await candidatesPayload(ids),
+            requesterPets: suyas.map(({ _count, ...p }) => ({
+              ...p,
+              reservas: _count.reservations,
+            })),
+          };
         }),
       );
     }
@@ -430,7 +455,10 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   // POST /admin/claim-requests/:id/approve — el equipo da fe de que la ficha
   // es suya. Reusa exactamente el mismo merge que el flujo con código
   // (claimPetsIntoAccount): lo que cambia es quién autoriza, no qué se hace.
-  fastify.post<{ Params: { id: string }; Body: { petIds?: string[] } }>(
+  fastify.post<{
+    Params: { id: string };
+    Body: { petIds?: string[]; discardPetIds?: string[] };
+  }>(
     "/admin/claim-requests/:id/approve",
     { preHandler: adminAuth },
     async (request, reply) => {
@@ -449,18 +477,6 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         return reply
           .status(409)
           .send({ error: "La cuenta que pidió ya no existe (puede que ya se haya vinculado)." });
-      }
-
-      // Misma precondición que el flujo con código: consolidar en la ficha
-      // legacy borraría lo que la cuenta nueva ya tuviera.
-      const [petCount, resCount] = await Promise.all([
-        prisma.pet.count({ where: { ownerId: fresh.id } }),
-        prisma.reservation.count({ where: { ownerId: fresh.id } }),
-      ]);
-      if (petCount > 0 || resCount > 0) {
-        return reply.status(409).send({
-          error: "Esa cuenta ya tiene mascotas o reservas propias; no se puede consolidar.",
-        });
       }
 
       const petIds = [
@@ -494,12 +510,21 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       }
 
       try {
+        // Mascotas que la propia cuenta nueva registró y que el ADMIN marcó
+        // como repetidas de las de la ficha. Se desactivan en el mismo merge
+        // para no dejar al cliente con el mismo perro dos veces.
+        const discardPetIds = [
+          ...new Set(
+            (request.body?.discardPetIds ?? []).filter((x) => typeof x === "string" && x),
+          ),
+        ];
         const merged = await claimPetsIntoAccount(
           prisma,
           fresh,
           petIds,
           allowedIds,
           solicitud.typedPhone,
+          discardPetIds,
         );
         // OJO con el orden y con los ids: `claimPetsIntoAccount` BORRA la
         // cuenta nueva y deja el historial bajo la ficha vieja, que hereda su
@@ -535,6 +560,12 @@ export default async function usersRoutes(fastify: FastifyInstance) {
             .status(409)
             .send({ error: "La ficha cambió mientras se vinculaba. Vuelve a intentar." });
         }
+        if (err instanceof ClaimDiscardError) {
+          return reply.status(409).send({
+            error:
+              "Esa mascota ya tiene reservas a su nombre, así que no se puede descartar. Vincula sin descartarla y júntalas después.",
+          });
+        }
         throw err;
       }
     }
@@ -542,7 +573,10 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
   // POST /admin/claim-requests/:id/reject — no era su ficha, o no se pudo
   // confirmar quién es. No se le manda push: si el equipo la rechaza es porque
-  // ya habló con esa persona, o porque el intento era ajeno.
+  // ya habló con esa persona, o porque el intento era ajeno. Sí lo verá la
+  // próxima vez que abra sus mascotas (`/users/claim/request/mine`), para que
+  // no se quede esperando indefinidamente algo que ya se resolvió — pero solo
+  // el hecho, nunca `resolution`, que es la nota interna del equipo.
   fastify.post<{ Params: { id: string }; Body: { reason?: string } }>(
     "/admin/claim-requests/:id/reject",
     { preHandler: adminAuth },
@@ -567,6 +601,37 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       );
     }
   );
+  // ────────────────────────────────────────────────────────────
+  //  GET /users/claim/request/mine — en qué va MI solicitud
+  //
+  //  Sin esto el cliente pedía la vinculación y se quedaba a ciegas: la
+  //  pantalla "¿Ya eres cliente?" se muestra UNA sola vez por cuenta (marca en
+  //  SecureStore), así que ni siquiera podía volver a ver su "Solicitud
+  //  enviada ✓". Si el equipo tardaba dos días, para él era indistinguible de
+  //  que nadie la hubiera recibido. Con esto la app puede decirle en qué va
+  //  desde donde sí va a estar: su lista de mascotas.
+  // ────────────────────────────────────────────────────────────
+  fastify.get("/users/claim/request/mine", { preHandler: [authMiddleware] }, async (request) => {
+    const ultima = await prisma.claimRequest.findFirst({
+      where: { requesterId: request.userId! },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        resolvedAt: true,
+        // `resolution` NO se expone: nació como nota INTERNA del rechazo ("no
+        // contestó", "sospechoso") y el equipo la escribe sabiendo que es
+        // suya. Mandársela al cliente cambiaría su audiencia sin avisarles.
+      },
+    });
+    // Una aprobada no se devuelve: al consolidarse la cuenta se BORRA, así que
+    // quien pregunta con esa sesión ya está viendo sus mascotas. Si apareciera,
+    // sería un aviso de algo que ya ocurrió.
+    if (!ultima || ultima.status === "APPROVED") return { request: null };
+    return { request: ultima };
+  });
+
   // ────────────────────────────────────────────────────────────
   //  POST /users/claim/request — "vincúlenme ustedes"
   //
@@ -693,18 +758,13 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const fresh = request.dbUser!;
 
-      // La cuenta actual debe ser nueva (sin historial) para no perder datos al
-      // consolidar en el registro legacy.
-      const [petCount, resCount] = await Promise.all([
-        prisma.pet.count({ where: { ownerId: fresh.id } }),
-        prisma.reservation.count({ where: { ownerId: fresh.id } }),
-      ]);
-      if (petCount > 0 || resCount > 0) {
-        return reply.status(409).send({
-          error:
-            "Tu cuenta ya tiene información registrada; escríbenos para vincularla.",
-        });
-      }
+      // Antes aquí se exigía que la cuenta fuera nueva (sin mascotas ni
+      // reservas) y si no, 409: "escríbenos para vincularla". Pero ese es el
+      // camino más natural del cliente —no encuentra su ficha, registra a su
+      // perro, y luego se vincula—, así que el candado le caía justo al que ya
+      // se había esforzado. Ahora `claimPetsIntoAccount` traslada lo suyo al
+      // registro consolidado. Puede quedar el mismo perro dos veces; eso se ve
+      // y se arregla, perder la vinculación no.
 
       const selectedPetIds = Array.isArray(request.body?.petIds)
         ? [

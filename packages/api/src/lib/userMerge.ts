@@ -18,6 +18,16 @@ export class ClaimForbiddenError extends Error {
   }
 }
 
+// Error tipado cuando se pide descartar una mascota de la cuenta nueva que ya
+// tiene reservas. Desactivarla dejaría su historial colgando de una ficha
+// invisible, así que se conserva y lo resuelve una persona. La ruta → 409.
+export class ClaimDiscardError extends Error {
+  constructor() {
+    super("Esa mascota ya tiene reservas: no se puede descartar.");
+    this.name = "ClaimDiscardError";
+  }
+}
+
 // Email walk-in autogenerado por el admin cuando el cliente no dejó correo.
 const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
 const isPlaceholderName = (n?: string | null): boolean =>
@@ -35,16 +45,31 @@ const isPlaceholderName = (n?: string | null): boolean =>
 //   3. Movemos las mascotas seleccionadas de los OTROS registros al primario,
 //      junto con sus reservas, para que su historial siga visible en la app.
 //   4. Desactivamos los registros secundarios que queden sin mascotas activas.
+//   5. ABSORBEMOS lo que la cuenta nueva hubiera acumulado antes de vincularse.
 //
-// PRECONDICIÓN (validada por la ruta antes de llamar): `fresh` no tiene mascotas
-// ni reservas. Todo ocurre en una transacción y re-validamos `clerkId IS NULL`
-// de los registros dentro de ella para cerrar la ventana de carrera.
+// Sobre el punto 5: antes esto era una PRECONDICIÓN —si `fresh` ya tenía
+// mascotas o reservas, la ruta devolvía 409 y no se podía vincular—. Y ese es
+// justo el camino más natural del cliente: no encuentra su ficha, registra a su
+// perro para poder usar la app, y DESPUÉS pide que lo vinculen. Se quedaba
+// atorado sin salida desde la app. Ahora se traslada al primario, porque el
+// `delete` de `fresh` no puede dejar nada colgando: `Pet.owner` y
+// `Reservation.owner` son obligatorias (el borrado fallaría) y `Payment.user`
+// es opcional (se quedaría en null, perdiendo de vista ese dinero).
+//
+// `discardPetIds` es para el caso frecuente de que la mascota que registró sea
+// LA MISMA que ya está en su ficha: el ADMIN marca cuál sobra y esa se
+// desactiva en vez de quedar duplicada. Solo se admite descartar una ficha sin
+// reservas propias — si tiene historial, se conserva y lo resuelve una persona.
+//
+// Todo ocurre en una transacción y re-validamos `clerkId IS NULL` de los
+// registros dentro de ella para cerrar la ventana de carrera.
 export async function claimPetsIntoAccount(
   prisma: PrismaClient,
   fresh: User,
   petIds: string[],
   allowedRecordIds: string[],
-  enteredPhone?: string | null
+  enteredPhone?: string | null,
+  discardPetIds?: string[]
 ): Promise<User> {
   const allowed = new Set(allowedRecordIds);
 
@@ -154,6 +179,60 @@ export async function claimPetsIntoAccount(
     // Consentimientos legales de `fresh`: se descartan (el gate legal los re-pide
     // si faltan) para no chocar con el único (userId, documentType, version).
     await tx.legalAcceptance.deleteMany({ where: { userId: fresh.id } });
+
+    // Lo que la cuenta nueva alcanzó a acumular antes de vincularse. Va ANTES
+    // del `delete`: si quedara algo apuntando a `fresh`, o el borrado falla
+    // (relaciones obligatorias) o se pierde el vínculo (las opcionales pasan a
+    // null en cascada).
+    const freshPets = await tx.pet.findMany({
+      where: { ownerId: fresh.id },
+      select: { id: true, name: true },
+    });
+
+    if (discardPetIds && discardPetIds.length > 0) {
+      const propias = new Set(freshPets.map((p) => p.id));
+      const aDescartar = [...new Set(discardPetIds)].filter((id) => propias.has(id));
+      if (aDescartar.length > 0) {
+        // Con reservas NO se descarta: esa mascota ya tiene historial y
+        // desactivarla dejaría reservas colgando de una ficha invisible.
+        const conHistorial = await tx.reservation.findMany({
+          where: { petId: { in: aDescartar } },
+          select: { petId: true },
+          distinct: ["petId"],
+        });
+        if (conHistorial.length > 0) throw new ClaimDiscardError();
+        await tx.pet.updateMany({
+          where: { id: { in: aDescartar } },
+          data: { isActive: false },
+        });
+      }
+    }
+
+    // Se trasladan TODAS (incluidas las recién desactivadas): la ficha sigue
+    // existiendo y su dueño tiene que ser el registro que sobrevive.
+    if (freshPets.length > 0) {
+      await tx.pet.updateMany({
+        where: { ownerId: fresh.id },
+        data: { ownerId: primaryId },
+      });
+    }
+    await tx.reservation.updateMany({
+      where: { ownerId: fresh.id },
+      data: { ownerId: primaryId },
+    });
+    await tx.payment.updateMany({
+      where: { userId: fresh.id },
+      data: { userId: primaryId },
+    });
+    // `requestedById` es obligatoria: sin esto el borrado de `fresh` falla.
+    await tx.reservationChangeRequest.updateMany({
+      where: { requestedById: fresh.id },
+      data: { requestedById: primaryId },
+    });
+    await tx.quote.updateMany({
+      where: { ownerId: fresh.id },
+      data: { ownerId: primaryId },
+    });
 
     const clerkId = fresh.clerkId;
     const realEmail = fresh.email;

@@ -19,6 +19,7 @@ import { PetCard } from "@/components/PetCard";
 import { SkeletonList } from "@/components/Skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import { buildWhatsappUrl } from "@/constants/business";
+import { ClaimStatusBanner } from "@/components/ClaimStatusBanner";
 
 export default function PetsScreen() {
   const userId = useAuthStore((s) => s.userId);
@@ -63,6 +64,11 @@ export default function PetsScreen() {
         }
         data={pets ?? []}
         keyExtractor={(item) => item.id}
+        // Va de CABECERA y no dentro del estado vacío: quien pidió que le
+        // vinculemos su ficha muchas veces ya registró a su perro (por eso no
+        // encontraba su ficha), así que esta lista NO está vacía y aun así
+        // sigue esperando su historial.
+        ListHeaderComponent={<ClaimStatusBanner />}
         renderItem={({ item }) => (
           <PetCard
             pet={item}

@@ -48,6 +48,10 @@ export default function AdminClaimRequests() {
   // Búsqueda manual de la ficha, por solicitud. Es el camino cuando la
   // coincidencia automática no da nada, que es justo el caso que trae aquí a
   // la mayoría: la ficha tiene el teléfono mal capturado.
+  // Mascotas que la propia cuenta nueva registró y que el ADMIN marca como
+  // repetidas de las de la ficha. Arranca VACÍO: descartar borra de la vista lo
+  // que el cliente capturó, así que se hace a conciencia, nunca por defecto.
+  const [descartes, setDescartes] = useState<Record<string, Set<string>>>({});
   const [busqueda, setBusqueda] = useState<Record<string, string>>({});
   const [resultados, setResultados] = useState<Record<string, ClaimCandidate[]>>({});
   const [buscando, setBuscando] = useState<string | null>(null);
@@ -97,16 +101,43 @@ export default function AdminClaimRequests() {
     });
   }
 
+  // El nombre SIEMPRE por aquí: al vincular, la cuenta que pidió se BORRA (la
+  // ficha vieja hereda su identidad), así que `requester` viene null en todo lo
+  // ya resuelto. Leerlo directo tumbaba la pantalla al ver el historial.
+  function nombreDe(r: ClaimRequestRow): string {
+    const vivo = r.requester
+      ? `${r.requester.firstName} ${r.requester.lastName}`.trim()
+      : "";
+    return formatName(vivo || r.requesterName?.trim() || "Cliente");
+  }
+
+  function descartadas(r: ClaimRequestRow): Set<string> {
+    return descartes[r.id] ?? new Set();
+  }
+
+  function toggleDescarte(r: ClaimRequestRow, petId: string) {
+    setDescartes((prev) => {
+      const actual = new Set(prev[r.id] ?? []);
+      if (actual.has(petId)) actual.delete(petId);
+      else actual.add(petId);
+      return { ...prev, [r.id]: actual };
+    });
+  }
+
   async function aprobar(r: ClaimRequestRow) {
     const petIds = [...marcadas(r)];
+    const descartar = [...descartadas(r)];
     if (petIds.length === 0) {
       Alert.alert("Elige mascotas", "Marca al menos una mascota para vincular.");
       return;
     }
-    const quien = formatName(`${r.requester.firstName} ${r.requester.lastName}`.trim());
+    const quien = nombreDe(r);
+    const sobrantes = descartar.length
+      ? `\n\nSe quitarán ${descartar.length === 1 ? "1 mascota que él mismo registró" : `${descartar.length} mascotas que él mismo registró`}, por estar repetidas.`
+      : "";
     Alert.alert(
       "Confirmar vinculación",
-      `Se le darán ${petIds.length === 1 ? "1 mascota" : `${petIds.length} mascotas`} a ${quien}, junto con su historial de reservas. Asegúrate de que de verdad es esa persona.`,
+      `Se le darán ${petIds.length === 1 ? "1 mascota" : `${petIds.length} mascotas`} a ${quien}, junto con su historial de reservas. Asegúrate de que de verdad es esa persona.${sobrantes}`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -115,7 +146,7 @@ export default function AdminClaimRequests() {
           onPress: async () => {
             setTrabajando(r.id);
             try {
-              await approveClaimRequest(r.id, petIds);
+              await approveClaimRequest(r.id, petIds, descartar);
               qc.invalidateQueries({ queryKey: ["claim-requests"] });
               Alert.alert("Listo", `${quien} ya puede ver sus mascotas en la app.`);
             } catch (e) {
@@ -132,7 +163,7 @@ export default function AdminClaimRequests() {
   async function rechazar(r: ClaimRequestRow) {
     Alert.alert(
       "Rechazar solicitud",
-      "Se marca como resuelta y no se le avisa al cliente. Úsalo si no pudiste confirmar quién es, o si ya lo resolviste por otro lado.",
+      "En su app verá que no pudimos vincular su ficha y que puede escribirles; el motivo se queda entre ustedes. Úsalo si no pudiste confirmar quién es, o si ya lo resolviste por otro lado.",
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -202,7 +233,7 @@ export default function AdminClaimRequests() {
           <View key={r.id} style={styles.card}>
             <View style={styles.rowBetween}>
               <Text style={styles.nombre}>
-                {formatName(`${r.requester.firstName} ${r.requester.lastName}`.trim())}
+                {nombreDe(r)}
               </Text>
               {!pendiente && (
                 <Text style={[styles.badge, r.status === "APPROVED" ? styles.badgeOk : styles.badgeNo]}>
@@ -211,7 +242,9 @@ export default function AdminClaimRequests() {
               )}
             </View>
 
-            <Text style={styles.dato}>Su cuenta: {r.requester.email}</Text>
+            <Text style={styles.dato}>
+              Su cuenta: {r.requester?.email ?? r.requesterEmail ?? "—"}
+            </Text>
             <Text style={styles.dato}>
               Buscó con: {r.typedPhone ?? r.typedEmail ?? "—"}
             </Text>
@@ -297,6 +330,72 @@ export default function AdminClaimRequests() {
                   })
                 )}
 
+                {/* Lo que la propia cuenta nueva registró. Es el caso más
+                    frecuente y el que antes bloqueaba la vinculación: no
+                    encontró su ficha, dio de alta a su perro para poder usar
+                    la app, y ese perro es casi siempre EL MISMO que ya está en
+                    la ficha. */}
+                {r.requesterPets.length > 0 && (
+                  <>
+                    <Text style={styles.seccion}>Él ya registró en su cuenta</Text>
+                    <Text style={styles.aviso}>
+                      Estas se quedan con él al vincular. Si alguna es la misma que ya
+                      marcaste arriba, márcala como repetida y la quitamos para que no le
+                      aparezca dos veces.
+                    </Text>
+                    {r.requesterPets.map((p) => {
+                      const fuera = descartadas(r).has(p.id);
+                      const conHistorial = p.reservas > 0;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={styles.mascota}
+                          onPress={() =>
+                            conHistorial
+                              ? Alert.alert(
+                                  "Esta no se puede quitar",
+                                  `${formatName(p.name)} ya tiene reservas a su nombre, así que su historial se perdería de vista. Vincula sin quitarla y júntenlas después.`,
+                                )
+                              : toggleDescarte(r, p.id)
+                          }
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={fuera ? "close-circle" : "ellipse-outline"}
+                            size={20}
+                            color={
+                              fuera
+                                ? COLORS.errorText
+                                : conHistorial
+                                  ? COLORS.textDisabled
+                                  : COLORS.textTertiary
+                            }
+                          />
+                          {p.photoUrl ? (
+                            <Image source={{ uri: p.photoUrl }} style={styles.foto} />
+                          ) : (
+                            <View style={[styles.foto, styles.fotoVacia]}>
+                              <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
+                            </View>
+                          )}
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.mascotaNombre, fuera && styles.mascotaFuera]}>
+                              {formatName(p.name)}
+                            </Text>
+                            <Text style={styles.mascotaRaza}>
+                              {fuera
+                                ? "Se quitará por repetida"
+                                : conHistorial
+                                  ? `Tiene ${p.reservas === 1 ? "1 reserva" : `${p.reservas} reservas`}: se queda`
+                                  : "Toca si está repetida"}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                )}
+
                 <View style={styles.acciones}>
                   <TouchableOpacity
                     style={[styles.btnSec, trabajando === r.id && styles.btnDisabled]}
@@ -337,6 +436,7 @@ export default function AdminClaimRequests() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bgPage },
+  mascotaFuera: { textDecorationLine: "line-through", color: COLORS.textTertiary },
   content: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   filtro: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },

@@ -186,6 +186,9 @@ export default function ClaimAccountScreen() {
           : { phone: phone.trim() },
       );
       setRequested(true);
+      // Para que el aviso "estamos buscando tu ficha" ya esté puesto cuando
+      // llegue a su lista de mascotas, que es donde va a esperar.
+      queryClient.invalidateQueries({ queryKey: ["claim-request-mine"] });
       Alert.alert(
         res.alreadyPending ? "Ya tenemos tu solicitud" : "Solicitud enviada",
         "El equipo de Holidog Inn la va a revisar y vincularemos tus mascotas. Te avisamos en cuanto esté lista.",

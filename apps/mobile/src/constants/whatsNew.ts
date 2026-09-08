@@ -34,6 +34,49 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-08-b",
+    title: "Vincular fichas: ya funciona aunque el cliente ya haya registrado a su perro",
+    items: [
+      {
+        icon: "git-merge-outline",
+        title: "Antes se atoraba justo con el cliente que más se había esforzado",
+        body:
+          "Si la persona ya había dado de alta a su perro en su cuenta nueva " +
+          "—lo más normal: no encontró su ficha, así que lo registró para poder " +
+          "usar la app— al vincular salía «esa cuenta ya tiene mascotas» y no " +
+          "había nada que hacer desde la app. Ya no: lo que ella registró se " +
+          "queda con ella y se le suma su ficha de siempre con todo el " +
+          "historial.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "copy-outline",
+        title: "Y si quedó el mismo perro dos veces, lo quitan ahí mismo",
+        body:
+          "En la solicitud verán un bloque «Él ya registró en su cuenta». Si " +
+          "alguno es el mismo perro que están marcando de la ficha, tóquenlo " +
+          "para quitarlo y no le aparezca duplicado. Ojo: el que ya tenga " +
+          "reservas a su nombre no se puede quitar (se perdería de vista su " +
+          "historial); ése se queda y lo juntan después.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "eye-outline",
+        title: "El cliente ya ve en qué va su solicitud",
+        body:
+          "Antes la pedía y se quedaba a ciegas: la pantalla de «¿ya eres " +
+          "cliente?» sale una sola vez, así que ni siquiera podía volver a " +
+          "verla. Para él, que tardaran dos días era igual que si no le hubiera " +
+          "llegado a nadie —y lo siguiente que hace es registrar al perro otra " +
+          "vez—. Ahora en su lista de mascotas ve «estamos buscando tu ficha». " +
+          "Eso no nos quita la prisa: mientras esté pendiente, él está esperando.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-08",
     title: "Ahora ustedes pueden vincular la ficha de un cliente de siempre",
     items: [

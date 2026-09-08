@@ -147,6 +147,23 @@ export const requestManualClaim = (data: {
     { method: "POST", body: JSON.stringify(data) },
   );
 
+/** En qué va MI solicitud de vinculación.
+ *
+ * La pantalla "¿Ya eres cliente?" se muestra UNA sola vez por cuenta, así que
+ * sin esto el cliente pedía ayuda y se quedaba a ciegas: no podía distinguir
+ * "el equipo todavía no la ve" de "nadie la recibió". Devuelve `null` cuando no
+ * hay nada que contar (incluida la aprobada: para entonces ya está viendo sus
+ * mascotas). */
+export type MyClaimRequest = {
+  id: string;
+  status: "PENDING" | "REJECTED";
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
+export const getMyClaimRequest = () =>
+  apiFetch<{ request: MyClaimRequest | null }>("/users/claim/request/mine");
+
 // ─── Bandeja del equipo (solo ADMIN) ──────────────────────
 
 export type ClaimRequestRow = {
@@ -158,25 +175,45 @@ export type ClaimRequestRow = {
   resolvedAt: string | null;
   resolution: string | null;
   createdAt: string;
+  /** NULL en cuanto la solicitud se resuelve vinculando: el merge BORRA la
+   *  cuenta que pidió (la ficha vieja hereda su identidad), y la FK es
+   *  SetNull. Para el historial hay que usar el snapshot de abajo. */
   requester: {
     id: string;
     firstName: string;
     lastName: string;
     email: string;
     phone: string | null;
-  };
+  } | null;
+  /** Copia tomada al crear la solicitud, justo porque la cuenta desaparece. */
+  requesterName: string | null;
+  requesterEmail: string | null;
   resolvedBy: { firstName: string; lastName: string } | null;
   /** Fichas que coinciden AHORA con lo que el cliente escribió. */
   candidates: ClaimCandidate[];
+  /** Mascotas que la propia cuenta nueva ya registró (suele ser el MISMO perro
+   *  que está en la ficha: por eso se pueden marcar como repetidas). */
+  requesterPets: {
+    id: string;
+    name: string;
+    breed: string | null;
+    photoUrl: string | null;
+    /** Con reservas propias no se puede descartar: tiene historial. */
+    reservas: number;
+  }[];
 };
 
 export const getClaimRequests = (status: "pending" | "all" = "pending") =>
   apiFetch<ClaimRequestRow[]>(`/admin/claim-requests?status=${status}`);
 
-export const approveClaimRequest = (id: string, petIds: string[]) =>
+export const approveClaimRequest = (
+  id: string,
+  petIds: string[],
+  discardPetIds: string[] = [],
+) =>
   apiFetch<User>(`/admin/claim-requests/${id}/approve`, {
     method: "POST",
-    body: JSON.stringify({ petIds }),
+    body: JSON.stringify({ petIds, discardPetIds }),
   });
 
 export const rejectClaimRequest = (id: string, reason?: string) =>
