@@ -34,6 +34,37 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-08",
+    title: "Los clientes de siempre ya pueden vincularse solos, por SMS",
+    items: [
+      {
+        icon: "chatbox-ellipses-outline",
+        title: "El teléfono de la ficha ahora vale para vincular la cuenta",
+        body:
+          "Cuando un cliente de toda la vida instala la app y busca su ficha, " +
+          "el código de verificación le llega por SMS al teléfono que ya tiene " +
+          "registrado (antes solo por correo, y 8 de cada 10 fichas no tienen " +
+          "correo: esos clientes acababan escribiéndoles a ustedes para que se " +
+          "los vincularan a mano). Si la ficha no trae teléfono usable, el " +
+          "cliente sigue viendo el botón de WhatsApp y lo vinculan ustedes.",
+        route: "/(admin)/clients",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "call-outline",
+        title: "Por eso: captura SIEMPRE el teléfono, y con lada si es de fuera",
+        body:
+          "Al dar de alta un cliente, el teléfono es opcional pero es lo que " +
+          "le va a permitir entrar solo a la app. Escríbelo a 10 dígitos. Y si " +
+          "el cliente es de otro país, ponle su lada (+1 602…): un número " +
+          "extranjero sin lada se toma como mexicano, y el código se le " +
+          "mandaría a otra persona.",
+        route: "/admin/users/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-07",
     title: "Ya puedes cerrar días de la semana en la agenda de baños",
     items: [

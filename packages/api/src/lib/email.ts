@@ -11,6 +11,17 @@ function getResend(): Resend | null {
   return resend;
 }
 
+/**
+ * ¿Hay forma siquiera de mandar un correo?
+ *
+ * `sendEmail` es mudo por diseño y devuelve void, así que quien necesite SABER
+ * si el correo es un canal viable (por ejemplo para no prometerle al cliente un
+ * código que nunca va a salir) tiene que preguntarlo antes.
+ */
+export function emailConfigurado(): boolean {
+  return !!apiKey;
+}
+
 type SendArgs = {
   to: string;
   subject: string;

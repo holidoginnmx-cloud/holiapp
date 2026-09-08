@@ -132,6 +132,21 @@ export function readClaimToken(token: string, uid: string): string[] | null {
   return p.ids;
 }
 
+/**
+ * "+526621234567" → "+52 ••• ••• 4567" (para decirle a dónde se mandó).
+ *
+ * Se enseña la LADA además de los últimos cuatro: si el equipo capturó un
+ * número extranjero sin su lada, el cliente ve un "+52" que no le corresponde y
+ * puede avisar en vez de quedarse esperando un SMS que le llegó a otra persona.
+ * No se filtra nada nuevo: en el caso normal él mismo tecleó ese número.
+ */
+export function maskPhone(e164: string): string {
+  const digits = e164.replace(/\D/g, "");
+  if (digits.length < 8) return "***";
+  const lada = digits.slice(0, Math.max(0, digits.length - 10));
+  return `${lada ? `+${lada} ` : ""}••• ••• ${digits.slice(-4)}`;
+}
+
 /** "juan.perez@gmail.com" → "j***z@gmail.com" (para decirle a dónde se mandó). */
 export function maskEmail(email: string): string {
   const [user, domain] = email.split("@");

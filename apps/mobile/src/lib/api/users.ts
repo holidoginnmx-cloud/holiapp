@@ -40,10 +40,15 @@ export type ClaimCandidate = {
 
 export type ClaimLookupResult = {
   found: boolean;
-  /** "email": se mandó un código al correo de la ficha; "none": no hay a dónde. */
-  channel: "email" | "none";
+  /** Por dónde se mandó el código: al teléfono o al correo QUE YA TIENE la
+   * ficha. "none" = no había ningún contacto utilizable. */
+  channel: "email" | "sms" | "none";
   candidates: ClaimCandidate[];
   maskedEmails?: string[];
+  /** Enmascarado, con la lada visible: "+52 ••• ••• 4567". */
+  maskedPhones?: string[];
+  /** El otro contacto que tiene la ficha, para ofrecer "mejor por ahí". */
+  altChannel?: "email" | "sms";
   challengeToken?: string;
   expiresInMinutes?: number;
   message?: string;
@@ -51,17 +56,25 @@ export type ClaimLookupResult = {
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
  * por teléfono y, como respaldo, por correo. Si la encuentra, el servidor manda
- * un código al correo que YA tiene la ficha; las mascotas se ven hasta
- * verificarlo. */
-export const lookupExistingAccount = (data: { phone?: string; email?: string }) =>
+ * un código de 6 dígitos al contacto que YA TIENE la ficha —SMS si hay
+ * teléfono, si no correo—; las mascotas se ven hasta verificarlo.
+ *
+ * `prefer` sirve para "no me llegó el SMS, mándenmelo al correo": sin eso,
+ * quien cambió de número se quedaría atorado, porque el envío sí salió bien. */
+export const lookupExistingAccount = (data: {
+  phone?: string;
+  email?: string;
+  prefer?: "email" | "sms";
+}) =>
   apiFetch<ClaimLookupResult>("/users/claim/lookup", {
     method: "POST",
-    // `v: 2` = esta app sabe pedir el código; sin él el servidor no manda el
-    // correo (la app anterior mostraría "no encontramos").
-    body: JSON.stringify({ ...data, v: 2 }),
+    // `v` dice qué entiende esta app. 3 = también el código por SMS; el
+    // servidor no manda SMS a quien mande menos, porque la app de la tienda
+    // (v: 2) mostraría "no tiene correo" y el mensaje se habría pagado igual.
+    body: JSON.stringify({ ...data, v: 3 }),
   });
 
-/** Verifica el código recibido por correo; devuelve las fichas (nombre +
+/** Verifica el código recibido (SMS o correo); devuelve las fichas (nombre +
  * mascotas) y el token que exige `confirmClaim`. */
 export const verifyClaimCode = (data: { challengeToken: string; code: string }) =>
   apiFetch<{ candidates: ClaimCandidate[]; claimToken: string }>(

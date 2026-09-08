@@ -3,6 +3,7 @@ import {
   createChallenge,
   createClaimToken,
   maskEmail,
+  maskPhone,
   newCode,
   readClaimToken,
   verifyChallenge,
@@ -50,5 +51,24 @@ describe("reto de claim (código por correo)", () => {
   it("enmascara el correo sin revelarlo", () => {
     expect(maskEmail("juan.perez@gmail.com")).toBe("j***z@gmail.com");
     expect(maskEmail("a@x.mx")).toBe("a***@x.mx");
+  });
+});
+
+describe("maskPhone", () => {
+  it("enseña la lada y los ultimos cuatro", () => {
+    expect(maskPhone("+526621234567")).toBe("+52 ••• ••• 4567");
+    expect(maskPhone("+16025551234")).toBe("+1 ••• ••• 1234");
+  });
+
+  it("la lada visible deja notar si asumimos mal el pais", () => {
+    // Un cliente de EE.UU. que vea "+52" sabe que su codigo se fue a otro lado
+    // y puede avisar, en vez de esperar un SMS que nunca le va a llegar.
+    expect(maskPhone("+526025551234")).toContain("+52");
+    expect(maskPhone("+526025551234")).not.toContain("+1 ");
+  });
+
+  it("no revienta con basura", () => {
+    expect(maskPhone("+123")).toBe("***");
+    expect(maskPhone("")).toBe("***");
   });
 });
