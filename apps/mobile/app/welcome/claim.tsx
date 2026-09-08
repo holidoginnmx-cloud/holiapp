@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import {
   lookupExistingAccount,
+  requestManualClaim,
   verifyClaimCode,
   confirmClaim,
   getPetsByOwner,
@@ -66,6 +68,10 @@ export default function ClaimAccountScreen() {
   const [verifying, setVerifying] = useState(false);
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [noEmailMessage, setNoEmailMessage] = useState<string | null>(null);
+  // Solicitud de vinculación manual: la salida cuando no hay a dónde mandar el
+  // código. Antes aquí solo había un "escríbenos por WhatsApp".
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
 
   // Mascotas de TODOS los candidatos: un teléfono puede traer varios registros
   // duplicados del mismo cliente (o de un familiar que comparte teléfono).
@@ -168,6 +174,26 @@ export default function ClaimAccountScreen() {
       setError(mensajeDeError(e, "No pudimos buscar tu cuenta. Intenta de nuevo."));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestManual = async () => {
+    setRequesting(true);
+    try {
+      const res = await requestManualClaim(
+        useEmail
+          ? { email: email.trim().toLowerCase() }
+          : { phone: phone.trim() },
+      );
+      setRequested(true);
+      Alert.alert(
+        res.alreadyPending ? "Ya tenemos tu solicitud" : "Solicitud enviada",
+        "El equipo de Holidog Inn la va a revisar y vincularemos tus mascotas. Te avisamos en cuanto esté lista.",
+      );
+    } catch (e: any) {
+      setError(mensajeDeError(e, "No pudimos enviar tu solicitud. Intenta de nuevo."));
+    } finally {
+      setRequesting(false);
     }
   };
 
@@ -424,6 +450,31 @@ export default function ClaimAccountScreen() {
             <Text style={styles.noResultText}>{noEmailMessage}</Text>
           </View>
         )}
+
+        {/* Salida principal: que el equipo la vincule. Antes solo se le decía
+            "escríbenos por WhatsApp" y quedaba de su lado perseguirlo. */}
+        {noEmailMessage && (
+          <TouchableOpacity
+            style={[styles.confirmButton, (requesting || requested) && styles.buttonDisabled]}
+            onPress={handleRequestManual}
+            disabled={requesting || requested}
+            activeOpacity={0.85}
+            testID="claim-request-manual"
+          >
+            {requesting ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.confirmButtonText}>
+                {requested ? "Solicitud enviada ✓" : "Pedir que me vinculen mi ficha"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+        {requested && (
+          <Text style={styles.pickHint}>
+            El equipo la revisará y te avisamos en cuanto tus mascotas aparezcan aquí.
+          </Text>
+        )}
         {noEmailMessage && (
           <TouchableOpacity
             style={styles.sharedHelp}
@@ -453,9 +504,31 @@ export default function ClaimAccountScreen() {
             />
             <Text style={styles.noResultText}>
               No encontramos una cuenta con ese dato. Si eres nuevo, continúa y
-              registra a tu mascota.
+              registra a tu mascota. Si ya eras cliente, pídenos que la busquemos:
+              puede que tengamos tu teléfono mal escrito.
             </Text>
           </View>
+        )}
+
+        {/* También cuando NO se encuentra nada. Es el caso más común de ficha
+            con el teléfono mal capturado: el cliente teclea el suyo correcto,
+            no coincide con el de su ficha, y sin esto se quedaría fuera. */}
+        {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
+          <TouchableOpacity
+            style={[styles.confirmButton, (requesting || requested) && styles.buttonDisabled]}
+            onPress={handleRequestManual}
+            disabled={requesting || requested}
+            activeOpacity={0.85}
+            testID="claim-request-manual-notfound"
+          >
+            {requesting ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.confirmButtonText}>
+                {requested ? "Solicitud enviada ✓" : "Ya era cliente, búsquenme mi ficha"}
+              </Text>
+            )}
+          </TouchableOpacity>
         )}
 
         {/* Esta búsqueda solo encuentra fichas de clientes que TODAVÍA no

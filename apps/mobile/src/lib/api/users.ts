@@ -131,3 +131,66 @@ export const exportMyData = () => apiFetch<Record<string, unknown>>(`/users/me/e
 
 export const deleteMyAccount = () =>
   apiFetch<{ ok: true }>(`/users/me`, { method: "DELETE" });
+
+/** Pide que el equipo vincule la ficha a mano.
+ *
+ * La salida para el cliente al que no se le puede mandar un código porque su
+ * ficha no tiene ningún contacto utilizable. Crea una solicitud y le llega al
+ * equipo a su bandeja de avisos. */
+export const requestManualClaim = (data: {
+  phone?: string;
+  email?: string;
+  note?: string;
+}) =>
+  apiFetch<{ ok: boolean; alreadyPending: boolean; id: string }>(
+    "/users/claim/request",
+    { method: "POST", body: JSON.stringify(data) },
+  );
+
+// ─── Bandeja del equipo (solo ADMIN) ──────────────────────
+
+export type ClaimRequestRow = {
+  id: string;
+  typedPhone: string | null;
+  typedEmail: string | null;
+  note: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  resolvedAt: string | null;
+  resolution: string | null;
+  createdAt: string;
+  requester: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string | null;
+  };
+  resolvedBy: { firstName: string; lastName: string } | null;
+  /** Fichas que coinciden AHORA con lo que el cliente escribió. */
+  candidates: ClaimCandidate[];
+};
+
+export const getClaimRequests = (status: "pending" | "all" = "pending") =>
+  apiFetch<ClaimRequestRow[]>(`/admin/claim-requests?status=${status}`);
+
+export const approveClaimRequest = (id: string, petIds: string[]) =>
+  apiFetch<User>(`/admin/claim-requests/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ petIds }),
+  });
+
+export const rejectClaimRequest = (id: string, reason?: string) =>
+  apiFetch<ClaimRequestRow>(`/admin/claim-requests/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+/** Busca fichas SIN cuenta vinculada, por nombre o por dígitos del teléfono.
+ *
+ * Hace falta porque la coincidencia automática falla justo en el caso que trae
+ * al cliente a pedir ayuda: si su ficha tiene el teléfono mal escrito, no la
+ * encuentra ni él ni el sistema. El equipo la busca por nombre. */
+export const searchClaimFichas = (q: string) =>
+  apiFetch<ClaimCandidate[]>(
+    `/admin/claim-requests/search?q=${encodeURIComponent(q)}`,
+  );

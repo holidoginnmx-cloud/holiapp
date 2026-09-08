@@ -62,6 +62,21 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         route: "/admin/users/create",
         roles: ["ADMIN", "STAFF"],
       },
+      {
+        icon: "link-outline",
+        title: "Y si aun así no se puede: «Vincular fichas»",
+        body:
+          "Hay clientes cuya ficha no tiene NI correo ni un teléfono al que se " +
+          "le pueda mandar un código. Antes la app les decía «escríbenos por " +
+          "WhatsApp» y ustedes lo resolvían a mano sin herramienta. Ahora el " +
+          "cliente pide la vinculación desde la app, les llega el aviso, y en " +
+          "Configuración → Vincular fichas ven quién lo pidió, con qué se buscó " +
+          "y qué mascotas coinciden: marcan las suyas y listo. Ojo: vincular le " +
+          "da acceso al historial y al saldo de esa ficha, así que asegúrense " +
+          "de que de verdad es esa persona antes de aprobar.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
     ],
   },
   {

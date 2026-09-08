@@ -29,6 +29,7 @@ import {
 } from "../lib/claimChallenge";
 import { claimCodeTemplate, emailConfigurado, sendEmail } from "../lib/email";
 import { claimCodeSms, sendSms } from "../lib/sms";
+import { equipoActivoIds, notifyUsers } from "../lib/notify";
 
 // Correos de walk-in que crea el equipo (no son un buzón real).
 const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
@@ -336,6 +337,294 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         challengeToken,
         expiresInMinutes: CLAIM_CODE_MINUTES,
       });
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  Bandeja del equipo para las solicitudes de vinculación
+  //
+  //  Solo ADMIN: vincular una ficha da acceso a su historial, sus reservas y
+  //  su saldo a favor. Mismo criterio que los co-dueños de una mascota, que
+  //  también son solo-admin, y coherente con "el staff crea, pero no toca
+  //  dinero".
+  // ────────────────────────────────────────────────────────────
+  fastify.get<{ Querystring: { status?: string } }>(
+    "/admin/claim-requests",
+    { preHandler: adminAuth },
+    async (request) => {
+      const status =
+        request.query?.status === "all"
+          ? undefined
+          : ((request.query?.status?.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED") ??
+            "PENDING");
+
+      const rows = await prisma.claimRequest.findMany({
+        where: status ? { status } : undefined,
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: {
+          requester: {
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+          },
+          resolvedBy: { select: { firstName: true, lastName: true } },
+        },
+      });
+
+      // Los candidatos se recalculan AHORA y no se leen de la solicitud: el
+      // equipo tiene que decidir sobre lo que es verdad hoy, no sobre una foto
+      // de cuando el cliente la mandó (pudieron corregirle el teléfono, o
+      // fusionar fichas, desde entonces).
+      return Promise.all(
+        rows.map(async (r) => {
+          // Sin requesterId la cuenta ya no existe (se consolidó), así que
+          // no hay a quién vincular ni candidatos que calcular.
+          if (r.status !== "PENDING" || !r.requesterId) return { ...r, candidates: [] };
+          const ids = await findLegacyCandidates(
+            normalizePhone(r.typedPhone),
+            r.typedEmail,
+            r.requesterId,
+          );
+          return { ...r, candidates: await candidatesPayload(ids) };
+        }),
+      );
+    }
+  );
+
+  // GET /admin/claim-requests/search?q= — buscar la ficha a mano.
+  //
+  // Hace falta porque la coincidencia automática falla justo en el caso que
+  // trae al cliente aquí: si su ficha tiene el teléfono mal escrito, no la
+  // encuentra ni él ni el sistema. El equipo la busca por nombre.
+  fastify.get<{ Querystring: { q?: string } }>(
+    "/admin/claim-requests/search",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const q = request.query?.q?.trim();
+      if (!q || q.length < 2) {
+        return reply.status(400).send({ error: "Escribe al menos 2 letras" });
+      }
+      const digits = q.replace(/\D/g, "");
+      // Solo fichas sin cuenta vinculada: las demás no se pueden consolidar.
+      const fichas = await prisma.user.findMany({
+        where: {
+          clerkId: null,
+          isActive: true,
+          role: "OWNER",
+          OR: [
+            { firstName: { contains: q, mode: "insensitive" } },
+            { lastName: { contains: q, mode: "insensitive" } },
+            ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
+          ],
+        },
+        select: { id: true },
+        take: 15,
+      });
+      return candidatesPayload(fichas.map((f) => f.id));
+    }
+  );
+
+  // POST /admin/claim-requests/:id/approve — el equipo da fe de que la ficha
+  // es suya. Reusa exactamente el mismo merge que el flujo con código
+  // (claimPetsIntoAccount): lo que cambia es quién autoriza, no qué se hace.
+  fastify.post<{ Params: { id: string }; Body: { petIds?: string[] } }>(
+    "/admin/claim-requests/:id/approve",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const solicitud = await prisma.claimRequest.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!solicitud) return reply.status(404).send({ error: "Solicitud no encontrada" });
+      if (solicitud.status !== "PENDING") {
+        return reply.status(409).send({ error: "Esa solicitud ya se resolvió" });
+      }
+
+      const fresh = solicitud.requesterId
+        ? await prisma.user.findUnique({ where: { id: solicitud.requesterId } })
+        : null;
+      if (!fresh) {
+        return reply
+          .status(409)
+          .send({ error: "La cuenta que pidió ya no existe (puede que ya se haya vinculado)." });
+      }
+
+      // Misma precondición que el flujo con código: consolidar en la ficha
+      // legacy borraría lo que la cuenta nueva ya tuviera.
+      const [petCount, resCount] = await Promise.all([
+        prisma.pet.count({ where: { ownerId: fresh.id } }),
+        prisma.reservation.count({ where: { ownerId: fresh.id } }),
+      ]);
+      if (petCount > 0 || resCount > 0) {
+        return reply.status(409).send({
+          error: "Esa cuenta ya tiene mascotas o reservas propias; no se puede consolidar.",
+        });
+      }
+
+      const petIds = [
+        ...new Set((request.body?.petIds ?? []).filter((x) => typeof x === "string" && x)),
+      ];
+      if (petIds.length === 0) {
+        return reply.status(400).send({ error: "Selecciona al menos una mascota" });
+      }
+
+      // Autorización: las fichas dueñas de las mascotas que el ADMIN eligió.
+      //
+      // A propósito NO se limita a las fichas que coinciden por teléfono o
+      // correo: el caso más común de esta pantalla es precisamente que la
+      // coincidencia automática NO funciona (la ficha tiene el teléfono mal
+      // capturado, o de menos de 10 dígitos, y por eso el cliente no pudo
+      // verificarse solo). Si aquí exigiéramos coincidencia, la herramienta
+      // fallaría justo cuando se la necesita.
+      //
+      // Quien da fe es el equipo, que conoce a sus clientes por nombre. Lo que
+      // sí se sigue validando —dentro de claimPetsIntoAccount, en la misma
+      // transacción— es que las fichas sean OWNER, activas y SIN cuenta ya
+      // vinculada, así que no se le puede quitar la ficha a nadie que ya use
+      // la app. Y queda registrado quién aprobó.
+      const duenos = await prisma.pet.findMany({
+        where: { id: { in: petIds }, isActive: true },
+        select: { ownerId: true },
+      });
+      const allowedIds = [...new Set(duenos.map((d) => d.ownerId))];
+      if (allowedIds.length === 0) {
+        return reply.status(409).send({ error: "Esas mascotas ya no existen." });
+      }
+
+      try {
+        const merged = await claimPetsIntoAccount(
+          prisma,
+          fresh,
+          petIds,
+          allowedIds,
+          solicitud.typedPhone,
+        );
+        // OJO con el orden y con los ids: `claimPetsIntoAccount` BORRA la
+        // cuenta nueva y deja el historial bajo la ficha vieja, que hereda su
+        // clerkId. Así que `fresh.id` ya no existe aquí — hay que usar el
+        // usuario consolidado que devuelve el merge. El clerkId sí es el mismo.
+        await prisma.claimRequest.update({
+          where: { id: solicitud.id },
+          data: {
+            status: "APPROVED",
+            resolvedById: request.userId!,
+            resolvedAt: new Date(),
+            mergedIntoId: merged.id,
+          },
+        });
+        invalidateAuthCache(fresh.clerkId);
+        await notifyUsers(prisma, [merged.id], {
+          type: "GENERAL",
+          title: "¡Tu cuenta ya está vinculada!",
+          body: "Ya puedes ver a tus mascotas y su historial en la app.",
+          data: { kind: "CLAIM_APPROVED" },
+        });
+        request.log.info(
+          { tag: "claim-request-approved", id: solicitud.id, by: request.userId },
+          "[claim] vinculación aprobada por el equipo",
+        );
+        return reply.send(merged);
+      } catch (err) {
+        if (err instanceof ClaimForbiddenError) {
+          return reply.status(403).send({ error: "Esas mascotas no corresponden a la ficha." });
+        }
+        if (err instanceof ClaimUnavailableError) {
+          return reply
+            .status(409)
+            .send({ error: "La ficha cambió mientras se vinculaba. Vuelve a intentar." });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /admin/claim-requests/:id/reject — no era su ficha, o no se pudo
+  // confirmar quién es. No se le manda push: si el equipo la rechaza es porque
+  // ya habló con esa persona, o porque el intento era ajeno.
+  fastify.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    "/admin/claim-requests/:id/reject",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const solicitud = await prisma.claimRequest.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!solicitud) return reply.status(404).send({ error: "Solicitud no encontrada" });
+      if (solicitud.status !== "PENDING") {
+        return reply.status(409).send({ error: "Esa solicitud ya se resolvió" });
+      }
+      return reply.send(
+        await prisma.claimRequest.update({
+          where: { id: solicitud.id },
+          data: {
+            status: "REJECTED",
+            resolvedById: request.userId!,
+            resolvedAt: new Date(),
+            resolution: request.body?.reason?.trim().slice(0, 300) || null,
+          },
+        }),
+      );
+    }
+  );
+  // ────────────────────────────────────────────────────────────
+  //  POST /users/claim/request — "vincúlenme ustedes"
+  //
+  //  La salida para el cliente al que no se le puede mandar un código porque
+  //  su ficha no tiene ningún contacto utilizable. Antes esto era un callejón
+  //  ("escríbenos por WhatsApp") y alguien del equipo lo resolvía a mano sin
+  //  herramienta; ahora queda registrado y les llega a su bandeja.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{ Body: { phone?: string; email?: string; note?: string } }>(
+    "/users/claim/request",
+    {
+      preHandler: [authMiddleware],
+      config: { rateLimit: { max: 10, timeWindow: "10 minutes" } },
+    },
+    async (request, reply) => {
+      const currentUserId = request.userId!;
+      if (!takeQuota(`claim-request:${currentUserId}`, 3, QUOTA_WINDOW_MS)) {
+        return reply.status(429).send({
+          error: "Ya mandaste tu solicitud. El equipo la revisará en breve.",
+        });
+      }
+
+      // Una pendiente a la vez: si insiste, se le confirma la que ya tiene en
+      // vez de llenarle la bandeja al equipo con la misma persona repetida.
+      const yaPendiente = await prisma.claimRequest.findFirst({
+        where: { requesterId: currentUserId, status: "PENDING" },
+      });
+      if (yaPendiente) {
+        return reply.send({ ok: true, alreadyPending: true, id: yaPendiente.id });
+      }
+
+      const quien = request.dbUser;
+      const nombre = [quien?.firstName, quien?.lastName].filter(Boolean).join(" ").trim();
+
+      const solicitud = await prisma.claimRequest.create({
+        data: {
+          requesterId: currentUserId,
+          // Copia del solicitante: su cuenta desaparece al consolidarse (el
+          // merge la borra y la ficha vieja hereda su identidad), así que sin
+          // esto el historial quedaría sin nombre.
+          requesterName: nombre || null,
+          requesterEmail: quien?.email ?? null,
+          typedPhone: request.body?.phone?.trim() || null,
+          typedEmail: request.body?.email?.trim().toLowerCase() || null,
+          note: request.body?.note?.trim().slice(0, 300) || null,
+        },
+      });
+
+      const contacto = solicitud.typedPhone ?? solicitud.typedEmail ?? "sin dato";
+      const equipo = await equipoActivoIds(prisma, currentUserId);
+      await notifyUsers(prisma, equipo, {
+        type: "GENERAL",
+        title: "Alguien pide vincular su ficha",
+        body: `${nombre || "Un cliente"} (${contacto}) instaló la app y no pudimos mandarle un código. Revisa su solicitud.`,
+        data: { kind: "CLAIM_REQUEST", claimRequestId: solicitud.id },
+      });
+
+      request.log.info(
+        { tag: "claim-request-created", userId: currentUserId, id: solicitud.id },
+        "[claim] solicitud de vinculación manual",
+      );
+      return reply.send({ ok: true, alreadyPending: false, id: solicitud.id });
     }
   );
 

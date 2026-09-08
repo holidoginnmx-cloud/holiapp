@@ -80,6 +80,15 @@ export function notificationRoute(
     return payoutId ? `/admin/payout/${payoutId}` : "/admin/payouts";
   }
 
+  // --- Vinculación de ficha ------------------------------------------------
+  // Al equipo: alguien pide que le vinculen su ficha (no se le pudo mandar un
+  // código porque su ficha no tiene contacto utilizable).
+  if (data?.kind === "CLAIM_REQUEST" && role === "ADMIN") {
+    return "/admin/claim-requests";
+  }
+  // Al dueño: ya quedó vinculada, que vea a sus mascotas.
+  if (data?.kind === "CLAIM_APPROVED" && isOwner) return "/(tabs)/pets";
+
   // --- Cartilla / vacunas -------------------------------------------------
   if (petId) {
     // Admin: cartilla subida pendiente de revisión.

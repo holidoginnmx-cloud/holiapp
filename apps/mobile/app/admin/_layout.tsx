@@ -69,6 +69,10 @@ export default function AdminRootLayout() {
       <Stack.Screen name="reservation" options={{ headerShown: false }} />
       <Stack.Screen name="room" options={{ headerShown: false }} />
       <Stack.Screen name="payout" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="claim-requests"
+        options={{ title: "Vincular fichas" }}
+      />
     </Stack>
   );
 }
