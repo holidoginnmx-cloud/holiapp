@@ -9,6 +9,7 @@ import {
 } from "../lib/email";
 import { notifyUser, notifyUsers } from "../lib/notify";
 import { syncPayout, avisarPayoutSincronizado } from "../lib/payouts";
+import { guardarComisionStripe } from "../lib/stripeFees";
 import { Prisma } from "@holidoginn/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -104,42 +105,43 @@ export default async function stripeWebhookRoutes(fastify: FastifyInstance) {
   );
 }
 
-// Guarda la comisión de Stripe (bruto − neto) para que los ingresos cuenten el
-// neto real que cae a la cuenta, sin tocar `amount` (que sigue siendo bruto).
-// El balance_transaction puede estar `pending` en pagos con tarjeta MXN y aún no
-// traer `fee`; por eso el llamador filtra por stripeFeeAmount null (idempotente)
-// y el script backfill-stripe-fees.ts recoge los que queden pendientes.
-// Lo usan los pagos de reservación y los de pedido de tienda por igual.
-async function guardarComisionStripe(
-  prisma: FastifyInstance["prisma"],
-  paymentId: string,
-  piId: string
-) {
-  try {
-    const full = await stripe.paymentIntents.retrieve(piId, {
-      expand: ["latest_charge.balance_transaction"],
+// Espera de cortesía entre reintentos al buscar el Payment. Ver buscarPaymentConEspera.
+const ESPERAS_PAYMENT_MS = [700, 1500, 3000];
+
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Busca el Payment del PaymentIntent, reintentando unos segundos si aún no está.
+ *
+ * Stripe manda `payment_intent.succeeded` en cuanto el cobro pasa, y la app
+ * crea el Payment justo DESPUÉS de que `confirmPayment` le responde: en los 5
+ * cobros de producción que se revisaron, el webhook ganó la carrera por 2.2 a
+ * 3.7 segundos, SIEMPRE. Sin esta espera el handler se rendía en el primer
+ * intento y se perdía todo lo que viene después de encontrarlo — la comisión de
+ * Stripe (y con ella el neto real en los ingresos), el correo de pago recibido
+ * y el marcado de las extensiones pagadas.
+ *
+ * Los ~5 s acumulados caben de sobra en el timeout del webhook, y solo se pagan
+ * completos cuando el Payment de verdad no existe (cobro huérfano), que es
+ * justo el caso que amerita el warn.
+ */
+async function buscarPaymentConEspera(prisma: FastifyInstance["prisma"], piId: string) {
+  const buscar = () =>
+    prisma.payment.findUnique({
+      where: { stripePaymentIntentId: piId },
+      include: {
+        reservation: { include: { pet: true } },
+        user: true,
+      },
     });
-    const charge = full.latest_charge as Stripe.Charge | null;
-    const bt = charge?.balance_transaction;
-    if (bt && typeof bt !== "string" && bt.fee != null) {
-      await prisma.payment.update({
-        where: { id: paymentId },
-        data: {
-          stripeFeeAmount: new Prisma.Decimal(bt.fee / 100),
-          // Día en que Stripe libera el dinero: con depósito automático
-          // diario es cuando el SPEI sale al banco ("¿cuándo me cae?").
-          stripeAvailableOn: bt.available_on
-            ? new Date(bt.available_on * 1000)
-            : null,
-        },
-      });
-    }
-  } catch (err) {
-    console.warn(
-      `[webhook] no se pudo obtener la comisión de Stripe del PI ${piId}:`,
-      err
-    );
+
+  let payment = await buscar();
+  for (const espera of ESPERAS_PAYMENT_MS) {
+    if (payment) break;
+    await dormir(espera);
+    payment = await buscar();
   }
+  return payment;
 }
 
 async function handlePaymentIntentSucceeded(
@@ -153,20 +155,15 @@ async function handlePaymentIntentSucceeded(
     return;
   }
 
-  // Buscar Payment existente por PI id (el mobile ya lo crea tras confirm).
+  // Buscar Payment existente por PI id (el mobile lo crea tras confirm, y casi
+  // siempre unos segundos DESPUÉS de que este webhook llega: de ahí la espera).
   // Si existe y ya está PAID → noop. Si está en otro estado → forzar PAID y
   // confirmar la Reservation. Si no existe → safety net, loguear.
-  const payment = await prisma.payment.findUnique({
-    where: { stripePaymentIntentId: pi.id },
-    include: {
-      reservation: { include: { pet: true } },
-      user: true,
-    },
-  });
+  const payment = await buscarPaymentConEspera(prisma, pi.id);
 
   if (!payment) {
     console.warn(
-      `[webhook] payment_intent.succeeded ${pi.id} sin Payment en DB — el cliente mobile debió crearlo. Posible app crash.`
+      `[webhook] payment_intent.succeeded ${pi.id} sin Payment en DB tras esperar — el cliente mobile debió crearlo. Posible app crash.`
     );
     return;
   }

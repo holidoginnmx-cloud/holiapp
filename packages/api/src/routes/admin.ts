@@ -44,6 +44,7 @@ import {
   registrarCobroDeLinea,
   avisarPayoutSincronizado,
 } from "../lib/payouts";
+import { syncPendingStripeFees } from "../lib/stripeFees";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -730,6 +731,57 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         fallidos: fallidos.map((r) => r.payoutId),
         results,
       });
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  POST /internal/stripe-fees-sync — cron diario
+  //  Rellena payments.stripeFeeAmount donde falte, leyendo la comisión real
+  //  del PaymentIntent.
+  //
+  //  Existe porque el webhook `payment_intent.succeeded` es el camino normal
+  //  pero no el único posible: si no llega, si la API estaba caída, o si
+  //  Stripe todavía traía el balance_transaction en `pending` (pasa con
+  //  tarjeta MXN), el pago se queda sin comisión y los ingresos lo cuentan en
+  //  BRUTO — el dueño ve pesos que nunca le cayeron. Antes esto solo se
+  //  corregía cuando llegaba el depósito, semanas después.
+  //
+  //  Idempotente: solo toca los que tienen la comisión en null.
+  //  Protegido por x-cron-secret, igual que los demás /internal.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{ Body?: { limit?: number } }>(
+    "/internal/stripe-fees-sync",
+    async (request, reply) => {
+      const secret = process.env.CRON_SECRET;
+      if (!secret || request.headers["x-cron-secret"] !== secret) {
+        return reply.status(401).send({ error: "No autorizado" });
+      }
+
+      const limitRaw = Number(request.body?.limit);
+      const limit = Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500)
+        : undefined;
+
+      let res;
+      try {
+        res = await syncPendingStripeFees(prisma, { limit });
+      } catch (err) {
+        request.log.error({ err }, "[stripe-fees-sync] no se pudo consultar Stripe");
+        return reply.status(502).send({ error: "No se pudo consultar Stripe" });
+      }
+
+      // Railway solo guarda logs: sin esto no hay forma de saber si el cron corrió.
+      request.log.info(
+        {
+          revisados: res.revisados,
+          actualizados: res.actualizados,
+          pendientes: res.pendientes,
+          errores: res.errores,
+        },
+        "[stripe-fees-sync]"
+      );
+
+      return reply.send(res);
     }
   );
 
