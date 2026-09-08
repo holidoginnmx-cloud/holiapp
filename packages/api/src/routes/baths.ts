@@ -22,7 +22,7 @@ import {
 import { requestReview } from "../lib/reviewRequest";
 import { notifyBalanceDue } from "../lib/balanceReminder";
 import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
-import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import { billableBathSize, bathSizeKey } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
 import { instanteDeLlegada } from "../lib/stayTimes";
 import {
@@ -374,7 +374,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const schedule = toScheduleCfg(cfg);
       const dateYMD = localYMD(appointmentDate);
       const { start: dayStart, end: dayEnd } = dayRangeUtc(dateYMD);
-      const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
+      const petSize = bathSizeKey(billableBathSize(pet));
 
       // Ocupación del día + regla misma-mascota + variante + dueño, en paralelo.
       const [busy, sameDay, variant, owner] = await Promise.all([
@@ -592,6 +592,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             photoUrl: true,
             size: true,
             notes: true,
+            // Ficha creada como baño de invitado. NO se deriva de `weight`:
+            // hay 204 perros viejos sin peso que no son walk-ins.
+            expressIntakeAt: true,
             // Excepción de duración de este perro (ver durationOf).
             groomingMinutes: true,
           },

@@ -188,6 +188,30 @@ export const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_600SemiBold",
     flex: 1,
   },
+  // Ficha capturada como invitado: existe lo justo para cobrar el baño. Se
+  // avisa porque la tira de arriba OMITE el peso cuando falta, y así un
+  // expediente a medias se lee igual que uno completo.
+  incompletoStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  incompletoText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.warningText,
+    fontFamily: "PlusJakartaSans_500Medium",
+  },
+  incompletoCta: {
+    fontSize: 12,
+    color: COLORS.warningText,
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
   bathStaffStrip: {
     flexDirection: "row",
     alignItems: "center",

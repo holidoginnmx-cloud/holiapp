@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import {
   CreateReservationSchema,
+  WalkInBathSchema,
   AdminCreateAddonSchema,
   ReservationStatusEnum,
   TimeHHmmSchema,
@@ -10,6 +11,7 @@ import {
   DeliveryTripSchema,
 } from "@holidoginn/shared";
 import { createInternalGuard, logInternal } from "../lib/internalAuth";
+import { createWalkInBath } from "../lib/walkInBath";
 import {
   assignStaff,
   assignRoom,
@@ -246,6 +248,28 @@ export default async function internalReservationsRoutes(fastify: FastifyInstanc
       ...teamCreatePayload(res.data.reservations),
       agendaWarnings: res.data.agendaWarnings,
     });
+  });
+
+  // ── POST /internal/reservations/walk-in-bath — baño de invitado ────────
+  // Gemelo de POST /reservations/walk-in-bath para el panel web: mismas reglas,
+  // mismos códigos de error, misma resolución de duplicados. Ver lib/walkInBath.ts.
+  fastify.post("/internal/reservations/walk-in-bath", opts, async (request, reply) => {
+    const parsed = WalkInBathSchema.safeParse(request.body);
+    if (!parsed.success) return sendInvalid(reply, parsed.error);
+    const res = await createWalkInBath(prisma, {
+      input: parsed.data,
+      actorUserId: request.internalActor?.userId ?? null,
+      source: "APP_ADMIN",
+    });
+    if (!res.ok) return sendError(reply, res);
+    logInternal(request, "internal-walkin-bath-create", {
+      reservationId: res.data.reservation.id,
+      ownerId: res.data.owner.id,
+      ownerCreated: res.data.owner.created,
+      petId: res.data.pet.id,
+      petCreated: res.data.pet.created,
+    });
+    return reply.status(201).send(res.data);
   });
 
   // ── PATCH /internal/reservations/:id — total, notas, anticipo, horas ────

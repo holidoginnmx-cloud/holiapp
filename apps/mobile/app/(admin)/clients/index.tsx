@@ -185,6 +185,23 @@ export default function AdminClients() {
                     {item.pets.length !== 1 ? "s" : ""}
                   </Text>
                 </View>
+                {/* Sin peso = ficha capturada al vuelo (invitado o alta rápida).
+                    Es lo que las vuelve ENCONTRABLES para completarlas en un
+                    rato muerto, en vez de que se pierdan entre las demás. */}
+                {item.pets.some((p) => p.weight == null) && (
+                  <View
+                    style={[styles.metaChip, { backgroundColor: COLORS.warningBg }]}
+                  >
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={11}
+                      color={COLORS.warningText}
+                    />
+                    <Text style={[styles.metaText, { color: COLORS.warningText }]}>
+                      Sin peso
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
             <View

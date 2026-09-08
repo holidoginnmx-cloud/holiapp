@@ -7,7 +7,7 @@ import { resolveOrCreateGuestUser } from "../lib/guestUser";
 import { resolveOrCreateGuestPet } from "../lib/guestPet";
 import { recordRequiredAcceptances } from "../lib/legal";
 import { cartillaBlocks } from "../lib/cartilla";
-import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import { billableBathSize, bathSizeKey } from "../lib/pricing";
 import type { SizeKey } from "@holidoginn/shared";
 import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { notifyUsers } from "../lib/notify";
@@ -181,7 +181,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "appointmentAt inválido" });
       }
 
-      const petSize = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
+      const petSize = bathSizeKey(billableBathSize(pet));
       const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
       if (!bath) return reply.status(500).send({ error: "Servicio de baño no configurado" });
       const variant = await prisma.serviceVariant.findUnique({

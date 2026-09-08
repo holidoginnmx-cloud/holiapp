@@ -10,7 +10,7 @@ import {
 } from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
 import { maybeConcludeStandaloneBath } from "./baths";
-import { sizeFromWeight, bathSizeKey } from "../lib/pricing";
+import { billableBathSize, bathSizeKey } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -118,7 +118,7 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
         return reply.status(409).send({ error: "Esta reservación ya tiene un baño contratado" });
       }
 
-      const petSize = bathSizeKey(sizeFromWeight(reservation.pet.weight ?? 0));
+      const petSize = bathSizeKey(billableBathSize(reservation.pet));
       const bath = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
       if (!bath) {
         return reply.status(500).send({ error: "Servicio de baño no configurado" });

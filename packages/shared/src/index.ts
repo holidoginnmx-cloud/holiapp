@@ -158,6 +158,14 @@ export const PetSchema = z.object({
   name: z.string().trim().min(1),
   breed: z.string().nullable(),
   size: PetSizeEnum,
+  // ¿La talla la eligió un humano viendo al perro, o la rellenó el API con "M"?
+  // Sólo si es true cuenta para cobrar un baño sin peso (ver billableBathSize).
+  // `.optional()`: las respuestas viejas del servidor no la traen.
+  sizeDeclared: z.boolean().optional(),
+  // Ficha creada como baño de invitado (expediente mínimo). Es la señal buena
+  // para pintar "Invitado": `weight == null` también es cierto en 204 fichas
+  // viejas que nunca fueron walk-ins.
+  expressIntakeAt: z.coerce.date().nullable().optional(),
   birthDate: z.coerce.date().nullable(),
   weight: z.number().positive().nullable(),
   photoUrl: z.string().url().nullable(),
@@ -236,7 +244,15 @@ export const CreatePetSchema = PetSchema.omit({
   cartillaPhotos: z.array(z.string()).default([]),
 });
 
-export const UpdatePetSchema = CreatePetSchema.partial().omit({ ownerId: true });
+export const UpdatePetSchema = CreatePetSchema.partial()
+  .omit({ ownerId: true })
+  .extend({
+    // Declarar la talla a ojo, para un perro que NUNCA se ha subido a la
+    // báscula. El equipo lo tiene enfrente y puede contestar "es grande"; el
+    // peso exacto no lo sabe nadie. Sólo se persiste si viene en true Y la
+    // ficha no tiene peso (routes/pets.ts): con peso manda el peso.
+    sizeDeclared: z.boolean().optional(),
+  });
 
 export const VaccineEntrySchema = z.object({
   // Opcional: el tipo casi nunca es visible en la cartilla; basta con la fecha.
@@ -777,6 +793,77 @@ export const GuestDaycareConfirmSchema = z.object({
 });
 
 // ========================
+// Baño de invitado (walk-in de mostrador)
+// ========================
+//
+// OJO con el nombre: `Guest*` de aquí arriba es el comprador ANÓNIMO de la
+// tienda web, que paga por Stripe y se identifica por correo. Esto es otra
+// cosa: alguien que tocó el timbre y ya está en recepción con el perro. La
+// etiqueta que ve el equipo sí dice "invitado", pero en el código es `walkIn`
+// para que no se confundan los dos flujos.
+//
+// Se crean filas REALES de `users` y `pets` porque la agenda y el cobro las
+// necesitan. Lo que se omite es el expediente: sin peso, sin cartilla, sin
+// contactos de emergencia. Sólo aplica a BAÑO — el hospedaje sí exige cartilla,
+// y esa asimetría es justo lo que hace viable capturar así.
+
+export const WalkInBathOwnerSchema = z.object({
+  // Nombre COMPLETO en un campo: así lo captura el panel web (deja lastName en
+  // "—") y así están las ~360 fichas que ya existen.
+  name: z.string().trim().min(2).max(120),
+  // Obligatorio, a diferencia del alta normal de cliente: es la única llave
+  // para volver a encontrarlos, es con lo que el servidor detecta que ya
+  // existen, y es lo que después permite que reclamen su ficha por SMS.
+  phone: z.string().trim().min(10).max(40),
+});
+export type WalkInBathOwner = z.infer<typeof WalkInBathOwnerSchema>;
+
+export const WalkInBathPetSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  // Talla APROXIMADA, elegida con 4 botones viendo al perro. NO pasa por el
+  // peso: `sizeFromWeight(null)` devuelve S y el baño se cobraría y se agendaría
+  // como perro chico en silencio. Se guarda con `sizeDeclared: true` para que
+  // `billableBathSize` la respete (ver packages/shared/src/pricing.ts).
+  size: z.enum(["S", "M", "L", "XL"]),
+  // URL ya subida por el cliente (Cloudinary en móvil, Supabase en el panel).
+  // Opcional siempre: si la subida falla, la cita se agenda igual.
+  photoUrl: z.string().url().max(500).nullable().optional(),
+});
+export type WalkInBathPet = z.infer<typeof WalkInBathPetSchema>;
+
+export const WalkInBathSchema = z.object({
+  owner: WalkInBathOwnerSchema,
+  pet: WalkInBathPetSchema,
+  appointmentAt: z.string().datetime(),
+  deslanado: z.boolean().default(false),
+  corte: z.boolean().default(false),
+  internalNotes: z.string().max(2000).nullable().optional(),
+  // Total pactado de viva voz. Acepta 0 a propósito: es como se captura una
+  // cortesía (mismo criterio que el resto del admin).
+  totalAmountOverride: z.number().nonnegative().optional(),
+  // Anticipo ACORDADO (baja el saldo esperado). El dinero que de verdad entró se
+  // registra aparte con `POST /reservations/:id/payments`, igual que en el alta
+  // normal: aquí no hay método de pago porque aquí no se cobra nada.
+  depositAgreed: z.number().nonnegative().optional(),
+  staffId: z.string().optional(),
+  scheduleOverride: z.boolean().optional(),
+
+  // ── Resolución de duplicados (segunda vuelta, tras un 409) ──────────────
+  // El servidor NUNCA decide solo si dos personas con el mismo teléfono son la
+  // misma: pregunta y espera respuesta. Quien captura tiene al cliente enfrente
+  // y puede confirmarlo; el servidor no.
+  /** "Sí, es este cliente": reusa la ficha en vez de crear otra. */
+  confirmReuseOwnerId: z.string().optional(),
+  /** "Es la misma Camila": reusa la mascota que ya existe. */
+  confirmReusePetId: z.string().optional(),
+  /** "No, es otra persona que anotó el mismo número": crea ficha nueva. */
+  forceNewOwner: z.boolean().optional(),
+  /** "Es otro perro que se llama igual": crea una segunda mascota. */
+  forceNewPet: z.boolean().optional(),
+});
+export type WalkInBath = z.infer<typeof WalkInBathSchema>;
+
+// ========================
 // Payment
 // ========================
 
@@ -1298,6 +1385,11 @@ export const QuotePetInputSchema = z.object({
   name: z.string().trim().min(1).max(60),
   weightKg: z.number().positive().max(120).nullable().optional(),
   size: PetSizeEnum.nullable().optional(),
+  // ¿`size` la eligió un humano, o es el default del API? Sin esto la
+  // cotización de un perro sin peso usaría el "M" de relleno que llevan 204
+  // fichas y prometería un precio que la reserva no cobra. Ver
+  // `billableBathSize` en ./pricing.
+  sizeDeclared: z.boolean().optional(),
   breed: z.string().trim().max(80).nullable().optional(),
   hasMedication: z.boolean().optional(),
   medicationNotes: z.string().trim().max(500).nullable().optional(),

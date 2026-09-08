@@ -2,6 +2,31 @@ import type { PetSize, PrismaClient } from "@holidoginn/db";
 import { sizeFromWeight } from "@holidoginn/shared";
 
 /**
+ * ¿Esta talla dejaría al perro fuera del cuarto donde YA está durmiendo?
+ *
+ * `pets.size` no es una etiqueta: es el filtro con el que se asigna cuarto
+ * (`rooms.sizeAllowed`). Cambiarla a mitad de una estancia puede volver al
+ * perro "demasiado grande" para su propio cuarto, y la reserva queda en un
+ * estado imposible. Devuelve el nombre del cuarto que la rechaza, o null.
+ */
+export async function tallaChocaConCuartoActivo(
+  prisma: PrismaClient,
+  petId: string,
+  size: PetSize
+): Promise<string | null> {
+  const activas = await prisma.reservation.findMany({
+    where: {
+      petId,
+      status: { in: ["CONFIRMED", "CHECKED_IN"] },
+      roomId: { not: null },
+    },
+    select: { room: { select: { name: true, sizeAllowed: true } } },
+  });
+  const bloquea = activas.find((r) => r.room && !r.room.sizeAllowed.includes(size));
+  return bloquea?.room?.name ?? null;
+}
+
+/**
  * Talla derivada del peso, con una salvaguarda: nunca deja a un perro fuera
  * del cuarto que YA tiene asignado en una estancia activa.
  *
@@ -31,15 +56,7 @@ export async function derivePetSize(
   const next = sizeFromWeight(opts.weight) as PetSize;
   if (!opts.petId || next === opts.currentSize) return next;
 
-  const activas = await prisma.reservation.findMany({
-    where: {
-      petId: opts.petId,
-      status: { in: ["CONFIRMED", "CHECKED_IN"] },
-      roomId: { not: null },
-    },
-    select: { room: { select: { name: true, sizeAllowed: true } } },
-  });
-  const bloquea = activas.find((r) => r.room && !r.room.sizeAllowed.includes(next));
+  const bloquea = await tallaChocaConCuartoActivo(prisma, opts.petId, next);
   if (bloquea) return opts.currentSize ?? next;
   return next;
 }

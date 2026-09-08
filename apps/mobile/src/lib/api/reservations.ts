@@ -32,6 +32,58 @@ export const createReservation = (data: Record<string, unknown>) =>
     body: JSON.stringify(data),
   });
 
+// ─── Baño de invitado (walk-in de mostrador) ─────────────
+//
+// Llegó un perro que no está en la base y su dueño no tiene cuenta. El servidor
+// crea las fichas (o reusa las que ya existan, preguntando primero) y agenda el
+// baño en una sola llamada. Ver packages/api/src/lib/walkInBath.ts.
+
+export type WalkInBathBody = {
+  owner: { name: string; phone: string };
+  pet: {
+    name: string;
+    /** Talla elegida a ojo. Sin ella se cobraría y agendaría como perro chico. */
+    size: "S" | "M" | "L" | "XL";
+    photoUrl?: string | null;
+  };
+  appointmentAt: string;
+  deslanado: boolean;
+  corte: boolean;
+  internalNotes?: string | null;
+  totalAmountOverride?: number;
+  depositAgreed?: number;
+  scheduleOverride?: boolean;
+  /** Respuestas a un 409: "sí, es la misma persona" / "es el mismo perro". */
+  confirmReuseOwnerId?: string;
+  confirmReusePetId?: string;
+  forceNewOwner?: boolean;
+  forceNewPet?: boolean;
+};
+
+export type WalkInBathResult = {
+  reservation: ReservationDetail;
+  owner: { id: string; name: string; phone: string | null; created: boolean };
+  pet: { id: string; name: string; size: string; photoUrl: string | null; created: boolean };
+  /** Lo que REALMENTE se va a cobrar: nunca recalcular el precio en la pantalla. */
+  pricing: { amount: number; variantId: string | null; sizeSource: "declared" | "weight" };
+  agendaWarnings: string[];
+  warnings: string[];
+};
+
+/** Ficha existente que choca por teléfono (llega en el body de un 409). */
+export type WalkInOwnerCandidate = {
+  id: string;
+  name: string;
+  phone: string | null;
+  pets: { id: string; name: string; size: string; weight: number | null }[];
+};
+
+export const createWalkInBath = (data: WalkInBathBody) =>
+  apiFetch<WalkInBathResult>(`${ENDPOINTS.reservations}/walk-in-bath`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 export const createMultiReservation = (data: {
   petIds: string[];
   checkIn: string;

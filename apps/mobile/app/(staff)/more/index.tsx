@@ -192,6 +192,12 @@ export default function StaffMore() {
           label="Nueva mascota"
           subtitle="Agrega el perro a la cuenta de su dueño"
           onPress={() => router.push("/admin/pets/owner" as any)}
+        />
+        <MenuItem
+          icon="water-outline"
+          label="Baño de invitado"
+          subtitle="El perro ya está aquí y no sabemos de quién es"
+          onPress={() => router.push("/admin/reservation/guest-bath" as any)}
           isLast
         />
       </View>

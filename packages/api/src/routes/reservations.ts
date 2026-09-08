@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   CreateReservationSchema,
+  WalkInBathSchema,
   CreateMultiReservationSchema,
   UpdateReservationStatusSchema,
   UpdateReservationTimesSchema,
@@ -50,6 +51,7 @@ import { quoteDelivery } from "../lib/delivery";
 import { applyDeliveryUpdate } from "../lib/deliveryUpdate";
 import { lockRoomsAndVerifyCapacity, RoomTakenError } from "../lib/reservationCreate";
 import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeamCreate";
+import { createWalkInBath } from "../lib/walkInBath";
 import { statusTransitionVerdict } from "../lib/reservationStatus";
 import { parsePageRequest, prismaPageArgs, buildPage } from "../lib/pagination";
 
@@ -363,6 +365,49 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       agendaWarnings: res.data.agendaWarnings,
     });
   });
+
+  // POST /reservations/walk-in-bath — baño de INVITADO (walk-in de mostrador).
+  //
+  // Llegó un perro que no está en la base y su dueño no tiene cuenta. Se crea
+  // la reserva con nombre, teléfono, nombre del perro y talla; el resto del
+  // expediente queda para después. La lógica vive en lib/walkInBath.ts y la
+  // comparte con POST /internal/reservations/walk-in-bath (panel web).
+  //
+  // Sólo BAÑO, a propósito: el hospedaje exige cartilla aprobada y no se puede
+  // capturar a ciegas. Ver el encabezado del lib.
+  fastify.post(
+    "/reservations/walk-in-bath",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      // Mismo candado que POST /reservations: nace CONFIRMED, sin pago y sin
+      // gate legal. Un dueño con sesión no tiene nada que hacer aquí.
+      if (request.userRole !== "ADMIN" && request.userRole !== "STAFF") {
+        return reply.status(403).send({
+          error: "Reserva desde el flujo de pago",
+          code: "TEAM_ONLY",
+        });
+      }
+
+      const parsed = WalkInBathSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten(), code: "VALIDATION" });
+      }
+
+      const res = await createWalkInBath(prisma, {
+        input: parsed.data,
+        actorUserId: request.userId ?? null,
+        source: "APP_ADMIN",
+      });
+      if (!res.ok) {
+        return reply.status(res.status).send({
+          error: res.error,
+          ...(res.code ? { code: res.code } : {}),
+          ...(res.extra ?? {}),
+        });
+      }
+      return reply.status(201).send(res.data);
+    }
+  );
 
   // PATCH /reservations/:id/times — hora estimada de llegada/recogida.
   // La indica el dueño (o staff/admin). Se propaga a TODO el grupo

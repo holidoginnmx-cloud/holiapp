@@ -17,6 +17,7 @@ import {
 export {
   sizeFromWeight,
   bathSizeKey,
+  billableBathSize,
   dewormSizeFromWeight,
   computeDays,
   pricePerDayForWeight,

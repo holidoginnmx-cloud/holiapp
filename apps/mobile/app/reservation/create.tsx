@@ -61,6 +61,7 @@ import { getPublicLodgingPricing } from "@/lib/api/pricing";
 import { styles } from "@/styles/reservationCreateStyles";
 import {
   sizeFromWeight,
+  billableBathSize,
   pricePerDayForWeight,
   computeDays,
   hoursUntilHotelDay,
@@ -72,12 +73,14 @@ import {
 
 function findBathVariant(
   variants: BathVariant[] | undefined,
-  petWeight: number | null | undefined,
+  pet: { weight?: number | null; size?: string | null; sizeDeclared?: boolean } | null | undefined,
   deslanado: boolean,
   corte: boolean
 ): BathVariant | undefined {
-  if (!variants) return undefined;
-  const size = sizeFromWeight(petWeight);
+  if (!variants || !pet) return undefined;
+  // Misma regla que cobra el servidor: manda el peso, y sin peso sólo cuenta la
+  // talla que alguien haya declarado (ver billableBathSize en shared).
+  const size = billableBathSize(pet);
   return variants.find(
     (v) => v.petSize === size && v.deslanado === deslanado && v.corte === corte
   );
@@ -370,7 +373,7 @@ function CreateReservationScreenContent() {
     for (const pet of selectedPets) {
       const state = bathByPet[pet.id];
       if (!state?.enabled) continue;
-      const variant = findBathVariant(bathVariants, pet.weight, state.deslanado, state.corte);
+      const variant = findBathVariant(bathVariants, pet, state.deslanado, state.corte);
       if (variant) out[pet.id] = variant.price;
     }
     return out;
@@ -1069,7 +1072,7 @@ function CreateReservationScreenContent() {
               corte: false,
             };
             const variant = state.enabled
-              ? findBathVariant(bathVariants, pet.weight, state.deslanado, state.corte)
+              ? findBathVariant(bathVariants, pet, state.deslanado, state.corte)
               : undefined;
             return (
               <View key={pet.id} style={styles.bathPetBlock}>

@@ -53,6 +53,40 @@ export function bathSizeKey(size: "XS" | SizeKey): SizeKey {
   return size === "XS" ? "S" : size;
 }
 
+/** Tallas que `pets.size` puede traer (el enum PetSize incluye XS). */
+const PET_SIZES: readonly string[] = ["XS", "S", "M", "L", "XL"];
+
+/**
+ * Talla FACTURABLE de baño. El peso manda siempre; sin peso, la talla de la
+ * ficha vale SÓLO si un humano la declaró viendo al perro (`sizeDeclared`).
+ *
+ * Por qué ese candado: cuando falta el peso, `pets.size` NO es un dato
+ * observado — el API lo rellena con "M" por default (routes/pets.ts,
+ * lib/guestPet.ts). En prod hay 204 fichas activas sin peso y TODAS dicen "M",
+ * ni una sola "L" ni "XL": es el relleno, no una talla que alguien haya mirado.
+ * Cobrar por ese "M" sería subirle el precio a 204 perros con base en un
+ * default del código.
+ *
+ * Sin peso y sin declaración se cae a `sizeFromWeight(null)` = "S", que es
+ * exactamente lo que se cobra hoy: esta función NO mueve ningún precio
+ * existente. Sólo hace que cuente la talla que alguien eligió a propósito
+ * (baño de invitado, y el selector de talla al agendar un baño sin peso).
+ *
+ * En cuanto llega el peso, el peso gana y la declaración deja de importar
+ * (`derivePetSize` apaga `sizeDeclared` al recalcular).
+ */
+export function billableBathSize(pet: {
+  weight?: number | null;
+  size?: string | null;
+  sizeDeclared?: boolean | null;
+}): SizeKey {
+  if (pet.weight != null) return sizeFromWeight(pet.weight);
+  if (pet.sizeDeclared && pet.size && PET_SIZES.includes(pet.size)) {
+    return bathSizeKey(pet.size as "XS" | SizeKey);
+  }
+  return sizeFromWeight(null);
+}
+
 /**
  * Tramos de peso del DESPARASITANTE: escala PROPIA, sus cortes NO coinciden con
  * `SIZE_RANGES_KG` (baño/talla general) — no unificar. A diferencia de aquella,

@@ -5,6 +5,7 @@ import {
   DAYCARE_MIN_HOURS,
   DEFAULT_LODGING_PRICING,
   bathSizeKey,
+  billableBathSize,
   computeDaycareExtraHours,
   computeDaycareHours,
   computeDays,
@@ -476,5 +477,41 @@ describe("allocateProportional", () => {
 
   it("pesos en cero → partes iguales", () => {
     expect(allocateProportional(10, [0, 0, 0])).toEqual([3.33, 3.33, 3.34]);
+  });
+});
+
+describe("billableBathSize", () => {
+  // El candado que protege a 204 fichas reales: `pets.size` NO es un dato
+  // observado cuando falta el peso — el API lo rellena con "M" por default.
+  it("sin peso y sin declarar cae a S: es lo que ya se cobra hoy", () => {
+    expect(billableBathSize({ weight: null, size: "M" })).toBe("S");
+    expect(billableBathSize({ weight: null, size: "XL" })).toBe("S");
+    expect(billableBathSize({ weight: null, size: "M", sizeDeclared: false })).toBe("S");
+    expect(billableBathSize({})).toBe("S");
+  });
+
+  it("sin peso, la talla vale si un humano la declaró", () => {
+    expect(billableBathSize({ weight: null, size: "L", sizeDeclared: true })).toBe("L");
+    expect(billableBathSize({ weight: null, size: "XL", sizeDeclared: true })).toBe("XL");
+  });
+
+  it("el peso manda siempre, aunque la talla esté declarada", () => {
+    // 28 kg con la ficha diciendo "M": el perro se subió a la báscula, así que
+    // lo que alguien estimó a ojo deja de importar.
+    expect(billableBathSize({ weight: 28, size: "M", sizeDeclared: true })).toBe("XL");
+    expect(billableBathSize({ weight: 3, size: "XL", sizeDeclared: true })).toBe("S");
+  });
+
+  it("XS declarada colapsa a S, como el catálogo de variantes", () => {
+    expect(billableBathSize({ weight: null, size: "XS", sizeDeclared: true })).toBe("S");
+  });
+
+  it("una talla que no existe en el enum no se cuela", () => {
+    expect(billableBathSize({ weight: null, size: "GIGANTE", sizeDeclared: true })).toBe("S");
+    expect(billableBathSize({ weight: null, size: "", sizeDeclared: true })).toBe("S");
+  });
+
+  it("peso 0 es un peso: no cae al camino de la declaración", () => {
+    expect(billableBathSize({ weight: 0, size: "XL", sizeDeclared: true })).toBe("S");
   });
 });

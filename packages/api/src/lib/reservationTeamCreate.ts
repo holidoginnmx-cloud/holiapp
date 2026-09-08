@@ -10,7 +10,7 @@ import {
   getLodgingPricing,
   computeDays,
   computeStayPricing,
-  sizeFromWeight,
+  billableBathSize,
   computeDaycareHours,
 } from "./pricing";
 import { chainStarts, evaluateStart, localYMD } from "./bathAvailability";
@@ -229,7 +229,7 @@ export async function createTeamReservation(
         where: {
           serviceTypeId_petSize_deslanado_corte: {
             serviceTypeId: bathType.id,
-            petSize: sizeFromWeight(p.weight ?? 0),
+            petSize: billableBathSize(p),
             deslanado: deslanado ?? false,
             corte: corte ?? false,
           },
@@ -449,7 +449,7 @@ export async function createTeamReservation(
         where: {
           serviceTypeId_petSize_deslanado_corte: {
             serviceTypeId: bathType.id,
-            petSize: sizeFromWeight(p.weight ?? 0),
+            petSize: billableBathSize(p),
             deslanado: bath.deslanado,
             corte: bath.corte,
           },

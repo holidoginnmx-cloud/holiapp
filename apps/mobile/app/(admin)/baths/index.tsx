@@ -262,6 +262,7 @@ export default function AdminBaths() {
           hasDeslanado={hasDeslanado}
           hasCorte={hasCorte}
           bathReady={isBathReadyToCollect(item)}
+          incompleteRecord={item.pet?.expressIntakeAt != null}
           onPress={() => router.push(`/admin/reservation/${item.id}` as any)}
         />
       </View>

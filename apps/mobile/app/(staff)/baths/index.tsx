@@ -377,6 +377,7 @@ export default function StaffBaths() {
           hasDeslanado={hasDeslanado}
           hasCorte={hasCorte}
           bathReady={isBathReadyToCollect(item)}
+          incompleteRecord={item.pet?.expressIntakeAt != null}
           onPress={() =>
             router.push(
               item.reservationType === "BATH"

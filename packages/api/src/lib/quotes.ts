@@ -131,6 +131,7 @@ function toComputeInput(
       name: p.name,
       weightKg: p.weightKg ?? null,
       size: p.size ?? null,
+      sizeDeclared: p.sizeDeclared ?? false,
       hasMedication: p.hasMedication ?? false,
     })),
     checkIn: input.checkIn ?? null,

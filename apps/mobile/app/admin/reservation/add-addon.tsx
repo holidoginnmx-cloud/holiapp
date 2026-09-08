@@ -24,7 +24,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { SwitchRow } from "@/components/SwitchRow";
 import { SelectField } from "@/components/SelectField";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
-import { bathSizeKey, sizeFromWeight } from "@holidoginn/shared/src/pricing";
+import { bathSizeKey, billableBathSize } from "@holidoginn/shared/src/pricing";
 import { useAuthStore } from "@/store/authStore";
 
 import { mensajeDeError } from "@/lib/errorMessages";
@@ -108,9 +108,13 @@ export default function AdminAddAddonScreen() {
   // mano entre 16 opciones invita a equivocarse.
   // El catálogo de baño se indexa por S/M/L/XL, y la talla sale del PESO (no de
   // la talla visual del perro, que es otra escala). `bathSizeKey` colapsa XS→S.
-  const petSizeKey = reservation?.pet?.weight != null
-    ? bathSizeKey(sizeFromWeight(reservation.pet.weight))
-    : null;
+  // Sin peso, la talla de la ficha sólo cuenta si alguien la declaró viendo al
+  // perro: `pets.size` trae "M" por default y acotaría el catálogo a la talla
+  // equivocada.
+  const petSizeKey =
+    reservation?.pet && (reservation.pet.weight != null || reservation.pet.sizeDeclared)
+      ? bathSizeKey(billableBathSize(reservation.pet))
+      : null;
 
   const variants = useMemo(() => {
     const all = (selectedService?.variants ?? []).filter((v) => v.isActive);

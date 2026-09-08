@@ -77,6 +77,8 @@ export async function resolveOrCreateGuestPet(
         currentSize: existing.size,
         petId: existing.id,
       });
+      // Con peso, la talla deja de depender de una estimación a ojo.
+      patch.sizeDeclared = false;
     }
     if (photos.length > 0 && existing.cartillaStatus !== "APPROVED") {
       patch.cartillaPhotos = photos;

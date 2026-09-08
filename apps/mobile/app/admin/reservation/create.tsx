@@ -41,6 +41,7 @@ import {
   getRooms,
   getBathVariants,
   createReservation,
+  updatePet,
   getUsers,
   registerManualPayment,
   getDeliveryStatus,
@@ -61,6 +62,8 @@ import {
 } from "@/lib/format";
 import {
   sizeFromWeight,
+  billableBathSize,
+  bathSizeKey,
   pricePerDayForWeight,
   computeDaycareHours,
   computeDays,
@@ -362,6 +365,17 @@ export default function AdminCreateReservation() {
     [pets, petIds],
   );
 
+  // Perros a los que nadie les ha tomado el peso. Son ~205 en la base: su
+  // `size` dice "M" porque es el default del API, no porque alguien los haya
+  // visto, así que el baño se les cobra y se les agenda como perro CHICO en
+  // silencio. Preguntarlo aquí —con el perro enfrente, que es el único momento
+  // en que la respuesta es confiable— arregla la ficha para siempre.
+  const petsSinTalla = useMemo(
+    () => selectedPets.filter((p) => p.weight == null && !p.sizeDeclared),
+    [selectedPets],
+  );
+  const [tallaDeclarada, setTallaDeclarada] = useState<Record<string, string>>({});
+
   // Todos los cuartos activos: cada mascota elige el suyo, filtrado por SU
   // talla (sizeAllowed). Antes se pedían filtrados por el tamaño más grande
   // del grupo porque todas compartían cuarto.
@@ -399,10 +413,23 @@ export default function AdminCreateReservation() {
     () => (appointmentAt ? localDayKey(appointmentAt) : null),
     [appointmentAt],
   );
+  // Talla que se acaba de elegir para el primer perro, si es de los que no
+  // tienen peso: la duración depende de la talla, y la ficha todavía dice "M"
+  // por default. Sin esto, la agenda mostraría el bloque equivocado.
+  const tallaDelPrimero = petIds[0] ? tallaDeclarada[petIds[0]] : undefined;
   const { data: bathSlots } = useQuery({
-    queryKey: ["admin", "bath-slots", bathDateYMD, petIds[0], deslanado, corte],
+    queryKey: [
+      "admin", "bath-slots", bathDateYMD, petIds[0], tallaDelPrimero, deslanado, corte,
+    ],
     queryFn: () =>
-      getBathSlots(bathDateYMD!, { petId: petIds[0], deslanado, corte }),
+      getBathSlots(bathDateYMD!, {
+        petId: petIds[0],
+        ...(tallaDelPrimero
+          ? { petSize: tallaDelPrimero as "XS" | "S" | "M" | "L" | "XL" }
+          : {}),
+        deslanado,
+        corte,
+      }),
     enabled: reservationType === "BATH" && !!bathDateYMD && petIds.length > 0,
   });
 
@@ -510,7 +537,11 @@ export default function AdminCreateReservation() {
     if (!bathVariants || selectedPets.length === 0) return null;
     let total = 0;
     for (const p of selectedPets) {
-      const size = sizeFromWeight(p.weight);
+      // La talla recién elegida gana sobre la de la ficha: el precio en pantalla
+      // tiene que ser el que se va a cobrar, no el del "M" por default.
+      const size = tallaDeclarada[p.id]
+        ? bathSizeKey(tallaDeclarada[p.id] as "XS" | "S" | "M" | "L" | "XL")
+        : billableBathSize(p);
       const variant = bathVariants.find(
         (v) => v.petSize === size && v.deslanado === dl && v.corte === ct,
       );
@@ -524,7 +555,7 @@ export default function AdminCreateReservation() {
     if (reservationType !== "BATH") return null;
     return sumBathVariants(deslanado, corte);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reservationType, selectedPets, bathVariants, deslanado, corte]);
+  }, [reservationType, selectedPets, bathVariants, deslanado, corte, tallaDeclarada]);
 
   const stayBathPrice = useMemo(() => {
     if (!stayBathEnabled) return null;
@@ -769,6 +800,19 @@ export default function AdminCreateReservation() {
 
     setSubmitting(true);
     try {
+      // Va ANTES de crear la reserva: el servidor resuelve la variante y la
+      // duración leyendo la ficha, así que guardarla después dejaría este baño
+      // cobrado como chico y sólo arreglaría el siguiente.
+      const tallasPorGuardar = petsSinTalla.filter((p) => tallaDeclarada[p.id]);
+      if (tallasPorGuardar.length > 0) {
+        await Promise.all(
+          tallasPorGuardar.map((p) =>
+            updatePet(p.id, { size: tallaDeclarada[p.id], sizeDeclared: true }),
+          ),
+        );
+        queryClient.invalidateQueries({ queryKey: ["admin", "all-pets"] });
+      }
+
       const created = await createReservation(payload);
       // El anticipo se registra como pago real contra la reserva creada.
       // En grupos multi-perro se reparte proporcional al total de cada fila
@@ -932,6 +976,22 @@ export default function AdminCreateReservation() {
                 />
               )}
             </View>
+            {reservationType === "BATH" && (
+              <TouchableOpacity
+                style={styles.invitadoCard}
+                onPress={() => router.push("/admin/reservation/guest-bath")}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="paw-outline" size={18} color={COLORS.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.invitadoTitle}>¿No lo encuentras? Baño de invitado</Text>
+                  <Text style={styles.invitadoHint}>
+                    Sólo nombre, teléfono y el perrito. Sin expediente.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            )}
             {clientSearch.trim().length > 0 && (
               <View style={styles.listBox}>
                 {owners.length === 0 ? (
@@ -1261,6 +1321,36 @@ export default function AdminCreateReservation() {
                 />
               </View>
             </View>
+
+            {/*
+              Perro sin peso: hoy se le cobra y se le agenda como CHICO en
+              silencio, porque `pets.size` trae "M" por default y nadie puede
+              confiar en él. Preguntarlo aquí cuesta un toque, arregla ESTE
+              cobro y deja la ficha corregida para el siguiente baño.
+            */}
+            {petsSinTalla.map((p) => (
+              <View key={p.id}>
+                <LevelSelector
+                  label={
+                    petsSinTalla.length > 1 || selectedPets.length > 1
+                      ? `¿De qué tamaño es ${p.name}?`
+                      : "¿De qué tamaño es?"
+                  }
+                  options={[
+                    { key: "S", label: "Chico" },
+                    { key: "M", label: "Mediano" },
+                    { key: "L", label: "Grande" },
+                    { key: "XL", label: "Extra grande" },
+                  ]}
+                  selected={tallaDeclarada[p.id] ?? ""}
+                  onSelect={(k) => setTallaDeclarada((prev) => ({ ...prev, [p.id]: k }))}
+                />
+                <Text style={styles.hint}>
+                  No tenemos su peso. De esto salen el precio y el tiempo que se
+                  le aparta a quien lo baña. Se queda guardado.
+                </Text>
+              </View>
+            ))}
 
             <SwitchRow
               label="Deslanado"
@@ -1644,6 +1734,29 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     padding: 14,
     textAlign: "center",
+  },
+  // Salida para el caso "el cliente no está en la base": sin esto, el buscador
+  // dice "Sin coincidencias" y ahí se acaba el camino (y el ingreso).
+  invitadoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  invitadoTitle: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textPrimary,
+  },
+  invitadoHint: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginTop: 2,
   },
   dateRow: {
     flexDirection: "row",

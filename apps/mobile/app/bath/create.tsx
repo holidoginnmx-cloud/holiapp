@@ -43,7 +43,7 @@ import { wizardStyles } from "@/styles/wizardStyles";
 
 import { formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { alertaDeError } from "@/lib/errorAlert";
-import { sizeFromWeight, bathSizeKey } from "@holidoginn/shared/src/pricing";
+import { billableBathSize, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 function formatDurationMin(min: number): string {
   const h = Math.floor(min / 60);
@@ -138,7 +138,7 @@ function CreateBathScreenContent() {
 
   const variant = useMemo(() => {
     if (!selectedPet || !variants) return null;
-    const petSize = bathSizeKey(sizeFromWeight(selectedPet.weight ?? 0));
+    const petSize = bathSizeKey(billableBathSize(selectedPet));
     return variants.find(
       (v) =>
         v.petSize === petSize && v.deslanado === deslanado && v.corte === corte,

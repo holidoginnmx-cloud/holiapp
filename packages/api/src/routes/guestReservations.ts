@@ -12,7 +12,7 @@ import { recordRequiredAcceptances } from "../lib/legal";
 import { cartillaBlocks } from "../lib/cartilla";
 import {
   getLodgingPricing,
-  sizeFromWeight,
+  billableBathSize,
   bathSizeKey,
   computeDays,
   computeStayPricing,
@@ -182,7 +182,7 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
             for (const [petId, sel] of Object.entries(bathSelectionsByPet)) {
               const pet = createdPets.find((p) => p.id === petId);
               if (!pet) continue;
-              const size = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
+              const size = bathSizeKey(billableBathSize(pet));
               const variant = await prisma.serviceVariant.findUnique({
                 where: {
                   serviceTypeId_petSize_deslanado_corte: {

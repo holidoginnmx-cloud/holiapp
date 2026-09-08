@@ -28,6 +28,8 @@ export type StaffBath = Reservation & {
     photoUrl: string | null;
     size: "XS" | "S" | "M" | "L" | "XL";
     notes: string | null;
+    /** Ficha creada como baño de invitado: expediente mínimo, sin cartilla. */
+    expressIntakeAt?: string | null;
   };
   owner: {
     id: string;

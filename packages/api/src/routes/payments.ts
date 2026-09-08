@@ -12,7 +12,7 @@ import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import {
   getLodgingPricing,
-  sizeFromWeight,
+  billableBathSize,
   bathSizeKey,
   computeDays,
   computeStayPricing,
@@ -271,7 +271,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       const variants = await Promise.all(
         entries.map(([petId, sel]) => {
           const pet = pets.find((p) => p.id === petId)!;
-          const size = bathSizeKey(sizeFromWeight(pet.weight ?? 0));
+          const size = bathSizeKey(billableBathSize(pet));
           return prisma.serviceVariant.findUnique({
             where: {
               serviceTypeId_petSize_deslanado_corte: {

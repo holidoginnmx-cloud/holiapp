@@ -218,19 +218,40 @@ describe("computeQuote · baño", () => {
     expect(b.total).toBe(520);
   });
 
-  it("sin peso sí usa la talla guardada: es lo único que hay", () => {
+  it("sin peso usa la talla si alguien la DECLARÓ viendo al perro", () => {
     // El caso del prospecto: "¿es chico o mediano?" sin subirlo a la báscula.
+    // Es la misma regla que `billableBathSize`, o sea la que cobra la reserva.
     const b = ok(
       computeQuote(
         {
           serviceType: "BATH",
-          pets: [{ key: "p", name: "Nube", weightKg: null, size: "L" }],
+          pets: [{ key: "p", name: "Nube", weightKg: null, size: "L", sizeDeclared: true }],
           bath: { deslanado: false, corte: false },
         },
         CATALOG
       )
     );
     expect(b.pets[0].lines[0].serviceVariantId).toBe("b-l");
+    expect(b.warnings).toHaveLength(0);
+  });
+
+  it("sin peso y sin declarar NO se cree la talla: cotiza chico y avisa", () => {
+    // `pets.size` trae "M" por default del API cuando falta el peso, y 204
+    // fichas activas lo llevan sin que nadie haya visto al perro. Creerle
+    // cotizaría a 204 perros como medianos y la reserva después cobraría chico.
+    // Sin peso y sin declaración: chico, y se dice en voz alta.
+    const b = ok(
+      computeQuote(
+        {
+          serviceType: "BATH",
+          pets: [{ key: "p", name: "Camila", weightKg: null, size: "M" }],
+          bath: { deslanado: false, corte: false },
+        },
+        CATALOG
+      )
+    );
+    expect(b.pets[0].lines[0].serviceVariantId).toBe("b-s");
+    expect(b.warnings).toContain("Camila: sin peso registrado, se cotizó como perro chico");
   });
 
   it("falla claro cuando falta la variante en el catálogo", () => {

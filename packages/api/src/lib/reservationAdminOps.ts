@@ -11,7 +11,7 @@ import { petAudienceIds } from "./petAccess";
 import {
   getLodgingPricing,
   computeChangeTotal,
-  sizeFromWeight,
+  billableBathSize,
   dewormSizeFromWeight,
   allocateProportional,
   type ChangeTotalResult,
@@ -551,7 +551,7 @@ export type AddAddonInput = Omit<AdminCreateAddon, "variantId"> & {
 async function resolveVariantForService(
   prisma: PrismaClient,
   input: { serviceCode: AddonServiceCode; deslanado?: boolean; corte?: boolean },
-  pet: { name: string; weight: number | null }
+  pet: { name: string; weight: number | null; size?: string | null; sizeDeclared?: boolean }
 ): Promise<OpResult<{ id: string }>> {
   if (input.serviceCode === "BATH") {
     const bathType = await prisma.serviceType.findUnique({ where: { code: "BATH" } });
@@ -560,7 +560,7 @@ async function resolveVariantForService(
       where: {
         serviceTypeId_petSize_deslanado_corte: {
           serviceTypeId: bathType.id,
-          petSize: sizeFromWeight(pet.weight ?? 0),
+          petSize: billableBathSize(pet),
           deslanado: input.deslanado ?? false,
           corte: input.corte ?? false,
         },
@@ -636,7 +636,7 @@ export async function addReservationAddon(
   const reservation = await prisma.reservation.findUnique({
     where: { id: params.reservationId },
     include: {
-      pet: { select: { name: true, weight: true } },
+      pet: { select: { name: true, weight: true, size: true, sizeDeclared: true } },
       addons: { include: { variant: { include: { serviceType: true } } } },
     },
   });

@@ -214,6 +214,10 @@ model User {
   // Clientes walk-in migrados del Excel/web: clerkId null, email placeholder.
   // El middleware de auth los vincula por email cuando el cliente se registra.
   originLegacy      Boolean   @default(false)
+  // Alta EXPRESS de mostrador (baño de invitado). Distinto de `originLegacy`,
+  // que significa "migrado del Excel/web" y lo llevan ~300 de ~360 fichas: por
+  // eso filtrar por aquél no distingue a los walk-ins de esta semana.
+  expressIntakeAt   DateTime?
   // Dirección guardada para el servicio a domicilio (se reutiliza en futuras
   // reservas). Capturada con Google Places en la app móvil.
   address           String?
@@ -274,6 +278,7 @@ model User {
   quotesCreated   Quote[] @relation("QuoteCreator")
   quotesConverted Quote[] @relation("QuoteConverter")
 
+  @@index([expressIntakeAt]) // walk-ins por completar
   @@map("users")
 }
 
@@ -286,6 +291,13 @@ model Pet {
   name                     String
   breed                    String?
   size                     PetSize
+  // ¿La talla la eligió un HUMANO viendo al perro, o la rellenó el API?
+  // Cuando no hay peso, `size` se guarda como "M" por default (routes/pets.ts,
+  // lib/guestPet.ts): 204 fichas activas lo llevan sin que nadie las haya
+  // mirado. `billableBathSize` sólo cobra por la talla si esta bandera es true;
+  // si no, cae a S — que es lo que ya se cobra hoy. `derivePetSize` la apaga en
+  // cuanto llega el peso, porque a partir de ahí el peso manda.
+  sizeDeclared             Boolean   @default(false)
   birthDate                DateTime?
   weight                   Float? // En kilogramos
   photoUrl                 String?
@@ -330,9 +342,14 @@ model Pet {
   // Se limpia al re-subir fotos y al rechazar.
   cartillaApprovalNote    String?
 
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive        Boolean   @default(true)
+  // Alta EXPRESS de mostrador (baño de invitado): la ficha se creó con nombre,
+  // talla y poco más, sin peso ni cartilla ni contactos. Es PROCEDENCIA, no
+  // estado: no se limpia al completar el expediente. "Incompleto" se deriva de
+  // `weight IS NULL`. Guarda el CUÁNDO para poder listar los walk-ins recientes.
+  expressIntakeAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Relaciones
   ownerId      String
@@ -347,6 +364,7 @@ model Pet {
   quotePets    QuotePet[]
 
   @@index([ownerId, isActive]) // GET /pets
+  @@index([expressIntakeAt]) // walk-ins por completar
   @@map("pets")
 }
 

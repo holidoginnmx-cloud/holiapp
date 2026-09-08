@@ -812,6 +812,12 @@ export default function AdminReservationDetail() {
   if (reservation.pet?.breed) {
     petMetaParts.push(reservation.pet.breed);
   }
+  // Ficha creada como baño de invitado: existe lo justo para cobrar el baño.
+  // Se pregunta por `expressIntakeAt` y NO por `weight == null`: hay 204 fichas
+  // viejas sin peso que no son walk-ins y no tiene caso llamarlas invitados.
+  // Una vez capturado el peso, ya no hay nada que completar.
+  const expedienteIncompleto =
+    !!reservation.pet?.expressIntakeAt && reservation.pet.weight == null;
 
   return (
     <>
@@ -923,6 +929,22 @@ export default function AdminReservationDetail() {
                   {petMetaParts.join(" · ")}
                 </Text>
               </View>
+            )}
+
+            {expedienteIncompleto && (
+              <TouchableOpacity
+                style={styles.incompletoStrip}
+                onPress={() =>
+                  router.push(`/pet/create?editId=${reservation.pet!.id}` as any)
+                }
+                activeOpacity={0.7}
+              >
+                <Ionicons name="alert-circle-outline" size={15} color={COLORS.warningText} />
+                <Text style={styles.incompletoText}>
+                  Expediente incompleto · falta el peso, la raza y la cartilla
+                </Text>
+                <Text style={styles.incompletoCta}>Completar</Text>
+              </TouchableOpacity>
             )}
 
             {(bathStaff || bathDone) && (

@@ -47,6 +47,12 @@ interface ReservationCardProps {
   hasCorte?: boolean;
   /** Baño ya ejecutado al que le falta el cobro: se pinta en ámbar. */
   bathReady?: boolean;
+  /**
+   * Ficha capturada como invitado: existe lo justo para cobrar el baño, sin
+   * peso ni cartilla. La estilista tiene que saberlo ANTES de subir al perro a
+   * la mesa: nadie verificó la talla y nadie revisó vacunas.
+   */
+  incompleteRecord?: boolean;
   onPress?: () => void;
 }
 
@@ -142,6 +148,7 @@ function ReservationCardBase({
   hasDeslanado,
   hasCorte,
   bathReady,
+  incompleteRecord,
   onPress,
 }: ReservationCardProps) {
   const isBath = reservationType === "BATH";
@@ -245,8 +252,14 @@ function ReservationCardBase({
           </View>
         </View>
 
-        {(roomName || ownerName || bookedByName) && (
+        {(roomName || ownerName || bookedByName || incompleteRecord) && (
           <View style={styles.subtitleRow}>
+            {incompleteRecord && (
+              <View style={styles.invitadoChip}>
+                <Ionicons name="alert-circle-outline" size={11} color={COLORS.warningText} />
+                <Text style={styles.invitadoChipText}>Invitado</Text>
+              </View>
+            )}
             {roomName && (
               <View style={styles.subtitleItem}>
                 <Ionicons
@@ -592,6 +605,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "PlusJakartaSans_700Bold",
     letterSpacing: 0.3,
+  },
+  invitadoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: COLORS.warningBg,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  invitadoChipText: {
+    fontSize: 11,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.warningText,
   },
   subtitleRow: {
     flexDirection: "row",

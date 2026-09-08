@@ -26,20 +26,21 @@ import {
   type ReservationDetail,
 } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
+import { billableBathSize } from "@holidoginn/shared/src/pricing";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
 
 function findVariant(
   variants: BathVariant[] | undefined,
-  petWeight: number | null | undefined,
+  pet: { weight?: number | null; size?: string | null; sizeDeclared?: boolean } | null | undefined,
   deslanado: boolean,
   corte: boolean
 ): BathVariant | undefined {
-  if (!variants) return undefined;
-  // Talla por peso: la misma tabla que usa el servidor (shared), sin copia local.
-  const size = sizeFromWeight(petWeight);
+  if (!variants || !pet) return undefined;
+  // Misma regla que cobra el servidor (billableBathSize en shared): manda el
+  // peso, y sin peso sólo cuenta la talla que alguien haya declarado.
+  const size = billableBathSize(pet);
   return variants.find(
     (v) => v.petSize === size && v.deslanado === deslanado && v.corte === corte
   );
@@ -99,8 +100,8 @@ export function BathUpsellCard({ reservation }: Props) {
     (reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN");
 
   const variant = useMemo(
-    () => findVariant(variants, reservation.pet?.weight, deslanado, corte),
-    [variants, reservation.pet?.weight, deslanado, corte]
+    () => findVariant(variants, reservation.pet, deslanado, corte),
+    [variants, reservation.pet, deslanado, corte]
   );
 
   if (existingBath) {

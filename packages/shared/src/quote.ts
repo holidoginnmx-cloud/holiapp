@@ -75,11 +75,12 @@ export interface QuotePetInput {
   name: string;
   weightKg: number | null;
   /**
-   * Talla guardada del perro. En BAÑO manda sobre el peso: el catálogo de
-   * variantes se indexa por talla y un perro puede estar catalogado distinto de
-   * lo que dicta su peso. Si falta, se deriva del peso.
+   * Talla guardada del perro. Sólo cuenta si `sizeDeclared` dice que la eligió
+   * un humano; si no, se deriva del peso. Ver `resolveSize`.
    */
   size?: PetSizeKey | null;
+  /** ¿`size` la declaró una persona viendo al perro, o la rellenó el API? */
+  sizeDeclared?: boolean | null;
   /** Recargo de medicamento: +medicationSurchargePct sobre SU hospedaje. */
   hasMedication?: boolean;
 }
@@ -262,21 +263,23 @@ function plural(n: number, one: string, many: string): string {
 }
 
 /**
- * Talla FACTURABLE de un perro. Sale del PESO, no de `pets.size`.
+ * Talla FACTURABLE de un perro. Manda el PESO; sin peso, la talla sólo cuenta
+ * si un humano la declaró.
  *
- * Es tentador respetar la talla guardada (alguien la capturó a mano), pero
- * POST /reservations resuelve la variante de baño con `sizeFromWeight(peso)` y
- * punto. Cotizar por `pets.size` produce un precio que después no se cobra: un
- * perro de 18 kg registrado como M se cotiza en $350 y se le cobra $450.
- * Mientras la reserva mande el peso, la cotización tiene que mandar el peso.
+ * Es la MISMA regla que `billableBathSize` (./pricing), que es la que usa la
+ * reserva: si las dos no coinciden, la cotización promete un precio que después
+ * no se cobra. Antes esta función respetaba `pet.size` a secas y por eso
+ * divergían — un perro sin peso se cotizaba como Mediano (el "M" que el API
+ * rellena por default, ver routes/pets.ts) y se le cobraba como Chico.
  *
- * La talla guardada solo entra cuando NO hay peso — que es justo el caso de un
- * prospecto al que le preguntaron "¿es chico o mediano?" sin subirlo a la
- * báscula.
+ * La talla declarada es justo el caso del prospecto al que le preguntaron "¿es
+ * chico o mediano?" sin subirlo a la báscula. Sin declarar y sin peso, se cae a
+ * chico Y se emite un warning (más abajo), que es lo honesto: no lo sabemos.
  */
 function resolveSize(pet: QuotePetInput): PetSizeKey {
   if (pet.weightKg != null) return sizeFromWeight(pet.weightKg);
-  return pet.size ?? sizeFromWeight(null);
+  if (pet.sizeDeclared && pet.size) return pet.size;
+  return sizeFromWeight(null);
 }
 
 // ─── Cálculo ─────────────────────────────────────────────────
@@ -411,7 +414,7 @@ export function computeQuote(
     const size = resolveSize(pet);
     const lines: QuoteLine[] = [];
 
-    if (pet.weightKg == null && !pet.size) {
+    if (pet.weightKg == null && !(pet.sizeDeclared && pet.size)) {
       warnings.push(`${pet.name}: sin peso registrado, se cotizó como perro chico`);
     }
 

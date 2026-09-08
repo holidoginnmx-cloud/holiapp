@@ -103,6 +103,12 @@ export const getBathSlots = (
   date: string,
   opts?: {
     petId?: string;
+    /**
+     * Alternativa a `petId` cuando el perro TODAVÍA no existe (baño de
+     * invitado): la duración y el conflicto se resuelven por talla. El endpoint
+     * ya la acepta; sin ella caería al respaldo genérico de 60 min.
+     */
+    petSize?: "XS" | "S" | "M" | "L" | "XL";
     deslanado?: boolean;
     corte?: boolean;
     excludeReservationId?: string;
@@ -110,6 +116,7 @@ export const getBathSlots = (
 ) => {
   const params = new URLSearchParams({ date });
   if (opts?.petId) params.set("petId", opts.petId);
+  if (opts?.petSize) params.set("petSize", opts.petSize);
   if (opts?.deslanado != null) params.set("deslanado", String(opts.deslanado));
   if (opts?.corte != null) params.set("corte", String(opts.corte));
   if (opts?.excludeReservationId)

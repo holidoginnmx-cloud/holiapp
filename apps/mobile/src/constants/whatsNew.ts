@@ -34,6 +34,58 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-09",
+    title: "Cuando llega un perro y no sabemos de quién es",
+    items: [
+      {
+        icon: "water-outline",
+        title: "Baño de invitado: cuatro datos y listo",
+        body:
+          "Tocan el timbre, traen a un perro y piden un baño. No hay ficha, no " +
+          "hay peso, no hay nada — y hasta hoy eso significaba capturar el " +
+          "registro completo con el perro esperando, o no capturar nada (y " +
+          "perder el ingreso). Ya hay una tercera salida: nombre del cliente, " +
+          "teléfono, nombre del perrito y la talla de un toque. Una foto si " +
+          "quieren, para reconocerlo cuando lo entreguen. Nada más.",
+        route: "/admin/reservation/guest-bath",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "pricetag-outline",
+        title: "La talla sí se pide, y no es por llenar campos",
+        body:
+          "De ahí salen dos cosas: el precio y cuánto tiempo se le aparta a " +
+          "quien lo va a bañar. Si la dejáramos en blanco, el sistema asume " +
+          "«chico»: cobraríamos un husky como chihuahua y le daríamos media " +
+          "hora en vez de hora y media, encimándole la cita al siguiente. Es " +
+          "el único dato que sí pueden dar sin el dueño: lo están viendo.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "people-outline",
+        title: "Si el teléfono ya existe, les pregunta antes de duplicar",
+        body:
+          "Cuando el número ya está en la base, sale quién es y con qué perros, " +
+          "y ustedes deciden si es la misma persona. Igual con el perro: si ese " +
+          "cliente ya tiene un «Camila», ofrece usar la ficha que existe en vez " +
+          "de partir su historial en dos.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "alert-circle-outline",
+        title: "Queda marcado como «Invitado» para completarlo después",
+        body:
+          "El baño sale con esa etiqueta en la agenda y en el detalle, con un " +
+          "«Completar» a un toque. Cuando el dueño vuelva con calma, ahí se " +
+          "llena lo que faltó: el peso, la raza, la cartilla. También verán " +
+          "«Sin peso» en la lista de clientes, para encontrarlos en un rato " +
+          "muerto. Ojo: para HOSPEDAJE sigue haciendo falta la cartilla " +
+          "aprobada — este atajo es sólo para baño.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-08-b",
     title: "Vincular fichas: ya funciona aunque el cliente ya haya registrado a su perro",
     items: [

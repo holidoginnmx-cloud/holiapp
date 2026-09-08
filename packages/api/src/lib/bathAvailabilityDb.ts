@@ -8,7 +8,7 @@
 
 import { Prisma, PetSize } from "@holidoginn/db";
 import type { PrismaClient } from "@prisma/client";
-import { sizeFromWeight, bathSizeKey } from "./pricing";
+import { billableBathSize, bathSizeKey } from "./pricing";
 import {
   BathScheduleCfg,
   BusyInterval,
@@ -171,7 +171,7 @@ export async function resolveBathDuration(
   const pet = q.petId
     ? await prisma.pet.findUnique({
         where: { id: q.petId },
-        select: { weight: true, groomingMinutes: true },
+        select: { weight: true, size: true, sizeDeclared: true, groomingMinutes: true },
       })
     : null;
   const propia = pet?.groomingMinutes ?? null;
@@ -185,10 +185,11 @@ export async function resolveBathDuration(
     });
   } else {
     let petSize = q.petSize ?? null;
-    // Sin peso registrado no hay talla que derivar: mejor el respaldo que una
-    // talla inventada que produciría una duración equivocada.
-    if (!petSize && pet?.weight != null) {
-      petSize = bathSizeKey(sizeFromWeight(pet.weight));
+    // Sin peso ni talla declarada no hay nada que derivar: mejor el respaldo que
+    // una talla inventada, que produciría una duración equivocada. `pets.size`
+    // por sí solo no basta — trae "M" por default cuando falta el peso.
+    if (!petSize && pet && (pet.weight != null || pet.sizeDeclared)) {
+      petSize = bathSizeKey(billableBathSize(pet));
     }
     if (petSize) {
       const bath = await prisma.serviceType.findUnique({

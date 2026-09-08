@@ -137,8 +137,9 @@ export default function AdminReservations() {
         onRefresh={refetch}
       />
 
-      {/* El "+" abre las dos altas que arrancan aquí: reservar de una vez, o
-          cotizarle primero a quien todavía está preguntando. */}
+      {/* El "+" abre las altas que arrancan aquí: reservar de una vez, cotizarle
+          primero a quien todavía está preguntando, o capturar al perro que
+          acaba de llegar sin cita y no está en la base. */}
       <TabFab
         style={styles.fab}
         onPress={() =>
@@ -150,6 +151,10 @@ export default function AdminReservations() {
             {
               text: "Cotización",
               onPress: () => router.push("/admin/quotes/create" as any),
+            },
+            {
+              text: "Baño de invitado",
+              onPress: () => router.push("/admin/reservation/guest-bath" as any),
             },
             { text: "Cancelar", style: "cancel" },
           ])

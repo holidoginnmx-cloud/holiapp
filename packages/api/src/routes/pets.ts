@@ -17,7 +17,7 @@ import {
 import { findPetByName } from "../lib/petName";
 import { stripInternalFieldsList } from "../lib/stripInternal";
 import { sizeFromWeight } from "../lib/pricing";
-import { derivePetSize } from "../lib/petSize";
+import { derivePetSize, tallaChocaConCuartoActivo } from "../lib/petSize";
 
 export default async function petsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -317,12 +317,43 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       // `derivePetSize` respeta el cuarto de una estancia en curso: no cambia
       // la talla si eso dejaría al perro fuera del cuarto donde ya está.
       delete data.size;
+      delete data.sizeDeclared;
+      // Talla DECLARADA a ojo para un perro sin báscula. Es la única forma de
+      // que `pets.size` valga algo cuando no hay peso: por default el API lo
+      // deja en "M" y 204 fichas lo llevan sin que nadie las haya visto, así
+      // que `billableBathSize` lo ignora salvo que un humano lo confirme aquí.
+      // Sólo el equipo, y sólo mientras no haya peso (con peso manda el peso).
+      if (
+        parsed.data.sizeDeclared === true &&
+        parsed.data.size &&
+        parsed.data.weight == null &&
+        pet.weight == null &&
+        isStaffOrAdmin(request.userRole)
+      ) {
+        // Misma salvaguarda que `derivePetSize`: la talla decide qué cuartos
+        // admiten al perro, y cambiarla a media estancia lo dejaría fuera del
+        // suyo. Se rechaza en vez de guardarla a medias.
+        const cuarto = await tallaChocaConCuartoActivo(prisma, pet.id, parsed.data.size);
+        if (cuarto) {
+          return reply.status(409).send({
+            error: `${pet.name} está hospedado en ${cuarto}, que no admite talla ${parsed.data.size}. Cambia la talla cuando termine la estancia.`,
+            code: "SIZE_BLOCKED_BY_ROOM",
+          });
+        }
+        data.size = parsed.data.size;
+        data.sizeDeclared = true;
+      }
       if (parsed.data.weight != null) {
         data.size = await derivePetSize(prisma, {
           weight: parsed.data.weight,
           currentSize: pet.size,
           petId: pet.id,
         });
+        // Llegó la báscula: la talla ya no viene de que alguien la haya
+        // estimado a ojo, así que la declaración deja de aplicar. (Da igual
+        // para el precio —`billableBathSize` ya prefiere el peso— pero deja de
+        // afirmar algo que ya no es cierto.)
+        data.sizeDeclared = false;
       }
       if (request.userRole === "STAFF") {
         delete data.cartillaUrl;
