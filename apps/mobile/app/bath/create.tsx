@@ -535,7 +535,7 @@ function CreateBathScreenContent() {
               <ActivityIndicator color={COLORS.primary} />
             ) : !slotsData || slotsData.slots.length === 0 ? (
               <Text style={styles.noSlotsText}>
-                No hay horarios disponibles ese día.
+                {slotsData?.closedReason ?? "No hay horarios disponibles ese día."}
               </Text>
             ) : (
               <View style={styles.slotsGrid}>

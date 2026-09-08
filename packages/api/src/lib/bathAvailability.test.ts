@@ -11,8 +11,10 @@ import {
   formatDuration,
   formatLocalTime,
   localMinutesOfDay,
+  localWeekday,
   localYMD,
   overlapCount,
+  weekdayOfYMD,
   ymdAtLocalMinutes,
 } from "./bathAvailability";
 
@@ -26,6 +28,7 @@ const cfg: BathScheduleCfg = {
   lastStartHour: null,
   bufferMinutes: 15,
   maxConcurrentBaths: 1,
+  closedWeekdays: [],
   isActive: true,
 };
 
@@ -221,6 +224,65 @@ describe("chainStarts (multi-perro)", () => {
     const start = ymdAtLocalMinutes(DAY, 9 * 60);
     const starts = chainStarts(start, [60, 60], 0);
     expect(starts.map(localMinutesOfDay)).toEqual([9 * 60, 10 * 60]);
+  });
+});
+
+describe("días de la semana cerrados", () => {
+  // DAY (2026-08-15) es sábado; de ahí salen el domingo y el lunes siguientes.
+  const DOMINGO = "2026-08-16";
+  const LUNES = "2026-08-17";
+  const MARTES = "2026-08-18";
+  const sinLunes: BathScheduleCfg = { ...cfg, closedWeekdays: [1] };
+
+  it("weekdayOfYMD numera como JS y no se corre por la zona del proceso", () => {
+    expect(weekdayOfYMD(DOMINGO)).toBe(0);
+    expect(weekdayOfYMD(LUNES)).toBe(1);
+    expect(weekdayOfYMD(DAY)).toBe(6);
+  });
+
+  it("localWeekday usa la hora del HOTEL, no la UTC", () => {
+    // Éste es el test que protege la regla: la última cita del domingo (5 pm
+    // en Hermosillo, la más tardía que alcanza a terminar antes del cierre) ya
+    // es lunes 00:00 en UTC. Con los lunes cerrados tiene que seguir siendo
+    // válida — sin el corrimiento, cerrar el lunes mataría el final del domingo.
+    const domingoTarde = ymdAtLocalMinutes(DOMINGO, 17 * 60);
+    expect(domingoTarde.toISOString()).toBe("2026-08-17T00:00:00.000Z");
+    expect(domingoTarde.getUTCDay()).toBe(1); // en UTC ya es lunes…
+    expect(localWeekday(domingoTarde)).toBe(0); // …pero en el hotel es domingo
+    expect(evaluateStart(domingoTarde, 60, sinLunes, [], EARLY).ok).toBe(true);
+  });
+
+  it("buildStartCandidates deja el lunes sin rejilla y el martes intacto", () => {
+    expect(buildStartCandidates(LUNES, sinLunes, 60)).toHaveLength(0);
+    expect(buildStartCandidates(MARTES, sinLunes, 60).length).toBeGreaterThan(0);
+  });
+
+  it("evaluateStart rechaza con CLOSED_DAY, el día en plural y sin conflictos", () => {
+    const v = evaluateStart(ymdAtLocalMinutes(LUNES, 10 * 60), 60, sinLunes, [], EARLY);
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.reason).toBe("CLOSED_DAY");
+    expect(v.message).toBe("Los lunes no hay servicio de estética.");
+    expect(v.conflicts).toEqual([]);
+  });
+
+  it("CLOSED_DAY gana sobre PAST: el problema es el día, no la hora", () => {
+    const muyDespues = new Date("2026-12-31T00:00:00Z");
+    const v = evaluateStart(ymdAtLocalMinutes(LUNES, 10 * 60), 60, sinLunes, [], muyDespues);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toBe("CLOSED_DAY");
+  });
+
+  it("se pueden cerrar varios días a la vez", () => {
+    const finDeSemana: BathScheduleCfg = { ...cfg, closedWeekdays: [0, 6] };
+    expect(buildStartCandidates(DAY, finDeSemana, 60)).toHaveLength(0); // sábado
+    expect(buildStartCandidates(DOMINGO, finDeSemana, 60)).toHaveLength(0);
+    expect(buildStartCandidates(LUNES, finDeSemana, 60).length).toBeGreaterThan(0);
+  });
+
+  it("lista vacía = comportamiento idéntico al de antes", () => {
+    expect(buildStartCandidates(LUNES, cfg, 60).length).toBeGreaterThan(0);
+    expect(evaluateStart(ymdAtLocalMinutes(LUNES, 10 * 60), 60, cfg, [], EARLY).ok).toBe(true);
   });
 });
 

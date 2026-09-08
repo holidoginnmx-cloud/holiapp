@@ -25,6 +25,45 @@ function hoursLabel(h: number): string {
   return `${h - 12}:00 PM`;
 }
 
+// Se pintan de lunes a domingo, que es como se lee una semana de trabajo,
+// pero se guardan con la numeración de JS (0 = domingo) que usa el motor.
+const DIAS = [
+  { n: 1, corto: "L" },
+  { n: 2, corto: "M" },
+  { n: 3, corto: "X" },
+  { n: 4, corto: "J" },
+  { n: 5, corto: "V" },
+  { n: 6, corto: "S" },
+  { n: 0, corto: "D" },
+] as const;
+
+const DIAS_LARGO = [
+  "domingos",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábados",
+];
+
+/** Orden de lectura: la semana empieza en lunes y el domingo va al final. */
+function ordenSemana(d: number): number {
+  return d === 0 ? 7 : d;
+}
+
+function resumenCerrados(dias: number[]): string {
+  if (dias.length === 0) return "Abierto toda la semana.";
+  const nombres = [...dias]
+    .sort((a, b) => ordenSemana(a) - ordenSemana(b))
+    .map((d) => DIAS_LARGO[d]);
+  const lista =
+    nombres.length === 1
+      ? nombres[0]
+      : `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+  return `Cerrado los ${lista}. Esos días no se ofrecen horarios ni en la app ni en la página.`;
+}
+
 export default function AdminBathConfig() {
   const queryClient = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -39,6 +78,7 @@ export default function AdminBathConfig() {
   const [slotStep, setSlotStep] = useState("30");
   const [buffer, setBuffer] = useState("0");
   const [isActive, setIsActive] = useState(true);
+  const [cerrados, setCerrados] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -50,6 +90,7 @@ export default function AdminBathConfig() {
       setSlotStep(String(data.slotStepMinutes ?? 30));
       setBuffer(String(data.bufferMinutes ?? 0));
       setIsActive(data.isActive);
+      setCerrados(data.closedWeekdays ?? []);
     }
   }, [data]);
 
@@ -75,6 +116,13 @@ export default function AdminBathConfig() {
       Alert.alert("Error", "Capacidad mínima: 1");
       return;
     }
+    if (cerrados.length >= 7) {
+      Alert.alert(
+        "Revisa los días",
+        "No puedes cerrar los siete días. Si quieres parar la estética por completo, apaga «Agenda activa».",
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -85,6 +133,7 @@ export default function AdminBathConfig() {
         slotStepMinutes: Number(slotStep) || 30,
         bufferMinutes: Number(buffer) || 0,
         maxConcurrentBaths: maxNum,
+        closedWeekdays: cerrados,
         isActive,
       });
       queryClient.invalidateQueries({ queryKey: ["bath-config"] });
@@ -149,6 +198,37 @@ export default function AdminBathConfig() {
           placeholder="18"
         />
         <Text style={styles.preview}>{hoursLabel(Number(closeHour) || 0)}</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Días cerrados</Text>
+        <Text style={styles.hint}>
+          Toca los días en que la estética no trabaja. Esos días no se ofrecerán horarios.
+        </Text>
+        <View style={styles.diasRow}>
+          {DIAS.map((d) => {
+            const cerrado = cerrados.includes(d.n);
+            return (
+              <TouchableOpacity
+                key={d.n}
+                accessibilityRole="button"
+                accessibilityState={{ selected: cerrado }}
+                accessibilityLabel={`${DIAS_LARGO[d.n]}: ${cerrado ? "cerrado" : "abierto"}`}
+                style={[styles.diaChip, cerrado && styles.diaChipCerrado]}
+                onPress={() =>
+                  setCerrados((prev) =>
+                    prev.includes(d.n) ? prev.filter((x) => x !== d.n) : [...prev, d.n],
+                  )
+                }
+              >
+                <Text style={[styles.diaChipText, cerrado && styles.diaChipTextCerrado]}>
+                  {d.corto}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.diasResumen}>{resumenCerrados(cerrados)}</Text>
       </View>
 
       <Text style={styles.sectionTitle}>Horarios</Text>
@@ -281,6 +361,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textPrimary,
+  },
+  diasRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  diaChip: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.bgSection,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  diaChipCerrado: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  diaChipText: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textTertiary,
+  },
+  diaChipTextCerrado: { color: COLORS.white },
+  diasResumen: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
+    marginTop: 10,
   },
   summaryCard: {
     flexDirection: "row",

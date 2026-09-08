@@ -58,6 +58,16 @@ export type BathScheduleCfg = {
   bufferMinutes: number;
   /** Cuántas citas pueden correr a la vez (hoy: una estilista → 1). */
   maxConcurrentBaths: number;
+  /**
+   * Días de la semana en que la estética no abre (0 = domingo … 6 = sábado).
+   * Vacío = abre todos los días.
+   *
+   * Es una LISTA y no un patrón porque el negocio puede cerrar lunes y domingo
+   * a la vez. Y es un campo REQUERIDO a propósito: así el compilador señala
+   * cada literal de configuración que se quedó sin actualizar, en vez de dejar
+   * un `undefined` corriendo en producción.
+   */
+  closedWeekdays: readonly number[];
   isActive: boolean;
 };
 
@@ -76,6 +86,7 @@ export type SlotReason =
   | "CAPACITY" // se encima con otra cita
   | "CLOSES_TOO_LATE" // termina después de que sale la estilista
   | "AFTER_LAST_START" // pasa el tope duro de último inicio
+  | "CLOSED_DAY" // ese día de la semana la estética no abre
   | "OUT_OF_WINDOW"; // antes de abrir o fuera del día
 
 export type StartVerdict =
@@ -119,6 +130,62 @@ export function dayRangeUtc(dateYMD: string): { start: Date; end: Date } {
 
 export function isValidDateYMD(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Día de la semana (para los días en que la estética no abre)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Nombres en PLURAL, para los mensajes que lee el cliente ("los lunes", "los
+ * sábados"). Los días de entre semana son invariables en plural; sábado y
+ * domingo no. Índice = numeración de JS (0 = domingo).
+ */
+export const WEEKDAY_PLURAL = [
+  "domingos",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábados",
+] as const;
+
+/**
+ * Día de la semana (0 = domingo) de un "YYYY-MM-DD" que YA es local del hotel.
+ *
+ * OJO: `new Date("2026-09-07").getDay()` NO sirve. Ese literal se parsea como
+ * medianoche UTC y `getDay()` lo reinterpreta en la zona del proceso; en
+ * Hermosillo (UTC-7) cae el día ANTERIOR a las 5 pm y devuelve domingo en vez
+ * de lunes. Se construye en UTC y se lee en UTC para que la aritmética no pase
+ * nunca por la zona en la que corra el servidor.
+ */
+export function weekdayOfYMD(dateYMD: string): number {
+  const [y, m, d] = dateYMD.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/**
+ * Día de la semana LOCAL DEL HOTEL al que pertenece un instante UTC.
+ *
+ * OJO: `new Date(iso).getDay()` está mal por partida doble — usa la zona del
+ * proceso (Railway corre en UTC) y, sobre todo, en UTC una cita del domingo a
+ * las 6 pm de Hermosillo ya es LUNES 01:00. Sin restar el corrimiento, cerrar
+ * los lunes mataría también la última hora de los domingos. Mismo tratamiento
+ * que `localYMD` y `localMinutesOfDay`.
+ */
+export function localWeekday(d: Date): number {
+  return new Date(d.getTime() - TZ_SHIFT_MS).getUTCDay();
+}
+
+/** ¿La estética cierra ese día de la semana? */
+export function isClosedWeekday(cfg: BathScheduleCfg, weekday: number): boolean {
+  return cfg.closedWeekdays.includes(weekday);
+}
+
+/** "Los lunes no hay servicio de estética." — el mensaje que lee el cliente. */
+export function closedDayMessage(weekday: number): string {
+  return `Los ${WEEKDAY_PLURAL[weekday] ?? "ese día"} no hay servicio de estética.`;
 }
 
 /** "9:30 am" en hora del hotel, para los mensajes que lee el equipo. */
@@ -167,6 +234,9 @@ export function buildStartCandidates(
   durationMinutes: number
 ): Date[] {
   if (!isValidDateYMD(dateYMD)) return [];
+  // Día cerrado: no hay rejilla que construir. `dateYMD` ya es el día local del
+  // hotel, así que aquí basta con la aritmética de calendario.
+  if (isClosedWeekday(cfg, weekdayOfYMD(dateYMD))) return [];
   const step = Math.max(5, cfg.slotStepMinutes);
   const openMin = cfg.openHour * 60;
   const closeMin = cfg.closeHour * 60;
@@ -231,6 +301,23 @@ export function evaluateStart(
   const startMin = localMinutesOfDay(start);
   const closeMin = cfg.closeHour * 60;
   const openMin = cfg.openHour * 60;
+
+  // Va PRIMERO, antes incluso de "ya pasó": es un hecho del DÍA, no de la hora.
+  // Si alguien pide un lunes a una hora que ya pasó, "los lunes no hay
+  // servicio" es accionable; "ese horario ya pasó" lo mandaría a probar otra
+  // hora del mismo lunes.
+  //
+  // El día se resuelve en hora del hotel: en UTC, una cita del domingo a las
+  // 6 pm ya cayó en lunes (ver `localWeekday`).
+  const weekday = localWeekday(start);
+  if (isClosedWeekday(cfg, weekday)) {
+    return {
+      ok: false,
+      reason: "CLOSED_DAY",
+      message: closedDayMessage(weekday),
+      conflicts: [],
+    };
+  }
 
   if (start.getTime() <= now.getTime()) {
     return { ok: false, reason: "PAST", message: "Ese horario ya pasó.", conflicts: [] };

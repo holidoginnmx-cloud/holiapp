@@ -34,6 +34,28 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-07",
+    title: "Ya puedes cerrar días de la semana en la agenda de baños",
+    items: [
+      {
+        icon: "calendar-clear-outline",
+        title: "«Los lunes no hay baños», sin cancelar cita por cita",
+        body:
+          "Hasta ahora la agenda de estética solo se podía apagar ENTERA o " +
+          "recortar por horas, así que un día de descanso seguía ofreciendo " +
+          "horarios y alguien tenía que cancelar cada cita a mano. En " +
+          "Configuración → Agenda de baños hay una fila de días (L M X J V S D): " +
+          "los que marques dejan de ofrecer horarios en la app, en la página y " +
+          "en el panel, y el sistema rechaza citas nuevas con el motivo a la " +
+          "vista. Si necesitas meter una excepción, «Agendar de todos modos» " +
+          "sigue funcionando y queda registrado. Las citas ya agendadas NO se " +
+          "cancelan: revisa esos días y muévelas tú.",
+        route: "/admin/bath-config",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-05",
     title: "El calendario ya pone las estancias en sus días reales",
     items: [

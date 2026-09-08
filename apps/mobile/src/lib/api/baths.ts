@@ -51,6 +51,8 @@ export type BathConfig = {
   lastStartHour: number | null;
   /** Limpieza entre perro y perro. */
   bufferMinutes: number;
+  /** Días de la semana cerrados (0 = domingo … 6 = sábado). Vacío = abre todos. */
+  closedWeekdays: number[];
   updatedAt: string;
 };
 
@@ -59,6 +61,7 @@ export type BathSlotReason =
   | "CAPACITY"
   | "CLOSES_TOO_LATE"
   | "AFTER_LAST_START"
+  | "CLOSED_DAY"
   | "OUT_OF_WINDOW";
 
 export type BathSlot = {
@@ -78,6 +81,10 @@ export type BathSlotsResponse = {
   durationMinutes: number;
   /** false = la API usó su duración de respaldo. */
   durationResolved: boolean;
+  /** true = ese día de la semana la estética no abre (la lista viene vacía). */
+  closedDay?: boolean;
+  /** "Los lunes no hay servicio de estética." — para pintar el motivo. */
+  closedReason?: string;
   slots: BathSlot[];
 };
 

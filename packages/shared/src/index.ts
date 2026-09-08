@@ -1153,6 +1153,8 @@ export const BathConfigSchema = z.object({
   lastStartHour: z.number().int().min(0).max(23).nullable(),
   // Limpieza entre perro y perro.
   bufferMinutes: z.number().int().min(0).max(60),
+  // Días de la semana cerrados (0 = domingo … 6 = sábado). Vacío = abre todos.
+  closedWeekdays: z.array(z.number().int().min(0).max(6)).default([]),
   updatedAt: z.coerce.date(),
 });
 export type BathConfig = z.infer<typeof BathConfigSchema>;
@@ -1167,6 +1169,17 @@ export const UpdateBathConfigSchema = z.object({
   defaultBathDurationMinutes: z.number().int().min(15).max(480).optional(),
   lastStartHour: z.number().int().min(0).max(23).nullable().optional(),
   bufferMinutes: z.number().int().min(0).max(60).optional(),
+  // Días cerrados. El `.max(7)` va ANTES del dedupe para que un payload de
+  // quinientos elementos repetidos no tenga que pasar por el Set. Cerrar los
+  // siete días es apagar la agenda, y para eso está `isActive`.
+  closedWeekdays: z
+    .array(z.number().int().min(0).max(6))
+    .max(7)
+    .transform((ds) => [...new Set(ds)].sort((a, b) => a - b))
+    .refine((ds) => ds.length <= 6, {
+      message: "Para cerrar toda la semana usa el interruptor de agenda activa",
+    })
+    .optional(),
 });
 export type UpdateBathConfig = z.infer<typeof UpdateBathConfigSchema>;
 
