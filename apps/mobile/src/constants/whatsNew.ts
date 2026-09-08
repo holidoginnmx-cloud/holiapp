@@ -41,11 +41,11 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         icon: "git-merge-outline",
         title: "Antes se atoraba justo con el cliente que más se había esforzado",
         body:
-          "Si la persona ya había dado de alta a su perro en su cuenta nueva " +
+          "Si ya habían dado de alta a su perro en su cuenta nueva " +
           "—lo más normal: no encontró su ficha, así que lo registró para poder " +
           "usar la app— al vincular salía «esa cuenta ya tiene mascotas» y no " +
-          "había nada que hacer desde la app. Ya no: lo que ella registró se " +
-          "queda con ella y se le suma su ficha de siempre con todo el " +
+          "había nada que hacer desde la app. Ya no: lo que registraron se " +
+          "queda en su cuenta y se le suma su ficha de siempre con todo el " +
           "historial.",
         route: "/admin/claim-requests",
         roles: ["ADMIN"],
@@ -71,7 +71,7 @@ export const WHATS_NEW: WhatsNewRelease[] = [
           "verla. Para él, que tardaran dos días era igual que si no le hubiera " +
           "llegado a nadie —y lo siguiente que hace es registrar al perro otra " +
           "vez—. Ahora en su lista de mascotas ve «estamos buscando tu ficha». " +
-          "Eso no nos quita la prisa: mientras esté pendiente, él está esperando.",
+          "Eso no nos quita la prisa: mientras esté pendiente, alguien espera.",
         roles: ["ADMIN", "STAFF"],
       },
     ],

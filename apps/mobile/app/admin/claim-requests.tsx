@@ -133,7 +133,7 @@ export default function AdminClaimRequests() {
     }
     const quien = nombreDe(r);
     const sobrantes = descartar.length
-      ? `\n\nSe quitarán ${descartar.length === 1 ? "1 mascota que él mismo registró" : `${descartar.length} mascotas que él mismo registró`}, por estar repetidas.`
+      ? `\n\nSe quitarán ${descartar.length === 1 ? "1 mascota que ya había registrado" : `${descartar.length} mascotas que ya había registrado`} en su cuenta, por estar repetidas.`
       : "";
     Alert.alert(
       "Confirmar vinculación",
@@ -337,9 +337,9 @@ export default function AdminClaimRequests() {
                     la ficha. */}
                 {r.requesterPets.length > 0 && (
                   <>
-                    <Text style={styles.seccion}>Él ya registró en su cuenta</Text>
+                    <Text style={styles.seccion}>Ya registró esto en su cuenta</Text>
                     <Text style={styles.aviso}>
-                      Estas se quedan con él al vincular. Si alguna es la misma que ya
+                      Estas se quedan en su cuenta al vincular. Si alguna es la misma que ya
                       marcaste arriba, márcala como repetida y la quitamos para que no le
                       aparezca dos veces.
                     </Text>
