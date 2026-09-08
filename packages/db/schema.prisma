@@ -237,6 +237,11 @@ model User {
 
   reviews Review[]
 
+  // Solicitudes de vinculación: las que ESTA persona pidió, y las que resolvió
+  // como parte del equipo.
+  claimRequests  ClaimRequest[] @relation("ClaimRequester")
+  claimsResolved ClaimRequest[] @relation("ClaimResolver")
+
   // Relaciones de staff
   staffAssignments Reservation[]      @relation("StaffAssignments")
   stayUpdates      StayUpdate[]       @relation("StaffUpdates")
@@ -1197,6 +1202,67 @@ model StripePayoutLine {
   @@index([orderId])
   @@index([metaOwnerId])
   @@map("stripe_payout_lines")
+}
+
+// =============================================================
+//  CLAIM REQUEST — "vincúlenme mi ficha" (lo resuelve el equipo)
+//  Salida para el cliente cuyo contacto no sirve para mandarle un código
+// =============================================================
+
+enum ClaimRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Un cliente de siempre instaló la app y su ficha no tiene ningún contacto al
+// que mandarle un código (sin correo real y sin teléfono utilizable), así que
+// no hay forma automática de probar que es suya. Antes eso era un callejón:
+// "escríbenos por WhatsApp", y alguien tenía que resolverlo a mano sin
+// herramienta. Con esto la solicitud queda registrada, le llega al equipo a su
+// bandeja y se aprueba desde la app.
+//
+// Se guarda lo que el cliente tecleó, no las fichas que coincidieron: los
+// candidatos se recalculan al abrir la solicitud, para que el equipo decida
+// sobre lo que es verdad HOY y no sobre una foto de hace tres días.
+model ClaimRequest {
+  id             String             @id @default(cuid())
+  // Nullable y SetNull a propósito: al vincular, `claimPetsIntoAccount` BORRA
+  // la cuenta nueva y la ficha vieja hereda su clerkId/email. Con Cascade, la
+  // solicitud se habría borrado en la misma transacción y habríamos perdido el
+  // rastro de quién aprobó qué, que es medio motivo de esta tabla.
+  requesterId    String?
+  requester      User?              @relation("ClaimRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  // Copia del solicitante al momento de pedir, porque su cuenta desaparece al
+  // consolidarse y sin esto el historial quedaría en blanco.
+  requesterName  String?
+  requesterEmail String?
+  // Usuario en el que quedó consolidada (el que conserva historial y saldo).
+  mergedIntoId   String?
+  /**
+   * Lo que el cliente escribió al buscarse (para que el equipo lo reconozca).
+   */
+  typedPhone     String?
+  typedEmail     String?
+  /**
+   * Nota opcional del cliente ("soy la dueña de Rocky").
+   */
+  note           String?
+  status         ClaimRequestStatus @default(PENDING)
+  resolvedById   String?
+  resolvedBy     User?              @relation("ClaimResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  /**
+   * Por qué se rechazó, si se rechazó.
+   */
+  resolution     String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // La bandeja del equipo pide siempre las pendientes, más recientes primero.
+  @@index([status, createdAt])
+  @@index([requesterId])
+  @@map("claim_requests")
 }
 
 // =============================================================

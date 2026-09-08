@@ -10,6 +10,9 @@ import {
   invalidateAuthCache,
 } from "../middleware/auth";
 import { normalizePhone } from "../lib/phone";
+import { takeQuota } from "../lib/quota";
+import { pickSmsTarget } from "../lib/claimSms";
+import { alternateChannel, planChannel } from "../lib/claimChannel";
 import {
   claimPetsIntoAccount,
   ClaimUnavailableError,
@@ -19,35 +22,28 @@ import {
   createChallenge,
   createClaimToken,
   maskEmail,
+  maskPhone,
   newCode,
   readClaimToken,
   verifyChallenge,
 } from "../lib/claimChallenge";
-import { claimCodeTemplate, sendEmail } from "../lib/email";
+import { claimCodeTemplate, emailConfigurado, sendEmail } from "../lib/email";
+import { claimCodeSms, sendSms } from "../lib/sms";
+import { equipoActivoIds, notifyUsers } from "../lib/notify";
 
 // Correos de walk-in que crea el equipo (no son un buzón real).
 const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
 const CLAIM_CODE_MINUTES = 10;
 
-// Cuota por USUARIO (además de la de IP de @fastify/rate-limit). La IP no
-// basta: los teléfonos salen por CG-NAT de la operadora y varios clientes
-// comparten IP (8 intentos entre todos); y a la inversa, un solo usuario podía
-// enumerar teléfonos mandando un correo real por cada acierto. Memoria de
-// proceso: la API corre en una sola instancia.
-const userQuotas = new Map<string, { count: number; resetAt: number }>();
-function takeUserQuota(key: string, max: number, windowMs: number): boolean {
-  const now = Date.now();
-  const cur = userQuotas.get(key);
-  if (!cur || cur.resetAt <= now) {
-    if (userQuotas.size > 5000) userQuotas.clear();
-    userQuotas.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (cur.count >= max) return false;
-  cur.count += 1;
-  return true;
-}
 const QUOTA_WINDOW_MS = 10 * 60 * 1000;
+
+// Cuotas del envío por SMS. Van aparte de las de usuario porque el riesgo es
+// otro: la cuota por usuario no impide que N cuentas de Clerk le peguen al
+// MISMO número ajeno, y ahí cada intento cuesta dinero y además acosa a quien
+// tenga esa línea. `sms:global` es el freno de gasto de todo el sistema.
+const SMS_WINDOW_MS = 60 * 60 * 1000;
+const SMS_PER_NUMBER = 3;
+const SMS_GLOBAL_MAX = 40;
 
 export default async function usersRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -150,12 +146,15 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   //
   // Antes devolvía nombre y mascotas de cualquier teléfono, y con eso bastaba
   // para reclamar la ficha. Ahora solo dice si hay coincidencia y manda un
-  // código de 6 dígitos al correo que YA tiene la ficha (no al que escriba
-  // quien busca); nombre y mascotas se entregan en /verify, con el código.
-  // Si la ficha no tiene un correo real (walk-in), no hay forma de probar que
-  // es suya desde la app: el equipo le pone el correo desde el panel y vuelve
-  // a intentar.
-  fastify.post<{ Body: { phone?: string; email?: string; v?: number } }>(
+  // código de 6 dígitos al contacto que YA tiene la ficha (nunca al que
+  // escriba quien busca: ahí está toda la prueba de identidad); nombre y
+  // mascotas se entregan en /verify, con el código.
+  //
+  // El canal es SMS y, si no hay teléfono utilizable o el envío falla, correo.
+  // Ese orden sale de los datos: el 85% de las fichas de clientes sin app
+  // tiene teléfono capturado y solo el 16% un correo real. Si no hay ningún
+  // canal, se devuelve el respaldo de WhatsApp para que el equipo la vincule.
+  fastify.post<{ Body: { phone?: string; email?: string; v?: number; prefer?: "email" | "sms" } }>(
     "/users/claim/lookup",
     {
       preHandler: [authMiddleware],
@@ -171,7 +170,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           .status(400)
           .send({ error: "Ingresa tu teléfono o tu correo" });
       }
-      if (!takeUserQuota(`lookup:${currentUserId}`, 5, QUOTA_WINDOW_MS)) {
+      if (!takeQuota(`lookup:${currentUserId}`, 5, QUOTA_WINDOW_MS)) {
         return reply.status(429).send({
           error: "Demasiados intentos. Espera 10 minutos o escríbenos por WhatsApp.",
         });
@@ -182,10 +181,14 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         return reply.send({ found: false, channel: "none", candidates: [] });
       }
 
-      // La app anterior al OTA (sin `v: 2`) no sabe pedir el código: leería
-      // `candidates: []` como "no encontramos" mientras al cliente le llega un
-      // correo misterioso. No se manda nada y se le pide actualizar.
-      if (request.body?.v !== 2) {
+      // Versión del cliente. `v` dice qué sabe entender la app que pregunta:
+      //   <2  ni siquiera sabe pedir un código (leería `candidates: []` como
+      //       "no encontramos" mientras al cliente le llega un correo).
+      //   =2  entiende el código por CORREO, nada más.
+      //   >=3 entiende también el código por SMS.
+      const v = Number(request.body?.v) || 0;
+
+      if (v < 2) {
         return reply.send({
           found: true,
           channel: "none",
@@ -197,7 +200,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
       const owners = await prisma.user.findMany({
         where: { id: { in: candidateIds } },
-        select: { email: true, firstName: true },
+        select: { email: true, firstName: true, phone: true },
       });
       const realEmails = Array.from(
         new Set(
@@ -207,34 +210,421 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         ),
       ).slice(0, 3);
 
-      if (realEmails.length === 0) {
-        return reply.send({
-          found: true,
-          channel: "none",
-          candidates: [],
-          message:
-            "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
-        });
+      // ─────────────────────────────────────────────────────────────────
+      //  A dónde va el código
+      //
+      //  SMS primero y correo después, no al revés: de las fichas de clientes
+      //  sin app, el 85% tiene teléfono capturado y solo el 16% un correo de
+      //  verdad (el resto son `@holidoginn.local`, que genera el sistema al
+      //  dar de alta un walk-in). El correo se conserva porque hay clientes
+      //  que solo tienen eso.
+      // ─────────────────────────────────────────────────────────────────
+      const respaldoWhatsapp = {
+        found: true,
+        channel: "none" as const,
+        candidates: [],
+        message:
+          "Encontramos tu ficha, pero no pudimos enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
+      };
+
+      // La app en tienda (v:2) espera `channel:"email"`: si le devolviéramos
+      // "sms" pagaríamos el mensaje y ella igual mostraría "no tiene correo".
+      // Con v:2 se conserva exactamente el comportamiento de antes.
+      const puedeSms = v >= 3;
+      const smsTarget = puedeSms ? pickSmsTarget(owners, phone) : ({ ok: false, reason: "no-phone" } as const);
+      // `sendEmail` traga sus errores y devuelve void, así que sin esta
+      // comprobación marcaríamos el correo como enviado cuando ni siquiera hay
+      // proveedor configurado — y el cliente esperaría un código inexistente.
+      const hayCorreo = realEmails.length > 0 && emailConfigurado();
+      const plan = planChannel(smsTarget.ok, hayCorreo, request.body?.prefer);
+
+      if (plan.first === "none") {
+        if (!hayCorreo && !puedeSms) {
+          // Ficha sin correo y app vieja: el mensaje de siempre. NO se le pide
+          // actualizar porque el build de la tienda no recibe este OTA — sería
+          // mandarlo a un callejón peor.
+          return reply.send({
+            ...respaldoWhatsapp,
+            message:
+              "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
+          });
+        }
+        request.log.info(
+          { tag: "claim-sms-skipped", reason: smsTarget.ok ? "sin-canal" : smsTarget.reason, userId: currentUserId },
+          "[claim] sin canal para el código",
+        );
+        return reply.send(respaldoWhatsapp);
       }
 
       const code = newCode();
       const challengeToken = createChallenge(currentUserId, candidateIds, code);
       const firstName = owners.find((o) => o.firstName)?.firstName ?? null;
-      const tpl = claimCodeTemplate({ firstName, code, minutes: CLAIM_CODE_MINUTES });
-      await Promise.all(realEmails.map((to) => sendEmail({ to, ...tpl })));
+
+      let usado: "sms" | "email" | null = null;
+      // Por qué no salió el SMS, si es que se intentó (para no volver a ofrecerlo).
+      let smsFallo: string | null = null;
+
+      if (plan.first === "sms" && smsTarget.ok) {
+        // Cuota POR NÚMERO DESTINO, no solo por usuario: si no, N cuentas
+        // pueden bombardear el mismo teléfono ajeno a costa del negocio.
+        const conCupo =
+          takeQuota(`sms:num:${smsTarget.e164}`, SMS_PER_NUMBER, SMS_WINDOW_MS) &&
+          takeQuota("sms:global", SMS_GLOBAL_MAX, SMS_WINDOW_MS);
+
+        if (!conCupo) {
+          // Sin cupo no se corta el flujo: se sigue a la cascada como si el
+          // SMS no estuviera disponible. Devolver aquí dejaba sin código a
+          // quien sí tiene correo, y además borraba en la pantalla un reto que
+          // seguía siendo válido con el código que ya había recibido.
+          request.log.warn(
+            { tag: "claim-sms-throttled", userId: currentUserId },
+            "[claim] cuota de SMS agotada",
+          );
+          smsFallo = "throttled";
+        } else {
+          const enviado = await sendSms({
+            to: smsTarget.e164,
+            body: claimCodeSms({ code, minutes: CLAIM_CODE_MINUTES }),
+          });
+          if (enviado.ok) {
+            usado = "sms";
+          } else {
+            smsFallo = enviado.reason;
+            request.log.error(
+              { tag: "claim-sms-failed", reason: enviado.reason, detail: enviado.detail, userId: currentUserId },
+              "[claim] SMS no enviado",
+            );
+          }
+        }
+      }
+
+      // Correo: como plan principal, o como red cuando el SMS no salió.
+      if (!usado && hayCorreo) {
+        const tpl = claimCodeTemplate({ firstName, code, minutes: CLAIM_CODE_MINUTES });
+        await Promise.all(realEmails.map((to) => sendEmail({ to, ...tpl })));
+        usado = "email";
+      }
+
+      if (!usado) {
+        // Nunca se le dice "te mandamos un código" si no salió ninguno: se
+        // quedaría esperando uno que no existe. El token no se devuelve.
+        return reply.send(
+          smsFallo === "throttled"
+            ? {
+                ...respaldoWhatsapp,
+                message:
+                  "Ya te mandamos un código hace poco. Revisa tus mensajes, o escríbenos por WhatsApp.",
+              }
+            : respaldoWhatsapp,
+        );
+      }
+
       request.log.info(
-        { tag: "claim-code-sent", userId: currentUserId, candidates: candidateIds.length },
+        { tag: "claim-code-sent", channel: usado, userId: currentUserId, candidates: candidateIds.length },
         "[claim] código enviado",
       );
 
       return reply.send({
         found: true,
-        channel: "email",
+        channel: usado,
         candidates: [],
-        maskedEmails: realEmails.map(maskEmail),
+        ...(usado === "sms" && smsTarget.ok
+          ? { maskedPhones: [maskPhone(smsTarget.e164)] }
+          : { maskedEmails: realEmails.map(maskEmail) }),
+        // Si se usó el correo PORQUE el SMS falló, ofrecer SMS mandaría al
+        // cliente a repetir el canal roto y a gastar otro crédito del número.
+        altChannel: alternateChannel(usado, smsTarget.ok && !smsFallo, hayCorreo),
         challengeToken,
         expiresInMinutes: CLAIM_CODE_MINUTES,
       });
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  //  Bandeja del equipo para las solicitudes de vinculación
+  //
+  //  Solo ADMIN: vincular una ficha da acceso a su historial, sus reservas y
+  //  su saldo a favor. Mismo criterio que los co-dueños de una mascota, que
+  //  también son solo-admin, y coherente con "el staff crea, pero no toca
+  //  dinero".
+  // ────────────────────────────────────────────────────────────
+  fastify.get<{ Querystring: { status?: string } }>(
+    "/admin/claim-requests",
+    { preHandler: adminAuth },
+    async (request) => {
+      const status =
+        request.query?.status === "all"
+          ? undefined
+          : ((request.query?.status?.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED") ??
+            "PENDING");
+
+      const rows = await prisma.claimRequest.findMany({
+        where: status ? { status } : undefined,
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: {
+          requester: {
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+          },
+          resolvedBy: { select: { firstName: true, lastName: true } },
+        },
+      });
+
+      // Los candidatos se recalculan AHORA y no se leen de la solicitud: el
+      // equipo tiene que decidir sobre lo que es verdad hoy, no sobre una foto
+      // de cuando el cliente la mandó (pudieron corregirle el teléfono, o
+      // fusionar fichas, desde entonces).
+      return Promise.all(
+        rows.map(async (r) => {
+          // Sin requesterId la cuenta ya no existe (se consolidó), así que
+          // no hay a quién vincular ni candidatos que calcular.
+          if (r.status !== "PENDING" || !r.requesterId) return { ...r, candidates: [] };
+          const ids = await findLegacyCandidates(
+            normalizePhone(r.typedPhone),
+            r.typedEmail,
+            r.requesterId,
+          );
+          return { ...r, candidates: await candidatesPayload(ids) };
+        }),
+      );
+    }
+  );
+
+  // GET /admin/claim-requests/search?q= — buscar la ficha a mano.
+  //
+  // Hace falta porque la coincidencia automática falla justo en el caso que
+  // trae al cliente aquí: si su ficha tiene el teléfono mal escrito, no la
+  // encuentra ni él ni el sistema. El equipo la busca por nombre.
+  fastify.get<{ Querystring: { q?: string } }>(
+    "/admin/claim-requests/search",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const q = request.query?.q?.trim();
+      if (!q || q.length < 2) {
+        return reply.status(400).send({ error: "Escribe al menos 2 letras" });
+      }
+      const digits = q.replace(/\D/g, "");
+      // Solo fichas sin cuenta vinculada: las demás no se pueden consolidar.
+      const fichas = await prisma.user.findMany({
+        where: {
+          clerkId: null,
+          isActive: true,
+          role: "OWNER",
+          OR: [
+            { firstName: { contains: q, mode: "insensitive" } },
+            { lastName: { contains: q, mode: "insensitive" } },
+            ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
+          ],
+        },
+        select: { id: true },
+        take: 15,
+      });
+      return candidatesPayload(fichas.map((f) => f.id));
+    }
+  );
+
+  // POST /admin/claim-requests/:id/approve — el equipo da fe de que la ficha
+  // es suya. Reusa exactamente el mismo merge que el flujo con código
+  // (claimPetsIntoAccount): lo que cambia es quién autoriza, no qué se hace.
+  fastify.post<{ Params: { id: string }; Body: { petIds?: string[] } }>(
+    "/admin/claim-requests/:id/approve",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const solicitud = await prisma.claimRequest.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!solicitud) return reply.status(404).send({ error: "Solicitud no encontrada" });
+      if (solicitud.status !== "PENDING") {
+        return reply.status(409).send({ error: "Esa solicitud ya se resolvió" });
+      }
+
+      const fresh = solicitud.requesterId
+        ? await prisma.user.findUnique({ where: { id: solicitud.requesterId } })
+        : null;
+      if (!fresh) {
+        return reply
+          .status(409)
+          .send({ error: "La cuenta que pidió ya no existe (puede que ya se haya vinculado)." });
+      }
+
+      // Misma precondición que el flujo con código: consolidar en la ficha
+      // legacy borraría lo que la cuenta nueva ya tuviera.
+      const [petCount, resCount] = await Promise.all([
+        prisma.pet.count({ where: { ownerId: fresh.id } }),
+        prisma.reservation.count({ where: { ownerId: fresh.id } }),
+      ]);
+      if (petCount > 0 || resCount > 0) {
+        return reply.status(409).send({
+          error: "Esa cuenta ya tiene mascotas o reservas propias; no se puede consolidar.",
+        });
+      }
+
+      const petIds = [
+        ...new Set((request.body?.petIds ?? []).filter((x) => typeof x === "string" && x)),
+      ];
+      if (petIds.length === 0) {
+        return reply.status(400).send({ error: "Selecciona al menos una mascota" });
+      }
+
+      // Autorización: las fichas dueñas de las mascotas que el ADMIN eligió.
+      //
+      // A propósito NO se limita a las fichas que coinciden por teléfono o
+      // correo: el caso más común de esta pantalla es precisamente que la
+      // coincidencia automática NO funciona (la ficha tiene el teléfono mal
+      // capturado, o de menos de 10 dígitos, y por eso el cliente no pudo
+      // verificarse solo). Si aquí exigiéramos coincidencia, la herramienta
+      // fallaría justo cuando se la necesita.
+      //
+      // Quien da fe es el equipo, que conoce a sus clientes por nombre. Lo que
+      // sí se sigue validando —dentro de claimPetsIntoAccount, en la misma
+      // transacción— es que las fichas sean OWNER, activas y SIN cuenta ya
+      // vinculada, así que no se le puede quitar la ficha a nadie que ya use
+      // la app. Y queda registrado quién aprobó.
+      const duenos = await prisma.pet.findMany({
+        where: { id: { in: petIds }, isActive: true },
+        select: { ownerId: true },
+      });
+      const allowedIds = [...new Set(duenos.map((d) => d.ownerId))];
+      if (allowedIds.length === 0) {
+        return reply.status(409).send({ error: "Esas mascotas ya no existen." });
+      }
+
+      try {
+        const merged = await claimPetsIntoAccount(
+          prisma,
+          fresh,
+          petIds,
+          allowedIds,
+          solicitud.typedPhone,
+        );
+        // OJO con el orden y con los ids: `claimPetsIntoAccount` BORRA la
+        // cuenta nueva y deja el historial bajo la ficha vieja, que hereda su
+        // clerkId. Así que `fresh.id` ya no existe aquí — hay que usar el
+        // usuario consolidado que devuelve el merge. El clerkId sí es el mismo.
+        await prisma.claimRequest.update({
+          where: { id: solicitud.id },
+          data: {
+            status: "APPROVED",
+            resolvedById: request.userId!,
+            resolvedAt: new Date(),
+            mergedIntoId: merged.id,
+          },
+        });
+        invalidateAuthCache(fresh.clerkId);
+        await notifyUsers(prisma, [merged.id], {
+          type: "GENERAL",
+          title: "¡Tu cuenta ya está vinculada!",
+          body: "Ya puedes ver a tus mascotas y su historial en la app.",
+          data: { kind: "CLAIM_APPROVED" },
+        });
+        request.log.info(
+          { tag: "claim-request-approved", id: solicitud.id, by: request.userId },
+          "[claim] vinculación aprobada por el equipo",
+        );
+        return reply.send(merged);
+      } catch (err) {
+        if (err instanceof ClaimForbiddenError) {
+          return reply.status(403).send({ error: "Esas mascotas no corresponden a la ficha." });
+        }
+        if (err instanceof ClaimUnavailableError) {
+          return reply
+            .status(409)
+            .send({ error: "La ficha cambió mientras se vinculaba. Vuelve a intentar." });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /admin/claim-requests/:id/reject — no era su ficha, o no se pudo
+  // confirmar quién es. No se le manda push: si el equipo la rechaza es porque
+  // ya habló con esa persona, o porque el intento era ajeno.
+  fastify.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    "/admin/claim-requests/:id/reject",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const solicitud = await prisma.claimRequest.findUnique({
+        where: { id: request.params.id },
+      });
+      if (!solicitud) return reply.status(404).send({ error: "Solicitud no encontrada" });
+      if (solicitud.status !== "PENDING") {
+        return reply.status(409).send({ error: "Esa solicitud ya se resolvió" });
+      }
+      return reply.send(
+        await prisma.claimRequest.update({
+          where: { id: solicitud.id },
+          data: {
+            status: "REJECTED",
+            resolvedById: request.userId!,
+            resolvedAt: new Date(),
+            resolution: request.body?.reason?.trim().slice(0, 300) || null,
+          },
+        }),
+      );
+    }
+  );
+  // ────────────────────────────────────────────────────────────
+  //  POST /users/claim/request — "vincúlenme ustedes"
+  //
+  //  La salida para el cliente al que no se le puede mandar un código porque
+  //  su ficha no tiene ningún contacto utilizable. Antes esto era un callejón
+  //  ("escríbenos por WhatsApp") y alguien del equipo lo resolvía a mano sin
+  //  herramienta; ahora queda registrado y les llega a su bandeja.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{ Body: { phone?: string; email?: string; note?: string } }>(
+    "/users/claim/request",
+    {
+      preHandler: [authMiddleware],
+      config: { rateLimit: { max: 10, timeWindow: "10 minutes" } },
+    },
+    async (request, reply) => {
+      const currentUserId = request.userId!;
+      if (!takeQuota(`claim-request:${currentUserId}`, 3, QUOTA_WINDOW_MS)) {
+        return reply.status(429).send({
+          error: "Ya mandaste tu solicitud. El equipo la revisará en breve.",
+        });
+      }
+
+      // Una pendiente a la vez: si insiste, se le confirma la que ya tiene en
+      // vez de llenarle la bandeja al equipo con la misma persona repetida.
+      const yaPendiente = await prisma.claimRequest.findFirst({
+        where: { requesterId: currentUserId, status: "PENDING" },
+      });
+      if (yaPendiente) {
+        return reply.send({ ok: true, alreadyPending: true, id: yaPendiente.id });
+      }
+
+      const quien = request.dbUser;
+      const nombre = [quien?.firstName, quien?.lastName].filter(Boolean).join(" ").trim();
+
+      const solicitud = await prisma.claimRequest.create({
+        data: {
+          requesterId: currentUserId,
+          // Copia del solicitante: su cuenta desaparece al consolidarse (el
+          // merge la borra y la ficha vieja hereda su identidad), así que sin
+          // esto el historial quedaría sin nombre.
+          requesterName: nombre || null,
+          requesterEmail: quien?.email ?? null,
+          typedPhone: request.body?.phone?.trim() || null,
+          typedEmail: request.body?.email?.trim().toLowerCase() || null,
+          note: request.body?.note?.trim().slice(0, 300) || null,
+        },
+      });
+
+      const contacto = solicitud.typedPhone ?? solicitud.typedEmail ?? "sin dato";
+      const equipo = await equipoActivoIds(prisma, currentUserId);
+      await notifyUsers(prisma, equipo, {
+        type: "GENERAL",
+        title: "Alguien pide vincular su ficha",
+        body: `${nombre || "Un cliente"} (${contacto}) instaló la app y no pudimos mandarle un código. Revisa su solicitud.`,
+        data: { kind: "CLAIM_REQUEST", claimRequestId: solicitud.id },
+      });
+
+      request.log.info(
+        { tag: "claim-request-created", userId: currentUserId, id: solicitud.id },
+        "[claim] solicitud de vinculación manual",
+      );
+      return reply.send({ ok: true, alreadyPending: false, id: solicitud.id });
     }
   );
 
@@ -254,7 +644,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       if (!token || code.length !== 6) {
         return reply.status(400).send({ error: "Escribe el código de 6 dígitos" });
       }
-      if (!takeUserQuota(`verify:${currentUserId}`, 8, QUOTA_WINDOW_MS)) {
+      if (!takeQuota(`verify:${currentUserId}`, 8, QUOTA_WINDOW_MS)) {
         return reply.status(429).send({
           error: "Demasiados intentos con el código. Espera 10 minutos y vuelve a buscar tu cuenta.",
         });
@@ -265,7 +655,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           result.reason === "expired"
             ? "El código venció. Vuelve a buscar tu cuenta para recibir otro."
             : result.reason === "wrong-code"
-              ? "El código no coincide. Revisa tu correo e inténtalo de nuevo."
+              ? "El código no coincide. Revísalo e inténtalo de nuevo."
               : "No pudimos validar el código. Vuelve a buscar tu cuenta.";
         return reply.status(400).send({ error: message, code: result.reason });
       }

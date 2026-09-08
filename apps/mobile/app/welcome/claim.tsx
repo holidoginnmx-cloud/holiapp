@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import {
   lookupExistingAccount,
+  requestManualClaim,
   verifyClaimCode,
   confirmClaim,
   getPetsByOwner,
@@ -51,17 +53,25 @@ export default function ClaimAccountScreen() {
   const [candidates, setCandidates] = useState<ClaimCandidate[]>([]);
   const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
   // Verificación: la ficha se muestra hasta que el cliente escribe el código
-  // que el servidor mandó al correo que YA tenía la ficha. Conocer el
-  // teléfono no basta para reclamarla (ver /users/claim/* en la API).
+  // que el servidor mandó al contacto que YA TENÍA la ficha —SMS si hay
+  // teléfono, si no correo—. Conocer el teléfono no basta para reclamarla
+  // (ver /users/claim/* en la API).
   const [challenge, setChallenge] = useState<{
     token: string;
     masked: string[];
     minutes: number;
+    channel: "sms" | "email";
+    /** El otro contacto de la ficha, por si el que se usó ya no es suyo. */
+    alt?: "sms" | "email";
   } | null>(null);
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [noEmailMessage, setNoEmailMessage] = useState<string | null>(null);
+  // Solicitud de vinculación manual: la salida cuando no hay a dónde mandar el
+  // código. Antes aquí solo había un "escríbenos por WhatsApp".
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
 
   // Mascotas de TODOS los candidatos: un teléfono puede traer varios registros
   // duplicados del mismo cliente (o de un familiar que comparte teléfono).
@@ -112,38 +122,52 @@ export default function ClaimAccountScreen() {
     };
   }, [userId, finish]);
 
-  const handleSearch = async () => {
+  const handleSearch = async (prefer?: "email" | "sms") => {
     setError(null);
-    const payload = useEmail
-      ? { email: email.trim().toLowerCase() }
-      : { phone: phone.trim() };
-    if (useEmail ? !payload.email : !payload.phone) {
+    const valor = useEmail ? email.trim().toLowerCase() : phone.trim();
+    if (!valor) {
       setError(useEmail ? "Ingresa tu correo" : "Ingresa tu teléfono");
       return;
     }
+    const payload = {
+      ...(useEmail ? { email: valor } : { phone: valor }),
+      ...(prefer ? { prefer } : {}),
+    };
     setLoading(true);
     try {
       const res = await lookupExistingAccount(payload);
       setCandidates([]);
       setSelectedPetIds(new Set());
       setClaimToken(null);
-      setCode("");
       setSearched(true);
       if (!res.found) {
         setChallenge(null);
         setNoEmailMessage(null);
-      } else if (res.channel !== "email" || !res.challengeToken) {
-        setChallenge(null);
-        setNoEmailMessage(
+      } else if (
+        (res.channel !== "email" && res.channel !== "sms") ||
+        !res.challengeToken
+      ) {
+        const aviso =
           res.message ??
-            "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
-        );
+          "Encontramos tu ficha, pero no pudimos enviarte el código. Escríbenos por WhatsApp y te la vinculamos.";
+        if (challenge) {
+          // Reenvío que no salió (cuota, proveedor caído). El reto anterior
+          // sigue vivo y puede que el cliente ya tenga ese código en la mano:
+          // borrarlo le quitaría el campo donde escribirlo.
+          setError(aviso);
+        } else {
+          setChallenge(null);
+          setNoEmailMessage(aviso);
+        }
       } else {
         setNoEmailMessage(null);
+        setCode(""); // el código anterior ya no sirve: este reto es otro
         setChallenge({
           token: res.challengeToken,
-          masked: res.maskedEmails ?? [],
+          masked: (res.channel === "sms" ? res.maskedPhones : res.maskedEmails) ?? [],
           minutes: res.expiresInMinutes ?? 10,
+          channel: res.channel,
+          alt: res.altChannel,
         });
       }
     } catch (e: any) {
@@ -153,11 +177,33 @@ export default function ClaimAccountScreen() {
     }
   };
 
+  const handleRequestManual = async () => {
+    setRequesting(true);
+    try {
+      const res = await requestManualClaim(
+        useEmail
+          ? { email: email.trim().toLowerCase() }
+          : { phone: phone.trim() },
+      );
+      setRequested(true);
+      Alert.alert(
+        res.alreadyPending ? "Ya tenemos tu solicitud" : "Solicitud enviada",
+        "El equipo de Holidog Inn la va a revisar y vincularemos tus mascotas. Te avisamos en cuanto esté lista.",
+      );
+    } catch (e: any) {
+      setError(mensajeDeError(e, "No pudimos enviar tu solicitud. Intenta de nuevo."));
+    } finally {
+      setRequesting(false);
+    }
+  };
+
   const handleVerify = async () => {
     if (!challenge) return;
     const digits = code.replace(/\D/g, "");
     if (digits.length !== 6) {
-      setError("Escribe el código de 6 dígitos que te llegó por correo.");
+      setError(
+        `Escribe el código de 6 dígitos que te llegó por ${challenge.channel === "sms" ? "SMS" : "correo"}.`,
+      );
       return;
     }
     setError(null);
@@ -273,7 +319,7 @@ export default function ClaimAccountScreen() {
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleSearch}
+          onPress={() => handleSearch()}
           activeOpacity={0.85}
           disabled={loading}
           testID="claim-search-button"
@@ -304,13 +350,18 @@ export default function ClaimAccountScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Ficha encontrada: pedir el código que llegó al correo de la ficha */}
+        {/* Ficha encontrada: pedir el código que llegó al contacto de la ficha */}
         {challenge && (
           <View style={styles.candidateCard} testID="claim-code-card">
             <Text style={styles.candidateName}>Encontramos tu ficha</Text>
             <Text style={styles.pickHint}>
-              Te enviamos un código de 6 dígitos a{" "}
-              {challenge.masked.length > 0 ? challenge.masked.join(" y ") : "tu correo"}
+              Te enviamos un código de 6 dígitos{" "}
+              {challenge.channel === "sms" ? "por SMS al" : "a"}{" "}
+              {challenge.masked.length > 0
+                ? challenge.masked.join(" y ")
+                : challenge.channel === "sms"
+                  ? "tu teléfono"
+                  : "tu correo"}
               . Escríbelo aquí para ver tus mascotas (vence en {challenge.minutes}{" "}
               minutos).
             </Text>
@@ -344,7 +395,7 @@ export default function ClaimAccountScreen() {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleSearch}
+              onPress={() => handleSearch()}
               style={styles.linkBtn}
               disabled={loading || verifying}
             >
@@ -352,10 +403,43 @@ export default function ClaimAccountScreen() {
                 {loading ? "Enviando…" : "No me llegó, volver a enviar"}
               </Text>
             </TouchableOpacity>
+
+            {/* Cambiar de canal. Reenviar no rescata a quien cambió de número:
+                el SMS se entregó bien, solo que a una línea que ya no es suya. */}
+            {challenge.alt && (
+              <TouchableOpacity
+                onPress={() => handleSearch(challenge.alt)}
+                style={styles.linkBtn}
+                disabled={loading || verifying}
+              >
+                <Text style={styles.linkText}>
+                  {challenge.alt === "email"
+                    ? "Mejor envíenmelo a mi correo"
+                    : "Mejor envíenmelo por SMS"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Último recurso, secundario: que el equipo lo vincule a mano. */}
+            <TouchableOpacity
+              style={styles.sharedHelp}
+              onPress={() =>
+                Linking.openURL(
+                  buildWhatsappUrl(
+                    "Hola 👋 No me llegó el código para vincular la app con la ficha de mi mascota.",
+                  ),
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
+              <Text style={styles.sharedHelpText}>¿Problemas? Escríbenos</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Ficha encontrada pero sin correo real: no hay cómo probar que es suya */}
+        {/* Ficha sin ningún contacto utilizable (o el envío falló): no hay
+            forma de probar que es suya desde la app, lo vincula el equipo */}
         {noEmailMessage && (
           <View style={styles.noResult} testID="claim-no-email">
             <Ionicons
@@ -365,6 +449,31 @@ export default function ClaimAccountScreen() {
             />
             <Text style={styles.noResultText}>{noEmailMessage}</Text>
           </View>
+        )}
+
+        {/* Salida principal: que el equipo la vincule. Antes solo se le decía
+            "escríbenos por WhatsApp" y quedaba de su lado perseguirlo. */}
+        {noEmailMessage && (
+          <TouchableOpacity
+            style={[styles.confirmButton, (requesting || requested) && styles.buttonDisabled]}
+            onPress={handleRequestManual}
+            disabled={requesting || requested}
+            activeOpacity={0.85}
+            testID="claim-request-manual"
+          >
+            {requesting ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.confirmButtonText}>
+                {requested ? "Solicitud enviada ✓" : "Pedir que me vinculen mi ficha"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+        {requested && (
+          <Text style={styles.pickHint}>
+            El equipo la revisará y te avisamos en cuanto tus mascotas aparezcan aquí.
+          </Text>
         )}
         {noEmailMessage && (
           <TouchableOpacity
@@ -395,9 +504,31 @@ export default function ClaimAccountScreen() {
             />
             <Text style={styles.noResultText}>
               No encontramos una cuenta con ese dato. Si eres nuevo, continúa y
-              registra a tu mascota.
+              registra a tu mascota. Si ya eras cliente, pídenos que la busquemos:
+              puede que tengamos tu teléfono mal escrito.
             </Text>
           </View>
+        )}
+
+        {/* También cuando NO se encuentra nada. Es el caso más común de ficha
+            con el teléfono mal capturado: el cliente teclea el suyo correcto,
+            no coincide con el de su ficha, y sin esto se quedaría fuera. */}
+        {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
+          <TouchableOpacity
+            style={[styles.confirmButton, (requesting || requested) && styles.buttonDisabled]}
+            onPress={handleRequestManual}
+            disabled={requesting || requested}
+            activeOpacity={0.85}
+            testID="claim-request-manual-notfound"
+          >
+            {requesting ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.confirmButtonText}>
+                {requested ? "Solicitud enviada ✓" : "Ya era cliente, búsquenme mi ficha"}
+              </Text>
+            )}
+          </TouchableOpacity>
         )}
 
         {/* Esta búsqueda solo encuentra fichas de clientes que TODAVÍA no

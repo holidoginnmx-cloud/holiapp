@@ -154,6 +154,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/quotes" as any)}
         />
         <MenuItem
+          icon="link-outline"
+          iconTint={COLORS.primary}
+          label="Vincular fichas"
+          subtitle="Clientes de siempre que piden acceso a sus mascotas"
+          onPress={() => router.push("/admin/claim-requests" as any)}
+        />
+        <MenuItem
           icon="people-outline"
           iconTint={COLORS.primary}
           label="Gestionar usuarios"

@@ -40,10 +40,15 @@ export type ClaimCandidate = {
 
 export type ClaimLookupResult = {
   found: boolean;
-  /** "email": se mandó un código al correo de la ficha; "none": no hay a dónde. */
-  channel: "email" | "none";
+  /** Por dónde se mandó el código: al teléfono o al correo QUE YA TIENE la
+   * ficha. "none" = no había ningún contacto utilizable. */
+  channel: "email" | "sms" | "none";
   candidates: ClaimCandidate[];
   maskedEmails?: string[];
+  /** Enmascarado, con la lada visible: "+52 ••• ••• 4567". */
+  maskedPhones?: string[];
+  /** El otro contacto que tiene la ficha, para ofrecer "mejor por ahí". */
+  altChannel?: "email" | "sms";
   challengeToken?: string;
   expiresInMinutes?: number;
   message?: string;
@@ -51,17 +56,25 @@ export type ClaimLookupResult = {
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
  * por teléfono y, como respaldo, por correo. Si la encuentra, el servidor manda
- * un código al correo que YA tiene la ficha; las mascotas se ven hasta
- * verificarlo. */
-export const lookupExistingAccount = (data: { phone?: string; email?: string }) =>
+ * un código de 6 dígitos al contacto que YA TIENE la ficha —SMS si hay
+ * teléfono, si no correo—; las mascotas se ven hasta verificarlo.
+ *
+ * `prefer` sirve para "no me llegó el SMS, mándenmelo al correo": sin eso,
+ * quien cambió de número se quedaría atorado, porque el envío sí salió bien. */
+export const lookupExistingAccount = (data: {
+  phone?: string;
+  email?: string;
+  prefer?: "email" | "sms";
+}) =>
   apiFetch<ClaimLookupResult>("/users/claim/lookup", {
     method: "POST",
-    // `v: 2` = esta app sabe pedir el código; sin él el servidor no manda el
-    // correo (la app anterior mostraría "no encontramos").
-    body: JSON.stringify({ ...data, v: 2 }),
+    // `v` dice qué entiende esta app. 3 = también el código por SMS; el
+    // servidor no manda SMS a quien mande menos, porque la app de la tienda
+    // (v: 2) mostraría "no tiene correo" y el mensaje se habría pagado igual.
+    body: JSON.stringify({ ...data, v: 3 }),
   });
 
-/** Verifica el código recibido por correo; devuelve las fichas (nombre +
+/** Verifica el código recibido (SMS o correo); devuelve las fichas (nombre +
  * mascotas) y el token que exige `confirmClaim`. */
 export const verifyClaimCode = (data: { challengeToken: string; code: string }) =>
   apiFetch<{ candidates: ClaimCandidate[]; claimToken: string }>(
@@ -118,3 +131,66 @@ export const exportMyData = () => apiFetch<Record<string, unknown>>(`/users/me/e
 
 export const deleteMyAccount = () =>
   apiFetch<{ ok: true }>(`/users/me`, { method: "DELETE" });
+
+/** Pide que el equipo vincule la ficha a mano.
+ *
+ * La salida para el cliente al que no se le puede mandar un código porque su
+ * ficha no tiene ningún contacto utilizable. Crea una solicitud y le llega al
+ * equipo a su bandeja de avisos. */
+export const requestManualClaim = (data: {
+  phone?: string;
+  email?: string;
+  note?: string;
+}) =>
+  apiFetch<{ ok: boolean; alreadyPending: boolean; id: string }>(
+    "/users/claim/request",
+    { method: "POST", body: JSON.stringify(data) },
+  );
+
+// ─── Bandeja del equipo (solo ADMIN) ──────────────────────
+
+export type ClaimRequestRow = {
+  id: string;
+  typedPhone: string | null;
+  typedEmail: string | null;
+  note: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  resolvedAt: string | null;
+  resolution: string | null;
+  createdAt: string;
+  requester: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string | null;
+  };
+  resolvedBy: { firstName: string; lastName: string } | null;
+  /** Fichas que coinciden AHORA con lo que el cliente escribió. */
+  candidates: ClaimCandidate[];
+};
+
+export const getClaimRequests = (status: "pending" | "all" = "pending") =>
+  apiFetch<ClaimRequestRow[]>(`/admin/claim-requests?status=${status}`);
+
+export const approveClaimRequest = (id: string, petIds: string[]) =>
+  apiFetch<User>(`/admin/claim-requests/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ petIds }),
+  });
+
+export const rejectClaimRequest = (id: string, reason?: string) =>
+  apiFetch<ClaimRequestRow>(`/admin/claim-requests/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+
+/** Busca fichas SIN cuenta vinculada, por nombre o por dígitos del teléfono.
+ *
+ * Hace falta porque la coincidencia automática falla justo en el caso que trae
+ * al cliente a pedir ayuda: si su ficha tiene el teléfono mal escrito, no la
+ * encuentra ni él ni el sistema. El equipo la busca por nombre. */
+export const searchClaimFichas = (q: string) =>
+  apiFetch<ClaimCandidate[]>(
+    `/admin/claim-requests/search?q=${encodeURIComponent(q)}`,
+  );
