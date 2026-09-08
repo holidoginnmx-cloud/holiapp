@@ -29,7 +29,7 @@ import {
 } from "../lib/claimChallenge";
 import { claimCodeTemplate, emailConfigurado, sendEmail } from "../lib/email";
 import { claimCodeSms, sendSms, smsConfigurado } from "../lib/sms";
-import { equipoActivoIds, notifyUsers } from "../lib/notify";
+import { adminsActivosIds, notifyUsers } from "../lib/notify";
 
 // Correos de walk-in que crea el equipo (no son un buzón real).
 const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
@@ -616,7 +616,8 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       });
 
       const contacto = solicitud.typedPhone ?? solicitud.typedEmail ?? "sin dato";
-      const equipo = await equipoActivoIds(prisma, currentUserId);
+      // Solo ADMIN: son los únicos que pueden aprobarla (`adminAuth`).
+      const equipo = await adminsActivosIds(prisma, currentUserId);
       await notifyUsers(prisma, equipo, {
         type: "GENERAL",
         title: "Alguien pide vincular su ficha",

@@ -154,6 +154,24 @@ export async function equipoActivoIds(
   return team.map((u) => u.id).filter((id) => id !== excluirUserId);
 }
 
+/**
+ * Solo los ADMIN activos.
+ *
+ * Para avisos que ÚNICAMENTE un ADMIN puede atender. Mandárselos también al
+ * staff es peor que no mandarlos: el aviso los lleva a una pantalla que el API
+ * les niega, así que reciben un error en vez de una tarea.
+ */
+export async function adminsActivosIds(
+  prisma: PrismaClient,
+  excluirUserId?: string | null
+): Promise<string[]> {
+  const admins = await prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true },
+  });
+  return admins.map((u) => u.id).filter((id) => id !== excluirUserId);
+}
+
 export async function notifyTeamReservationUpdated(
   prisma: PrismaClient,
   params: {
