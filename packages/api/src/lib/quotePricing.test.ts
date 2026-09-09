@@ -214,6 +214,45 @@ describe("paridad BATH · reservations.ts:626-651", () => {
     }
   }
 
+  // El bug que esta paridad existe para atrapar: un perro SIN peso se cotizaba
+  // por `pets.size` (que trae "M" de relleno cuando el API no sabe) y la reserva
+  // lo cobraba por `sizeFromWeight(null)` = S. Se prometía $350 y se cobraban
+  // $250. Ahora las dos usan la misma regla: la talla sólo cuenta si alguien la
+  // declaró viendo al perro.
+  describe("perro sin peso — la cotización dice lo que la reserva va a cobrar", () => {
+    const sinPeso = (size: "S" | "M" | "L" | "XL", sizeDeclared?: boolean) => ({
+      key: "p",
+      name: "Camila",
+      weightKg: null,
+      size,
+      ...(sizeDeclared != null ? { sizeDeclared } : {}),
+    });
+
+    it('talla "M" de relleno: cotiza CHICO, igual que cobra la reserva', () => {
+      const obtenido = total(
+        computeQuote(
+          { serviceType: "BATH", pets: [sinPeso("M")], date: "2026-09-01",
+            bath: { deslanado: false, corte: false } },
+          CATALOG
+        )
+      );
+      // billableBathSize({ weight: null, size: "M" }) === "S"
+      expect(obtenido).toBe(precioBano(3, false, false));
+    });
+
+    it("talla DECLARADA por una persona: cotiza esa, igual que cobra la reserva", () => {
+      const obtenido = total(
+        computeQuote(
+          { serviceType: "BATH", pets: [sinPeso("XL", true)], date: "2026-09-01",
+            bath: { deslanado: false, corte: false } },
+          CATALOG
+        )
+      );
+      // billableBathSize({ weight: null, size: "XL", sizeDeclared: true }) === "XL"
+      expect(obtenido).toBe(precioBano(40, false, false));
+    });
+  });
+
   it("suma una variante por mascota en el grupo", () => {
     const esperado = PESOS.reduce((acc, p) => acc + precioBano(p, false, false), 0);
     const obtenido = total(

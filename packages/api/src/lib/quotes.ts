@@ -68,9 +68,22 @@ export interface QuotePreviewOutput {
  */
 export async function previewQuote(
   prisma: PrismaClient,
-  input: QuotePreviewInput
+  rawInput: QuotePreviewInput
 ): Promise<QuoteResult<QuotePreviewOutput>> {
   const catalog = await loadQuoteCatalog(prisma);
+
+  // Los datos que deciden la TARIFA de una mascota REAL se leen de su ficha,
+  // no del cuerpo del request — misma regla que el domicilio de aquí abajo.
+  //
+  // Por qué: la reserva resuelve la talla con `billableBathSize` leyendo la BD.
+  // Si aquí se confiara en lo que manda el cliente, bastaría con que un
+  // formulario olvidara un campo para que la cotización prometiera un precio
+  // que después no se cobra — que es exactamente el bug que había: se cotizaba
+  // por `pets.size` (el "M" de relleno) y se cobraba por el peso.
+  //
+  // Los perros de un PROSPECTO no tienen `petId` y se quedan tal cual: ahí el
+  // cuerpo del request es la única fuente que existe.
+  const input = await conDatosDeLaFicha(prisma, rawInput);
 
   // El domicilio SIEMPRE se recotiza aquí desde lat/lng: nunca se confía en un
   // fee que mande el cliente (misma regla que en los endpoints de creación).
@@ -114,6 +127,42 @@ export async function previewQuote(
   if (!finalResult.ok) return badRequest(finalResult.message, finalResult.code);
 
   return { ok: true, breakdown: finalResult.breakdown, delivery, discount, discountError };
+}
+
+/**
+ * Rellena peso y talla de las mascotas REALES desde la base.
+ *
+ * `sizeDeclared` es el que más importa y ningún cliente lo manda: dice si la
+ * talla guardada la eligió una persona viendo al perro o la rellenó el API con
+ * "M". Sin él, `resolveSize` no puede distinguir una talla de verdad de las 204
+ * fichas que llevan el default.
+ */
+async function conDatosDeLaFicha(
+  prisma: PrismaClient,
+  input: QuotePreviewInput
+): Promise<QuotePreviewInput> {
+  const ids = input.pets.map((p) => p.petId).filter((id): id is string => !!id);
+  if (ids.length === 0) return input;
+
+  const fichas = await prisma.pet.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, weight: true, size: true, sizeDeclared: true },
+  });
+  if (fichas.length === 0) return input;
+
+  return {
+    ...input,
+    pets: input.pets.map((p) => {
+      const ficha = p.petId ? fichas.find((f) => f.id === p.petId) : undefined;
+      if (!ficha) return p;
+      return {
+        ...p,
+        weightKg: ficha.weight ?? null,
+        size: ficha.size,
+        sizeDeclared: ficha.sizeDeclared,
+      };
+    }),
+  };
 }
 
 /** Traduce el cuerpo HTTP a la entrada del módulo puro de cálculo. */
@@ -173,12 +222,20 @@ export type QuoteWithRelations = Prisma.QuoteGetPayload<{ include: typeof QUOTE_
 
 export async function createQuote(
   prisma: PrismaClient,
-  input: CreateQuote,
+  rawInput: CreateQuote,
   actorId: string
 ): Promise<QuoteResult<{ quote: QuoteWithRelations }>> {
-  if (!input.ownerId && !input.clientName.trim()) {
+  if (!rawInput.ownerId && !rawInput.clientName.trim()) {
     return badRequest("Indica a quién se le cotiza");
   }
+
+  // Se enriquece ANTES del preview para que el snapshot que se guarda en
+  // `quote_pets` sea el mismo dato con el que se calculó el precio. Si no, el
+  // peso persistido podría ser el que traía un catálogo desactualizado y el
+  // total vendría de la ficha: la cotización se contradiría a sí misma.
+  // `conDatosDeLaFicha` es idempotente, así que el preview lo vuelve a hacer
+  // sin efecto (una query de más al crear, ninguna al recotizar en vivo).
+  const input = { ...rawInput, ...(await conDatosDeLaFicha(prisma, rawInput)) };
 
   const preview = await previewQuote(prisma, input);
   if (!preview.ok) return preview;
