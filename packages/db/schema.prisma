@@ -1166,6 +1166,19 @@ model StripePayout {
 // de todas las líneas es EXACTAMENTE el monto del depósito; por eso se guardan
 // también las que no cruzan con ningún pago nuestro (ajustes, disputas, cobros
 // huérfanos): ocultarlas descuadraría el desglose y el dueño no sabría por qué.
+// Por qué un cobro sin pago registrado NO es dinero pendiente. Catálogo cerrado
+// y no texto libre: el motivo se lee meses después, cuando ya nadie se acuerda,
+// y "prueba" escrito de seis formas distintas no se puede filtrar ni contar.
+enum PayoutLineDismissReason {
+  /// Cobro de prueba (cuentas del equipo, revisión de App Store).
+  PRUEBA
+  /// El dinero ya está capturado como pago en otra reserva.
+  YA_REGISTRADO
+  /// Se le devolvió al cliente.
+  REEMBOLSADO
+  OTRO
+}
+
 model StripePayoutLine {
   id       String       @id // balance_transaction.id (txn_...) — hace el sync idempotente
   payoutId String
@@ -1211,6 +1224,27 @@ model StripePayoutLine {
 
   orderId String?
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // ── Descartada por el equipo ─────────────────────────────────────────────
+  // Un cobro sin pago registrado NO siempre es dinero pendiente: puede ser una
+  // prueba, o dinero que ya se capturó a mano en otra reserva (pasa cuando la
+  // ficha de la mascota se duplicó y la reserva se rehízo). En esos casos dar
+  // de alta el pago DUPLICARÍA el ingreso, así que el aviso se quedaba
+  // encendido para siempre sin nada que se le pudiera hacer.
+  //
+  // Descartar no borra ni altera la línea: el desglose sigue sumando el monto
+  // que llegó al banco. Sólo deja de contarse como pendiente, y queda
+  // constancia de quién y por qué.
+  //
+  // Sobrevive al re-sync porque `syncPayout` escribe columna por columna las
+  // que trae Stripe y éstas no están entre ellas.
+  dismissedAt     DateTime?
+  dismissedReason PayoutLineDismissReason?
+  dismissedNote   String?
+  // Texto y no FK a User a propósito: quien descarta puede ser un admin del
+  // panel web, que autentica contra OTRA instancia de Clerk y no tiene fila en
+  // `users`. Se guarda su nombre (app) o su correo (panel), tal como se leyó.
+  dismissedBy     String?
 
   createdAt DateTime @default(now())
 

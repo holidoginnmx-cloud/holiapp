@@ -34,6 +34,36 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-09-b",
+    title: "Depósitos: los cobros que NO hay que registrar",
+    items: [
+      {
+        icon: "close-circle-outline",
+        title: "«Esto no hay que registrarlo»",
+        body:
+          "El aviso amarillo de un depósito juntaba tres cosas distintas: " +
+          "dinero que de verdad falta por capturar, cobros de prueba, y dinero " +
+          "que YA se registró a mano en otra reserva (pasa cuando la ficha del " +
+          "perro quedó duplicada y la reserva se rehízo). Para los dos últimos, " +
+          "el único botón que había —«Registrar como pago»— es justo el que NO " +
+          "hay que tocar: contaría el mismo dinero dos veces. Ahora se " +
+          "descartan, con su motivo, y el aviso se apaga.",
+        route: "/admin/payouts",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "eye-outline",
+        title: "No se borra nada y se puede deshacer",
+        body:
+          "El cobro sigue apareciendo en el depósito, con el motivo y quién lo " +
+          "descartó: el desglose tiene que seguir sumando exactamente lo que " +
+          "llegó al banco. Lo único que cambia es que deja de contarse como " +
+          "pendiente. Si fue un error, «Deshacer descarte» y vuelve a la lista.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-09",
     title: "Cuando llega un perro y no sabemos de quién es",
     items: [

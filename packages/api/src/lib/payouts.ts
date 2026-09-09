@@ -18,7 +18,7 @@
  */
 import Stripe from "stripe";
 import { Prisma } from "@holidoginn/db";
-import type { PrismaClient } from "@holidoginn/db";
+import type { PayoutLineDismissReason, PrismaClient } from "@holidoginn/db";
 import { notifyUsers } from "./notify";
 
 /**
@@ -502,6 +502,23 @@ export type PayoutLineMatch = {
   paidAt: string | null;
 };
 
+/**
+ * Un cobro que el equipo marcó como "esto no hay que registrarlo".
+ *
+ * `match.kind` sigue siendo `SIN_REGISTRAR` aunque esté descartado: la línea NO
+ * tiene pago, y esa es la verdad del dato. Lo que cambia es que deja de contar
+ * como pendiente. Se guarda como campo aparte y no como otro `kind` para que
+ * quien lea el desglose siga viendo lo que pasó, no sólo la decisión.
+ */
+export type PayoutLineDismissal = {
+  at: string;
+  reason: PayoutLineDismissReason;
+  /** El motivo en español, para no repetir el catálogo en cada frontend. */
+  reasonLabel: string;
+  note: string | null;
+  by: string | null;
+};
+
 export type PayoutLineDTO = {
   id: string;
   type: string;
@@ -511,7 +528,46 @@ export type PayoutLineDTO = {
   description: string | null;
   stripePaymentIntentId: string | null;
   match: PayoutLineMatch | null;
+  /** No null = el equipo decidió que este cobro no lleva alta de pago. */
+  dismissed: PayoutLineDismissal | null;
 };
+
+export const DISMISS_REASON_LABEL: Record<PayoutLineDismissReason, string> = {
+  PRUEBA: "Cobro de prueba",
+  YA_REGISTRADO: "El pago ya está registrado en otra reserva",
+  REEMBOLSADO: "Se le devolvió al cliente",
+  OTRO: "Otro motivo",
+};
+
+/**
+ * Valida el motivo que llega por HTTP contra el catálogo. Devuelve null si no
+ * es uno de los cuatro: un motivo inventado dejaría el descarte sin explicación
+ * legible y rompería el `Record` de etiquetas.
+ */
+export function parseDismissReason(v: unknown): PayoutLineDismissReason | null {
+  return typeof v === "string" && v in DISMISS_REASON_LABEL
+    ? (v as PayoutLineDismissReason)
+    : null;
+}
+
+function toDismissal(l: {
+  dismissedAt: Date | null;
+  dismissedReason: PayoutLineDismissReason | null;
+  dismissedNote: string | null;
+  dismissedBy: string | null;
+}): PayoutLineDismissal | null {
+  if (!l.dismissedAt) return null;
+  // El motivo es obligatorio al descartar, pero la columna es nullable (la
+  // migración es aditiva): una fila sin él no puede tumbar la pantalla.
+  const reason = l.dismissedReason ?? "OTRO";
+  return {
+    at: l.dismissedAt.toISOString(),
+    reason,
+    reasonLabel: DISMISS_REASON_LABEL[reason],
+    note: l.dismissedNote,
+    by: l.dismissedBy,
+  };
+}
 
 export type PayoutBreakdown = {
   id: string;
@@ -528,10 +584,15 @@ export type PayoutBreakdown = {
     net: number;
     matched: number;
     unmatched: number;
-    /** Identificados por metadata pero SIN pago registrado en la base. */
+    /**
+     * Identificados por metadata, SIN pago registrado y sin descartar. Los
+     * descartados no cuentan: si contaran, el aviso jamás se apagaría.
+     */
     sinRegistrar: number;
     /** Suma bruta de esos cobros: dinero que entró y no está en los ingresos. */
     sinRegistrarMonto: number;
+    /** Cobros que el equipo marcó como "no hay que registrarlo". */
+    descartados: number;
   };
   /** El desglose suma exactamente el monto que llegó al banco. */
   cuadra: boolean;
@@ -775,6 +836,15 @@ async function resolverDesdeMetadata(
   return out;
 }
 
+/**
+ * Cobro que de verdad falta por registrar: sin pago en la base y sin descartar.
+ * Un descartado sigue siendo `SIN_REGISTRAR` —no tiene pago—, pero ya se
+ * decidió que no lleva alta, así que no es un pendiente.
+ */
+function esPendienteDeRegistrar(l: PayoutLineDTO): boolean {
+  return l.match?.kind === "SIN_REGISTRAR" && !l.dismissed;
+}
+
 export async function getPayoutBreakdown(
   prisma: PrismaClient,
   payoutId: string
@@ -893,6 +963,7 @@ export async function getPayoutBreakdown(
       description: l.description,
       stripePaymentIntentId: l.stripePaymentIntentId,
       match,
+      dismissed: toDismissal(l),
     };
   });
 
@@ -916,13 +987,11 @@ export async function getPayoutBreakdown(
       net: Number(netTotal.toFixed(2)),
       matched: lines.filter((l) => l.match).length,
       unmatched: lines.filter((l) => !l.match).length,
-      sinRegistrar: lines.filter((l) => l.match?.kind === "SIN_REGISTRAR").length,
+      sinRegistrar: lines.filter(esPendienteDeRegistrar).length,
       sinRegistrarMonto: Number(
-        lines
-          .filter((l) => l.match?.kind === "SIN_REGISTRAR")
-          .reduce((a, l) => a + l.gross, 0)
-          .toFixed(2)
+        lines.filter(esPendienteDeRegistrar).reduce((a, l) => a + l.gross, 0).toFixed(2)
       ),
+      descartados: lines.filter((l) => l.dismissed).length,
     },
     cuadra: Math.abs(diferencia) < 0.01,
     diferencia,
@@ -1148,6 +1217,10 @@ export async function listarCobrosSinRegistrar(
           payoutId: { in: payouts.map((p) => p.id) },
           paymentId: null,
           orderId: null,
+          // Descartado = el equipo ya decidió que no lleva alta. Sin esto, la
+          // pantalla seguiría abriendo el desglose de un depósito cuya única
+          // huérfana está resuelta.
+          dismissedAt: null,
           stripePaymentIntentId: { not: null },
           OR: [{ metaOwnerId: { not: null } }, { metaReservationId: { not: null } }],
         },
@@ -1162,7 +1235,7 @@ export async function listarCobrosSinRegistrar(
     const detalle = await getPayoutBreakdown(prisma, p.id);
     if (!detalle) continue;
     for (const l of detalle.lines) {
-      if (l.match?.kind !== "SIN_REGISTRAR") continue;
+      if (l.match?.kind !== "SIN_REGISTRAR" || l.dismissed) continue;
       // Un reembolso o un ajuste no es un cobro pendiente de registrar, y sin
       // PaymentIntent no hay nada que vincular ni forma de evitar duplicarlo.
       if (isRefundType(l.type) || !l.stripePaymentIntentId || l.gross <= 0) continue;
@@ -1255,6 +1328,16 @@ export async function registrarCobroDeLinea(
   if (!linea) return { ok: false, error: "Movimiento no encontrado" };
   if (linea.paymentId || linea.orderId) {
     return { ok: false, error: "Este cobro ya está registrado como pago" };
+  }
+  // Se descarta justo cuando registrarlo DUPLICARÍA el ingreso (el dinero ya se
+  // capturó a mano en otra reserva). Que el alta lo revive sola convertiría un
+  // clic de más en dinero contado dos veces, así que hay que quitar el descarte
+  // a propósito primero.
+  if (linea.dismissedAt) {
+    return {
+      ok: false,
+      error: "Este cobro está descartado. Quita el descarte si sí hay que registrarlo.",
+    };
   }
   if (isRefundType(linea.type)) {
     return { ok: false, error: "Un reembolso no se registra como ingreso" };
@@ -1398,4 +1481,110 @@ export async function registrarCobroDeLinea(
       fee: Number(linea.fee),
     },
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Descartar un cobro
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type DescarteResult = {
+  lineId: string;
+  reason: PayoutLineDismissReason;
+  reasonLabel: string;
+  note: string | null;
+  by: string | null;
+  at: string;
+};
+
+/**
+ * Marca un cobro sin pago registrado como "esto no hay que registrarlo".
+ *
+ * La conciliación no puede distinguir sola los tres casos que la pantalla junta
+ * bajo el mismo aviso ámbar: el dinero que de verdad falta por capturar, el
+ * cobro de prueba, y el que YA se capturó a mano en otra reserva (pasa cuando
+ * la ficha de la mascota se duplicó y la reserva se rehízo). Para los dos
+ * últimos la única acción que ofrecía la pantalla —"Registrar como pago"— es
+ * justo la que NO hay que tocar: duplicaría el ingreso.
+ *
+ * Lo que NO hace, a propósito:
+ * - no borra ni modifica la línea: el desglose tiene que seguir sumando el
+ *   monto exacto que llegó al banco, o el dueño creería que le faltan pesos;
+ * - no toca `payments` ni los ingresos. Descartar es una anotación, no un
+ *   movimiento de dinero.
+ *
+ * Se puede volver a descartar con otro motivo (corregir es normal) y se deshace
+ * con `deshacerDescarteDeLinea`.
+ */
+export async function descartarCobroDeLinea(
+  prisma: PrismaClient,
+  args: {
+    lineId: string;
+    reason: PayoutLineDismissReason;
+    note?: string | null;
+    by?: string | null;
+  }
+): Promise<{ ok: true; data: DescarteResult } | { ok: false; error: string }> {
+  const linea = await prisma.stripePayoutLine.findUnique({
+    where: { id: args.lineId },
+    select: { id: true, paymentId: true, orderId: true },
+  });
+  if (!linea) return { ok: false, error: "Movimiento no encontrado" };
+
+  // Con pago o pedido ya no aparece como pendiente: descartarlo no arregla
+  // nada y deja una anotación que contradice lo que muestra la pantalla.
+  if (linea.paymentId || linea.orderId) {
+    return { ok: false, error: "Este cobro ya está registrado como pago: no hay nada que descartar" };
+  }
+
+  const note = args.note?.trim() || null;
+  // "Otro" sin explicación es exactamente el estado del que veníamos: nadie
+  // sabe por qué está ahí. Los tres motivos del catálogo ya se explican solos.
+  if (args.reason === "OTRO" && !note) {
+    return { ok: false, error: "Escribe por qué se descarta este cobro" };
+  }
+
+  const at = new Date();
+  await prisma.stripePayoutLine.update({
+    where: { id: linea.id },
+    data: {
+      dismissedAt: at,
+      dismissedReason: args.reason,
+      dismissedNote: note,
+      dismissedBy: args.by?.trim() || null,
+    },
+  });
+
+  return {
+    ok: true,
+    data: {
+      lineId: linea.id,
+      reason: args.reason,
+      reasonLabel: DISMISS_REASON_LABEL[args.reason],
+      note,
+      by: args.by?.trim() || null,
+      at: at.toISOString(),
+    },
+  };
+}
+
+/**
+ * Deshace el descarte: el cobro vuelve a contar como pendiente de registrar.
+ * Idempotente — deshacer algo que no estaba descartado no es un error, es que
+ * ya está como se quiere.
+ */
+export async function deshacerDescarteDeLinea(
+  prisma: PrismaClient,
+  lineId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const linea = await prisma.stripePayoutLine.findUnique({
+    where: { id: lineId },
+    select: { id: true },
+  });
+  if (!linea) return { ok: false, error: "Movimiento no encontrado" };
+
+  await prisma.stripePayoutLine.update({
+    where: { id: lineId },
+    data: { dismissedAt: null, dismissedReason: null, dismissedNote: null, dismissedBy: null },
+  });
+  return { ok: true };
 }

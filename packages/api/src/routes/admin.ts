@@ -42,6 +42,9 @@ import {
   syncRecentPayouts,
   listarCobrosSinRegistrar,
   registrarCobroDeLinea,
+  descartarCobroDeLinea,
+  deshacerDescarteDeLinea,
+  parseDismissReason,
   avisarPayoutSincronizado,
 } from "../lib/payouts";
 import { syncPendingStripeFees } from "../lib/stripeFees";
@@ -593,6 +596,99 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     if (!res.ok) return reply.status(400).send({ error: res.error });
     return reply.status(res.data.creado ? 201 : 200).send(res.data);
   });
+
+  // ────────────────────────────────────────────────────────────
+  //  Descartar un cobro — "esto no hay que registrarlo"
+  //
+  //  El aviso ámbar junta tres cosas distintas: dinero que falta por capturar,
+  //  cobros de prueba, y dinero que YA se capturó a mano en otra reserva
+  //  (cuando la ficha de la mascota se duplicó y la reserva se rehízo). Para
+  //  los dos últimos, la única acción que había —"Registrar como pago"— es la
+  //  que NO hay que tocar, así que el aviso se quedaba encendido para siempre.
+  //
+  //  Sólo admin: no mueve dinero, pero decide qué deja de vigilarse.
+  // ────────────────────────────────────────────────────────────
+  fastify.post<{
+    Params: { lineId: string };
+    Body?: { reason?: string; note?: string };
+  }>(
+    "/admin/payouts/lines/:lineId/dismiss",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const reason = parseDismissReason(request.body?.reason);
+      if (!reason) return reply.status(400).send({ error: "Motivo inválido" });
+
+      // Quién lo descartó, legible. Se guarda el nombre y no el id: la columna
+      // la comparten la app y el panel web, cuyos admins ni siquiera tienen
+      // fila en `users`.
+      const actor = request.userId
+        ? await prisma.user.findUnique({
+            where: { id: request.userId },
+            select: { firstName: true, lastName: true, email: true },
+          })
+        : null;
+      const by = actor
+        ? [actor.firstName, actor.lastName].filter(Boolean).join(" ").trim() || actor.email
+        : null;
+
+      const res = await descartarCobroDeLinea(prisma, {
+        lineId: request.params.lineId,
+        reason,
+        note: request.body?.note ?? null,
+        by,
+      });
+      if (!res.ok) return reply.status(400).send({ error: res.error });
+      return reply.send(res.data);
+    }
+  );
+
+  fastify.post<{ Params: { lineId: string } }>(
+    "/admin/payouts/lines/:lineId/undismiss",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const res = await deshacerDescarteDeLinea(prisma, request.params.lineId);
+      if (!res.ok) return reply.status(400).send({ error: res.error });
+      return reply.send({ ok: true });
+    }
+  );
+
+  // Espejos para el admin web (x-cron-secret, igual que el alta de arriba: su
+  // Clerk es otra instancia y esta API no puede validar sus tokens). Ahí `by`
+  // llega en el body porque quien descarta es un correo del panel, que no
+  // existe en `users`.
+  fastify.post<{
+    Params: { lineId: string };
+    Body?: { reason?: string; note?: string; by?: string };
+  }>("/internal/payouts/lines/:lineId/dismiss", async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || request.headers["x-cron-secret"] !== secret) {
+      return reply.status(401).send({ error: "No autorizado" });
+    }
+    const reason = parseDismissReason(request.body?.reason);
+    if (!reason) return reply.status(400).send({ error: "Motivo inválido" });
+
+    const res = await descartarCobroDeLinea(prisma, {
+      lineId: request.params.lineId,
+      reason,
+      note: request.body?.note ?? null,
+      by: request.body?.by ?? null,
+    });
+    if (!res.ok) return reply.status(400).send({ error: res.error });
+    return reply.send(res.data);
+  });
+
+  fastify.post<{ Params: { lineId: string } }>(
+    "/internal/payouts/lines/:lineId/undismiss",
+    async (request, reply) => {
+      const secret = process.env.CRON_SECRET;
+      if (!secret || request.headers["x-cron-secret"] !== secret) {
+        return reply.status(401).send({ error: "No autorizado" });
+      }
+      const res = await deshacerDescarteDeLinea(prisma, request.params.lineId);
+      if (!res.ok) return reply.status(400).send({ error: res.error });
+      return reply.send({ ok: true });
+    }
+  );
 
   // ────────────────────────────────────────────────────────────
   //  POST /internal/payouts-sync — cron diario

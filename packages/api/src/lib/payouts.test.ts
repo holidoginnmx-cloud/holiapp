@@ -16,6 +16,9 @@ import {
   excluirTransaccionDelPayout,
   elegirReserva,
   registrarCobroDeLinea,
+  descartarCobroDeLinea,
+  deshacerDescarteDeLinea,
+  parseDismissReason,
   type MatchMaps,
   type ReservaCandidata,
 } from "./payouts";
@@ -784,5 +787,134 @@ describe("registrarCobroDeLinea", () => {
       reservationId: "res_borrada",
     });
     expect(res.ok).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  descartarCobroDeLinea
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// El descarte existe para los cobros que NO hay que registrar: pruebas, y
+// dinero que ya se capturó a mano en otra reserva. El riesgo de esta feature no
+// es que falle, es que tape dinero de verdad — por eso lo que se fija aquí es
+// que no invente registros, que no borre la línea y que se pueda deshacer.
+
+function prismaDescarte(
+  linea: Record<string, unknown> | null = {
+    id: "txn_1",
+    paymentId: null,
+    orderId: null,
+  }
+) {
+  const updates: Record<string, unknown>[] = [];
+  const prisma = {
+    stripePayoutLine: {
+      findUnique: async () => linea,
+      update: async (args: { data: Record<string, unknown> }) => {
+        updates.push(args.data);
+        return { id: "txn_1" };
+      },
+    },
+  } as unknown as Parameters<typeof descartarCobroDeLinea>[0];
+  return { prisma, updates };
+}
+
+describe("descartarCobroDeLinea", () => {
+  it("guarda motivo, nota y quién lo descartó", async () => {
+    const { prisma, updates } = prismaDescarte();
+    const res = await descartarCobroDeLinea(prisma, {
+      lineId: "txn_1",
+      reason: "YA_REGISTRADO",
+      note: "Se capturó en la reserva de la otra ficha",
+      by: "ovy3200@gmail.com",
+    });
+
+    expect(res.ok).toBe(true);
+    expect(updates[0]).toMatchObject({
+      dismissedReason: "YA_REGISTRADO",
+      dismissedNote: "Se capturó en la reserva de la otra ficha",
+      dismissedBy: "ovy3200@gmail.com",
+    });
+    expect(updates[0].dismissedAt).toBeInstanceOf(Date);
+  });
+
+  it("NO toca el monto ni la línea: el desglose tiene que seguir cuadrando", async () => {
+    // Si el descarte borrara la línea o pusiera el neto en cero, la suma del
+    // depósito dejaría de dar el monto del banco y el dueño creería que le
+    // faltan pesos. Descartar es una anotación, no un movimiento de dinero.
+    const { prisma, updates } = prismaDescarte();
+    await descartarCobroDeLinea(prisma, { lineId: "txn_1", reason: "PRUEBA" });
+
+    expect(Object.keys(updates[0]).every((k) => k.startsWith("dismissed"))).toBe(true);
+  });
+
+  it('exige explicación cuando el motivo es "otro"', async () => {
+    const { prisma, updates } = prismaDescarte();
+    const res = await descartarCobroDeLinea(prisma, { lineId: "txn_1", reason: "OTRO" });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("por qué");
+    // Y no escribió nada: un "otro" en blanco deja el mismo misterio que había.
+    expect(updates).toHaveLength(0);
+  });
+
+  it("no descarta un cobro que ya está registrado como pago", async () => {
+    const { prisma, updates } = prismaDescarte({
+      id: "txn_1",
+      paymentId: "pay_1",
+      orderId: null,
+    });
+    const res = await descartarCobroDeLinea(prisma, { lineId: "txn_1", reason: "PRUEBA" });
+
+    expect(res.ok).toBe(false);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("deshacer limpia las cuatro columnas", async () => {
+    const { prisma, updates } = prismaDescarte();
+    const res = await deshacerDescarteDeLinea(prisma, "txn_1");
+
+    expect(res.ok).toBe(true);
+    expect(updates[0]).toEqual({
+      dismissedAt: null,
+      dismissedReason: null,
+      dismissedNote: null,
+      dismissedBy: null,
+    });
+  });
+
+  it("un cobro descartado NO se puede registrar por accidente", async () => {
+    // Es el caso que motivó la feature: el dinero YA está capturado a mano en
+    // otra reserva. Que el alta reviviera el descarte sola convertiría un clic
+    // de más en un ingreso contado dos veces.
+    const res = await registrarCobroDeLinea(
+      prismaFake({
+        linea: {
+          id: "txn_1",
+          type: "charge",
+          gross: 924,
+          fee: 42.06,
+          net: 881.94,
+          paymentId: null,
+          orderId: null,
+          stripePaymentIntentId: "pi_1",
+          metaReservationId: null,
+          metaOwnerId: "usr_1",
+          metaPetIds: "pet_1",
+          dismissedAt: new Date("2026-09-09T00:00:00Z"),
+          payout: { id: "po_1", stripeCreatedAt: new Date() },
+        },
+      }),
+      { lineId: "txn_1", reservationId: "res_1" }
+    );
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("descartado");
+  });
+
+  it("un motivo inventado no pasa", async () => {
+    expect(parseDismissReason("PRUEBA")).toBe("PRUEBA");
+    expect(parseDismissReason("lo_que_sea")).toBeNull();
+    expect(parseDismissReason(undefined)).toBeNull();
   });
 });

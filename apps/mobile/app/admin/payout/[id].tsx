@@ -23,6 +23,9 @@ import { COLORS } from "@/constants/colors";
 import {
   getAdminPayoutBreakdown,
   registrarCobroDeDeposito,
+  descartarCobroDeDeposito,
+  deshacerDescarteDeDeposito,
+  type PayoutDismissReason,
   type PayoutLine,
 } from "@/lib/api";
 import { formatCurrencyExact, formatArrivalDate } from "@/lib/format";
@@ -88,6 +91,61 @@ export default function PayoutDetailScreen() {
       }),
   });
 
+  // Descartar un cobro que NO hay que registrar: una prueba, o dinero que ya se
+  // capturó a mano en otra reserva (pasa cuando la ficha de la mascota se
+  // duplicó y la reserva se rehízo). Sin esto la única acción era "Registrar",
+  // que en esos casos DUPLICA el ingreso, y el aviso se quedaba encendido para
+  // siempre.
+  const descartar = useMutation({
+    mutationFn: (v: { linea: PayoutLine; motivo: PayoutDismissReason }) =>
+      descartarCobroDeDeposito(v.linea.id, v.motivo),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "payouts"] });
+    },
+    onError: (e) =>
+      alertaDeError(e, {
+        titulo: "No se pudo descartar",
+        respaldo: "Intenta de nuevo en un momento.",
+      }),
+  });
+
+  const deshacer = useMutation({
+    mutationFn: (linea: PayoutLine) => deshacerDescarteDeDeposito(linea.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "payouts"] });
+    },
+    onError: (e) =>
+      alertaDeError(e, {
+        titulo: "No se pudo deshacer",
+        respaldo: "Intenta de nuevo en un momento.",
+      }),
+  });
+
+  // Los tres motivos del catálogo que se explican solos. "Otro" pide texto y
+  // vive en el panel web: un Alert.prompt aquí sería iOS-only y la nota se
+  // escribe mejor con teclado de verdad.
+  const preguntarMotivo = (l: PayoutLine) => {
+    Alert.alert(
+      "¿Por qué no hay que registrarlo?",
+      "El cobro deja de aparecer como pendiente. No se toca el dinero ni el desglose del depósito, y se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Fue una prueba",
+          onPress: () => descartar.mutate({ linea: l, motivo: "PRUEBA" }),
+        },
+        {
+          text: "Ya está registrado en otra reserva",
+          onPress: () => descartar.mutate({ linea: l, motivo: "YA_REGISTRADO" }),
+        },
+        {
+          text: "Se le devolvió al cliente",
+          onPress: () => descartar.mutate({ linea: l, motivo: "REEMBOLSADO" }),
+        },
+      ],
+    );
+  };
+
   const confirmarRegistro = (l: PayoutLine) => {
     const quien = l.match?.petNames.length ? l.match.petNames.join(", ") : (l.match?.ownerName ?? "esta reserva");
     Alert.alert(
@@ -117,7 +175,12 @@ export default function PayoutDetailScreen() {
   // registró como pago no es lo mismo que una comisión de Stripe, y mezclarlos
   // esconde justo lo que hay que revisar.
   const conPago = data.lines.filter((l) => l.match && l.match.kind !== "SIN_REGISTRAR");
-  const sinRegistrar = data.lines.filter((l) => l.match?.kind === "SIN_REGISTRAR");
+  // Un descartado sigue sin pago (`SIN_REGISTRAR`), pero ya se decidió que no
+  // lleva alta: sacarlo del aviso es justamente el punto.
+  const sinRegistrar = data.lines.filter(
+    (l) => l.match?.kind === "SIN_REGISTRAR" && !l.dismissed,
+  );
+  const descartados = data.lines.filter((l) => l.dismissed);
   const sinIdentificar = data.lines.filter((l) => !l.match);
 
   const renderLinea = (l: PayoutLine) => {
@@ -305,9 +368,62 @@ export default function PayoutDetailScreen() {
                     desde la reserva del cliente.
                   </Text>
                 )}
+                {/* Salida para lo que NO hay que registrar. Va también cuando
+                    no hay reserva identificada: los cobros de prueba son
+                    justamente los que no tienen ninguna. */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.descartarBtn,
+                    pressed && styles.lineaPressed,
+                  ]}
+                  onPress={() => preguntarMotivo(l)}
+                  disabled={descartar.isPending}
+                >
+                  <Text style={styles.descartarBtnText}>
+                    {descartar.isPending && descartar.variables?.linea.id === l.id
+                      ? "Descartando…"
+                      : "Esto no hay que registrarlo"}
+                  </Text>
+                </Pressable>
               </View>
             );
           })}
+        </View>
+      )}
+
+      {/* Descartados — se siguen viendo, con su motivo. El monto continúa
+          sumando en el desglose (el depósito tiene que cuadrar con el banco);
+          lo único que cambia es que dejaron de contarse como pendientes. */}
+      {descartados.length > 0 && (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Descartados ({descartados.length})</Text>
+          <Text style={styles.sectionHint}>
+            Cobros que el equipo marcó como "no hay que registrarlo".
+          </Text>
+          {descartados.map((l) => (
+            <View key={`ds-${l.id}`} style={styles.descartadoRow}>
+              {renderLinea(l)}
+              <Text style={styles.descartadoMotivo}>
+                {l.dismissed?.reasonLabel}
+                {l.dismissed?.note ? ` · ${l.dismissed.note}` : ""}
+                {l.dismissed?.by ? ` · ${l.dismissed.by}` : ""}
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.descartarBtn,
+                  pressed && styles.lineaPressed,
+                ]}
+                onPress={() => deshacer.mutate(l)}
+                disabled={deshacer.isPending}
+              >
+                <Text style={styles.descartarBtnText}>
+                  {deshacer.isPending && deshacer.variables?.id === l.id
+                    ? "Deshaciendo…"
+                    : "Deshacer descarte"}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
         </View>
       )}
 
@@ -393,6 +509,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.primary,
     fontFamily: "PlusJakartaSans_600SemiBold",
+  },
+  // Secundario a propósito: descartar es la salida, no la acción principal.
+  // Con el mismo peso visual que "Registrar" invitaría a limpiar el aviso en
+  // vez de cobrar lo que sí falta.
+  descartarBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    marginBottom: 4,
+  },
+  descartarBtnText: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    textDecorationLine: "underline",
+  },
+  descartadoRow: {
+    opacity: 0.75,
+  },
+  descartadoMotivo: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.textTertiary,
+    fontFamily: "PlusJakartaSans_400Regular",
+    paddingHorizontal: 4,
   },
   registrarNota: {
     fontSize: 12,

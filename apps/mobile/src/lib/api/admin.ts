@@ -129,6 +129,23 @@ export type PayoutLineMatch = {
   paidAt: string | null;
 };
 
+/** Motivos por los que un cobro sin pago NO es dinero pendiente. */
+export type PayoutDismissReason = "PRUEBA" | "YA_REGISTRADO" | "REEMBOLSADO" | "OTRO";
+
+/**
+ * El equipo marcó este cobro como "no hay que registrarlo". `match.kind` sigue
+ * siendo SIN_REGISTRAR —la línea no tiene pago, y esa es la verdad del dato—;
+ * lo que cambia es que deja de contar como pendiente.
+ */
+export type PayoutLineDismissal = {
+  at: string;
+  reason: PayoutDismissReason;
+  /** El motivo ya en español: lo arma el servidor para no repetir el catálogo. */
+  reasonLabel: string;
+  note: string | null;
+  by: string | null;
+};
+
 export type PayoutLine = {
   id: string;
   type: string;
@@ -139,6 +156,7 @@ export type PayoutLine = {
   stripePaymentIntentId: string | null;
   /** null = la línea no cruzó con ninguna reserva ni pedido (ajuste de Stripe). */
   match: PayoutLineMatch | null;
+  dismissed: PayoutLineDismissal | null;
 };
 
 export type PayoutBreakdown = {
@@ -160,6 +178,8 @@ export type PayoutBreakdown = {
     sinRegistrar: number;
     /** Suma bruta de esos cobros: dinero que no está en los ingresos. */
     sinRegistrarMonto: number;
+    /** Cobros marcados como "no hay que registrarlo". */
+    descartados: number;
   };
   /** La suma de las líneas da exactamente el monto depositado. */
   cuadra: boolean;
@@ -225,6 +245,32 @@ export const registrarCobroDeDeposito = (lineId: string, reservationId?: string)
     method: "POST",
     body: JSON.stringify(reservationId ? { reservationId } : {}),
   });
+
+/**
+ * Marca un cobro como "esto no hay que registrarlo": fue una prueba, o el
+ * dinero ya se capturó a mano en otra reserva. No mueve dinero ni toca la
+ * línea — sólo deja de contarse como pendiente, con constancia de por qué.
+ */
+export const descartarCobroDeDeposito = (
+  lineId: string,
+  reason: PayoutDismissReason,
+  note?: string,
+) =>
+  apiFetch<{
+    lineId: string;
+    reason: PayoutDismissReason;
+    reasonLabel: string;
+    note: string | null;
+    by: string | null;
+    at: string;
+  }>(`/admin/payouts/lines/${lineId}/dismiss`, {
+    method: "POST",
+    body: JSON.stringify(note ? { reason, note } : { reason }),
+  });
+
+/** Vuelve a contar el cobro como pendiente de registrar. */
+export const deshacerDescarteDeDeposito = (lineId: string) =>
+  apiFetch<{ ok: true }>(`/admin/payouts/lines/${lineId}/undismiss`, { method: "POST" });
 
 export type AdminAlert = {
   id: string;
