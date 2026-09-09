@@ -140,6 +140,22 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     }));
   }
 
+  // Vista previa de las mascotas SOLO para el callejón sin salida: la ficha
+  // existe pero no hay a dónde mandar el código, así que el cliente no tiene
+  // manera de comprobar que es suya desde la app y la vincula el equipo. Ver
+  // los nombres es lo único que le confirma que la búsqueda dio con SU ficha
+  // —y no con la de otro que tenga un teléfono parecido— antes de pedir la
+  // vinculación manual. Es informativo: con esto no se reclama nada, y por eso
+  // NUNCA acompaña a un envío de código (ahí la prueba es el código).
+  async function petsPreview(ids: string[]) {
+    return prisma.pet.findMany({
+      where: { ownerId: { in: ids }, isActive: true },
+      select: { id: true, name: true, breed: true, photoUrl: true },
+      orderBy: { createdAt: "asc" },
+      take: 8,
+    });
+  }
+
   // POST /users/claim/lookup — el cliente recién registrado busca su cuenta
   // preexistente (creada por el admin, aún sin app vinculada) por teléfono y,
   // como respaldo, por correo. Es el primer paso de la pantalla "¿Ya eres
@@ -154,7 +170,8 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   // El canal es SMS y, si no hay teléfono utilizable o el envío falla, correo.
   // Ese orden sale de los datos: el 85% de las fichas de clientes sin app
   // tiene teléfono capturado y solo el 16% un correo real. Si no hay ningún
-  // canal, se devuelve el respaldo de WhatsApp para que el equipo la vincule.
+  // canal, se devuelve el respaldo de WhatsApp —con las mascotas de la ficha,
+  // ya solo informativas: ver `petsPreview`— para que el equipo la vincule.
   fastify.post<{ Body: { phone?: string; email?: string; v?: number; prefer?: "email" | "sms" } }>(
     "/users/claim/lookup",
     {
@@ -220,13 +237,16 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       //  dar de alta un walk-in). El correo se conserva porque hay clientes
       //  que solo tienen eso.
       // ─────────────────────────────────────────────────────────────────
-      const respaldoWhatsapp = {
+      const respaldoWhatsapp = async (message?: string) => ({
         found: true,
         channel: "none" as const,
         candidates: [],
+        // Lo único que ve el cliente de la ficha cuando no hay código posible.
+        pets: await petsPreview(candidateIds),
         message:
+          message ??
           "Encontramos tu ficha, pero no pudimos enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
-      };
+      });
 
       // La app en tienda (v:2) espera `channel:"email"`: si le devolviéramos
       // "sms" pagaríamos el mensaje y ella igual mostraría "no tiene correo".
@@ -248,17 +268,17 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           // Ficha sin correo y app vieja: el mensaje de siempre. NO se le pide
           // actualizar porque el build de la tienda no recibe este OTA — sería
           // mandarlo a un callejón peor.
-          return reply.send({
-            ...respaldoWhatsapp,
-            message:
+          return reply.send(
+            await respaldoWhatsapp(
               "Encontramos tu ficha, pero no tiene un correo para enviarte el código. Escríbenos por WhatsApp y te la vinculamos.",
-          });
+            ),
+          );
         }
         request.log.info(
           { tag: "claim-sms-skipped", reason: smsTarget.ok ? "sin-canal" : smsTarget.reason, userId: currentUserId },
           "[claim] sin canal para el código",
         );
-        return reply.send(respaldoWhatsapp);
+        return reply.send(await respaldoWhatsapp());
       }
 
       const code = newCode();
@@ -314,13 +334,11 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         // Nunca se le dice "te mandamos un código" si no salió ninguno: se
         // quedaría esperando uno que no existe. El token no se devuelve.
         return reply.send(
-          smsFallo === "throttled"
-            ? {
-                ...respaldoWhatsapp,
-                message:
-                  "Ya te mandamos un código hace poco. Revisa tus mensajes, o escríbenos por WhatsApp.",
-              }
-            : respaldoWhatsapp,
+          await respaldoWhatsapp(
+            smsFallo === "throttled"
+              ? "Ya te mandamos un código hace poco. Revisa tus mensajes, o escríbenos por WhatsApp."
+              : undefined,
+          ),
         );
       }
 

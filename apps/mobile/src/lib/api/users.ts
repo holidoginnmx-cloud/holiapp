@@ -52,6 +52,16 @@ export type ClaimLookupResult = {
   challengeToken?: string;
   expiresInMinutes?: number;
   message?: string;
+  /** Solo informativas y solo cuando NO se pudo mandar código (channel
+   * "none"): las mascotas de la ficha encontrada, para que el cliente
+   * reconozca que es la suya antes de pedir la vinculación manual. No sirven
+   * para reclamar nada; eso sigue exigiendo el código o al equipo. */
+  pets?: {
+    id: string;
+    name: string;
+    breed: string | null;
+    photoUrl: string | null;
+  }[];
 };
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)

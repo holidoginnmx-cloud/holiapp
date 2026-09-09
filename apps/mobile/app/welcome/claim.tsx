@@ -26,6 +26,7 @@ import {
   confirmClaim,
   getPetsByOwner,
   type ClaimCandidate,
+  type ClaimLookupResult,
 } from "@/lib/api";
 import { formatPhoneInput } from "@/lib/format";
 import { buildWhatsappUrl } from "@/constants/business";
@@ -68,6 +69,12 @@ export default function ClaimAccountScreen() {
   const [verifying, setVerifying] = useState(false);
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [noEmailMessage, setNoEmailMessage] = useState<string | null>(null);
+  // Mascotas de la ficha encontrada, SOLO para que el cliente la reconozca
+  // cuando no hay a dónde mandarle el código. No son seleccionables: quien
+  // vincula en ese caso es el equipo.
+  const [foundPets, setFoundPets] = useState<
+    NonNullable<ClaimLookupResult["pets"]>
+  >([]);
   // Solicitud de vinculación manual: la salida cuando no hay a dónde mandar el
   // código. Antes aquí solo había un "escríbenos por WhatsApp".
   const [requesting, setRequesting] = useState(false);
@@ -139,6 +146,7 @@ export default function ClaimAccountScreen() {
       setCandidates([]);
       setSelectedPetIds(new Set());
       setClaimToken(null);
+      setFoundPets([]);
       setSearched(true);
       if (!res.found) {
         setChallenge(null);
@@ -158,6 +166,7 @@ export default function ClaimAccountScreen() {
         } else {
           setChallenge(null);
           setNoEmailMessage(aviso);
+          setFoundPets(res.pets ?? []);
         }
       } else {
         setNoEmailMessage(null);
@@ -344,6 +353,7 @@ export default function ClaimAccountScreen() {
             setChallenge(null);
             setClaimToken(null);
             setNoEmailMessage(null);
+            setFoundPets([]);
             setCode("");
           }}
           style={styles.linkBtn}
@@ -451,6 +461,40 @@ export default function ClaimAccountScreen() {
               color={COLORS.textTertiary}
             />
             <Text style={styles.noResultText}>{noEmailMessage}</Text>
+          </View>
+        )}
+
+        {/* Las mascotas de la ficha, solo para que el cliente confirme que es
+            la suya (y no la de otro con un teléfono parecido) antes de pedir
+            que se la vinculen. Informativas: aquí no se selecciona nada. */}
+        {noEmailMessage && foundPets.length > 0 && (
+          <View style={styles.candidateCard} testID="claim-found-pets">
+            <Text style={styles.candidateName}>
+              {foundPets.length === 1
+                ? "Esta es la mascota de tu ficha"
+                : "Estas son las mascotas de tu ficha"}
+            </Text>
+            <Text style={styles.pickHint}>
+              Si las reconoces, pide que te vinculemos la ficha y las verás en
+              tu cuenta.
+            </Text>
+            {foundPets.map((p) => (
+              <View key={p.id} style={styles.petInfoRow}>
+                {p.photoUrl ? (
+                  <Image source={{ uri: p.photoUrl }} style={styles.petPhotoLg} />
+                ) : (
+                  <View style={[styles.petPhotoLg, styles.petPhotoFallback]}>
+                    <Ionicons name="paw" size={18} color={COLORS.primary} />
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.petName}>{p.name}</Text>
+                  {p.breed ? (
+                    <Text style={styles.petMeta}>{p.breed}</Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
@@ -803,6 +847,22 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
+  },
+  petPhotoLg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  petInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.bgPage,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   petPhotoFallback: {
     alignItems: "center",
