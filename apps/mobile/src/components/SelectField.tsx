@@ -23,6 +23,8 @@ export type SelectOption = {
   label: string;
   /** Segunda línea opcional (p. ej. "ya con 2 del grupo"). */
   hint?: string;
+  /** "warn" pinta el hint en naranja: es un motivo, no un dato de más. */
+  hintTone?: "neutral" | "warn";
   /**
    * Se muestra pero no se puede elegir. Preferible a esconder la opción: si
    * algo no aplica, el usuario debe VERLO y saber por qué (usar `hint` para
@@ -40,6 +42,13 @@ type Props = {
   onSelect: (key: string) => void;
   /** Mensaje del sheet cuando no hay ninguna opción disponible. */
   emptyText?: string;
+  /**
+   * Mensaje cuando hay opciones pero TODAS están deshabilitadas. Sin esto, el
+   * usuario ve una lista larga en gris y ninguna explicación de por qué.
+   */
+  allDisabledText?: string;
+  /** Línea bajo el título (p. ej. "Elige las fechas para ver disponibilidad"). */
+  subtitle?: string;
   /** Muestra "N disponibles" bajo el título. Útil en listas largas. */
   showCount?: boolean;
   testID?: string;
@@ -52,6 +61,8 @@ export function SelectField({
   selectedKey,
   onSelect,
   emptyText,
+  allDisabledText,
+  subtitle,
   showCount,
   testID,
 }: Props) {
@@ -94,11 +105,16 @@ export function SelectField({
             <View style={styles.header}>
               <View style={styles.titleCol}>
                 <Text style={styles.title}>{title}</Text>
-                {showCount && options.length > 0 && (
-                  <Text style={styles.count}>
-                    {disponibles} de {options.length} disponible
-                    {disponibles === 1 ? "" : "s"}
-                  </Text>
+                {subtitle ? (
+                  <Text style={styles.count}>{subtitle}</Text>
+                ) : (
+                  showCount &&
+                  options.length > 0 && (
+                    <Text style={styles.count}>
+                      {disponibles} de {options.length} disponible
+                      {disponibles === 1 ? "" : "s"}
+                    </Text>
+                  )
                 )}
               </View>
               <TouchableOpacity onPress={() => setOpen(false)} hitSlop={12}>
@@ -116,14 +132,20 @@ export function SelectField({
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator
               >
+                {disponibles === 0 && allDisabledText && (
+                  <Text style={styles.allDisabledText}>{allDisabledText}</Text>
+                )}
                 {options.map((o) => {
                   const seleccionado = o.key === selectedKey;
                   return (
                     <TouchableOpacity
                       key={o.key}
-                      style={styles.row}
-                      disabled={o.disabled}
+                      style={[styles.row, o.disabled && styles.rowDisabled]}
+                      // Sin `disabled` en el Touchable a propósito: así el tap
+                      // da feedback visual (activeOpacity) en vez de sentirse
+                      // como que la app se congeló.
                       onPress={() => {
+                        if (o.disabled) return;
                         onSelect(o.key);
                         setOpen(false);
                       }}
@@ -139,14 +161,31 @@ export function SelectField({
                         >
                           {o.label}
                         </Text>
-                        {o.hint && <Text style={styles.rowHint}>{o.hint}</Text>}
+                        {o.hint && (
+                          <Text
+                            style={[
+                              styles.rowHint,
+                              o.hintTone === "warn" && styles.rowHintWarn,
+                            ]}
+                          >
+                            {o.hint}
+                          </Text>
+                        )}
                       </View>
-                      {seleccionado && !o.disabled && (
+                      {o.disabled ? (
                         <Ionicons
-                          name="checkmark-circle"
-                          size={20}
-                          color={COLORS.primary}
+                          name="lock-closed-outline"
+                          size={16}
+                          color={COLORS.textDisabled}
                         />
+                      ) : (
+                        seleccionado && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={COLORS.primary}
+                          />
+                        )
                       )}
                     </TouchableOpacity>
                   );
@@ -239,12 +278,31 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
+  // El gris del texto solo no basta para separar de un vistazo lo ocupado de
+  // lo disponible en una lista de 18 renglones: el fondo tenue sí.
+  rowDisabled: {
+    backgroundColor: COLORS.bgSection,
+    paddingHorizontal: 10,
+    marginHorizontal: -10,
+  },
   rowTextDisabled: { color: COLORS.textDisabled },
   rowHint: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
+  },
+  rowHintWarn: { color: COLORS.warningText },
+  allDisabledText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.warningText,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    textAlign: "center",
   },
   emptyText: {
     fontSize: 14,

@@ -48,6 +48,10 @@ import { SelectionListModal } from "@/components/SelectionListModal";
 import { useSuccessBanner } from "@/components/SuccessBanner";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
+  useRoomOccupancy,
+  textoDisponibilidad,
+} from "@/hooks/useRoomOccupancy";
+import {
   PaymentManualModal,
   type ManualPaymentValues,
 } from "@/components/PaymentManualModal";
@@ -149,6 +153,15 @@ export default function StayDetail() {
     queryKey: ["rooms", stay?.pet?.size],
     queryFn: () => getRooms(stay!.pet!.size),
     enabled: roomModalVisible && !!stay?.pet?.size,
+  });
+
+  // Cuáles tienen lugar en las fechas de ESTA estancia, sin contarla a ella
+  // misma (si no, su cuarto actual se vería lleno).
+  const { ocupacionPorCuarto } = useRoomOccupancy({
+    checkIn: stay?.checkIn,
+    checkOut: stay?.checkOut,
+    excludeReservationId: id,
+    enabled: roomModalVisible,
   });
 
   // Optimista: el cuarto seleccionado aparece al instante en el detalle.
@@ -1451,38 +1464,63 @@ export default function StayDetail() {
           listMaxHeight: ROOM_LIST_MAX_HEIGHT,
           empty: styles.modalDescription,
         }}
-        renderItem={(r, { selected: isCurrent, pending: isPending }) => (
-          <TouchableOpacity
-            style={styles.roomRow}
-            onPress={() => {
-              assignRoomMutation.mutate(r.id);
-              setRoomModalVisible(false);
-            }}
-            disabled={isCurrent || assignRoomMutation.isPending}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="bed-outline" size={18} color={COLORS.primary} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.roomRowName} numberOfLines={1}>
-                {r.name}
-              </Text>
-              <Text style={styles.roomRowSub} numberOfLines={1}>
-                Capacidad {r.capacity}
-              </Text>
-            </View>
-            {isPending ? (
-              <ActivityIndicator color={COLORS.primary} size="small" />
-            ) : isCurrent ? (
-              <Text style={styles.roomRowCurrent}>Asignado</Text>
-            ) : (
+        renderItem={(r, { selected: isCurrent, pending: isPending }) => {
+          const { texto, lleno } = textoDisponibilidad(
+            r,
+            ocupacionPorCuarto?.get(r.id),
+          );
+          // El cuarto que ya tiene asignado nunca se bloquea.
+          const bloqueado = lleno && !isCurrent;
+          return (
+            <TouchableOpacity
+              style={[styles.roomRow, bloqueado && styles.roomRowFull]}
+              onPress={() => {
+                if (bloqueado) return;
+                assignRoomMutation.mutate(r.id);
+                setRoomModalVisible(false);
+              }}
+              disabled={isCurrent || assignRoomMutation.isPending}
+              activeOpacity={0.7}
+            >
               <Ionicons
-                name="chevron-forward"
+                name="bed-outline"
                 size={18}
-                color={COLORS.textTertiary}
+                color={bloqueado ? COLORS.textDisabled : COLORS.primary}
               />
-            )}
-          </TouchableOpacity>
-        )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={[styles.roomRowName, bloqueado && styles.roomTextFull]}
+                  numberOfLines={1}
+                >
+                  {r.name}
+                </Text>
+                <Text
+                  style={[styles.roomRowSub, bloqueado && styles.roomTextFull]}
+                  numberOfLines={1}
+                >
+                  {texto ?? `Capacidad ${r.capacity}`}
+                </Text>
+              </View>
+              {isPending ? (
+                <ActivityIndicator color={COLORS.primary} size="small" />
+              ) : isCurrent ? (
+                <Text style={styles.roomRowCurrent}>Asignado</Text>
+              ) : bloqueado ? (
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={16}
+                  color={COLORS.textDisabled}
+                />
+              ) : (
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.textTertiary}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        }}
       />
 
     </ScrollView>

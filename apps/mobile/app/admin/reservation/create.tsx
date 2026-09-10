@@ -21,6 +21,7 @@ import { useAuthStore } from "@/store/authStore";
 import { DateTimeField } from "@/components/DateTimeField";
 import { SelectField } from "@/components/SelectField";
 import { SwitchRow } from "@/components/SwitchRow";
+import { useRoomOccupancy } from "@/hooks/useRoomOccupancy";
 import { LevelSelector } from "@/components/LevelSelector";
 import {
   KeyboardDoneBar,
@@ -385,20 +386,139 @@ export default function AdminCreateReservation() {
     enabled: reservationType === "STAY",
   });
 
+  // Ocupación de los cuartos en ESAS fechas. Se manda exactamente el mismo
+  // checkIn.toISOString() que el submit: si el anclaje difiere, la pantalla
+  // dice "libre" y el servidor responde 409, que es justo lo que veníamos a
+  // evitar.
+  const fechasListas =
+    reservationType === "STAY" && !!checkIn && !!checkOut && checkOut > checkIn;
+  const {
+    ocupacionPorCuarto,
+    isError: occupancyError,
+    refetch: refetchOccupancy,
+  } = useRoomOccupancy({
+    checkIn,
+    checkOut,
+    enabled: reservationType === "STAY",
+  });
+
   // TODOS los cuartos activos, marcando cuáles no admiten la talla de la
   // mascota. Antes se filtraban y desaparecían de la lista sin explicación: el
   // dueño veía "12 cuartos" teniendo 18 y no había forma de saber por qué.
   const roomsForPet = useCallback(
     (pet: PetWithOwner) => {
       const size = sizeFromWeight(pet.weight);
+      // Sin peso nadie ha visto a este perro: la talla es una suposición del
+      // sistema y no da para bloquear un cuarto (ver talla-M-default).
+      const tallaEsSuposicion = pet.weight == null && !pet.sizeDeclared;
       return (rooms ?? []).map((r) => ({
         room: r,
-        admiteTalla: r.sizeAllowed.includes(size),
+        admiteTalla: tallaEsSuposicion || r.sizeAllowed.includes(size),
+        tallaEsSuposicion,
         size,
       }));
     },
     [rooms],
   );
+
+  /**
+   * Opciones del selector de cuarto de una mascota: talla + ocupación real +
+   * los compañeros del grupo que ya van a ese cuarto.
+   */
+  const opcionesDeCuarto = useCallback(
+    (pet: PetWithOwner) =>
+      roomsForPet(pet).map(({ room, admiteTalla, tallaEsSuposicion, size }) => {
+        const delGrupo = selectedPets.filter(
+          (p) => p.id !== pet.id && roomByPet[p.id] === room.id,
+        ).length;
+        const ocupados = ocupacionPorCuarto?.get(room.id) ?? null;
+        const libres =
+          ocupados === null ? null : room.capacity - ocupados - delGrupo;
+        // El cuarto que esta mascota YA tiene elegido nunca se bloquea: si se
+        // deshabilita, el SelectField no deja volver a elegirlo y además lo
+        // saca del contador.
+        const yaEsElSuyo = roomByPet[pet.id] === room.id;
+        const lleno = libres !== null && libres <= 0;
+        const disabled = !admiteTalla || (!yaEsElSuyo && lleno);
+
+        const capacidadTxt = room.capacity > 1 ? ` · cap. ${room.capacity}` : "";
+        let label = `${room.name}${capacidadTxt}`;
+        // Un cuarto que no admite la talla NO se anuncia como "disponible":
+        // está bloqueado pase lo que pase con las fechas.
+        if (libres !== null && admiteTalla) {
+          label = lleno
+            ? `${room.name} · ocupado`
+            : room.capacity > 1
+              ? `${room.name} · ${libres} de ${room.capacity} disponibles`
+              : `${room.name} · disponible`;
+        }
+
+        // Prioridad del motivo: la talla gana sobre la ocupación (es la razón
+        // más dura: ese perro no cabe ahí ni en fechas libres).
+        let hint: string | undefined;
+        let hintTone: "neutral" | "warn" | undefined;
+        if (!admiteTalla) {
+          hint = `No admite talla ${size}`;
+          hintTone = "warn";
+        } else if (tallaEsSuposicion) {
+          hint = "Sin peso registrado: verifica la talla";
+          hintTone = "warn";
+        } else if (lleno) {
+          hint =
+            delGrupo > 0 && ocupados !== null && ocupados < room.capacity
+              ? "Se llena con las mascotas que ya asignaste"
+              : room.capacity > 1
+                ? `Ocupado en esas fechas (${ocupados} de ${room.capacity})`
+                : "Ocupado en esas fechas";
+          hintTone = "warn";
+        } else if (delGrupo > 0) {
+          hint =
+            libres !== null && room.capacity > 1
+              ? `Quedan ${libres} de ${room.capacity} · ya asignaste ${delGrupo} aquí`
+              : `Ya asignaste ${delGrupo} mascota${delGrupo > 1 ? "s" : ""} de este grupo aquí`;
+        } else if (libres !== null && room.capacity > 1 && libres < room.capacity) {
+          hint = `Quedan ${libres} de ${room.capacity} lugares en esas fechas`;
+        }
+
+        return { key: room.id, label, disabled, hint, hintTone, porTalla: !admiteTalla };
+      }),
+    [roomsForPet, selectedPets, roomByPet, ocupacionPorCuarto],
+  );
+
+  // Un solo renglón bajo el título en vez de repetir el mismo aviso en las 18
+  // filas. `undefined` deja pasar el contador "N de M disponibles".
+  const subtituloCuartos = !fechasListas
+    ? "Elige las fechas para ver qué cuartos están disponibles."
+    : occupancyError
+      ? "No se pudo consultar la ocupación de los cuartos."
+      : ocupacionPorCuarto === null
+        ? "Calculando disponibilidad…"
+        : undefined;
+
+  /**
+   * Cuartos que ya no dan: se calcula POR CUARTO, no por mascota. Con la cuenta
+   * por mascota, 3 perros en un cuarto de 2 se marcarían los tres en conflicto
+   * en vez de decir que ese cuarto no alcanza para los tres.
+   */
+  const conflictosDeCuarto = useMemo(() => {
+    if (!ocupacionPorCuarto) return [];
+    const porCuarto = new Map<string, PetWithOwner[]>();
+    for (const pet of selectedPets) {
+      const roomId = roomByPet[pet.id];
+      if (!roomId) continue;
+      porCuarto.set(roomId, [...(porCuarto.get(roomId) ?? []), pet]);
+    }
+    const out: { room: string; pets: string[] }[] = [];
+    for (const [roomId, mascotas] of porCuarto) {
+      const room = (rooms ?? []).find((r) => r.id === roomId);
+      if (!room) continue;
+      const libres = room.capacity - (ocupacionPorCuarto.get(roomId) ?? 0);
+      if (mascotas.length > libres) {
+        out.push({ room: room.name, pets: mascotas.map((p) => p.name) });
+      }
+    }
+    return out;
+  }, [ocupacionPorCuarto, selectedPets, roomByPet, rooms]);
 
   const { data: bathVariants } = useQuery({
     queryKey: ["admin", "bath-variants"],
@@ -734,6 +854,16 @@ export default function AdminCreateReservation() {
         );
         return;
       }
+      // El servidor rechaza esto con un 409; atajarlo aquí evita perder todo lo
+      // capturado por un cuarto que se llenó al mover las fechas.
+      if (conflictosDeCuarto.length > 0) {
+        const c = conflictosDeCuarto[0];
+        Alert.alert(
+          "Cuarto sin disponibilidad",
+          `${c.room} ya no tiene lugar en esas fechas para ${c.pets.join(" y ")}. Elige otro antes de guardar.`,
+        );
+        return;
+      }
       if (stayBathEnabled && stayBathPrice == null) {
         Alert.alert(
           "Servicio no disponible",
@@ -853,10 +983,18 @@ export default function AdminCreateReservation() {
         }
       }
       invalidateReservationScope(queryClient, created?.id);
+      // La ocupación de cuartos acaba de cambiar y vive fuera de ese scope.
+      queryClient.invalidateQueries({ queryKey: ["admin", "rooms", "occupancy"] });
       Alert.alert("Reservación creada", "La reservación se creó correctamente.", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (err) {
+      // Alguien más ganó el cuarto mientras se capturaba: al reintentar debe
+      // verse la lista ya corregida, no la foto vieja.
+      const code = (err as { code?: string })?.code;
+      if (code === "ROOM_AT_CAPACITY" || code === "ROOM_TAKEN") {
+        refetchOccupancy();
+      }
       alertaDeError(err, { titulo: "No se pudo crear", respaldo: "Error desconocido" });
     } finally {
       setSubmitting(false);
@@ -1169,45 +1307,50 @@ export default function AdminCreateReservation() {
             {roomsLoading ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
             ) : (
-              selectedPets.map((pet) => (
-                <View key={pet.id}>
-                  {selectedPets.length > 1 && (
-                    <Text style={styles.petRoomName}>{pet.name}</Text>
-                  )}
-                  <SelectField
-                    title={
-                      selectedPets.length > 1
-                        ? `Cuarto de ${pet.name}`
-                        : "Elegir cuarto"
-                    }
-                    placeholder="Seleccionar cuarto"
-                    emptyText={`No hay cuartos para el tamaño de ${pet.name}`}
-                    showCount
-                    selectedKey={roomByPet[pet.id] ?? null}
-                    options={roomsForPet(pet).map(({ room, admiteTalla, size }) => {
-                      // Cuántos otros perros del grupo ya van a este cuarto
-                      // (comparten cuarto: es válido, sólo se avisa).
-                      const compañeros = selectedPets.filter(
-                        (p) => p.id !== pet.id && roomByPet[p.id] === room.id,
-                      ).length;
-                      return {
-                        key: room.id,
-                        label: `${room.name} · cap. ${room.capacity}`,
-                        disabled: !admiteTalla,
-                        hint: !admiteTalla
-                          ? `No configurado para talla ${size}`
-                          : compañeros > 0
-                            ? `Ya con ${compañeros} del grupo`
-                            : undefined,
-                      };
-                    })}
-                    onSelect={(roomId) =>
-                      setRoomByPet((prev) => ({ ...prev, [pet.id]: roomId }))
-                    }
-                  />
-                </View>
-              ))
+              selectedPets.map((pet) => {
+                const opciones = opcionesDeCuarto(pet);
+                // Si NINGUNO admite la talla, el motivo no son las fechas.
+                const ningunoPorTalla = opciones.every((o) => o.porTalla);
+                return (
+                  <View key={pet.id}>
+                    {selectedPets.length > 1 && (
+                      <Text style={styles.petRoomName}>{pet.name}</Text>
+                    )}
+                    <SelectField
+                      title={
+                        selectedPets.length > 1
+                          ? `Cuarto de ${pet.name}`
+                          : "Elegir cuarto"
+                      }
+                      placeholder="Seleccionar cuarto"
+                      emptyText={`No hay cuartos para el tamaño de ${pet.name}`}
+                      allDisabledText={
+                        ningunoPorTalla
+                          ? `Ningún cuarto admite el tamaño de ${pet.name}`
+                          : "Ningún cuarto disponible en esas fechas"
+                      }
+                      subtitle={subtituloCuartos}
+                      showCount
+                      selectedKey={roomByPet[pet.id] ?? null}
+                      options={opciones}
+                      onSelect={(roomId) =>
+                        setRoomByPet((prev) => ({ ...prev, [pet.id]: roomId }))
+                      }
+                    />
+                  </View>
+                );
+              })
             )}
+
+            {/* La selección NO se limpia sola al mover una fecha: con varias
+                mascotas, un tap en el calendario borraría varias decisiones.
+                Se avisa aquí y se bloquea al guardar. */}
+            {conflictosDeCuarto.map((c) => (
+              <Text key={c.room} style={styles.estimateWarn}>
+                {c.room} ya no tiene lugar en esas fechas para{" "}
+                {c.pets.join(" y ")}. Elige otro.
+              </Text>
+            ))}
 
             {/* Baño como complemento */}
             <SwitchRow

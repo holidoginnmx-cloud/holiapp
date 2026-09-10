@@ -1,11 +1,17 @@
 import { FastifyInstance } from "fastify";
 import { CreateRoomSchema, UpdateRoomSchema, PetSize, ReservationStatus } from "@holidoginn/shared";
-import { createAuthMiddleware, createAdminMiddleware } from "../middleware/auth";
+import {
+  createAuthMiddleware,
+  createAdminMiddleware,
+  createStaffMiddleware,
+} from "../middleware/auth";
+import { roomsWithOccupancy } from "../lib/roomOccupancy";
 
 export default async function roomsRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
   const adminMiddleware = createAdminMiddleware();
+  const staffMiddleware = createStaffMiddleware();
   const adminAuth = [authMiddleware, adminMiddleware];
 
   // GET /rooms — listar activos (acepta query ?size= para filtrar)
@@ -108,6 +114,8 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
   // GET /rooms/available — cuartos con capacidad disponible para fechas y tamaño.
   // Toma en cuenta `capacity`: un cuarto se considera disponible mientras la
   // cantidad de reservaciones activas solapadas sea menor a su capacidad.
+  // Lo consume la app del DUEÑO: devuelve Room[] a secas (esconde los llenos).
+  // Para ver la ocupación en vez de esconderla, ver /rooms/occupancy.
   fastify.get<{
     Querystring: { checkIn: string; checkOut: string; petSize: string };
   }>("/rooms/available", { preHandler: [authMiddleware] }, async (request, reply) => {
@@ -121,34 +129,55 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
         .send({ error: "checkOut debe ser posterior a checkIn" });
     }
 
-    const candidateRooms = await prisma.room.findMany({
-      where: {
-        isActive: true,
-        sizeAllowed: { has: petSize as PetSize },
-      },
-      include: {
-        _count: {
-          select: {
-            reservations: {
-              where: {
-                reservationType: "STAY",
-                status: {
-                  notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatus[],
-                },
-                AND: [
-                  { checkIn: { lt: checkOutDate } },
-                  { checkOut: { gt: checkInDate } },
-                ],
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "asc" },
+    const rooms = await roomsWithOccupancy(prisma, {
+      checkIn: checkInDate,
+      checkOut: checkOutDate,
+      size: petSize as PetSize,
     });
 
-    return candidateRooms
-      .filter((r) => r._count.reservations < r.capacity)
-      .map(({ _count, ...rest }) => rest);
+    return rooms
+      .filter((r) => r.remaining > 0)
+      .map(({ occupied, remaining, ...rest }) => rest);
   });
+
+  // GET /rooms/occupancy — TODOS los cuartos activos con su ocupación en el
+  // rango. El equipo elige el cuarto a mano: necesita ver los llenos en gris,
+  // no que desaparezcan (antes se enteraba con el 409 al guardar).
+  // Sin filtro de talla: en una reservación de varias mascotas cada perro tiene
+  // la suya, y el cliente ya resuelve eso por opción.
+  fastify.get<{
+    Querystring: {
+      checkIn: string;
+      checkOut: string;
+      /** Al reasignar: la propia estancia no debe contarse a sí misma. */
+      excludeReservationId?: string;
+    };
+  }>(
+    "/rooms/occupancy",
+    { preHandler: [authMiddleware, staffMiddleware] },
+    async (request, reply) => {
+      const { checkIn, checkOut, excludeReservationId } = request.query;
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+
+      if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+        return reply
+          .status(400)
+          .send({ error: "checkIn y checkOut deben ser fechas válidas" });
+      }
+      if (checkOutDate <= checkInDate) {
+        return reply
+          .status(400)
+          .send({ error: "checkOut debe ser posterior a checkIn" });
+      }
+
+      return roomsWithOccupancy(prisma, {
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        ...(excludeReservationId
+          ? { excludeReservationIds: [excludeReservationId] }
+          : {}),
+      });
+    }
+  );
 }

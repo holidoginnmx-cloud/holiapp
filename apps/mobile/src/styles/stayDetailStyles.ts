@@ -472,6 +472,14 @@ export const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.borderLight,
   },
+  // Cuarto sin lugar en las fechas de la estancia: visible (para saber que
+  // existe y por qué no se puede) pero apagado y sin poder elegirse.
+  roomRowFull: {
+    backgroundColor: COLORS.bgSection,
+    paddingHorizontal: 10,
+    marginHorizontal: -10,
+  },
+  roomTextFull: { color: COLORS.textDisabled },
   roomRowName: { fontSize: 15, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textPrimary },
   roomRowSub: { fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
   roomRowCurrent: { fontSize: 12, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },

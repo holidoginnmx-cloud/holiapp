@@ -16,6 +16,33 @@ export const getAvailableRooms = (params: {
   return apiFetch<Room[]>(`${ENDPOINTS.rooms}/available?${query.toString()}`);
 };
 
+/** Cuarto + cuántos perros lo ocupan en el rango consultado. */
+export type RoomOccupancy = Room & {
+  occupied: number;
+  /** Lugares libres. Negativo si alguien sobrevendió a mano. */
+  remaining: number;
+};
+
+/**
+ * TODOS los cuartos con su ocupación en esas fechas — a diferencia de
+ * getAvailableRooms, que esconde los llenos. El equipo elige el cuarto a mano y
+ * necesita VER cuáles no tienen lugar. Solo staff/admin.
+ *
+ * ⚠️ Manda exactamente los mismos ISO que el submit de la reservación: si el
+ * anclaje difiere, la pantalla y el 409 del servidor se contradicen.
+ */
+export const getRoomsOccupancy = (params: {
+  checkIn: string;
+  checkOut: string;
+  /** Al reasignar: la propia estancia no debe contarse a sí misma. */
+  excludeReservationId?: string;
+}) => {
+  const query = new URLSearchParams(params);
+  return apiFetch<RoomOccupancy[]>(
+    `${ENDPOINTS.rooms}/occupancy?${query.toString()}`,
+  );
+};
+
 export const updateRoom = (id: string, data: Partial<Room>) =>
   apiFetch<Room>(`${ENDPOINTS.rooms}/${id}`, {
     method: "PATCH",

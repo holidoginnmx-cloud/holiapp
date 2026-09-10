@@ -432,6 +432,19 @@ export const styles = StyleSheet.create({
   staffRowCurrent: {
     backgroundColor: COLORS.primaryLight,
   },
+  // Cuarto sin lugar en las fechas de la estancia: se muestra (para saber que
+  // existe y por qué no se puede) pero apagado y sin poder elegirse.
+  roomRowFull: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  roomAvatarFull: {
+    backgroundColor: COLORS.borderLight,
+  },
+  roomTextFull: {
+    color: COLORS.textDisabled,
+  },
   staffAvatar: {
     width: 38,
     height: 38,

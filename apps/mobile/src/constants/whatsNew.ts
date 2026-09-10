@@ -34,6 +34,46 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-10",
+    title: "Ya se ve qué cuartos están ocupados",
+    items: [
+      {
+        icon: "bed-outline",
+        title: "Los cuartos sin lugar salen en gris",
+        body:
+          "La lista de cuartos se veía toda igual: no había forma de saber " +
+          "cuál estaba ocupado en las fechas que acababas de elegir, y te " +
+          "enterabas hasta que guardabas y el sistema te rebotaba la " +
+          "reservación. Ahora, en cuanto pones entrada y salida, los cuartos " +
+          "que ya no tienen lugar en esos días aparecen en gris con el " +
+          "candado y no se pueden elegir.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "checkmark-circle-outline",
+        title: "Y cuántos lugares quedan en los demás",
+        body:
+          "Los cuartos que sí tienen lugar te dicen cuántos quedan (« 2 de 4 " +
+          "disponibles »). Si mandas varias mascotas del mismo grupo al mismo " +
+          "cuarto, la cuenta las toma en cuenta y te avisa antes de guardar " +
+          "si ya no caben todas. El contador de arriba del listado por fin " +
+          "dice la verdad: antes contaba los cuartos del tamaño del perro, no " +
+          "los que estaban libres.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "swap-horizontal-outline",
+        title: "También al cambiar de cuarto una estancia",
+        body:
+          "En el detalle de la reserva y en el de la estancia, el listado de " +
+          "«Asignar cuarto» marca igual los que están ocupados en esas fechas. " +
+          "El cuarto que la mascota ya tiene nunca se bloquea.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-09-b",
     title: "Depósitos: los cobros que NO hay que registrar",
     items: [

@@ -43,6 +43,10 @@ import {
   updateReservationDelivery,
 } from "@/lib/api";
 import {
+  useRoomOccupancy,
+  textoDisponibilidad,
+} from "@/hooks/useRoomOccupancy";
+import {
   AmountEditModal,
   type AmountEditValues,
 } from "@/components/AmountEditModal";
@@ -577,6 +581,16 @@ export default function AdminReservationDetail() {
     queryKey: ["admin", "rooms", reservation?.pet?.size],
     queryFn: () => getRooms(reservation!.pet.size),
     enabled: roomModalVisible && !!reservation?.pet?.size,
+  });
+
+  // Cuáles de esos cuartos tienen lugar en las fechas de ESTA estancia. Se
+  // excluye la propia reserva: si no, su cuarto actual se ve más lleno de lo
+  // que está y quedaría bloqueado.
+  const { ocupacionPorCuarto } = useRoomOccupancy({
+    checkIn: reservation?.checkIn,
+    checkOut: reservation?.checkOut,
+    excludeReservationId: id,
+    enabled: roomModalVisible,
   });
 
   const assignRoomMutation = useOptimisticMutation({
@@ -2252,42 +2266,71 @@ export default function AdminReservationDetail() {
         listMaxHeight: ROOM_LIST_MAX_HEIGHT,
         empty: styles.staffEmptyText,
       }}
-      renderItem={(r, { selected: isCurrent, pending: isPending }) => (
-        <TouchableOpacity
-          style={[styles.staffRow, isCurrent && styles.staffRowCurrent]}
-          onPress={() => {
-            assignRoomMutation.mutate(r.id);
-            setRoomModalVisible(false);
-          }}
-          disabled={isCurrent || assignRoomMutation.isPending}
-          activeOpacity={0.7}
-        >
-          <View style={styles.staffAvatar}>
-            <Ionicons name="bed-outline" size={16} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.staffName} numberOfLines={1}>
-              {r.name}
-            </Text>
-            <Text style={styles.staffEmail} numberOfLines={1}>
-              Capacidad {r.capacity}
-            </Text>
-          </View>
-          {isPending ? (
-            <ActivityIndicator color={COLORS.primary} size="small" />
-          ) : isCurrent ? (
-            <View style={styles.currentPill}>
-              <Text style={styles.currentPillText}>Asignado</Text>
+      renderItem={(r, { selected: isCurrent, pending: isPending }) => {
+        const { texto, lleno } = textoDisponibilidad(
+          r,
+          ocupacionPorCuarto?.get(r.id),
+        );
+        // El cuarto que ya tiene asignado nunca se bloquea.
+        const bloqueado = lleno && !isCurrent;
+        return (
+          <TouchableOpacity
+            style={[
+              styles.staffRow,
+              isCurrent && styles.staffRowCurrent,
+              bloqueado && styles.roomRowFull,
+            ]}
+            onPress={() => {
+              if (bloqueado) return;
+              assignRoomMutation.mutate(r.id);
+              setRoomModalVisible(false);
+            }}
+            disabled={isCurrent || assignRoomMutation.isPending}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.staffAvatar, bloqueado && styles.roomAvatarFull]}>
+              <Ionicons
+                name="bed-outline"
+                size={16}
+                color={bloqueado ? COLORS.textDisabled : COLORS.primary}
+              />
             </View>
-          ) : (
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color={COLORS.textTertiary}
-            />
-          )}
-        </TouchableOpacity>
-      )}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={[styles.staffName, bloqueado && styles.roomTextFull]}
+                numberOfLines={1}
+              >
+                {r.name}
+              </Text>
+              <Text
+                style={[styles.staffEmail, bloqueado && styles.roomTextFull]}
+                numberOfLines={1}
+              >
+                {texto ?? `Capacidad ${r.capacity}`}
+              </Text>
+            </View>
+            {isPending ? (
+              <ActivityIndicator color={COLORS.primary} size="small" />
+            ) : isCurrent ? (
+              <View style={styles.currentPill}>
+                <Text style={styles.currentPillText}>Asignado</Text>
+              </View>
+            ) : bloqueado ? (
+              <Ionicons
+                name="lock-closed-outline"
+                size={16}
+                color={COLORS.textDisabled}
+              />
+            ) : (
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={COLORS.textTertiary}
+              />
+            )}
+          </TouchableOpacity>
+        );
+      }}
     />
 
     {/* Confirmación de éxito no bloqueante (check-in/out, pago, staff, cuarto). */}
