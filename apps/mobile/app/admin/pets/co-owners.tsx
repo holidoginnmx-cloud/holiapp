@@ -19,11 +19,14 @@ import {
   getPetCoOwners,
   addPetCoOwner,
   removePetCoOwner,
+  getPetInvites,
+  revokePetInvite,
 } from "@/lib/api";
 import type { AdminUserListItem } from "@/lib/api";
 import {
   formatName,
   formatPhoneInput,
+  formatDayShort,
   displayEmail,
   NO_EMAIL_LABEL,
 } from "@/lib/format";
@@ -66,6 +69,15 @@ export default function AdminPetCoOwnersScreen() {
     queryKey: ["admin", "users"],
     queryFn: getUsers,
     enabled: adding,
+  });
+
+  // Invitaciones que el DUEÑO mandó desde su app y nadie ha aceptado. Se
+  // enseñan para contestar "ya la mandé, ¿le llegó?" y para poder cancelar una
+  // mandada por error. `invalidate()` las alcanza por el prefijo ["pet", petId].
+  const { data: invitesInfo } = useQuery({
+    queryKey: ["pet", petId, "invites"],
+    queryFn: () => getPetInvites(petId!),
+    enabled: !!petId,
   });
 
   const linkedIds = useMemo(
@@ -127,6 +139,29 @@ export default function AdminPetCoOwnersScreen() {
       alertaDeError(err, { titulo: "No se pudo", respaldo: "Intenta de nuevo." });
     },
   });
+
+  const revokeMutation = useMutation({
+    mutationFn: (inviteId: string) => revokePetInvite(petId!, inviteId),
+    onSuccess: invalidate,
+    onError: (err: any) => {
+      alertaDeError(err, { titulo: "No se pudo", respaldo: "Intenta de nuevo." });
+    },
+  });
+
+  const confirmRevoke = (inviteId: string, code: string) => {
+    Alert.alert(
+      `¿Cancelar la invitación ${code}?`,
+      "La liga y el código dejan de servir: quien la recibió ya no podrá aceptarla.",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Cancelar invitación",
+          style: "destructive",
+          onPress: () => revokeMutation.mutate(inviteId),
+        },
+      ],
+    );
+  };
 
   const confirmRemove = (userId: string, name: string) => {
     Alert.alert(
@@ -246,7 +281,8 @@ export default function AdminPetCoOwnersScreen() {
         <Ionicons name="people" size={20} color={COLORS.primary} />
         <Text style={styles.introText}>
           Quiénes tienen a {info.pet.name} en su cuenta. Sirve para las parejas y familias que
-          comparten perro: así no lo registran dos veces.
+          comparten perro: así no lo registran dos veces. El dueño también puede invitar él solo
+          desde su app.
         </Text>
       </View>
 
@@ -299,6 +335,8 @@ export default function AdminPetCoOwnersScreen() {
               onPress={() => confirmRemove(item.user.id, item.user.firstName)}
               disabled={removeMutation.isPending}
               testID={`co-owner-remove-${item.user.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Quitar a ${formatName(item.user.firstName)}`}
               hitSlop={8}
             >
               <Ionicons name="close-circle-outline" size={22} color={COLORS.errorText} />
@@ -312,6 +350,39 @@ export default function AdminPetCoOwnersScreen() {
               Por ahora solo lo tiene su dueño.
             </Text>
           </View>
+        }
+        ListFooterComponent={
+          invitesInfo && invitesInfo.invites.length > 0 ? (
+            <View style={styles.invitesBlock}>
+              <Text style={styles.sectionLabel}>Invitaciones pendientes</Text>
+              {invitesInfo.invites.map((inv) => (
+                <View key={inv.id} style={styles.clientRow}>
+                  <View style={[styles.avatar, { backgroundColor: COLORS.primaryLight }]}>
+                    <Ionicons name="mail-outline" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.clientInfo}>
+                    <Text style={styles.clientName} numberOfLines={1}>
+                      {inv.code}
+                    </Text>
+                    <Text style={styles.clientSub} numberOfLines={1}>
+                      La mandó {formatName(inv.invitedBy.firstName)} · vence el{" "}
+                      {formatDayShort(inv.expiresAt)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => confirmRevoke(inv.id, inv.code)}
+                    disabled={revokeMutation.isPending}
+                    testID={`co-owner-invite-revoke-${inv.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Cancelar la invitación ${inv.code}`}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle-outline" size={22} color={COLORS.errorText} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : null
         }
       />
 
@@ -404,6 +475,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  invitesBlock: { marginTop: 16 },
+  sectionLabel: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
   tagText: { fontSize: 12, fontFamily: "PlusJakartaSans_700Bold" },
   empty: { alignItems: "center", paddingVertical: 40, gap: 12 },
   emptyText: {

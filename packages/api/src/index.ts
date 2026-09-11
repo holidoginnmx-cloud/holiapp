@@ -8,6 +8,8 @@ import { clerkPlugin } from "@clerk/fastify";
 import prismaPlugin from "./plugins/prisma";
 import usersRoutes from "./routes/users";
 import petsRoutes from "./routes/pets";
+import petInvitesRoutes from "./routes/petInvites";
+import { redactSecretPath } from "./lib/redactUrl";
 import roomsRoutes from "./routes/rooms";
 import reservationsRoutes from "./routes/reservations";
 import paymentsRoutes from "./routes/payments";
@@ -43,8 +45,24 @@ import pricingRoutes from "./routes/pricing";
 // x-forwarded-for: la del cliente real, y no una que el cliente pueda inventar.
 // (Función en vez de `trustProxy: 1` porque los tipos de Fastify 5.12 no
 // aceptan número; `hop === 0` es exactamente "confía en un salto".)
+// Los tokens de las ligas públicas (invitaciones, cotizaciones) viajan en el
+// path y son la ÚNICA credencial de esas rutas: no deben quedar en los logs de
+// Railway. Mismo formato que el serializer por default de Fastify, con la URL
+// redactada.
 const app = Fastify({
-  logger: true,
+  logger: {
+    serializers: {
+      req(request: FastifyRequest) {
+        return {
+          method: request.method,
+          url: redactSecretPath(request.url),
+          host: request.host,
+          remoteAddress: request.ip,
+          remotePort: request.socket?.remotePort,
+        };
+      },
+    },
+  },
   trustProxy: (_address: string, hop: number) => hop === 0,
 });
 
@@ -135,7 +153,7 @@ app.register(rawBody, {
 app.setErrorHandler((err: FastifyError, request, reply) => {
   const statusCode = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
   if (statusCode >= 500) {
-    request.log.error({ err, url: request.url, method: request.method });
+    request.log.error({ err, url: redactSecretPath(request.url), method: request.method });
     return reply.status(statusCode).send({ error: "Error interno del servidor" });
   }
   return reply.status(statusCode).send({ error: err.message });
@@ -152,6 +170,7 @@ app.get("/health", async () => {
 // Routes
 app.register(usersRoutes);
 app.register(petsRoutes);
+app.register(petInvitesRoutes);
 app.register(roomsRoutes);
 app.register(reservationsRoutes);
 app.register(paymentsRoutes);

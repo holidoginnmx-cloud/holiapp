@@ -114,8 +114,13 @@ export default function ClaimAccountScreen() {
         return;
       }
       try {
+        // Solo las PROPIAS: `GET /pets` también trae las compartidas, y quien
+        // acaba de aceptar una invitación no por eso ya reclamó su ficha de
+        // mostrador (si se le salta aquí, lo natural es que registre a su perro
+        // otra vez).
         const pets = await getPetsByOwner(userId);
-        if (active && pets.length > 0) {
+        const own = pets.filter((p) => p.ownerId === userId);
+        if (active && own.length > 0) {
           await finish();
           return;
         }
@@ -581,9 +586,23 @@ export default function ClaimAccountScreen() {
         {/* Esta búsqueda solo encuentra fichas de clientes que TODAVÍA no
             tienen la app. Si el perro ya está en la cuenta de la pareja, aquí
             nunca va a salir por más que el teléfono sea el correcto — y el
-            siguiente paso natural sería registrarlo otra vez. Compartir una
-            mascota entre dos cuentas lo hace el equipo, así que ofrecemos el
-            atajo justo en el momento en que la búsqueda falla. */}
+            siguiente paso natural sería registrarlo otra vez. Justo cuando la
+            búsqueda falla se ofrecen los dos caminos: el código de la
+            invitación que le mandó la pareja, o el hotel por WhatsApp. */}
+        {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
+          <TouchableOpacity
+            style={styles.sharedHelp}
+            onPress={() => router.push("/invite" as any)}
+            testID="claim-invite-code"
+            activeOpacity={0.7}
+          >
+            <Ionicons name="key-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.sharedHelpText}>
+              ¿Te mandaron una invitación para compartir a tu perro? Escribe
+              aquí el código.
+            </Text>
+          </TouchableOpacity>
+        )}
         {searched && !challenge && !noEmailMessage && candidates.length === 0 && (
           <TouchableOpacity
             style={styles.sharedHelp}
@@ -599,8 +618,8 @@ export default function ClaimAccountScreen() {
           >
             <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
             <Text style={styles.sharedHelpText}>
-              ¿Tu perro ya lo registró tu pareja o alguien de tu familia?
-              Escríbenos y lo vinculamos a tu cuenta.
+              ¿Tu perro ya lo registró tu pareja o alguien de tu familia? Pídele
+              que te invite desde su app, o escríbenos y lo vinculamos.
             </Text>
           </TouchableOpacity>
         )}

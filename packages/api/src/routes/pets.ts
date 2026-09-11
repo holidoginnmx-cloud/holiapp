@@ -167,6 +167,12 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
+      // El correo del dueño es para el equipo. Un co-dueño ahora puede llegar
+      // por una liga reenviada, sin que nadie del hotel lo conozca.
+      if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
+        const { id, firstName, lastName } = pet.owner;
+        return { ...pet, owner: { id, firstName, lastName } };
+      }
       return pet;
     }
   );
@@ -681,8 +687,9 @@ export default async function petsRoutes(fastify: FastifyInstance) {
   );
 
   // ─── Co-dueños ───────────────────────────────────────────
-  // Un perro puede estar en dos cuentas (pareja/familia). El vínculo lo hace
-  // SOLO el equipo: no hay autoservicio ni invitación desde la app del cliente.
+  // Un perro puede estar en dos cuentas (pareja/familia). Aquí lo vincula el
+  // equipo a mano; el dueño lo hace él solo invitando desde la app (ver
+  // routes/petInvites.ts).
 
   // GET /pets/:id/co-owners — quiénes comparten esta mascota
   fastify.get<{ Params: { id: string } }>(
@@ -793,15 +800,27 @@ export default async function petsRoutes(fastify: FastifyInstance) {
   );
 
   // DELETE /pets/:id/co-owners/:userId — quitar el vínculo
+  //
+  // Pueden: un admin, el DUEÑO (a cualquier co-dueño) y el propio co-dueño
+  // (solo a sí mismo: "dejar de compartir"). Un co-dueño no puede sacar a otro
+  // ni al dueño: tras una separación nadie se queda con el perro a escondidas,
+  // y `Pet.ownerId` no se toca nunca.
   fastify.delete<{ Params: { id: string; userId: string } }>(
     "/pets/:id/co-owners/:userId",
-    { preHandler: [authMiddleware, adminMiddleware] },
+    { preHandler: [authMiddleware] },
     async (request, reply) => {
       const { id: petId, userId } = request.params;
       const pet = await prisma.pet.findUnique({
         where: { id: petId },
-        select: { ownerId: true },
+        select: { ownerId: true, name: true },
       });
+      if (!pet) {
+        return reply.status(404).send({ error: "Mascota no encontrada" });
+      }
+      const selfLeave = userId === request.userId;
+      if (!isAdmin(request.userRole) && pet.ownerId !== request.userId && !selfLeave) {
+        return reply.status(403).send({ error: "No tienes permiso" });
+      }
       const deleted = await prisma.petCoOwner.deleteMany({
         where: { petId, userId },
       });
@@ -809,7 +828,30 @@ export default async function petsRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: "Ese vínculo no existe" });
       }
       invalidatePetAccessCache(userId);
-      invalidatePetAccessCache(pet?.ownerId);
+      invalidatePetAccessCache(pet.ownerId);
+
+      // Al que quitaron, sin `petId` a propósito: el aviso no debe abrir una
+      // ficha que para esa persona ya no existe (y un binario viejo cae al
+      // fallback `/pet/:petId` y le pintaría un error). Al dueño sí va con
+      // `petId`: sigue viendo la ficha y así se le refresca la pantalla.
+      if (selfLeave) {
+        const who = request.dbUser?.firstName ?? "Un co-dueño";
+        await notifyUser(prisma, {
+          userId: pet.ownerId,
+          type: "GENERAL",
+          title: `${who} dejó de compartir a ${pet.name}`,
+          body: "Ya no la verá en su cuenta. El historial de tu mascota no cambia.",
+          data: { kind: "PET_CO_OWNER_LEFT", petId },
+        });
+      } else {
+        await notifyUser(prisma, {
+          userId,
+          type: "GENERAL",
+          title: `${pet.name} ya no está en tu cuenta`,
+          body: "Dejaron de compartirla contigo. Si crees que es un error, escríbenos.",
+          data: { kind: "PET_UNSHARED" },
+        });
+      }
       return { ok: true };
     }
   );

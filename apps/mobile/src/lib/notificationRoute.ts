@@ -89,6 +89,18 @@ export function notificationRoute(
   // Al dueño: ya quedó vinculada, que vea a sus mascotas.
   if (data?.kind === "CLAIM_APPROVED" && isOwner) return "/(tabs)/pets";
 
+  // --- Mascota compartida -------------------------------------------------
+  // Al dueño: alguien aceptó su invitación o se salió → la ficha, que sigue
+  // siendo suya (desde ahí puede quitar o volver a invitar).
+  if (
+    (data?.kind === "PET_CO_OWNER_JOINED" || data?.kind === "PET_CO_OWNER_LEFT") &&
+    isOwner
+  ) {
+    return petId ? `/pet/${petId}` : "/(tabs)/pets";
+  }
+  // Al que quitaron: la ficha ya no es suya (le daría un error), a la lista.
+  if (data?.kind === "PET_UNSHARED" && isOwner) return "/(tabs)/pets";
+
   // --- Cartilla / vacunas -------------------------------------------------
   if (petId) {
     // Admin: cartilla subida pendiente de revisión.

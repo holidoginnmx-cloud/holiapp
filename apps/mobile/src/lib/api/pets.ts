@@ -55,9 +55,10 @@ export const deletePet = (id: string) =>
     method: "DELETE",
   });
 
-// ─── Co-dueños (solo admin) ─────────────────────────────
+// ─── Co-dueños ──────────────────────────────────────────
 // Un perro puede estar en dos cuentas (pareja/familia que lo comparte). El
-// vínculo lo hace el equipo; no hay autoservicio desde la app del cliente.
+// equipo vincula a mano (estas tres, solo admin) y el dueño invita él solo
+// (las de "Invitaciones", más abajo).
 
 export type PetCoOwnersResponse = {
   pet: { id: string; name: string };
@@ -95,6 +96,75 @@ export const removePetCoOwner = (petId: string, userId: string) =>
   apiFetch<{ ok: true }>(`${ENDPOINTS.pets}/${petId}/co-owners/${userId}`, {
     method: "DELETE",
   });
+
+// ─── Invitaciones para compartir ────────────────────────
+// El DUEÑO genera una liga (con un código de respaldo para quien todavía no
+// tiene la app) y la otra persona queda de co-dueño al aceptarla.
+// `removePetCoOwner` de arriba ya no es solo de admin: el dueño la usa para
+// quitar a alguien y el co-dueño para salirse (con su propio id).
+
+export type PetInvite = {
+  id: string;
+  /** Ya viene formateado: "ABCD-EFGH". */
+  code: string;
+  /** Solo para el dueño, que es quien la reenvía. Al equipo no le llega. */
+  url?: string;
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { firstName: string; lastName: string | null };
+  /** El mensaje listo para compartir por WhatsApp (liga + código). Solo al dueño. */
+  shareText?: string;
+};
+
+export type PetInvitesResponse = {
+  /** Cuántas personas más caben (co-dueños + invitaciones vivas cuentan). */
+  slotsLeft: number;
+  maxCoOwners: number;
+  invites: PetInvite[];
+};
+
+export type CreatedPetInvite = {
+  id: string;
+  code: string;
+  url: string;
+  expiresAt: string;
+  shareText: string;
+};
+
+export type InviteStatus = "valid" | "used" | "revoked" | "expired";
+
+export type InvitePreview = {
+  status: InviteStatus;
+  code: string;
+  expiresAt: string;
+  pet: { name: string; photoUrl: string | null };
+  invitedByFirstName: string;
+  /** Si quien consulta ya tiene a esta mascota (dueño o co-dueño). */
+  alreadyLinked: boolean;
+  /** Quien consulta es el dueño abriendo su propia liga. */
+  viewerIsOwner: boolean;
+};
+
+export const getPetInvites = (petId: string) =>
+  apiFetch<PetInvitesResponse>(`${ENDPOINTS.pets}/${petId}/invites`);
+
+export const createPetInvite = (petId: string) =>
+  apiFetch<CreatedPetInvite>(`${ENDPOINTS.pets}/${petId}/invites`, { method: "POST" });
+
+export const revokePetInvite = (petId: string, inviteId: string) =>
+  apiFetch<{ ok: true }>(`${ENDPOINTS.pets}/${petId}/invites/${inviteId}`, {
+    method: "DELETE",
+  });
+
+/** Por token de la liga o por el código tecleado ("abcd-efgh" también sirve). */
+export const getInvite = (key: string) =>
+  apiFetch<InvitePreview>(`/invites/${encodeURIComponent(key)}`);
+
+export const acceptInvite = (key: string) =>
+  apiFetch<{ ok: true; petId: string; petName: string; alreadyLinked: boolean }>(
+    `/invites/${encodeURIComponent(key)}/accept`,
+    { method: "POST" },
+  );
 
 // ─── Dewormings ─────────────────────────────────────────
 

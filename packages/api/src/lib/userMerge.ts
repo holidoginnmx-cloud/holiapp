@@ -234,6 +234,23 @@ export async function claimPetsIntoAccount(
       data: { ownerId: primaryId },
     });
 
+    // Invitaciones para compartir mascota: las que mandó la cuenta nueva siguen
+    // sirviendo desde el registro que sobrevive (sus perros se van ahí), y el
+    // rastro de quién aceptó o canceló no se pierde. Sin esto el cascade las
+    // borraba y la liga ya mandada por WhatsApp daba "no encontramos".
+    await tx.petInvite.updateMany({
+      where: { invitedById: fresh.id },
+      data: { invitedById: primaryId },
+    });
+    await tx.petInvite.updateMany({
+      where: { acceptedById: fresh.id },
+      data: { acceptedById: primaryId },
+    });
+    await tx.petInvite.updateMany({
+      where: { revokedById: fresh.id },
+      data: { revokedById: primaryId },
+    });
+
     const clerkId = fresh.clerkId;
     const realEmail = fresh.email;
     await tx.user.delete({ where: { id: fresh.id } });

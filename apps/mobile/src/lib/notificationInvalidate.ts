@@ -53,12 +53,22 @@ export function notificationInvalidationKeys(
     return keys;
   }
 
-  // El equipo acaba de compartirle una mascota a esta persona (pareja/familia
-  // que comparte perro). Sin esto no la vería: la lista de mascotas tiene
+  // Cambió con quién se comparte una mascota: el equipo o una invitación se la
+  // compartió a esta persona (PET_SHARED), alguien aceptó la invitación del
+  // dueño (PET_CO_OWNER_JOINED), la quitaron (PET_UNSHARED) o el co-dueño se
+  // salió (PET_CO_OWNER_LEFT). Sin esto la lista no se enteraría: tiene
   // staleTime de 5 min y no refetchea al volver a la pestaña, así que se
   // quedaría con el estado vacío de "registra a tu peludito" hasta matar la app.
-  if (kind === "PET_SHARED") {
-    return [["pets"], ["reservations"]];
+  // ["pet", id] alcanza también ["pet", id, "invites"].
+  if (
+    kind === "PET_SHARED" ||
+    kind === "PET_CO_OWNER_JOINED" ||
+    kind === "PET_UNSHARED" ||
+    kind === "PET_CO_OWNER_LEFT"
+  ) {
+    const keys: QueryKey[] = [["pets"], ["reservations"]];
+    if (petId) keys.push(["pet", petId]);
+    return keys;
   }
 
   // Saldo pendiente al concluir: el detalle tiene que mostrar el banner de pago

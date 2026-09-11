@@ -46,6 +46,7 @@ import {
   reservationIdOf,
 } from "@/lib/pendingConfirmation";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
+import { readPendingInvite } from "@/lib/pendingInvite";
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -179,7 +180,10 @@ function ClerkTokenSync() {
     const inLegal = segments[0] === "legal";
     const inAuth = segments[0] === "(auth)";
     const inWelcome = segments[0] === "welcome";
-    if (inLegal || inAuth || inWelcome) {
+    // Aceptando una invitación para compartir mascota: no se le saca de ahí
+    // (un replace al claim perdería la pantalla). Al salir se reevalúa.
+    const inInvite = segments[0] === "invite";
+    if (inLegal || inAuth || inWelcome || inInvite) {
       onboardingCheckedRef.current = false;
       return;
     }
@@ -205,6 +209,16 @@ function ClerkTokenSync() {
       const tourSeen = await SecureStore.getItemAsync(TOUR_SEEN_KEY).catch(() => null);
       if (!tourSeen) {
         router.replace("/welcome/tour" as any);
+        return;
+      }
+      // Onboarding completo. Si quedó una invitación para compartir mascota a
+      // medias (llegó por la liga antes de tener cuenta), se abre AHORA y no
+      // antes: abierta antes, cualquiera de los replace de arriba se la
+      // llevaba. Por eso vive aquí y no en un componente aparte que compita
+      // con este gate.
+      const pendingInvite = await readPendingInvite();
+      if (pendingInvite) {
+        router.push(`/invite/${encodeURIComponent(pendingInvite)}` as any);
       }
     })().catch((err) => {
       if (__DEV__) console.error("[onboarding] gate failed:", err);
@@ -551,6 +565,7 @@ export default function RootLayout() {
           <Stack.Screen name="reservation" />
           <Stack.Screen name="legal" />
           <Stack.Screen name="welcome" />
+          <Stack.Screen name="invite" />
           {/* NOTA: aquí vivía `review/[reservationId]`, una pantalla completa
               de reseña a la que nadie navegaba (tercera copia del formulario).
               La reseña se captura en `ReviewPromptModal`: desde el Inicio

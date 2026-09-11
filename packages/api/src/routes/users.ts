@@ -961,6 +961,19 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
       // Anonimizar PII pero conservar registros vinculados a pagos/reservaciones por retenci\u00f3n fiscal (5 a\u00f1os LFPDPPP).
       await prisma.$transaction(async (tx) => {
+        // Las invitaciones que mandó esta persona (o las de sus perros) dejan de
+        // servir: quien las emitió ya no existe, y un perro traspasado quedaría
+        // recibiendo gente que su nuevo dueño nunca invitó. Se anonimiza en vez
+        // de borrar, así que el cascade de `invitedById` nunca correría.
+        await tx.petInvite.updateMany({
+          where: {
+            OR: [{ invitedById: userId }, { petId: { in: allPets.map((p) => p.id) } }],
+            acceptedAt: null,
+            revokedAt: null,
+          },
+          data: { revokedAt: new Date(), revokedById: userId },
+        });
+
         // Traspaso de las compartidas antes de tocar nada más: el co-dueño pasa
         // a ser el dueño y deja de estar en la tabla puente.
         for (const [petId, heirId] of heirByPet) {

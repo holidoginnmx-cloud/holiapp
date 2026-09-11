@@ -69,6 +69,24 @@ export default function PetsScreen() {
         // encontraba su ficha), así que esta lista NO está vacía y aun así
         // sigue esperando su historial.
         ListHeaderComponent={<ClaimStatusBanner />}
+        // Acceso PERMANENTE al código de invitación. El del estado vacío no
+        // basta: quien ya tiene perros propios (o vinculó su ficha de
+        // mostrador) nunca vuelve a ver esa pantalla y se quedaba sin dónde
+        // escribir el código que le mandó su pareja.
+        ListFooterComponent={
+          pets && pets.length > 0 ? (
+            <TouchableOpacity
+              style={[styles.emptyLink, styles.footerLink]}
+              onPress={() => router.push("/invite" as any)}
+              testID="pets-invite-code"
+              activeOpacity={0.7}
+              accessibilityRole="button"
+            >
+              <Ionicons name="key-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.emptyLinkText}>Tengo un código de invitación</Text>
+            </TouchableOpacity>
+          ) : null
+        }
         renderItem={({ item }) => (
           <PetCard
             pet={item}
@@ -111,8 +129,21 @@ export default function PetsScreen() {
                 está en la otra cuenta y esta pantalla se ve igual que la de
                 alguien nuevo. Sin este aviso, el siguiente paso natural es
                 registrarlo otra vez — y quedan dos perros, dos cartillas por
-                revisar y el historial partido. Vincular las cuentas lo hace el
-                equipo, así que aquí lo mandamos con ellos. */}
+                revisar y el historial partido. Lo normal ahora es que el dueño
+                la invite desde su app; quien ya trae el código lo escribe aquí.
+                WhatsApp al hotel se queda de respaldo. */}
+            <TouchableOpacity
+              style={styles.emptyLink}
+              onPress={() => router.push("/invite" as any)}
+              testID="pets-empty-invite-code"
+              activeOpacity={0.7}
+            >
+              <Ionicons name="key-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.emptyLinkText}>
+                ¿Te mandaron una invitación para compartir a tu perro? Escribe
+                aquí el código.
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.emptyLink}
               onPress={() =>
@@ -127,8 +158,8 @@ export default function PetsScreen() {
             >
               <Ionicons name="logo-whatsapp" size={16} color={COLORS.primary} />
               <Text style={styles.emptyLinkText}>
-                ¿Tu perro ya lo registró alguien de tu familia? Escríbenos y lo
-                vinculamos a tu cuenta.
+                ¿Tu perro ya lo registró alguien de tu familia? Pídele que te
+                invite desde su app, o escríbenos y lo vinculamos.
               </Text>
             </TouchableOpacity>
           </View>
@@ -213,6 +244,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     maxWidth: 330,
   },
+  // Espacio para que el FAB no tape el acceso al código.
+  footerLink: { marginBottom: 96 },
   emptyLinkText: {
     flex: 1,
     fontSize: 13,

@@ -32,6 +32,7 @@ export default function PetLayout() {
       <Stack.Screen name="history" options={{ title: "Historial", headerLeft: backButton }} />
       <Stack.Screen name="incidents/[id]" options={{ title: "Incidentes", headerLeft: backButton }} />
       <Stack.Screen name="renew-cartilla/[id]" options={{ title: "Renovar cartilla", headerLeft: backButton }} />
+      <Stack.Screen name="share" options={{ title: "Compartir mascota", headerLeft: backButton }} />
     </Stack>
   );
 }

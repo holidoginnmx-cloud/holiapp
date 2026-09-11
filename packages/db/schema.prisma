@@ -228,16 +228,21 @@ model User {
   updatedAt         DateTime  @updatedAt
 
   // Relaciones
-  pets            Pet[]
+  pets               Pet[]
   // Mascotas de alguien más que también son suyas (pareja/familia que comparte
   // perro). `petCoOwnerLinks` son los vínculos que ESTA persona creó como admin.
-  petCoOwnerships PetCoOwner[]     @relation("PetCoOwnerships")
-  petCoOwnerLinks PetCoOwner[]     @relation("PetCoOwnerLinker")
-  reservations    Reservation[]
-  payments        Payment[]
-  notifications   Notification[]
-  pushTokens      PushToken[]
-  terminalCharges TerminalCharge[]
+  petCoOwnerships    PetCoOwner[]     @relation("PetCoOwnerships")
+  petCoOwnerLinks    PetCoOwner[]     @relation("PetCoOwnerLinker")
+  // Invitaciones para compartir una mascota: las que ESTA persona mandó, la que
+  // aceptó y las que canceló.
+  petInvitesSent     PetInvite[]      @relation("PetInviteSender")
+  petInvitesAccepted PetInvite[]      @relation("PetInviteAccepted")
+  petInvitesRevoked  PetInvite[]      @relation("PetInviteRevoker")
+  reservations       Reservation[]
+  payments           Payment[]
+  notifications      Notification[]
+  pushTokens         PushToken[]
+  terminalCharges    TerminalCharge[]
 
   reviews Review[]
 
@@ -355,6 +360,7 @@ model Pet {
   ownerId      String
   owner        User          @relation(fields: [ownerId], references: [id])
   coOwners     PetCoOwner[]
+  invites      PetInvite[]
   vaccines     Vaccine[]
   dewormings   Deworming[]
   reservations Reservation[]
@@ -382,7 +388,8 @@ model Pet {
 // al dueño, pero el dinero NO se junta: `creditBalance` sigue siendo de cada
 // persona y una reserva se guarda a nombre de quien la hizo y la pagó.
 //
-// El vínculo lo crea SOLO el equipo desde su panel; no hay autoservicio.
+// El vínculo lo crea el equipo desde su panel, o el propio dueño invitando a
+// alguien desde la app (ver `PetInvite`).
 model PetCoOwner {
   id String @id @default(cuid())
 
@@ -405,6 +412,52 @@ model PetCoOwner {
   @@unique([petId, userId]) // idempotencia + índice de petId -> usuarios (audiencia de avisos)
   @@index([userId]) // GET /pets y GET /reservations del co-dueño
   @@map("pet_co_owners")
+}
+
+// Invitación del DUEÑO para que otra persona comparta su mascota, sin pasar por
+// el equipo. Nace del caso que destapó `pet_co_owners`: mientras alguien no
+// vinculaba a mano, la pareja veía el estado vacío y registraba al mismo perro
+// otra vez.
+//
+// Por qué una tabla y no un token firmado como el del claim (`claimChallenge.ts`,
+// que es stateless a propósito): una invitación tiene que poder CANCELARSE y
+// gastarse UNA sola vez, y eso no se puede sin guardar su estado.
+//
+// Dos llaves para la misma fila porque son dos caminos distintos:
+//   - `token`: va en la liga que se manda por WhatsApp (128 bits, imposible de
+//     adivinar).
+//   - `code`: 8 caracteres que se teclean dentro de la app. Existe porque la
+//     app NO tiene universal links: quien todavía no la tiene instalada llega a
+//     la página del sitio, se la baja, y al abrirla la liga ya no lo espera. El
+//     código es lo único que sobrevive a ese viaje.
+model PetInvite {
+  id String @id @default(cuid())
+
+  petId       String
+  invitedById String
+
+  token String @unique
+  code  String @unique
+
+  expiresAt DateTime
+
+  // Sellos de un solo uso. Mientras los tres sean null y no haya vencido, la
+  // invitación sirve.
+  acceptedAt   DateTime?
+  acceptedById String?
+  revokedAt    DateTime?
+  revokedById  String?
+
+  createdAt DateTime @default(now())
+
+  pet        Pet   @relation(fields: [petId], references: [id], onDelete: Cascade)
+  invitedBy  User  @relation("PetInviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedBy User? @relation("PetInviteAccepted", fields: [acceptedById], references: [id], onDelete: SetNull)
+  revokedBy  User? @relation("PetInviteRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([petId, acceptedAt]) // las vivas de un perro (dueño y equipo)
+  @@index([invitedById]) // FK sin índice
+  @@map("pet_invites")
 }
 
 // =============================================================

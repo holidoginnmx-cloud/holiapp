@@ -34,6 +34,45 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-10-b",
+    title: "Los clientes ya comparten a su perro solos",
+    items: [
+      {
+        icon: "share-social-outline",
+        title: "Ya no tienen que pedirnos que los vinculemos",
+        body:
+          "Cuando una pareja o una familia comparte perro, quien lo registró ya " +
+          "puede invitar a la otra persona desde su app: en la ficha del perro, " +
+          "«Compartir». Le llega una liga por WhatsApp y, al aceptarla, el perro " +
+          "aparece en las dos cuentas. Si la otra persona todavía no tiene la " +
+          "app, el mensaje trae un código que escribe en «Mis mascotas» → «Tengo " +
+          "un código de invitación» después de instalarla. Por ahora es solo " +
+          "para iPhone: con Android, vincúlenlos a mano como siempre.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "people-outline",
+        title: "En «Dueños» se ven las invitaciones pendientes",
+        body:
+          "En la ficha del perro, «Dueños» ahora también lista las invitaciones " +
+          "que el cliente mandó y todavía nadie acepta, con su código y cuándo " +
+          "vencen, y se pueden cancelar. Vincular a mano sigue funcionando igual " +
+          "que siempre.",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "shield-checkmark-outline",
+        title: "Qué puede y qué no puede hacer cada quien",
+        body:
+          "Se comparte con máximo 3 personas por perro, cada invitación sirve " +
+          "una sola vez y vence en una semana. El dueño puede quitar a quien " +
+          "sea; el co-dueño solo puede salirse él. El dinero no se junta: cada " +
+          "quien paga lo suyo y su saldo a favor es aparte.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-10",
     title: "Ya se ve qué cuartos están ocupados",
     items: [

@@ -384,6 +384,24 @@ export default function PetDetailScreen() {
             <Text style={styles.actionButtonText}>Dueños</Text>
           </TouchableOpacity>
         )}
+        {/* El cliente comparte a su perro él solo (invitación por liga). El
+            dueño invita y quita; el co-dueño ve con quién se comparte y puede
+            salirse. El equipo tiene su propia pantalla, arriba. */}
+        {!esEquipo && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              router.push({
+                pathname: "/pet/share",
+                params: { petId: id! },
+              } as any)
+            }
+            testID="pet-share-button"
+          >
+            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.actionButtonText}>Compartir</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Info grid */}
