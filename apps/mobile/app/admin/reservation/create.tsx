@@ -117,6 +117,15 @@ function formatDateTime(d: Date): string {
   });
 }
 
+/**
+ * Sin peso nadie ha visto a este perro: su talla es una suposición del sistema
+ * y no da para bloquear un cuarto (ver talla-M-default). Una sola regla para
+ * el filtro de cuartos y para el aviso del selector.
+ */
+function esTallaSupuesta(pet: Pick<PetWithOwner, "weight" | "sizeDeclared">) {
+  return pet.weight == null && !pet.sizeDeclared;
+}
+
 export default function AdminCreateReservation() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -409,13 +418,10 @@ export default function AdminCreateReservation() {
   const roomsForPet = useCallback(
     (pet: PetWithOwner) => {
       const size = sizeFromWeight(pet.weight);
-      // Sin peso nadie ha visto a este perro: la talla es una suposición del
-      // sistema y no da para bloquear un cuarto (ver talla-M-default).
-      const tallaEsSuposicion = pet.weight == null && !pet.sizeDeclared;
+      const supuesta = esTallaSupuesta(pet);
       return (rooms ?? []).map((r) => ({
         room: r,
-        admiteTalla: tallaEsSuposicion || r.sizeAllowed.includes(size),
-        tallaEsSuposicion,
+        admiteTalla: supuesta || r.sizeAllowed.includes(size),
         size,
       }));
     },
@@ -428,7 +434,7 @@ export default function AdminCreateReservation() {
    */
   const opcionesDeCuarto = useCallback(
     (pet: PetWithOwner) =>
-      roomsForPet(pet).map(({ room, admiteTalla, tallaEsSuposicion, size }) => {
+      roomsForPet(pet).map(({ room, admiteTalla, size }) => {
         const delGrupo = selectedPets.filter(
           (p) => p.id !== pet.id && roomByPet[p.id] === room.id,
         ).length;
@@ -458,11 +464,11 @@ export default function AdminCreateReservation() {
         // más dura: ese perro no cabe ahí ni en fechas libres).
         let hint: string | undefined;
         let hintTone: "neutral" | "warn" | undefined;
+        // "Sin peso registrado" NO va aquí: es del perro, no del cuarto. Sale
+        // una vez como `notice` del selector; repetido en las 18 filas tapaba
+        // los motivos reales de cada una (ocupado, quedan N).
         if (!admiteTalla) {
           hint = `No admite talla ${size}`;
-          hintTone = "warn";
-        } else if (tallaEsSuposicion) {
-          hint = "Sin peso registrado: verifica la talla";
           hintTone = "warn";
         } else if (lleno) {
           hint =
@@ -1343,6 +1349,11 @@ export default function AdminCreateReservation() {
                           : "Ningún cuarto disponible en esas fechas"
                       }
                       subtitle={subtituloCuartos}
+                      notice={
+                        esTallaSupuesta(pet)
+                          ? `${pet.name} no tiene peso registrado: verifica que el cuarto sea de su talla.`
+                          : undefined
+                      }
                       showCount
                       selectedKey={roomByPet[pet.id] ?? null}
                       options={opciones}

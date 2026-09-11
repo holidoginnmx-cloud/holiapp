@@ -57,6 +57,12 @@ type Props = {
   subtitle?: string;
   /** Muestra "N disponibles" bajo el título. Útil en listas largas. */
   showCount?: boolean;
+  /**
+   * Aviso en naranja bajo el título, UNA vez. Para lo que aplica a toda la
+   * lista (p. ej. "este perro no tiene peso"): repetido en cada fila empuja la
+   * información útil y tapa los motivos propios de cada opción.
+   */
+  notice?: string;
   testID?: string;
 };
 
@@ -70,6 +76,7 @@ export function SelectField({
   allDisabledText,
   subtitle,
   showCount,
+  notice,
   testID,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -122,6 +129,7 @@ export function SelectField({
                     </Text>
                   )
                 )}
+                {notice ? <Text style={styles.notice}>{notice}</Text> : null}
               </View>
               <TouchableOpacity onPress={() => setOpen(false)} hitSlop={12}>
                 <Ionicons name="close" size={22} color={COLORS.textTertiary} />
@@ -270,6 +278,12 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 2,
+  },
+  notice: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.warningText,
+    marginTop: 4,
   },
   // flexShrink: 1 es lo que permite el scroll. En RN los hijos de un flex NO
   // se encogen por defecto, así que un ScrollView sin altura propia crece al

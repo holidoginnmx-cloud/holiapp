@@ -34,6 +34,22 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-11-b",
+    title: "La lista de cuartos, más limpia",
+    items: [
+      {
+        icon: "bed-outline",
+        title: "El aviso de «sin peso» sale una sola vez",
+        body:
+          "Si el perro no tiene peso registrado, al elegir cuarto el aviso " +
+          "aparece una vez arriba de la lista, en vez de repetirse en cada " +
+          "cuarto. Así cada cuarto vuelve a mostrar lo suyo: si está ocupado, " +
+          "cuántos lugares quedan y qué perros lo ocupan.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-11",
     title: "Clientes repetidos: se juntan sin perder nada",
     items: [
