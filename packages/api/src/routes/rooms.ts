@@ -171,9 +171,11 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
           .send({ error: "checkOut debe ser posterior a checkIn" });
       }
 
+      // Con los nombres de los perros: esta ruta es solo del equipo.
       return roomsWithOccupancy(prisma, {
         checkIn: checkInDate,
         checkOut: checkOutDate,
+        withOccupants: true,
         ...(excludeReservationId
           ? { excludeReservationIds: [excludeReservationId] }
           : {}),

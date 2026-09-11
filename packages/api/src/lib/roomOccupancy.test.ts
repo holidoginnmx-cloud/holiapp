@@ -3,6 +3,7 @@ import {
   stayOverlapWhere,
   countRoomOccupancy,
   roomsWithOccupancy,
+  checkRoomCapacity,
 } from "./roomOccupancy";
 
 const d = (iso: string) => new Date(iso);
@@ -15,6 +16,7 @@ type Fila = {
   status: string;
   checkIn: Date | null;
   checkOut: Date | null;
+  petName?: string;
 };
 
 /**
@@ -22,26 +24,42 @@ type Fila = {
  * a Prisma: prueba que el predicado que arma el helper selecciona exactamente
  * las estancias que el 409 del servidor considera ocupadas.
  */
-const fakePrisma = (filas: Fila[], cuartos: Array<Record<string, unknown>> = []) =>
+const aplicarWhere = (filas: Fila[], where: Record<string, any>) => {
+  const [ci, co] = where.AND as [
+    { checkIn: { lt: Date } },
+    { checkOut: { gt: Date } },
+  ];
+  const excluidos: string[] = where.id?.notIn ?? [];
+  return filas.filter(
+    (f) =>
+      f.reservationType === where.reservationType &&
+      !(where.status.notIn as string[]).includes(f.status) &&
+      !excluidos.includes(f.id) &&
+      f.roomId !== null &&
+      f.checkIn !== null &&
+      f.checkOut !== null &&
+      f.checkIn < ci.checkIn.lt &&
+      f.checkOut > co.checkOut.gt
+  );
+};
+
+const fakePrisma = (filas: Fila[], cuartos: Array<Record<string, any>> = []) =>
   ({
     reservation: {
+      findMany: vi.fn(async ({ where }: { where: Record<string, any> }) =>
+        aplicarWhere(filas, where)
+          .sort((a, b) => a.checkIn!.getTime() - b.checkIn!.getTime())
+          .map((f) => ({
+            id: f.id,
+            roomId: f.roomId,
+            checkIn: f.checkIn,
+            checkOut: f.checkOut,
+            status: f.status,
+            pet: { name: f.petName ?? f.id },
+          }))
+      ),
       groupBy: vi.fn(async ({ where }: { where: Record<string, any> }) => {
-        const [ci, co] = where.AND as [
-          { checkIn: { lt: Date } },
-          { checkOut: { gt: Date } },
-        ];
-        const excluidos: string[] = where.id?.notIn ?? [];
-        const vivas = filas.filter(
-          (f) =>
-            f.reservationType === where.reservationType &&
-            !(where.status.notIn as string[]).includes(f.status) &&
-            !excluidos.includes(f.id) &&
-            f.roomId !== null &&
-            f.checkIn !== null &&
-            f.checkOut !== null &&
-            f.checkIn < ci.checkIn.lt &&
-            f.checkOut > co.checkOut.gt
-        );
+        const vivas = aplicarWhere(filas, where);
         const porCuarto = new Map<string, number>();
         for (const f of vivas) {
           porCuarto.set(f.roomId!, (porCuarto.get(f.roomId!) ?? 0) + 1);
@@ -52,7 +70,13 @@ const fakePrisma = (filas: Fila[], cuartos: Array<Record<string, unknown>> = [])
         }));
       }),
     },
-    room: { findMany: vi.fn(async () => cuartos) },
+    room: {
+      findMany: vi.fn(async () => cuartos),
+      findUnique: vi.fn(
+        async ({ where }: { where: { id: string } }) =>
+          cuartos.find((c) => c.id === where.id) ?? null
+      ),
+    },
   }) as any;
 
 const estancia = (over: Partial<Fila> = {}): Fila => ({
@@ -205,5 +229,111 @@ describe("roomsWithOccupancy", () => {
       occupied: 2,
       remaining: -1,
     });
+  });
+
+  it("withOccupants trae los nombres y occupied sale de la MISMA lista", async () => {
+    const prisma = fakePrisma(
+      [
+        estancia({ id: "a", roomId: "room_1", petName: "Pepito", status: "CHECKED_IN" }),
+        estancia({ id: "b", roomId: "room_1", petName: "Lola", status: "CHECKED_IN" }),
+      ],
+      cuartos
+    );
+    const res = await roomsWithOccupancy(prisma, { ...RANGO, withOccupants: true });
+    expect(res[0]).toMatchObject({ occupied: 2, remaining: 2 });
+    expect(res[0].occupants?.map((o) => o.petName)).toEqual(["Pepito", "Lola"]);
+    expect(res[1]).toMatchObject({ occupied: 0, occupants: [] });
+    expect(prisma.reservation.groupBy).not.toHaveBeenCalled();
+  });
+
+  it("sin withOccupants NO manda nombres (/rooms/available es de la app del dueño)", async () => {
+    const prisma = fakePrisma([estancia({ petName: "Pepito" })], cuartos);
+    const res = await roomsWithOccupancy(prisma, RANGO);
+    expect(res[0].occupants).toBeUndefined();
+    expect(prisma.reservation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("withOccupants respeta la exclusión: al reasignar el perro no se lista a sí mismo", async () => {
+    const prisma = fakePrisma(
+      [
+        estancia({ id: "esta", petName: "Pepito" }),
+        estancia({ id: "otra", petName: "Lola" }),
+      ],
+      cuartos
+    );
+    const res = await roomsWithOccupancy(prisma, {
+      ...RANGO,
+      withOccupants: true,
+      excludeReservationIds: ["esta"],
+    });
+    expect(res[0].occupants?.map((o) => o.petName)).toEqual(["Lola"]);
+    expect(res[0].occupied).toBe(1);
+  });
+});
+
+describe("checkRoomCapacity", () => {
+  const cuartos = [
+    { id: "room_1", name: "Cuarto 08", capacity: 4 },
+    { id: "room_3", name: "Cuarto 12", capacity: 1 },
+  ];
+
+  // El caso real del 2026-09-10: Pepito y Lola, mismo grupo, Cuarto 08 (cap.
+  // 4), los dos pidiendo extender. El findFirst viejo encontraba al hermano y
+  // rechazaba: cada uno bloqueaba al otro y ninguna solicitud se aprobaba.
+  it("dos perros del mismo grupo en un cuarto de 4: la extensión de uno pasa", async () => {
+    const prisma = fakePrisma(
+      [
+        estancia({ id: "pepito", status: "CHECKED_IN" }),
+        estancia({ id: "lola", status: "CHECKED_IN" }),
+      ],
+      cuartos
+    );
+    const r = await checkRoomCapacity(prisma, {
+      roomId: "room_1",
+      ...RANGO,
+      excludeReservationIds: ["pepito"],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.taken).toBe(1); // Lola sí cuenta: ocupa el cuarto
+  });
+
+  it("cuarto de 1 ocupado por otro perro: no cabe", async () => {
+    const prisma = fakePrisma([estancia({ id: "otro", roomId: "room_3" })], cuartos);
+    const r = await checkRoomCapacity(prisma, {
+      roomId: "room_3",
+      ...RANGO,
+      excludeReservationIds: ["mio"],
+    });
+    expect(r).toMatchObject({ ok: false, taken: 1 });
+    expect(r.room).toMatchObject({ name: "Cuarto 12", capacity: 1 });
+  });
+
+  it("la fila que se mueve no se cuenta a sí misma", async () => {
+    const prisma = fakePrisma([estancia({ id: "mio", roomId: "room_3" })], cuartos);
+    const sinExcluir = await checkRoomCapacity(prisma, { roomId: "room_3", ...RANGO });
+    expect(sinExcluir.ok).toBe(false);
+    const excluida = await checkRoomCapacity(prisma, {
+      roomId: "room_3",
+      ...RANGO,
+      excludeReservationIds: ["mio"],
+    });
+    expect(excluida.ok).toBe(true);
+  });
+
+  it("`adding` cuenta varios perros a la vez", async () => {
+    const prisma = fakePrisma(
+      [estancia({ id: "a" }), estancia({ id: "b" }), estancia({ id: "c" })],
+      cuartos
+    );
+    expect((await checkRoomCapacity(prisma, { roomId: "room_1", ...RANGO })).ok).toBe(true);
+    expect(
+      (await checkRoomCapacity(prisma, { roomId: "room_1", ...RANGO, adding: 2 })).ok
+    ).toBe(false);
+  });
+
+  it("un cuarto que no existe nunca da ok", async () => {
+    const prisma = fakePrisma([], cuartos);
+    const r = await checkRoomCapacity(prisma, { roomId: "nope", ...RANGO });
+    expect(r).toEqual({ ok: false, room: null, taken: 0 });
   });
 });

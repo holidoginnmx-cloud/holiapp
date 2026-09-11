@@ -45,6 +45,7 @@ import {
 import {
   useRoomOccupancy,
   textoDisponibilidad,
+  textoOcupantes,
 } from "@/hooks/useRoomOccupancy";
 import {
   AmountEditModal,
@@ -586,7 +587,7 @@ export default function AdminReservationDetail() {
   // Cuáles de esos cuartos tienen lugar en las fechas de ESTA estancia. Se
   // excluye la propia reserva: si no, su cuarto actual se ve más lleno de lo
   // que está y quedaría bloqueado.
-  const { ocupacionPorCuarto } = useRoomOccupancy({
+  const { ocupacionPorCuarto, ocupantesPorCuarto } = useRoomOccupancy({
     checkIn: reservation?.checkIn,
     checkOut: reservation?.checkOut,
     excludeReservationId: id,
@@ -2271,6 +2272,7 @@ export default function AdminReservationDetail() {
           r,
           ocupacionPorCuarto?.get(r.id),
         );
+        const ocupantes = textoOcupantes(ocupantesPorCuarto?.get(r.id));
         // El cuarto que ya tiene asignado nunca se bloquea.
         const bloqueado = lleno && !isCurrent;
         return (
@@ -2308,6 +2310,14 @@ export default function AdminReservationDetail() {
               >
                 {texto ?? `Capacidad ${r.capacity}`}
               </Text>
+              {ocupantes && (
+                <Text
+                  style={[styles.staffEmail, bloqueado && styles.roomTextFull]}
+                  numberOfLines={2}
+                >
+                  {ocupantes}
+                </Text>
+              )}
             </View>
             {isPending ? (
               <ActivityIndicator color={COLORS.primary} size="small" />

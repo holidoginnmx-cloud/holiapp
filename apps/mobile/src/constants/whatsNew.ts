@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-10-c",
+    title: "Quién está en cada cuarto",
+    items: [
+      {
+        icon: "paw-outline",
+        title: "Al elegir cuarto ves qué perros lo ocupan",
+        body:
+          "En «Crear reservación» → «Elegir cuarto», cada cuarto ahora dice " +
+          "qué perros lo ocupan en las fechas que elegiste: «Pepito (sale 12 " +
+          "sep)» si ya está hospedado, «Max (llega 13 sep)» si todavía no " +
+          "llega. Lo mismo al reasignar el cuarto desde el detalle de una " +
+          "estancia. Es solo información: los cuartos llenos siguen en gris.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "checkmark-done-outline",
+        title: "Ya se aprueban las extensiones de perros que comparten cuarto",
+        body:
+          "Si dos perros del mismo cliente compartían cuarto y los dos pedían " +
+          "extender, la app decía que el cuarto no estaba disponible aunque " +
+          "sobrara lugar, y ninguna de las dos solicitudes se podía aprobar. " +
+          "Ahora se revisa la capacidad real del cuarto. Si de verdad no hay " +
+          "lugar, el aviso dice cuántos lugares están ocupados.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-10-b",
     title: "Los clientes ya comparten a su perro solos",
     items: [

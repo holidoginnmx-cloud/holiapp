@@ -55,11 +55,91 @@ export async function countRoomOccupancy(
   return porCuarto;
 }
 
+/** Un perro que ocupa el cuarto en el rango consultado. */
+export type RoomOccupant = {
+  reservationId: string;
+  petName: string;
+  checkIn: Date | null;
+  checkOut: Date | null;
+  status: ReservationStatus;
+};
+
+/**
+ * roomId → quiénes lo ocupan en ese rango. Mismo predicado que
+ * countRoomOccupancy: la lista de nombres y el conteo no pueden contradecirse.
+ */
+export async function listRoomOccupants(
+  prisma: PrismaClient,
+  args: { checkIn: Date; checkOut: Date; excludeReservationIds?: string[] }
+): Promise<Map<string, RoomOccupant[]>> {
+  const filas = await prisma.reservation.findMany({
+    where: { ...stayOverlapWhere(args), roomId: { not: null } },
+    select: {
+      id: true,
+      roomId: true,
+      checkIn: true,
+      checkOut: true,
+      status: true,
+      pet: { select: { name: true } },
+    },
+    orderBy: { checkIn: "asc" },
+  });
+
+  const porCuarto = new Map<string, RoomOccupant[]>();
+  for (const f of filas) {
+    if (!f.roomId) continue;
+    porCuarto.set(f.roomId, [
+      ...(porCuarto.get(f.roomId) ?? []),
+      {
+        reservationId: f.id,
+        petName: f.pet.name,
+        checkIn: f.checkIn,
+        checkOut: f.checkOut,
+        status: f.status as ReservationStatus,
+      },
+    ]);
+  }
+  return porCuarto;
+}
+
+/**
+ * ¿Caben `adding` perros más en el cuarto en ese rango? Sin lock: sirve para
+ * fallar rápido con un mensaje claro antes de tocar dinero. La verificación que
+ * cuenta de verdad es la de lockRoomsAndVerifyCapacity dentro de la transacción.
+ */
+export async function checkRoomCapacity(
+  prisma: PrismaClient,
+  args: {
+    roomId: string;
+    checkIn: Date;
+    checkOut: Date;
+    excludeReservationIds?: string[];
+    adding?: number;
+  }
+): Promise<{
+  ok: boolean;
+  room: { name: string; capacity: number } | null;
+  taken: number;
+}> {
+  const { roomId, checkIn, checkOut, excludeReservationIds, adding = 1 } = args;
+  const [room, porCuarto] = await Promise.all([
+    prisma.room.findUnique({
+      where: { id: roomId },
+      select: { name: true, capacity: true },
+    }),
+    countRoomOccupancy(prisma, { checkIn, checkOut, excludeReservationIds }),
+  ]);
+  const taken = porCuarto.get(roomId) ?? 0;
+  return { ok: !!room && taken + adding <= room.capacity, room, taken };
+}
+
 export type RoomWithOccupancy = Prisma.RoomGetPayload<object> & {
   /** Perros que ya tienen ese cuarto en el rango. */
   occupied: number;
   /** Lugares libres. Puede ser negativo si alguien sobrevendió a mano. */
   remaining: number;
+  /** Solo con `withOccupants`: quiénes son esos perros. */
+  occupants?: RoomOccupant[];
 };
 
 /**
@@ -74,9 +154,26 @@ export async function roomsWithOccupancy(
     /** Opcional: solo cuartos que admiten esa talla. */
     size?: PetSize;
     excludeReservationIds?: string[];
+    /**
+     * Incluye los nombres de los perros. SOLO para rutas del equipo: la app del
+     * dueño (/rooms/available) no debe ver mascotas ajenas.
+     */
+    withOccupants?: boolean;
   }
 ): Promise<RoomWithOccupancy[]> {
-  const [rooms, porCuarto] = await Promise.all([
+  // Con ocupantes, el conteo sale de la MISMA consulta que los nombres: así
+  // "2 de 4" y la lista de abajo nunca se contradicen.
+  const ocupacion = args.withOccupants
+    ? listRoomOccupants(prisma, args).then((ocupantes) => ({
+        ocupantes,
+        conteo: new Map([...ocupantes].map(([id, l]) => [id, l.length])),
+      }))
+    : countRoomOccupancy(prisma, args).then((conteo) => ({
+        ocupantes: null,
+        conteo,
+      }));
+
+  const [rooms, { ocupantes, conteo }] = await Promise.all([
     prisma.room.findMany({
       where: {
         isActive: true,
@@ -84,11 +181,16 @@ export async function roomsWithOccupancy(
       },
       orderBy: { createdAt: "asc" },
     }),
-    countRoomOccupancy(prisma, args),
+    ocupacion,
   ]);
 
   return rooms.map((room) => {
-    const occupied = porCuarto.get(room.id) ?? 0;
-    return { ...room, occupied, remaining: room.capacity - occupied };
+    const occupied = conteo.get(room.id) ?? 0;
+    return {
+      ...room,
+      occupied,
+      remaining: room.capacity - occupied,
+      ...(ocupantes ? { occupants: ocupantes.get(room.id) ?? [] } : {}),
+    };
   });
 }

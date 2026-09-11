@@ -50,6 +50,7 @@ import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   useRoomOccupancy,
   textoDisponibilidad,
+  textoOcupantes,
 } from "@/hooks/useRoomOccupancy";
 import {
   PaymentManualModal,
@@ -157,7 +158,7 @@ export default function StayDetail() {
 
   // Cuáles tienen lugar en las fechas de ESTA estancia, sin contarla a ella
   // misma (si no, su cuarto actual se vería lleno).
-  const { ocupacionPorCuarto } = useRoomOccupancy({
+  const { ocupacionPorCuarto, ocupantesPorCuarto } = useRoomOccupancy({
     checkIn: stay?.checkIn,
     checkOut: stay?.checkOut,
     excludeReservationId: id,
@@ -1469,6 +1470,7 @@ export default function StayDetail() {
             r,
             ocupacionPorCuarto?.get(r.id),
           );
+          const ocupantes = textoOcupantes(ocupantesPorCuarto?.get(r.id));
           // El cuarto que ya tiene asignado nunca se bloquea.
           const bloqueado = lleno && !isCurrent;
           return (
@@ -1500,6 +1502,14 @@ export default function StayDetail() {
                 >
                   {texto ?? `Capacidad ${r.capacity}`}
                 </Text>
+                {ocupantes && (
+                  <Text
+                    style={[styles.roomRowSub, bloqueado && styles.roomTextFull]}
+                    numberOfLines={2}
+                  >
+                    {ocupantes}
+                  </Text>
+                )}
               </View>
               {isPending ? (
                 <ActivityIndicator color={COLORS.primary} size="small" />

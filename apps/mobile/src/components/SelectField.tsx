@@ -26,6 +26,12 @@ export type SelectOption = {
   /** "warn" pinta el hint en naranja: es un motivo, no un dato de más. */
   hintTone?: "neutral" | "warn";
   /**
+   * Tercera línea informativa (p. ej. qué perros ocupan el cuarto). Va aparte
+   * del `hint` porque el hint es un MOTIVO y esto es un dato: mezclarlos
+   * pintaría de naranja algo que no es un aviso.
+   */
+  detail?: string;
+  /**
    * Se muestra pero no se puede elegir. Preferible a esconder la opción: si
    * algo no aplica, el usuario debe VERLO y saber por qué (usar `hint` para
    * explicarlo), no encontrarse una lista misteriosamente corta.
@@ -171,6 +177,17 @@ export function SelectField({
                             {o.hint}
                           </Text>
                         )}
+                        {o.detail && (
+                          <View style={styles.rowDetail}>
+                            <Ionicons
+                              name="paw-outline"
+                              size={12}
+                              color={COLORS.textTertiary}
+                              style={styles.rowDetailIcon}
+                            />
+                            <Text style={styles.rowDetailText}>{o.detail}</Text>
+                          </View>
+                        )}
                       </View>
                       {o.disabled ? (
                         <Ionicons
@@ -293,6 +310,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   rowHintWarn: { color: COLORS.warningText },
+  rowDetail: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 4,
+    marginTop: 3,
+  },
+  rowDetailIcon: { marginTop: 2 },
+  rowDetailText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+  },
   allDisabledText: {
     fontSize: 13,
     fontFamily: "PlusJakartaSans_600SemiBold",

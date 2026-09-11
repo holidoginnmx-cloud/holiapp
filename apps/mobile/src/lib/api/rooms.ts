@@ -1,5 +1,5 @@
 import { ENDPOINTS } from "@/constants/api";
-import type { Room } from "@holidoginn/shared";
+import type { ReservationStatus, Room } from "@holidoginn/shared";
 import { apiFetch } from "./client";
 
 // ─── Rooms ───────────────────────────────────────────────
@@ -16,11 +16,23 @@ export const getAvailableRooms = (params: {
   return apiFetch<Room[]>(`${ENDPOINTS.rooms}/available?${query.toString()}`);
 };
 
+/** Un perro que ocupa el cuarto en el rango consultado. */
+export type RoomRangeOccupant = {
+  reservationId: string;
+  petName: string;
+  /** Días de estadía (medianoche UTC): formatear con formatStayDay. */
+  checkIn: string | null;
+  checkOut: string | null;
+  status: ReservationStatus;
+};
+
 /** Cuarto + cuántos perros lo ocupan en el rango consultado. */
 export type RoomOccupancy = Room & {
   occupied: number;
   /** Lugares libres. Negativo si alguien sobrevendió a mano. */
   remaining: number;
+  /** Quiénes son. Opcional: un API anterior no lo manda. */
+  occupants?: RoomRangeOccupant[];
 };
 
 /**

@@ -5,13 +5,17 @@ import {
   RejectChangeRequestSchema,
   ChangeRequestStatusEnum,
 } from "@holidoginn/shared";
-import { ReservationStatus } from "@holidoginn/db";
 import {
   createAuthMiddleware,
   createAdminMiddleware,
 } from "../middleware/auth";
 import { computeChangeTotal, getLodgingPricing } from "../lib/pricing";
 import { notifyUser, notifyPetAudience } from "../lib/notify";
+import { checkRoomCapacity } from "../lib/roomOccupancy";
+import {
+  lockRoomsAndVerifyCapacity,
+  RoomTakenError,
+} from "../lib/reservationCreate";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -283,24 +287,30 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
       const isShortening = delta < 0;
       const refundAmount = isShortening ? -delta : 0;
 
-      // Room availability check (exclude this reservation)
-      if (cr.reservation.roomId) {
-        const conflict = await prisma.reservation.findFirst({
-          where: {
-            roomId: cr.reservation.roomId,
-            id: { not: cr.reservationId },
-            status: { notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatus[] },
-            AND: [
-              { checkIn: { lt: cr.newCheckOut } },
-              { checkOut: { gt: cr.newCheckIn } },
-            ],
-          },
+      // Capacidad del cuarto en las nuevas fechas. Una fila es UN perro: el
+      // cuarto está lleno cuando el conteo llega a `capacity`. Antes era un
+      // findFirst que ignoraba la capacidad, y dos perros del mismo grupo en un
+      // cuarto de 4 que pedían extender se bloqueaban entre sí: ninguna de las
+      // dos solicitudes se podía aprobar. Los hermanos del grupo SÍ cuentan
+      // (ocupan el cuarto); solo se excluye la fila que se está moviendo.
+      const roomId = cr.reservation.roomId;
+      const sinLugar = (cuarto: string, detalle = "") =>
+        reply.status(409).send({
+          error: `Cuarto ${cuarto} sin capacidad en las nuevas fechas${detalle}. Reasigna el cuarto o rechaza la solicitud.`,
+          code: "ROOM_AT_CAPACITY",
         });
-        if (conflict) {
-          return reply.status(409).send({
-            error: "Habitación no disponible en las nuevas fechas",
-            conflictingReservationId: conflict.id,
-          });
+      if (roomId) {
+        const cap = await checkRoomCapacity(prisma, {
+          roomId,
+          checkIn: cr.newCheckIn,
+          checkOut: cr.newCheckOut,
+          excludeReservationIds: [cr.reservationId],
+        });
+        if (!cap.ok) {
+          return sinLugar(
+            cap.room?.name ?? roomId,
+            cap.room ? ` (${cap.taken}/${cap.room.capacity} ocupado)` : ""
+          );
         }
       }
 
@@ -338,112 +348,132 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         stripeRefundId = refund.id;
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.reservation.update({
-          where: { id: cr.reservationId },
-          data: {
-            checkIn: cr.newCheckIn,
-            checkOut: cr.newCheckOut,
-            totalDays: cr.newTotalDays,
-            totalAmount: cr.newTotalAmount,
-            depositDeadline: cr.reservation.paymentType === "DEPOSIT"
-              ? cr.newCheckIn
-              : cr.reservation.depositDeadline,
-          },
-        });
-        await tx.reservationChangeRequest.update({
-          where: { id: cr.id },
-          data: {
-            status: "APPROVED",
-            approvedById: request.userId!,
-            approvedAt: new Date(),
-          },
-        });
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Re-verificación bajo el MISMO advisory lock que las altas de
+          // estancia: el chequeo de arriba es count-then-write y dos operaciones
+          // simultáneas verían el mismo lugar libre. Si esto falla después de un
+          // reembolso por Stripe (recorte en un cuarto que se llenó en ese mismo
+          // segundo), reaprobar no reembolsa dos veces: la llave de idempotencia
+          // `cr-refund-${cr.id}` ata el refund a esta solicitud.
+          if (roomId) {
+            await lockRoomsAndVerifyCapacity(
+              tx,
+              [{ roomId }],
+              cr.newCheckIn,
+              cr.newCheckOut,
+              { excludeReservationIds: [cr.reservationId] }
+            );
+          }
+          await tx.reservation.update({
+            where: { id: cr.reservationId },
+            data: {
+              checkIn: cr.newCheckIn,
+              checkOut: cr.newCheckOut,
+              totalDays: cr.newTotalDays,
+              totalAmount: cr.newTotalAmount,
+              depositDeadline: cr.reservation.paymentType === "DEPOSIT"
+                ? cr.newCheckIn
+                : cr.reservation.depositDeadline,
+            },
+          });
+          await tx.reservationChangeRequest.update({
+            where: { id: cr.id },
+            data: {
+              status: "APPROVED",
+              approvedById: request.userId!,
+              approvedAt: new Date(),
+            },
+          });
 
-        if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
-          await tx.payment.create({
-            data: {
-              amount: refundAmount,
-              method: "STRIPE",
-              status: "REFUNDED",
-              stripePaymentIntentId: stripeRefundId,
-              paidAt: new Date(),
-              reservationId: cr.reservationId,
-              userId: cr.reservation.ownerId,
-              notes: `Reembolso por recorte de estadía (change request ${cr.id})`,
-            },
-          });
-          await tx.notification.create({
-            data: {
-              userId: cr.reservation.ownerId,
-              type: "REFUND_ISSUED",
-              title: "Reembolso procesado 💳",
-              body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por el recorte de ${cr.reservation.pet.name}.`,
-              data: { reservationId: cr.reservationId, amount: refundAmount },
-            },
-          });
-        } else if (isShortening && cr.refundChoice === "CREDIT") {
-          const updatedUser = await tx.user.update({
-            where: { id: cr.reservation.ownerId },
-            data: {
-              creditBalance: { increment: refundAmount },
-              lastCreditEntryAt: new Date(),
-            },
-          });
-          await tx.creditLedger.create({
-            data: {
-              userId: cr.reservation.ownerId,
-              type: "CREDIT_ADDED",
-              amount: refundAmount,
-              balanceAfter: Number(updatedUser.creditBalance),
-              description: `Saldo por recorte de estadía de ${cr.reservation.pet.name}`,
-              reservationId: cr.reservationId,
-              changeRequestId: cr.id,
-            },
-          });
-          await tx.notification.create({
-            data: {
-              userId: cr.reservation.ownerId,
-              type: "CREDIT_ADDED",
-              title: "Saldo a favor acreditado 💰",
-              body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por el recorte de ${cr.reservation.pet.name}.`,
-              data: { reservationId: cr.reservationId, amount: refundAmount },
-            },
-          });
-        } else {
-          // Extensión: notifica al owner que tiene que elegir cómo pagar el saldo extra.
-          await tx.notification.create({
-            data: {
-              userId: cr.reservation.ownerId,
-              type: "RESERVATION_CHANGE_APPROVED",
-              title: "Tu extensión fue aprobada ✅",
-              body: `Extendimos la estadía de ${cr.reservation.pet.name}. Tienes un saldo extra de $${delta.toLocaleString("es-MX")}. Elige cómo pagarlo en la app.`,
+          if (isShortening && cr.refundChoice === "STRIPE_REFUND") {
+            await tx.payment.create({
               data: {
+                amount: refundAmount,
+                method: "STRIPE",
+                status: "REFUNDED",
+                stripePaymentIntentId: stripeRefundId,
+                paidAt: new Date(),
+                reservationId: cr.reservationId,
+                userId: cr.reservation.ownerId,
+                notes: `Reembolso por recorte de estadía (change request ${cr.id})`,
+              },
+            });
+            await tx.notification.create({
+              data: {
+                userId: cr.reservation.ownerId,
+                type: "REFUND_ISSUED",
+                title: "Reembolso procesado 💳",
+                body: `Te reembolsamos $${refundAmount.toLocaleString("es-MX")} por el recorte de ${cr.reservation.pet.name}.`,
+                data: { reservationId: cr.reservationId, amount: refundAmount },
+              },
+            });
+          } else if (isShortening && cr.refundChoice === "CREDIT") {
+            const updatedUser = await tx.user.update({
+              where: { id: cr.reservation.ownerId },
+              data: {
+                creditBalance: { increment: refundAmount },
+                lastCreditEntryAt: new Date(),
+              },
+            });
+            await tx.creditLedger.create({
+              data: {
+                userId: cr.reservation.ownerId,
+                type: "CREDIT_ADDED",
+                amount: refundAmount,
+                balanceAfter: Number(updatedUser.creditBalance),
+                description: `Saldo por recorte de estadía de ${cr.reservation.pet.name}`,
                 reservationId: cr.reservationId,
                 changeRequestId: cr.id,
-                requiresPayment: true,
-                amount: delta,
               },
-            },
-          });
-        }
+            });
+            await tx.notification.create({
+              data: {
+                userId: cr.reservation.ownerId,
+                type: "CREDIT_ADDED",
+                title: "Saldo a favor acreditado 💰",
+                body: `Se acreditaron $${refundAmount.toLocaleString("es-MX")} a tu saldo por el recorte de ${cr.reservation.pet.name}.`,
+                data: { reservationId: cr.reservationId, amount: refundAmount },
+              },
+            });
+          } else {
+            // Extensión: notifica al owner que tiene que elegir cómo pagar el saldo extra.
+            await tx.notification.create({
+              data: {
+                userId: cr.reservation.ownerId,
+                type: "RESERVATION_CHANGE_APPROVED",
+                title: "Tu extensión fue aprobada ✅",
+                body: `Extendimos la estadía de ${cr.reservation.pet.name}. Tienes un saldo extra de $${delta.toLocaleString("es-MX")}. Elige cómo pagarlo en la app.`,
+                data: {
+                  reservationId: cr.reservationId,
+                  changeRequestId: cr.id,
+                  requiresPayment: true,
+                  amount: delta,
+                },
+              },
+            });
+          }
 
-        // Notificar al staff asignado
-        if (cr.reservation.staffId) {
-          const summary = isShortening
-            ? `La estancia se recortó a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}.`
-            : `La estancia se extendió a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}. Nuevas fechas ya aplicadas.`;
-          await tx.notification.create({
-            data: {
-              userId: cr.reservation.staffId,
-              type: "RESERVATION_CHANGE_APPROVED",
-              title: `Cambio aprobado: ${cr.reservation.pet.name} ✅`,
-              body: summary,
-              data: { reservationId: cr.reservationId },
-            },
-          });
-        }
-      });
+          // Notificar al staff asignado
+          if (cr.reservation.staffId) {
+            const summary = isShortening
+              ? `La estancia se recortó a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}.`
+              : `La estancia se extendió a ${cr.newTotalDays} ${cr.newTotalDays === 1 ? "día" : "días"}. Nuevas fechas ya aplicadas.`;
+            await tx.notification.create({
+              data: {
+                userId: cr.reservation.staffId,
+                type: "RESERVATION_CHANGE_APPROVED",
+                title: `Cambio aprobado: ${cr.reservation.pet.name} ✅`,
+                body: summary,
+                data: { reservationId: cr.reservationId },
+              },
+            });
+          }
+        });
+      } catch (e) {
+        if (e instanceof RoomTakenError) return sinLugar(e.roomName);
+        throw e;
+      }
 
       return reply.send({ success: true });
     }

@@ -21,7 +21,7 @@ import { useAuthStore } from "@/store/authStore";
 import { DateTimeField } from "@/components/DateTimeField";
 import { SelectField } from "@/components/SelectField";
 import { SwitchRow } from "@/components/SwitchRow";
-import { useRoomOccupancy } from "@/hooks/useRoomOccupancy";
+import { useRoomOccupancy, textoOcupantes } from "@/hooks/useRoomOccupancy";
 import { LevelSelector } from "@/components/LevelSelector";
 import {
   KeyboardDoneBar,
@@ -394,6 +394,7 @@ export default function AdminCreateReservation() {
     reservationType === "STAY" && !!checkIn && !!checkOut && checkOut > checkIn;
   const {
     ocupacionPorCuarto,
+    ocupantesPorCuarto,
     isError: occupancyError,
     refetch: refetchOccupancy,
   } = useRoomOccupancy({
@@ -480,9 +481,21 @@ export default function AdminCreateReservation() {
           hint = `Quedan ${libres} de ${room.capacity} lugares en esas fechas`;
         }
 
-        return { key: room.id, label, disabled, hint, hintTone, porTalla: !admiteTalla };
+        // Quiénes ocupan el cuarto en esas fechas. Se pinta también en los
+        // llenos: ahí es donde más sirve saber quién lo llena.
+        const detail = textoOcupantes(ocupantesPorCuarto?.get(room.id));
+
+        return {
+          key: room.id,
+          label,
+          disabled,
+          hint,
+          hintTone,
+          detail,
+          porTalla: !admiteTalla,
+        };
       }),
-    [roomsForPet, selectedPets, roomByPet, ocupacionPorCuarto],
+    [roomsForPet, selectedPets, roomByPet, ocupacionPorCuarto, ocupantesPorCuarto],
   );
 
   // Un solo renglón bajo el título en vez de repetir el mismo aviso en las 18

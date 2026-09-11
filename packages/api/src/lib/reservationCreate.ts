@@ -19,6 +19,7 @@ import {
 import { hoursUntilHotelDay } from "@holidoginn/shared";
 import { quoteDelivery, type DeliveryTripMode } from "./delivery";
 import { invalidateAuthCache } from "../middleware/auth";
+import { stayOverlapWhere } from "./roomOccupancy";
 
 type ReservationStatusType = import("@holidoginn/db").ReservationStatus;
 
@@ -55,13 +56,16 @@ export class RoomTakenError extends Error {
  * dos transacciones con cuartos en común no se traben entre sí.
  *
  * `assignments` son los cuartos que ESTA operación va a ocupar (uno por
- * mascota; repetidos si comparten cuarto).
+ * mascota; repetidos si comparten cuarto). `excludeReservationIds` es para
+ * cuando la operación MUEVE filas que ya existen (aprobar un cambio de fechas):
+ * esas filas no se cuentan a sí mismas.
  */
 export async function lockRoomsAndVerifyCapacity(
   tx: Prisma.TransactionClient,
   assignments: Array<{ roomId: string | null }>,
   checkIn: Date,
-  checkOut: Date
+  checkOut: Date,
+  opts?: { excludeReservationIds?: string[] }
 ): Promise<void> {
   const adding = new Map<string, number>();
   for (const a of assignments) {
@@ -80,10 +84,12 @@ export async function lockRoomsAndVerifyCapacity(
     });
     const taken = await tx.reservation.count({
       where: {
+        ...stayOverlapWhere({
+          checkIn,
+          checkOut,
+          excludeReservationIds: opts?.excludeReservationIds,
+        }),
         roomId,
-        reservationType: "STAY",
-        status: { notIn: ["CANCELLED", "CHECKED_OUT"] as ReservationStatusType[] },
-        AND: [{ checkIn: { lt: checkOut } }, { checkOut: { gt: checkIn } }],
       },
     });
     if (!room || taken + (adding.get(roomId) ?? 0) > room.capacity) {

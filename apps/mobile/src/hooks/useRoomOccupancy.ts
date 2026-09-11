@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getRoomsOccupancy } from "@/lib/api";
+import { getRoomsOccupancy, type RoomRangeOccupant } from "@/lib/api";
+import { formatStayDay } from "@/lib/format";
 import type { Room } from "@holidoginn/shared";
 
 /**
@@ -41,7 +42,37 @@ export function useRoomOccupancy(args: {
     return new Map(query.data.map((r) => [r.id, r.occupied]));
   }, [listo, query.isFetching, query.data]);
 
-  return { ocupacionPorCuarto, ...query };
+  // Mismo candado que ocupacionPorCuarto: sin él se pintarían los perros del
+  // rango anterior mientras llega el nuevo.
+  const ocupantesPorCuarto = useMemo(() => {
+    if (!listo || query.isFetching || !query.data) return null;
+    return new Map(query.data.map((r) => [r.id, r.occupants ?? []]));
+  }, [listo, query.isFetching, query.data]);
+
+  return { ocupacionPorCuarto, ocupantesPorCuarto, ...query };
+}
+
+const MAX_OCUPANTES = 3;
+
+/**
+ * Quiénes ocupan el cuarto en esas fechas: "Pepito (sale 12 sep) · Max (llega
+ * 13 sep)". Es información, no un motivo de bloqueo. Las fechas son días de
+ * estadía y van en UTC (formatStayDay) o se corren un día. `undefined` si no
+ * hay nadie, para no pintar un renglón vacío.
+ */
+export function textoOcupantes(
+  occupants: RoomRangeOccupant[] | null | undefined,
+): string | undefined {
+  if (!occupants?.length) return undefined;
+  const nombres = occupants.slice(0, MAX_OCUPANTES).map((o) => {
+    if (o.status === "CHECKED_IN" && o.checkOut) {
+      return `${o.petName} (sale ${formatStayDay(o.checkOut)})`;
+    }
+    if (o.checkIn) return `${o.petName} (llega ${formatStayDay(o.checkIn)})`;
+    return o.petName;
+  });
+  const resto = occupants.length - MAX_OCUPANTES;
+  return nombres.join(" · ") + (resto > 0 ? ` y ${resto} más` : "");
 }
 
 /**
