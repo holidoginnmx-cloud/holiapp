@@ -62,6 +62,9 @@ export type ClaimLookupResult = {
     breed: string | null;
     photoUrl: string | null;
   }[];
+  /** Cuando no hubo código posible, el servidor ya le abrió la solicitud al
+   * equipo: la pantalla dice "ya avisamos" en vez de ofrecer el botón. */
+  requestFiled?: boolean;
 };
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
@@ -182,6 +185,9 @@ export type ClaimRequestRow = {
   typedEmail: string | null;
   note: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED";
+  /** CLIENT = la pidió el cliente; AUTO = el sistema vio que su teléfono ya
+   *  tiene ficha (hay que confirmarlo con él); ADMIN = la abrió el equipo. */
+  source: "CLIENT" | "AUTO" | "ADMIN";
   resolvedAt: string | null;
   resolution: string | null;
   createdAt: string;
@@ -202,15 +208,25 @@ export type ClaimRequestRow = {
   /** Fichas que coinciden AHORA con lo que el cliente escribió. */
   candidates: ClaimCandidate[];
   /** Mascotas que la propia cuenta nueva ya registró (suele ser el MISMO perro
-   *  que está en la ficha: por eso se pueden marcar como repetidas). */
+   *  que está en la ficha: por eso se pueden juntar con el de la ficha). */
   requesterPets: {
     id: string;
     name: string;
     breed: string | null;
     photoUrl: string | null;
-    /** Con reservas propias no se puede descartar: tiene historial. */
+    cartillaStatus: "PENDING" | "APPROVED" | "REJECTED" | null;
+    /** Reservas propias: viajan a la ficha si se juntan. */
     reservas: number;
   }[];
+};
+
+/** "Este perro de su cuenta es aquel de la ficha": se juntan en el de la
+ * ficha, que se queda con lo que capturó el cliente. */
+export type ClaimPetMerge = {
+  from: string;
+  into: string;
+  /** Quedarse con el nombre que escribió el cliente. */
+  useSourceName?: boolean;
 };
 
 export const getClaimRequests = (status: "pending" | "all" = "pending") =>
@@ -220,10 +236,35 @@ export const approveClaimRequest = (
   id: string,
   petIds: string[],
   discardPetIds: string[] = [],
+  mergePets: ClaimPetMerge[] = [],
 ) =>
   apiFetch<User>(`/admin/claim-requests/${id}/approve`, {
     method: "POST",
-    body: JSON.stringify({ petIds, discardPetIds }),
+    body: JSON.stringify({ petIds, discardPetIds, mergePets }),
+  });
+
+/** Cuenta de la app (con sesión) para abrirle la vinculación a mano. */
+export type ClaimAccount = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  createdAt: string;
+  mascotas: string[];
+  solicitudPendienteId: string | null;
+};
+
+export const searchClaimAccounts = (q: string) =>
+  apiFetch<ClaimAccount[]>(
+    `/admin/claim-requests/accounts?q=${encodeURIComponent(q)}`,
+  );
+
+/** El equipo abre la vinculación sin que el cliente la haya pedido. */
+export const openClaimRequest = (requesterId: string, note?: string) =>
+  apiFetch<{ id: string; alreadyPending: boolean }>("/admin/claim-requests", {
+    method: "POST",
+    body: JSON.stringify({ requesterId, note }),
   });
 
 export const rejectClaimRequest = (id: string, reason?: string) =>

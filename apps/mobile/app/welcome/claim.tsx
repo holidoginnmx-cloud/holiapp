@@ -134,12 +134,14 @@ export default function ClaimAccountScreen() {
     };
   }, [userId, finish]);
 
-  const handleSearch = async (prefer?: "email" | "sms") => {
+  const handleSearch = async (
+    prefer?: "email" | "sms",
+  ): Promise<"found" | "notfound" | "error"> => {
     setError(null);
     const valor = useEmail ? email.trim().toLowerCase() : phone.trim();
     if (!valor) {
       setError(useEmail ? "Ingresa tu correo" : "Ingresa tu teléfono");
-      return;
+      return "error";
     }
     const payload = {
       ...(useEmail ? { email: valor } : { phone: valor }),
@@ -160,9 +162,13 @@ export default function ClaimAccountScreen() {
         (res.channel !== "email" && res.channel !== "sms") ||
         !res.challengeToken
       ) {
-        const aviso =
-          res.message ??
-          "Encontramos tu ficha, pero no pudimos enviarte el código. Escríbenos por WhatsApp y te la vinculamos.";
+        // Si el servidor ya le abrió la solicitud al equipo, no se le pide que
+        // pulse nada: antes dependía de ese botón, y quien no lo pulsaba
+        // (Andrea Castro) seguía como nueva y registraba otra vez a su perro.
+        const aviso = res.requestFiled
+          ? "¡Ya te teníamos registrado! Le avisamos al equipo para que vincule tu ficha: en cuanto lo haga verás aquí a tus mascotas con su historial. No hace falta que las registres de nuevo."
+          : (res.message ??
+            "Encontramos tu ficha, pero no pudimos enviarte el código. Escríbenos por WhatsApp y te la vinculamos.");
         if (challenge) {
           // Reenvío que no salió (cuota, proveedor caído). El reto anterior
           // sigue vivo y puede que el cliente ya tenga ese código en la mano:
@@ -172,6 +178,10 @@ export default function ClaimAccountScreen() {
           setChallenge(null);
           setNoEmailMessage(aviso);
           setFoundPets(res.pets ?? []);
+          if (res.requestFiled) {
+            setRequested(true);
+            queryClient.invalidateQueries({ queryKey: ["claim-request-mine"] });
+          }
         }
       } else {
         setNoEmailMessage(null);
@@ -184,8 +194,10 @@ export default function ClaimAccountScreen() {
           alt: res.altChannel,
         });
       }
+      return res.found ? "found" : "notfound";
     } catch (e: any) {
       setError(mensajeDeError(e, "No pudimos buscar tu cuenta. Intenta de nuevo."));
+      return "error";
     } finally {
       setLoading(false);
     }
@@ -212,6 +224,28 @@ export default function ClaimAccountScreen() {
     } finally {
       setRequesting(false);
     }
+  };
+
+  // "Soy nuevo" ya no deja pasar a ciegas: sin haber buscado, pide el
+  // teléfono y lo busca primero. Si hay ficha se queda en la pantalla (y el
+  // servidor ya avisó al equipo); si no, sigue. Un error del servidor no lo
+  // atora: el alta nunca debe depender de que esta búsqueda funcione.
+  const handleSkip = async () => {
+    if (searched) {
+      await finish();
+      return;
+    }
+    const valor = useEmail ? email.trim() : phone.trim();
+    if (!valor) {
+      setError(
+        useEmail
+          ? "Escribe tu correo: con él revisamos que no tengas ya una ficha con nosotros. Si no la hay, sigues de inmediato."
+          : "Escribe tu teléfono: con él revisamos que no tengas ya una ficha con nosotros. Si no la hay, sigues de inmediato.",
+      );
+      return;
+    }
+    const resultado = await handleSearch();
+    if (resultado !== "found") await finish();
   };
 
   const handleVerify = async () => {
@@ -480,8 +514,9 @@ export default function ClaimAccountScreen() {
                 : "Estas son las mascotas de tu ficha"}
             </Text>
             <Text style={styles.pickHint}>
-              Si las reconoces, pide que te vinculemos la ficha y las verás en
-              tu cuenta.
+              {requested
+                ? "Ya avisamos al equipo: en cuanto vincule tu ficha, las verás en tu cuenta."
+                : "Si las reconoces, pide que te vinculemos la ficha y las verás en tu cuenta."}
             </Text>
             {foundPets.map((p) => (
               <View key={p.id} style={styles.petInfoRow}>
@@ -698,9 +733,9 @@ export default function ClaimAccountScreen() {
         )}
 
         <TouchableOpacity
-          onPress={finish}
+          onPress={handleSkip}
           style={styles.skipBtn}
-          disabled={submitting}
+          disabled={submitting || loading}
           testID="claim-skip-button"
         >
           <Text style={styles.skipText}>

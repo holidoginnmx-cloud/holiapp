@@ -17,26 +17,80 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   approveClaimRequest,
   getClaimRequests,
+  openClaimRequest,
   rejectClaimRequest,
+  searchClaimAccounts,
   searchClaimFichas,
+  type ClaimAccount,
   type ClaimCandidate,
+  type ClaimPetMerge,
   type ClaimRequestRow,
 } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { alertaDeError } from "@/lib/errorAlert";
 import { ErrorState } from "@/components/ErrorState";
 
-// Clientes de siempre que instalaron la app y a los que NO se les pudo mandar
-// un código de verificación: su ficha no tiene correo real (los walk-in llevan
-// un @holidoginn.local que genera el sistema) ni un teléfono del que se pueda
-// deducir el país.
+// Clientes de siempre que instalaron la app y cuya cuenta hay que juntar con
+// su ficha del hotel. Llegan de tres lados:
+//   · los pidió el cliente (su ficha no tiene a dónde mandarle un código);
+//   · los detectó el sistema (el teléfono de su cuenta ya tiene ficha);
+//   · los abrió el equipo a mano ("Vincular a mano", arriba).
 //
-// Antes esto era un callejón: la app les decía "escríbenos por WhatsApp" y
-// alguien tenía que resolverlo a mano, sin ninguna herramienta. Aquí el equipo
-// ve quién pidió, con qué se buscó y qué fichas coinciden, y vincula.
+// Lo segundo y lo tercero existen por Andrea Castro (sep-2026): encontró su
+// ficha, no pidió nada, siguió como nueva y registró otra vez a Drago, que
+// estaba hospedado. Y aquí solo se podía "quitar el repetido", que escondía la
+// cartilla y la nota de que muerde. Ahora el perro repetido se JUNTA con el de
+// la ficha (ver lib/petMerge.ts en la API).
 //
 // Solo ADMIN: vincular da acceso al historial, las reservas y el saldo a favor
 // de esa ficha. Mismo criterio que los co-dueños de una mascota.
+
+type Fusion = { into: string | null; useSourceName: boolean };
+type MascotaFicha = ClaimCandidate["pets"][number];
+type MascotaSuya = ClaimRequestRow["requesterPets"][number];
+
+// Para sugerir la pareja: el equipo captura "Drago Castro" y el cliente "Drago".
+const primeraPalabra = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)[0] ?? "";
+
+const TEXTO_CARTILLA: Record<string, string> = {
+  APPROVED: "cartilla aprobada",
+  PENDING: "cartilla por revisar",
+  REJECTED: "cartilla rechazada",
+};
+
+const ORIGEN: Record<ClaimRequestRow["source"], string | null> = {
+  CLIENT: null,
+  AUTO: "Detectada por el sistema",
+  ADMIN: "La abrió el equipo",
+};
+
+function Chip({ activo, texto, onPress }: { activo: boolean; texto: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.chip, activo && styles.chipOn]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.chipText, activo && styles.chipTextOn]}>{texto}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Foto({ uri }: { uri: string | null }) {
+  return uri ? (
+    <Image source={{ uri }} style={styles.foto} />
+  ) : (
+    <View style={[styles.foto, styles.fotoVacia]}>
+      <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
+    </View>
+  );
+}
 
 export default function AdminClaimRequests() {
   const qc = useQueryClient();
@@ -45,23 +99,27 @@ export default function AdminClaimRequests() {
   // Mascotas marcadas por solicitud. Se arranca con TODAS las de los
   // candidatos: el caso normal es "sí, son todas suyas".
   const [seleccion, setSeleccion] = useState<Record<string, Set<string>>>({});
+  // Qué perro de la ficha es cada uno de los que el cliente ya registró. Si
+  // nadie lo toca, se sugiere por el nombre (ver `fusionDe`).
+  const [fusiones, setFusiones] = useState<Record<string, Record<string, Fusion>>>({});
   // Búsqueda manual de la ficha, por solicitud. Es el camino cuando la
-  // coincidencia automática no da nada, que es justo el caso que trae aquí a
-  // la mayoría: la ficha tiene el teléfono mal capturado.
-  // Mascotas que la propia cuenta nueva registró y que el ADMIN marca como
-  // repetidas de las de la ficha. Arranca VACÍO: descartar borra de la vista lo
-  // que el cliente capturó, así que se hace a conciencia, nunca por defecto.
-  const [descartes, setDescartes] = useState<Record<string, Set<string>>>({});
+  // coincidencia automática no da nada: la ficha tiene el teléfono mal
+  // capturado, o la vinculación la abrió el equipo sin teléfono que comparar.
   const [busqueda, setBusqueda] = useState<Record<string, string>>({});
   const [resultados, setResultados] = useState<Record<string, ClaimCandidate[]>>({});
   const [buscando, setBuscando] = useState<string | null>(null);
+  // "Vincular a mano": buscar la cuenta de la app.
+  const [qCuenta, setQCuenta] = useState("");
+  const [cuentas, setCuentas] = useState<ClaimAccount[] | null>(null);
+  const [buscandoCuenta, setBuscandoCuenta] = useState(false);
+  const [abriendo, setAbriendo] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["claim-requests", verTodas ? "all" : "pending"],
     queryFn: () => getClaimRequests(verTodas ? "all" : "pending"),
   });
 
-  function mascotasDe(r: ClaimRequestRow) {
+  function mascotasDe(r: ClaimRequestRow): MascotaFicha[] {
     const encontradas = resultados[r.id] ?? [];
     const todas = [...r.candidates, ...encontradas];
     // Una ficha puede salir por coincidencia y por búsqueda a la vez.
@@ -101,6 +159,38 @@ export default function AdminClaimRequests() {
     });
   }
 
+  /** Las mascotas de la ficha con las que se puede juntar: las marcadas. */
+  function elegiblesDe(r: ClaimRequestRow): MascotaFicha[] {
+    const sel = marcadas(r);
+    return mascotasDe(r).filter((p) => sel.has(p.id));
+  }
+
+  function fusionDe(r: ClaimRequestRow, suya: MascotaSuya): Fusion {
+    const elegida = fusiones[r.id]?.[suya.id];
+    if (elegida) return elegida;
+    // Sugerencia por nombre, y con el nombre que escribió el cliente: es el
+    // que va a ver en su app.
+    const pareja = elegiblesDe(r).find(
+      (p) => primeraPalabra(p.name) === primeraPalabra(suya.name),
+    );
+    return { into: pareja?.id ?? null, useSourceName: true };
+  }
+
+  function cambiarFusion(r: ClaimRequestRow, suyaId: string, valor: Fusion) {
+    setFusiones((prev) => ({ ...prev, [r.id]: { ...(prev[r.id] ?? {}), [suyaId]: valor } }));
+  }
+
+  /** Solo las que apuntan a una mascota que sigue marcada. */
+  function fusionesDe(r: ClaimRequestRow): ClaimPetMerge[] {
+    const sel = marcadas(r);
+    return r.requesterPets.flatMap((p) => {
+      const f = fusionDe(r, p);
+      return f.into && sel.has(f.into)
+        ? [{ from: p.id, into: f.into, useSourceName: f.useSourceName }]
+        : [];
+    });
+  }
+
   // El nombre SIEMPRE por aquí: al vincular, la cuenta que pidió se BORRA (la
   // ficha vieja hereda su identidad), así que `requester` viene null en todo lo
   // ya resuelto. Leerlo directo tumbaba la pantalla al ver el historial.
@@ -111,33 +201,26 @@ export default function AdminClaimRequests() {
     return formatName(vivo || r.requesterName?.trim() || "Cliente");
   }
 
-  function descartadas(r: ClaimRequestRow): Set<string> {
-    return descartes[r.id] ?? new Set();
-  }
-
-  function toggleDescarte(r: ClaimRequestRow, petId: string) {
-    setDescartes((prev) => {
-      const actual = new Set(prev[r.id] ?? []);
-      if (actual.has(petId)) actual.delete(petId);
-      else actual.add(petId);
-      return { ...prev, [r.id]: actual };
-    });
-  }
-
   async function aprobar(r: ClaimRequestRow) {
     const petIds = [...marcadas(r)];
-    const descartar = [...descartadas(r)];
     if (petIds.length === 0) {
       Alert.alert("Elige mascotas", "Marca al menos una mascota para vincular.");
       return;
     }
     const quien = nombreDe(r);
-    const sobrantes = descartar.length
-      ? `\n\nSe quitarán ${descartar.length === 1 ? "1 mascota que ya había registrado" : `${descartar.length} mascotas que ya había registrado`} en su cuenta, por estar repetidas.`
+    const juntas = fusionesDe(r);
+    const nombreFicha = (id: string) =>
+      formatName(mascotasDe(r).find((p) => p.id === id)?.name ?? "");
+    const nombreSuya = (id: string) =>
+      formatName(r.requesterPets.find((p) => p.id === id)?.name ?? "");
+    const detalleJuntas = juntas.length
+      ? `\n\nSe juntan en uno: ${juntas
+          .map((m) => `${nombreSuya(m.from)} con ${nombreFicha(m.into)}`)
+          .join(", ")}.`
       : "";
     Alert.alert(
       "Confirmar vinculación",
-      `Se le darán ${petIds.length === 1 ? "1 mascota" : `${petIds.length} mascotas`} a ${quien}, junto con su historial de reservas. Asegúrate de que de verdad es esa persona.${sobrantes}`,
+      `Se le darán ${petIds.length === 1 ? "1 mascota" : `${petIds.length} mascotas`} a ${quien}, junto con su historial de reservas. Asegúrate de que de verdad es esa persona: no se puede deshacer.${detalleJuntas}`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -146,7 +229,7 @@ export default function AdminClaimRequests() {
           onPress: async () => {
             setTrabajando(r.id);
             try {
-              await approveClaimRequest(r.id, petIds, descartar);
+              await approveClaimRequest(r.id, petIds, [], juntas);
               qc.invalidateQueries({ queryKey: ["claim-requests"] });
               Alert.alert("Listo", `${quien} ya puede ver sus mascotas en la app.`);
             } catch (e) {
@@ -185,6 +268,37 @@ export default function AdminClaimRequests() {
     );
   }
 
+  async function buscarCuenta() {
+    const q = qCuenta.trim();
+    if (q.length < 2) return;
+    setBuscandoCuenta(true);
+    try {
+      setCuentas(await searchClaimAccounts(q));
+    } catch (e) {
+      alertaDeError(e, { respaldo: "No se pudo buscar" });
+    } finally {
+      setBuscandoCuenta(false);
+    }
+  }
+
+  async function abrirVinculacion(c: ClaimAccount) {
+    setAbriendo(c.id);
+    try {
+      await openClaimRequest(c.id);
+      qc.invalidateQueries({ queryKey: ["claim-requests"] });
+      setCuentas(null);
+      setQCuenta("");
+      Alert.alert(
+        "Listo",
+        `La vinculación de ${formatName(`${c.firstName} ${c.lastName}`.trim())} ya está en la lista. Márcale las mascotas de su ficha (o búscala por nombre) y apruébala.`,
+      );
+    } catch (e) {
+      alertaDeError(e, { respaldo: "No se pudo abrir la vinculación" });
+    } finally {
+      setAbriendo(null);
+    }
+  }
+
   if (isError) return <ErrorState error={error} onRetry={refetch} />;
   if (isLoading) {
     return (
@@ -201,7 +315,80 @@ export default function AdminClaimRequests() {
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      keyboardShouldPersistTaps="handled"
     >
+      {/* Vincular a mano: el equipo ve al cliente repetido y él no pidió
+          nada. Antes no había por dónde empezar. */}
+      <View style={styles.card}>
+        <Text style={styles.nombre}>Vincular a mano</Text>
+        <Text style={styles.dato}>
+          ¿Ves a un cliente repetido, con su cuenta de la app y su ficha del hotel?
+          Busca su cuenta de la app y ábrele la vinculación: aparecerá aquí abajo
+          para que la apruebes.
+        </Text>
+        <View style={styles.buscador}>
+          <TextInput
+            style={styles.buscadorInput}
+            placeholder="Nombre, correo o teléfono de su cuenta"
+            placeholderTextColor={COLORS.textDisabled}
+            value={qCuenta}
+            onChangeText={setQCuenta}
+            onSubmitEditing={buscarCuenta}
+            returnKeyType="search"
+            autoCapitalize="words"
+          />
+          <TouchableOpacity
+            style={styles.buscadorBtn}
+            onPress={buscarCuenta}
+            disabled={buscandoCuenta}
+          >
+            {buscandoCuenta ? (
+              <ActivityIndicator color={COLORS.white} size="small" />
+            ) : (
+              <Ionicons name="search" size={16} color={COLORS.white} />
+            )}
+          </TouchableOpacity>
+        </View>
+        {cuentas?.length === 0 && (
+          <Text style={styles.dato}>No hay cuentas de la app con ese dato.</Text>
+        )}
+        {cuentas?.map((c) => (
+          <View key={c.id} style={styles.mascota}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mascotaNombre}>
+                {formatName(`${c.firstName} ${c.lastName}`.trim())}
+              </Text>
+              <Text style={styles.mascotaRaza}>
+                {[
+                  c.email,
+                  c.phone,
+                  c.mascotas.length
+                    ? c.mascotas.map((m) => formatName(m)).join(", ")
+                    : "sin mascotas",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            </View>
+            {c.solicitudPendienteId ? (
+              <Text style={styles.dato}>Ya está en la lista</Text>
+            ) : (
+              <TouchableOpacity
+                style={[styles.btnMini, abriendo === c.id && styles.btnDisabled]}
+                onPress={() => abrirVinculacion(c)}
+                disabled={abriendo === c.id}
+              >
+                {abriendo === c.id ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Text style={styles.btnMiniText}>Abrir</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+      </View>
+
       <TouchableOpacity
         style={styles.filtro}
         onPress={() => setVerTodas((v) => !v)}
@@ -220,7 +407,8 @@ export default function AdminClaimRequests() {
           <Ionicons name="checkmark-done-outline" size={28} color={COLORS.textTertiary} />
           <Text style={styles.vacioText}>
             No hay solicitudes pendientes. Aquí aparecen los clientes de siempre que
-            instalan la app y cuya ficha no tiene un contacto al que mandarles un código.
+            instalan la app: los que piden que les vinculemos su ficha y los que el
+            sistema detecta porque su teléfono ya tiene una.
           </Text>
         </View>
       )}
@@ -228,17 +416,20 @@ export default function AdminClaimRequests() {
       {filas.map((r) => {
         const mascotas = mascotasDe(r);
         const sel = marcadas(r);
+        const elegibles = elegiblesDe(r);
         const pendiente = r.status === "PENDING";
+        const origen = ORIGEN[r.source];
         return (
           <View key={r.id} style={styles.card}>
             <View style={styles.rowBetween}>
-              <Text style={styles.nombre}>
-                {nombreDe(r)}
-              </Text>
+              <Text style={styles.nombre}>{nombreDe(r)}</Text>
               {!pendiente && (
                 <Text style={[styles.badge, r.status === "APPROVED" ? styles.badgeOk : styles.badgeNo]}>
                   {r.status === "APPROVED" ? "Vinculada" : "Rechazada"}
                 </Text>
+              )}
+              {pendiente && origen && (
+                <Text style={[styles.badge, styles.badgeOrigen]}>{origen}</Text>
               )}
             </View>
 
@@ -246,9 +437,18 @@ export default function AdminClaimRequests() {
               Su cuenta: {r.requester?.email ?? r.requesterEmail ?? "—"}
             </Text>
             <Text style={styles.dato}>
-              Buscó con: {r.typedPhone ?? r.typedEmail ?? "—"}
+              {r.source === "CLIENT" ? "Buscó con" : "Teléfono"}:{" "}
+              {r.typedPhone ?? r.typedEmail ?? r.requester?.phone ?? "—"}
             </Text>
             {!!r.note && <Text style={styles.nota}>“{r.note}”</Text>}
+
+            {pendiente && r.source === "AUTO" && (
+              <Text style={[styles.aviso, styles.avisoAuto]}>
+                Esta no la pidió el cliente: el sistema vio que el teléfono de su cuenta
+                ya tiene una ficha. Confirma con él que es la misma persona antes de
+                vincular.
+              </Text>
+            )}
 
             {pendiente && (
               <>
@@ -260,15 +460,14 @@ export default function AdminClaimRequests() {
 
                 {mascotas.length === 0 && (
                   <Text style={styles.aviso}>
-                    Con lo que escribió no coincide ninguna ficha — casi siempre es porque
-                    su ficha tiene el teléfono mal escrito. Búscala por su nombre aquí
+                    Con ese dato no coincide ninguna ficha: casi siempre es porque su
+                    ficha tiene el teléfono mal escrito. Búscala por su nombre aquí
                     abajo.
                   </Text>
                 )}
 
                 {/* Búsqueda manual: el camino real cuando la coincidencia
-                    automática falla, que es el motivo por el que la mayoría
-                    llega a esta pantalla. */}
+                    automática falla. */}
                 <View style={styles.buscador}>
                   <TextInput
                     style={styles.buscadorInput}
@@ -299,98 +498,111 @@ export default function AdminClaimRequests() {
                   </Text>
                 )}
 
-                {mascotas.length > 0 && (
-                  mascotas.map((p) => {
-                    const marcada = sel.has(p.id);
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={styles.mascota}
-                        onPress={() => toggle(r, p.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={marcada ? "checkbox" : "square-outline"}
-                          size={20}
-                          color={marcada ? COLORS.primary : COLORS.textTertiary}
-                        />
-                        {p.photoUrl ? (
-                          <Image source={{ uri: p.photoUrl }} style={styles.foto} />
-                        ) : (
-                          <View style={[styles.foto, styles.fotoVacia]}>
-                            <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
-                          </View>
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.mascotaNombre}>{formatName(p.name)}</Text>
-                          {!!p.breed && <Text style={styles.mascotaRaza}>{p.breed}</Text>}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
+                {mascotas.map((p) => {
+                  const marcada = sel.has(p.id);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={styles.mascota}
+                      onPress={() => toggle(r, p.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={marcada ? "checkbox" : "square-outline"}
+                        size={20}
+                        color={marcada ? COLORS.primary : COLORS.textTertiary}
+                      />
+                      <Foto uri={p.photoUrl} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.mascotaNombre}>{formatName(p.name)}</Text>
+                        {!!p.breed && <Text style={styles.mascotaRaza}>{p.breed}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
 
-                {/* Lo que la propia cuenta nueva registró. Es el caso más
-                    frecuente y el que antes bloqueaba la vinculación: no
-                    encontró su ficha, dio de alta a su perro para poder usar
-                    la app, y ese perro es casi siempre EL MISMO que ya está en
-                    la ficha. */}
+                {/* Lo que la propia cuenta nueva registró: casi siempre EL MISMO
+                    perro que ya está en la ficha. Se junta con él en vez de
+                    quitarlo, para no perder lo que capturó el cliente. */}
                 {r.requesterPets.length > 0 && (
                   <>
                     <Text style={styles.seccion}>Ya registró esto en su cuenta</Text>
                     <Text style={styles.aviso}>
-                      Estas se quedan en su cuenta al vincular. Si alguna es la misma que ya
-                      marcaste arriba, márcala como repetida y la quitamos para que no le
-                      aparezca dos veces.
+                      {elegibles.length === 0
+                        ? "Marca arriba las mascotas de su ficha. Si alguna de éstas es la misma, podrás juntarlas en una."
+                        : "Si alguna es el mismo perro que el de su ficha, dilo aquí y se juntan en uno: se queda la ficha del hotel con su historial, y se le pasa lo que capturó el cliente."}
                     </Text>
                     {r.requesterPets.map((p) => {
-                      const fuera = descartadas(r).has(p.id);
-                      const conHistorial = p.reservas > 0;
+                      const f = fusionDe(r, p);
+                      const destino = elegibles.find((e) => e.id === f.into) ?? null;
+                      const detalle = [
+                        p.breed,
+                        p.cartillaStatus ? TEXTO_CARTILLA[p.cartillaStatus] : null,
+                        p.reservas > 0
+                          ? p.reservas === 1
+                            ? "1 reserva"
+                            : `${p.reservas} reservas`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
                       return (
-                        <TouchableOpacity
-                          key={p.id}
-                          style={styles.mascota}
-                          onPress={() =>
-                            conHistorial
-                              ? Alert.alert(
-                                  "Esta no se puede quitar",
-                                  `${formatName(p.name)} ya tiene reservas a su nombre, así que su historial se perdería de vista. Vincula sin quitarla y júntenlas después.`,
-                                )
-                              : toggleDescarte(r, p.id)
-                          }
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons
-                            name={fuera ? "close-circle" : "ellipse-outline"}
-                            size={20}
-                            color={
-                              fuera
-                                ? COLORS.errorText
-                                : conHistorial
-                                  ? COLORS.textDisabled
-                                  : COLORS.textTertiary
-                            }
-                          />
-                          {p.photoUrl ? (
-                            <Image source={{ uri: p.photoUrl }} style={styles.foto} />
-                          ) : (
-                            <View style={[styles.foto, styles.fotoVacia]}>
-                              <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
+                        <View key={p.id} style={styles.repetida}>
+                          <View style={styles.mascota}>
+                            <Foto uri={p.photoUrl} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.mascotaNombre}>{formatName(p.name)}</Text>
+                              {!!detalle && <Text style={styles.mascotaRaza}>{detalle}</Text>}
+                            </View>
+                          </View>
+                          {elegibles.length > 0 && (
+                            <View style={styles.chips}>
+                              <Chip
+                                activo={!destino}
+                                texto="Es otro perro"
+                                onPress={() =>
+                                  cambiarFusion(r, p.id, { into: null, useSourceName: f.useSourceName })
+                                }
+                              />
+                              {elegibles.map((e) => (
+                                <Chip
+                                  key={e.id}
+                                  activo={destino?.id === e.id}
+                                  texto={`Es ${formatName(e.name)}`}
+                                  onPress={() =>
+                                    cambiarFusion(r, p.id, { into: e.id, useSourceName: f.useSourceName })
+                                  }
+                                />
+                              ))}
                             </View>
                           )}
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.mascotaNombre, fuera && styles.mascotaFuera]}>
-                              {formatName(p.name)}
-                            </Text>
-                            <Text style={styles.mascotaRaza}>
-                              {fuera
-                                ? "Se quitará por repetida"
-                                : conHistorial
-                                  ? `Tiene ${p.reservas === 1 ? "1 reserva" : `${p.reservas} reservas`}: se queda`
-                                  : "Toca si está repetida"}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
+                          {destino && (
+                            <>
+                              <Text style={styles.mascotaRaza}>Nombre que se queda:</Text>
+                              <View style={styles.chips}>
+                                <Chip
+                                  activo={f.useSourceName}
+                                  texto={formatName(p.name)}
+                                  onPress={() => cambiarFusion(r, p.id, { ...f, useSourceName: true })}
+                                />
+                                <Chip
+                                  activo={!f.useSourceName}
+                                  texto={formatName(destino.name)}
+                                  onPress={() => cambiarFusion(r, p.id, { ...f, useSourceName: false })}
+                                />
+                              </View>
+                              <Text style={styles.resumen}>
+                                Se juntan en la ficha de {formatName(destino.name)}:
+                                se le pasan {p.cartillaStatus ? "la cartilla, " : ""}los
+                                contactos, la alimentación y las notas que capturó el cliente
+                                {p.reservas > 0
+                                  ? `, y ${p.reservas === 1 ? "su reserva" : `sus ${p.reservas} reservas`}`
+                                  : ""}
+                                . Lo que la ficha ya tenía no se toca.
+                              </Text>
+                            </>
+                          )}
+                        </View>
                       );
                     })}
                   </>
@@ -436,7 +648,6 @@ export default function AdminClaimRequests() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.bgPage },
-  mascotaFuera: { textDecorationLine: "line-through", color: COLORS.textTertiary },
   content: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   filtro: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
@@ -452,7 +663,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 4,
   },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   nombre: {
     fontSize: 16,
     fontFamily: "PlusJakartaSans_700Bold",
@@ -469,6 +680,7 @@ const styles = StyleSheet.create({
   },
   badgeOk: { backgroundColor: COLORS.successBg, color: COLORS.successText },
   badgeNo: { backgroundColor: COLORS.bgSection, color: COLORS.textTertiary },
+  badgeOrigen: { backgroundColor: COLORS.primaryLight, color: COLORS.primary },
   dato: {
     fontSize: 13,
     fontFamily: "PlusJakartaSans_400Regular",
@@ -498,11 +710,20 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
+  avisoAuto: { marginTop: 8, color: COLORS.textPrimary },
   mascota: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingVertical: 6,
+  },
+  repetida: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    gap: 6,
   },
   foto: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.bgSection },
   fotoVacia: { alignItems: "center", justifyContent: "center" },
@@ -515,6 +736,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
+  },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
+  },
+  chipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
+  chipText: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.textTertiary,
+  },
+  chipTextOn: { color: COLORS.primary },
+  resumen: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textPrimary,
+    lineHeight: 17,
   },
   buscador: { flexDirection: "row", gap: 8, marginTop: 10, marginBottom: 4 },
   buscadorInput: {
@@ -561,6 +804,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   btnPriText: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.white },
+  btnMini: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    minWidth: 64,
+    alignItems: "center",
+  },
+  btnMiniText: { fontSize: 13, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.white },
   btnDisabled: { opacity: 0.5 },
   vacio: { alignItems: "center", gap: 10, padding: 24 },
   vacioText: {

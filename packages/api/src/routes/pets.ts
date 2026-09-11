@@ -15,6 +15,7 @@ import {
   invalidatePetAccessCache,
 } from "../lib/petAccess";
 import { findPetByName } from "../lib/petName";
+import { detectarFichaPorTelefono, mascotaEnFichaPendiente } from "../lib/claimRequests";
 import { stripInternalFieldsList } from "../lib/stripInternal";
 import { sizeFromWeight } from "../lib/pricing";
 import { derivePetSize, tallaChocaConCuartoActivo } from "../lib/petSize";
@@ -236,6 +237,26 @@ export default async function petsRoutes(fastify: FastifyInstance) {
             petId: dup.id,
             message: `Ya tienes registrado a ${dup.name}.`,
           });
+        }
+
+        // ¿Ya está en su ficha de siempre? El candado de arriba solo mira su
+        // cuenta, que en un cliente recién registrado está vacía: así se
+        // duplicó Drago. Primero se abre la solicitud si su teléfono coincide
+        // con una ficha (por si se saltó la pantalla "¿Ya eres cliente?"), y
+        // luego se compara con las mascotas de esa ficha. Si de verdad es otro
+        // perro, lo fuerza igual que el duplicado de arriba.
+        if (!isEquipo(request.userRole)) {
+          await detectarFichaPorTelefono(prisma, owner).catch((err) =>
+            request.log.error({ err, ownerId }, "[claim] detección por teléfono falló"),
+          );
+          const enFicha = await mascotaEnFichaPendiente(prisma, owner, parsed.data.name);
+          if (enFicha) {
+            // Sin `petId`: esa mascota todavía no es suya en la app.
+            return reply.status(409).send({
+              error: "PET_IN_PENDING_CLAIM",
+              message: `${enFicha.name} ya está en tu ficha de Holidog Inn. En cuanto el equipo la vincule aparecerá aquí con su historial, sin que tengas que capturarlo otra vez.`,
+            });
+          }
         }
       }
 

@@ -335,6 +335,30 @@ export default function CreatePetScreen() {
         );
         return;
       }
+      // Ese perro ya está en su ficha de siempre, que el equipo está por
+      // vincularle: registrarlo otra vez es justo el duplicado que partió el
+      // expediente de Drago en dos. Si de verdad es otro perro, lo fuerza.
+      if (err.status === 409 && err.body?.error === "PET_IN_PENDING_CLAIM") {
+        Alert.alert(
+          "Ya lo tenemos registrado",
+          err.body.message ??
+            "Esta mascota ya está en tu ficha. En cuanto el equipo la vincule aparecerá aquí.",
+          [
+            { text: "Entendido", onPress: () => router.back() },
+            {
+              text: "Es otro perro, registrarlo",
+              style: "destructive",
+              onPress: () => {
+                const data = lastSubmitRef.current;
+                if (data) {
+                  mutation.mutate({ ...data, allowDuplicateName: true });
+                }
+              },
+            },
+          ],
+        );
+        return;
+      }
       alertaDeError(e);
     },
   });

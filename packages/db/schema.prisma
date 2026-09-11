@@ -1320,6 +1320,19 @@ enum ClaimRequestStatus {
   REJECTED
 }
 
+// De dónde salió la solicitud. Hasta 2026-09 solo existía CLIENT (el cliente
+// pulsaba "Pedir que me vinculen"), y quien no lo pulsaba se quedaba con dos
+// cuentas sin que nadie se enterara: Andrea Castro buscó su ficha, la encontró,
+// siguió como nueva y registró otra vez a Drago, que estaba hospedado.
+//   AUTO   — el API la abrió solo: el teléfono del cliente coincide con una
+//            ficha sin vincular.
+//   ADMIN  — la abrió el equipo a mano (o el barrido de cuentas repetidas).
+enum ClaimRequestSource {
+  CLIENT
+  AUTO
+  ADMIN
+}
+
 // Un cliente de siempre instaló la app y su ficha no tiene ningún contacto al
 // que mandarle un código (sin correo real y sin teléfono utilizable), así que
 // no hay forma automática de probar que es suya. Antes eso era un callejón:
@@ -1338,6 +1351,9 @@ model ClaimRequest {
   // rastro de quién aprobó qué, que es medio motivo de esta tabla.
   requesterId    String?
   requester      User?              @relation("ClaimRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  // Quién la abrió: el equipo lee distinto una que pidió el cliente (ya sabe
+  // que es suya) que una detectada por el sistema (hay que confirmarlo).
+  source         ClaimRequestSource @default(CLIENT)
   // Copia del solicitante al momento de pedir, porque su cuenta desaparece al
   // consolidarse y sin esto el historial quedaría en blanco.
   requesterName  String?

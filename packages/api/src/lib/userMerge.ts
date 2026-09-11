@@ -1,4 +1,5 @@
 import type { PrismaClient, User } from "@prisma/client";
+import { mergePetInto, type PetMergePair } from "./petMerge";
 
 // Error tipado para colisiones de carrera (otra petición vinculó a un registro
 // mientras tanto). La ruta lo traduce a un 409 amistoso.
@@ -56,10 +57,13 @@ const isPlaceholderName = (n?: string | null): boolean =>
 // `Reservation.owner` son obligatorias (el borrado fallaría) y `Payment.user`
 // es opcional (se quedaría en null, perdiendo de vista ese dinero).
 //
-// `discardPetIds` es para el caso frecuente de que la mascota que registró sea
-// LA MISMA que ya está en su ficha: el ADMIN marca cuál sobra y esa se
-// desactiva en vez de quedar duplicada. Solo se admite descartar una ficha sin
-// reservas propias — si tiene historial, se conserva y lo resuelve una persona.
+// `mergePets` es para el caso frecuente de que la mascota que registró sea LA
+// MISMA que ya está en su ficha: el ADMIN dice "este Drago es aquel Drago" y se
+// fusionan (lib/petMerge.ts). La de la ficha sobrevive con su historial y
+// absorbe lo que capturó el cliente —cartilla, contactos, notas—, reservas
+// incluidas. `discardPetIds` es lo de antes (desactivar la repetida sin traer
+// nada, y solo si no tiene reservas): se conserva para la app del equipo que
+// todavía no recibe el OTA.
 //
 // Todo ocurre en una transacción y re-validamos `clerkId IS NULL` de los
 // registros dentro de ella para cerrar la ventana de carrera.
@@ -69,7 +73,8 @@ export async function claimPetsIntoAccount(
   petIds: string[],
   allowedRecordIds: string[],
   enteredPhone?: string | null,
-  discardPetIds?: string[]
+  discardPetIds?: string[],
+  mergePets?: PetMergePair[]
 ): Promise<User> {
   const allowed = new Set(allowedRecordIds);
 
@@ -176,8 +181,28 @@ export async function claimPetsIntoAccount(
         data: { userId: primaryId },
       });
     }
-    // Consentimientos legales de `fresh`: se descartan (el gate legal los re-pide
-    // si faltan) para no chocar con el único (userId, documentType, version).
+    // Consentimientos legales de `fresh`: se mueven los que el primario no
+    // tiene y se descartan los que chocarían con el único (userId,
+    // documentType, version). Antes se borraban todos y el cliente, recién
+    // vinculado, tenía que volver a firmar lo que había firmado ese mismo día.
+    const legalesDelPrimario = await tx.legalAcceptance.findMany({
+      where: { userId: primaryId },
+      select: { documentType: true, version: true },
+    });
+    const yaFirmados = new Set(legalesDelPrimario.map((l) => `${l.documentType}@${l.version}`));
+    const legalesDeFresh = await tx.legalAcceptance.findMany({
+      where: { userId: fresh.id },
+      select: { id: true, documentType: true, version: true },
+    });
+    const aMover = legalesDeFresh
+      .filter((l) => !yaFirmados.has(`${l.documentType}@${l.version}`))
+      .map((l) => l.id);
+    if (aMover.length > 0) {
+      await tx.legalAcceptance.updateMany({
+        where: { id: { in: aMover } },
+        data: { userId: primaryId },
+      });
+    }
     await tx.legalAcceptance.deleteMany({ where: { userId: fresh.id } });
 
     // Lo que la cuenta nueva alcanzó a acumular antes de vincularse. Va ANTES
@@ -186,12 +211,31 @@ export async function claimPetsIntoAccount(
     // null en cascada).
     const freshPets = await tx.pet.findMany({
       where: { ownerId: fresh.id },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isActive: true },
     });
+
+    // Fusiones pedidas: `from` tiene que ser una mascota activa de la cuenta
+    // nueva e `into` una de las que se están vinculando, y cada `from` una sola
+    // vez. Cualquier otra cosa sería usar este atajo para juntar mascotas
+    // ajenas.
+    const fusiones = mergePets ?? [];
+    const propiasActivas = new Set(freshPets.filter((p) => p.isActive).map((p) => p.id));
+    const elegidas = new Set(petIds);
+    const fusionadas = new Set<string>();
+    for (const f of fusiones) {
+      if (!propiasActivas.has(f.from) || !elegidas.has(f.into) || fusionadas.has(f.from)) {
+        throw new ClaimForbiddenError();
+      }
+      fusionadas.add(f.from);
+    }
 
     if (discardPetIds && discardPetIds.length > 0) {
       const propias = new Set(freshPets.map((p) => p.id));
-      const aDescartar = [...new Set(discardPetIds)].filter((id) => propias.has(id));
+      // Una que se fusiona no se descarta: la fusión ya la desactiva, y antes
+      // se lleva lo que tenía.
+      const aDescartar = [...new Set(discardPetIds)].filter(
+        (id) => propias.has(id) && !fusionadas.has(id),
+      );
       if (aDescartar.length > 0) {
         // Con reservas NO se descarta: esa mascota ya tiene historial y
         // desactivarla dejaría reservas colgando de una ficha invisible.
@@ -309,6 +353,14 @@ export async function claimPetsIntoAccount(
       }
     }
 
+    // 7. Fusionar los perros repetidos, al final: para entonces origen y
+    //    destino ya son del primario y las reservas del origen ya apuntan a él.
+    for (const f of fusiones) {
+      await mergePetInto(tx, f.from, f.into, { useSourceName: f.useSourceName });
+    }
+
     return updatedPrimary;
-  });
+    // Más holgura que los 5 s de default: con fusiones son ~15 consultas más,
+    // y un rollback a media vinculación es justo lo que no queremos explicar.
+  }, { timeout: 15_000 });
 }

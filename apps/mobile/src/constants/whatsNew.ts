@@ -34,6 +34,48 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-11",
+    title: "Clientes repetidos: se juntan sin perder nada",
+    items: [
+      {
+        icon: "git-merge-outline",
+        title: "El perro repetido se junta con el de la ficha",
+        body:
+          "Cuando un cliente de siempre instalaba la app y registraba otra vez " +
+          "a su perro, al vincularlo solo se podía «quitar el repetido», y con " +
+          "él se perdían la cartilla y las notas que había capturado (si tenía " +
+          "reservas, ni eso). Ahora en Vincular fichas le dices «es el mismo " +
+          "que el de la ficha» y se juntan en uno: se queda la ficha del hotel " +
+          "con su historial, y se le pasan la cartilla, los contactos, la " +
+          "alimentación y las notas del cliente. Lo que la ficha ya tenía no " +
+          "se toca.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "person-add-outline",
+        title: "Vincular a mano",
+        body:
+          "Si ves a un cliente repetido (su cuenta de la app y su ficha del " +
+          "hotel) y él no pidió nada, en Vincular fichas busca su cuenta y " +
+          "ábrele tú la vinculación. Luego la apruebas como cualquier otra.",
+        route: "/admin/claim-requests",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "notifications-outline",
+        title: "Te avisamos cuando alguien se registra con un teléfono que ya tiene ficha",
+        body:
+          "Ya no depende de que el cliente pulse «Pedir que me vinculen». Si " +
+          "el teléfono de su cuenta coincide con una ficha, la solicitud te " +
+          "llega sola, marcada «Detectada por el sistema»: confirma con él que " +
+          "es la misma persona antes de aprobar. Y en la app nueva, un cliente " +
+          "que se registra ya no pasa sin que revisemos su teléfono.",
+        route: "/admin/claim-requests",
+      },
+    ],
+  },
+  {
     id: "2026-09-10-c",
     title: "Quién está en cada cuarto",
     items: [
