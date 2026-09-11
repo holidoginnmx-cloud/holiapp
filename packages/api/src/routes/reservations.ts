@@ -9,6 +9,7 @@ import {
   ReservationStatus,
   CancelReservationSchema,
   hoursUntilHotelDay,
+  stayDayAnchor,
 } from "@holidoginn/shared";
 import { Prisma, PetSize, ReservationStatus as PrismaResStatus } from "@holidoginn/db";
 import { randomUUID } from "crypto";
@@ -799,10 +800,12 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       };
       const mdPetIds = String(md.petIds ?? "").split(",").filter(Boolean);
       if (!sameStringSet(mdPetIds, petIds)) return mismatch("petIds");
-      if (md.checkIn && new Date(md.checkIn).getTime() !== checkIn.getTime()) {
+      // Se ancla también el metadata: un PI creado antes de que create-intent
+      // guardara la fecha ya anclada trae la hora cruda del teléfono.
+      if (md.checkIn && stayDayAnchor(new Date(md.checkIn)).getTime() !== checkIn.getTime()) {
         return mismatch("checkIn");
       }
-      if (md.checkOut && new Date(md.checkOut).getTime() !== checkOut.getTime()) {
+      if (md.checkOut && stayDayAnchor(new Date(md.checkOut)).getTime() !== checkOut.getTime()) {
         return mismatch("checkOut");
       }
       if (md.paymentType && md.paymentType !== paymentType) return mismatch("paymentType");

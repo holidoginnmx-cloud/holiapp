@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { instanteDeLlegada, applyReservationTimesUpdate } from "./stayTimes";
+import { instanteDeLlegada, applyReservationTimesUpdate, rangoDeMananaHotel } from "./stayTimes";
 
 vi.mock("./notify", () => ({
   equipoActivoIds: vi.fn(async () => ["usr_nancy", "usr_javier"]),
@@ -54,6 +54,51 @@ describe("instanteDeLlegada", () => {
   it("la llegada NO es la medianoche del checkIn (el bug que se corrigió)", () => {
     const real = instanteDeLlegada(base)!;
     expect(real.getTime()).not.toBe(base.checkIn.getTime());
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Snoopy (sep-2026): salida el domingo 13 (00:00Z), el cron corrió el viernes
+ * 11 a las 13:39 de Hermosillo y la ventana de horas le mandó "mañana es su
+ * check-out". El rango tiene que ser el sábado 12, corra a la hora que corra.
+ */
+describe("rangoDeMananaHotel", () => {
+  const cubre = (now: Date, fecha: string) => {
+    const { start, end } = rangoDeMananaHotel(now);
+    const t = new Date(fecha).getTime();
+    return t >= start.getTime() && t < end.getTime();
+  };
+
+  it("el viernes 11 a las 13:39 local, mañana es el sábado 12 — no el domingo", () => {
+    const now = new Date("2026-09-11T20:39:00.000Z");
+    expect(rangoDeMananaHotel(now)).toEqual({
+      start: new Date("2026-09-12T00:00:00.000Z"),
+      end: new Date("2026-09-13T00:00:00.000Z"),
+    });
+    expect(cubre(now, "2026-09-13T00:00:00.000Z")).toBe(false);
+  });
+
+  it("no depende de a qué hora corra el cron dentro del día local", () => {
+    // 11:00 puntual (18:00Z) y 23:30 local (06:30Z del día siguiente).
+    for (const now of ["2026-09-11T18:00:00.000Z", "2026-09-12T06:30:00.000Z"]) {
+      expect(cubre(new Date(now), "2026-09-12T00:00:00.000Z")).toBe(true);
+      expect(cubre(new Date(now), "2026-09-13T00:00:00.000Z")).toBe(false);
+    }
+  });
+
+  it("cubre las filas viejas ancladas a medianoche o mediodía local", () => {
+    const now = new Date("2026-09-11T20:39:00.000Z");
+    expect(cubre(now, "2026-09-12T07:00:00.000Z")).toBe(true);
+    expect(cubre(now, "2026-09-12T19:00:00.000Z")).toBe(true);
+    expect(cubre(now, "2026-09-13T07:00:00.000Z")).toBe(false);
+  });
+
+  it("cruza fin de mes", () => {
+    expect(rangoDeMananaHotel(new Date("2026-09-30T18:00:00.000Z")).start).toEqual(
+      new Date("2026-10-01T00:00:00.000Z")
+    );
   });
 });
 

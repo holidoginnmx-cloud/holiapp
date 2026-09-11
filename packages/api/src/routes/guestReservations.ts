@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   GuestReservationIntentSchema,
   GuestReservationConfirmSchema,
+  stayDayAnchor,
 } from "@holidoginn/shared";
 import type { Pet } from "@prisma/client";
 import Stripe from "stripe";
@@ -92,8 +93,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
         await recordRequiredAcceptances(prisma, owner.id, { ipAddress, userAgent });
 
         // 3) Validar fechas + elegibilidad de anticipo.
-        const checkInDate = new Date(body.checkIn);
-        const checkOutDate = new Date(body.checkOut);
+        const checkInDate = stayDayAnchor(new Date(body.checkIn));
+        const checkOutDate = stayDayAnchor(new Date(body.checkOut));
         if (checkOutDate <= checkInDate) {
           return reply.status(400).send({ error: "checkOut debe ser posterior a checkIn" });
         }
@@ -380,8 +381,8 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
 
       const ownerId = String(pi.metadata.ownerId);
       const petIds = String(pi.metadata.petIds || "").split(",").filter(Boolean);
-      const checkIn = new Date(String(pi.metadata.checkIn));
-      const checkOut = new Date(String(pi.metadata.checkOut));
+      const checkIn = stayDayAnchor(new Date(String(pi.metadata.checkIn)));
+      const checkOut = stayDayAnchor(new Date(String(pi.metadata.checkOut)));
       const roomPreference = (pi.metadata.roomPreference as "shared" | "separate") || "shared";
       const paymentType = (pi.metadata.paymentType as "FULL" | "DEPOSIT") || "FULL";
 

@@ -1,6 +1,6 @@
 import type { PrismaClient, Reservation } from "@holidoginn/db";
 import { equipoActivoIds, notifyUsers } from "./notify";
-import { ymdAtLocalMinutes } from "./bathAvailability";
+import { localYMD, ymdAtLocalMinutes } from "./bathAvailability";
 
 /**
  * Escritura de la hora estimada de llegada/recogida de un hospedaje o guardería
@@ -33,6 +33,25 @@ export function instanteDeLlegada(res: {
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
   // El día se lee con componentes UTC a propósito: es como se guardó.
   return ymdAtLocalMinutes(res.checkIn.toISOString().slice(0, 10), hh * 60 + mm);
+}
+
+/**
+ * "Mañana" para el recordatorio de hora de llegada/recogida: el día calendario
+ * siguiente en HERMOSILLO, como rango [00:00Z de mañana, 00:00Z de pasado].
+ *
+ * Antes era una ventana de horas (ahora+6 h … ahora+36 h) que suponía fechas a
+ * medianoche local. Guardadas a 00:00Z, esa ventana de 30 h abarcaba dos días
+ * y, con el cron de GitHub corriendo tarde, se quedaba con el de PASADO
+ * mañana: el cliente recibía "mañana es su check-out" dos días antes. El rango
+ * por día no depende de a qué hora corra el cron y cubre también las filas
+ * viejas ancladas a 07:00Z o 19:00Z (caen en el mismo día UTC).
+ */
+export function rangoDeMananaHotel(now: Date = new Date()): { start: Date; end: Date } {
+  const [y, m, d] = localYMD(now).split("-").map(Number);
+  return {
+    start: new Date(Date.UTC(y, m - 1, d + 1)),
+    end: new Date(Date.UTC(y, m - 1, d + 2)),
+  };
 }
 
 export type StayTimesInput = {

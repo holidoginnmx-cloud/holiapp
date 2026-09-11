@@ -1,5 +1,11 @@
 import { FastifyInstance } from "fastify";
-import { CreateRoomSchema, UpdateRoomSchema, PetSize, ReservationStatus } from "@holidoginn/shared";
+import {
+  CreateRoomSchema,
+  UpdateRoomSchema,
+  PetSize,
+  ReservationStatus,
+  stayDayAnchor,
+} from "@holidoginn/shared";
 import {
   createAuthMiddleware,
   createAdminMiddleware,
@@ -120,8 +126,8 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
     Querystring: { checkIn: string; checkOut: string; petSize: string };
   }>("/rooms/available", { preHandler: [authMiddleware] }, async (request, reply) => {
     const { checkIn, checkOut, petSize } = request.query;
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
+    const checkInDate = stayDayAnchor(new Date(checkIn));
+    const checkOutDate = stayDayAnchor(new Date(checkOut));
 
     if (checkOutDate <= checkInDate) {
       return reply
@@ -157,8 +163,10 @@ export default async function roomsRoutes(fastify: FastifyInstance) {
     { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
       const { checkIn, checkOut, excludeReservationId } = request.query;
-      const checkInDate = new Date(checkIn);
-      const checkOutDate = new Date(checkOut);
+      // Anclados como se guardan: con la medianoche local (07:00Z) del wizard,
+      // el perro que ENTRA el día que este sale se contaba como encimado.
+      const checkInDate = stayDayAnchor(new Date(checkIn));
+      const checkOutDate = stayDayAnchor(new Date(checkOut));
 
       if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
         return reply

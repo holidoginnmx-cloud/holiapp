@@ -38,6 +38,7 @@ import { ReservationDateHero } from "@/components/reservation/ReservationDateHer
 import { ReservationPaymentsCard } from "@/components/reservation/ReservationPaymentsCard";
 import { ReservationBalanceCard } from "@/components/reservation/ReservationBalanceCard";
 import { TimeSlotPicker } from "@/components/TimeSlotPicker";
+import { useDaycareHourPrice, subtituloRecogida } from "@/hooks/useDaycareHourPrice";
 import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import {
   formatName,
@@ -129,6 +130,7 @@ function ReservationDetailScreenContent() {
   >(null);
   // Selector de hora estimada de llegada ("in") / recogida ("out").
   const [timePickerFor, setTimePickerFor] = useState<"in" | "out" | null>(null);
+  const daycareHourPrice = useDaycareHourPrice();
   const [deliveryModalVisible, setDeliveryModalVisible] = useState(false);
   const {
     data: reservation,
@@ -944,7 +946,7 @@ function ReservationDetailScreenContent() {
         subtitle={
           timePickerFor === "in"
             ? "¿A qué hora planeas dejar a tu peludito? Así lo tenemos todo listo."
-            : "¿A qué hora planeas recogerlo? Después de la 1:00 pm aplica guardería ($25/h)."
+            : subtituloRecogida(daycareHourPrice)
         }
         value={
           timePickerFor === "in"

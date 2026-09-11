@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-import { CreatePaymentSchema, hoursUntilHotelDay } from "@holidoginn/shared";
+import { CreatePaymentSchema, hoursUntilHotelDay, stayDayAnchor } from "@holidoginn/shared";
 import Stripe from "stripe";
 import {
   createAuthMiddleware,
@@ -210,8 +210,8 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
+    const checkInDate = stayDayAnchor(new Date(checkIn));
+    const checkOutDate = stayDayAnchor(new Date(checkOut));
     if (checkOutDate <= checkInDate) {
       return reply.status(400).send({ error: "checkOut debe ser posterior a checkIn" });
     }
@@ -446,8 +446,10 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         type: "stay",
         ownerId,
         petIds: petIds.join(","),
-        checkIn,
-        checkOut,
+        // Ya anclados: /multi los compara contra su body, que el esquema
+        // también ancla.
+        checkIn: checkInDate.toISOString(),
+        checkOut: checkOutDate.toISOString(),
         roomPreference,
         totalDays: String(totalDays),
         paymentType,

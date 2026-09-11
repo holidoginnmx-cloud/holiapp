@@ -10,6 +10,7 @@ import {
   computeDaycareHours,
   computeDays,
   hoursUntilHotelDay,
+  stayDayAnchor,
   isWithinDaycareHours,
   minutesFromHHmm,
   pricePerDayForWeight,
@@ -232,6 +233,35 @@ describe("hoursUntilHotelDay", () => {
   it("acepta otro desfase y usa Date.now() por defecto", () => {
     expect(hoursUntilHotelDay(checkIn, Date.UTC(2026, 8, 10, 0, 0), 0)).toBe(0);
     expect(typeof hoursUntilHotelDay(checkIn)).toBe("number");
+  });
+});
+
+describe("stayDayAnchor", () => {
+  const iso = (d: Date) => d.toISOString();
+
+  it("deja igual lo que ya está a las 00:00 UTC", () => {
+    const d = new Date("2026-09-13T00:00:00.000Z");
+    expect(stayDayAnchor(d)).toBe(d);
+  });
+
+  it("medianoche y mediodía de Hermosillo → 00:00Z del mismo día", () => {
+    // Lo que manda el wizard del equipo (new Date(y, m, d) en UTC-7).
+    expect(iso(stayDayAnchor(new Date("2026-09-13T07:00:00.000Z")))).toBe(
+      "2026-09-13T00:00:00.000Z"
+    );
+    expect(iso(stayDayAnchor(new Date("2026-09-14T19:00:00.000Z")))).toBe(
+      "2026-09-14T00:00:00.000Z"
+    );
+  });
+
+  it("lee el día del hotel, no el UTC: 20:00 del 5 local = 03:00Z del 6", () => {
+    expect(iso(stayDayAnchor(new Date("2026-09-06T03:00:00.000Z")))).toBe(
+      "2026-09-05T00:00:00.000Z"
+    );
+  });
+
+  it("devuelve una fecha inválida tal cual", () => {
+    expect(Number.isNaN(stayDayAnchor(new Date("mal")).getTime())).toBe(true);
   });
 });
 

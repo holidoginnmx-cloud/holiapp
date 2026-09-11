@@ -323,6 +323,32 @@ export function hoursUntilHotelDay(
   return (localMidnight - now) / 3_600_000;
 }
 
+/**
+ * Lleva una fecha de estadía (`checkIn`/`checkOut`) a la convención: las 00:00
+ * UTC de su día calendario.
+ *
+ * Quien la manda ya así (app del cliente, admin web, cotizaciones) no cambia.
+ * Cualquier otra hora viene de un `Date` armado en hora LOCAL — el wizard del
+ * equipo manda la medianoche de Hermosillo (07:00Z) y el selector a veces el
+ * mediodía (19:00Z) — y su día es el del hotel, no el UTC: las 20:00 del 5 en
+ * Hermosillo son las 03:00Z del 6.
+ *
+ * Sin esto, esas filas quedaban 7 h corridas: el cuarto se veía ocupado el día
+ * que otro perro salía y el recordatorio de "mañana" salía un día antes.
+ * Una fecha inválida se devuelve tal cual para que el caller la rechace.
+ */
+export function stayDayAnchor(
+  d: Date,
+  tzOffsetHours: number = HOTEL_TZ_OFFSET_HOURS
+): Date {
+  const t = d.getTime();
+  if (Number.isNaN(t) || t % 86_400_000 === 0) return d;
+  const local = new Date(t - tzOffsetHours * 3_600_000);
+  return new Date(
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate())
+  );
+}
+
 // ============================================================
 // Hospedaje (STAY) — UNA sola fórmula de precio por mascota.
 //

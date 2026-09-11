@@ -22,9 +22,9 @@ import {
 import { requestReview } from "../lib/reviewRequest";
 import { notifyBalanceDue } from "../lib/balanceReminder";
 import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
-import { billableBathSize, bathSizeKey } from "../lib/pricing";
+import { billableBathSize, bathSizeKey, getLodgingPricing } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
-import { instanteDeLlegada } from "../lib/stayTimes";
+import { instanteDeLlegada, rangoDeMananaHotel } from "../lib/stayTimes";
 import {
   TZ_HOTEL,
   TZ_OFFSET_HOURS,
@@ -1414,8 +1414,8 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   //  POST /internal/stay-time-reminders — cron endpoint (diario)
   //  Un día antes del check-in (o check-out) de un hospedaje, si el cliente
   //  NO ha indicado la hora estimada de llegada (o recogida), se le pide por
-  //  push. checkIn/checkOut se guardan al día a las 00:00 local, así que con
-  //  el cron diario la ventana now+12h..+36h captura exactamente "mañana".
+  //  push. "Mañana" es el día calendario siguiente en Hermosillo
+  //  (rangoDeMananaHotel), no una ventana de horas desde que corre el cron.
   //  Idempotente: dedup por Notification.data.groupKey + kind (una sola
   //  notificación por grupo multi-mascota).
   // ────────────────────────────────────────────────────────────
@@ -1425,11 +1425,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: "No autorizado" });
     }
 
-    const now = new Date();
-    // Piso de 6h (no 12): GH Actions puede atrasarse >1h y el check-in de
-    // "mañana" (00:00 local ≈ 13h después del cron puntual) no debe escaparse.
-    const windowStart = new Date(now.getTime() + 6 * 3600 * 1000);
-    const windowEnd = new Date(now.getTime() + 36 * 3600 * 1000);
+    const { start: windowStart, end: windowEnd } = rangoDeMananaHotel();
 
     const [checkins, checkouts] = await Promise.all([
       prisma.reservation.findMany({
@@ -1451,6 +1447,12 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         include: { pet: { select: { name: true } } },
       }),
     ]);
+
+    // Tarifa de guardería vigente (Config → Tarifas) para el aviso de
+    // recogida: antes decía "$25/h" quemado y la tarifa real ya era otra.
+    const { daycareHourPrice } = await getLodgingPricing(prisma);
+    const tarifaGuarderia =
+      daycareHourPrice > 0 ? `, $${daycareHourPrice.toLocaleString("es-MX")}/h` : "";
 
     let sent = 0;
     const remind = async (
@@ -1480,7 +1482,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const body =
         kind === "CHECKIN_TIME"
           ? "Mañana es su check-in. Indícanos la hora de entrada en la app para tenerlo todo listo."
-          : "Mañana es su check-out. Indícanos la hora de recogida en la app (después de la 1:00 pm aplica guardería, $25/h).";
+          : `Mañana es su check-out. Indícanos la hora de recogida en la app (después de la 1:00 pm aplica guardería${tarifaGuarderia}).`;
 
       await notifyPetAudience(prisma, { petId: first.petId, ownerId: first.ownerId }, {
         

@@ -9,6 +9,7 @@ import {
   UpdateReservationDeliverySchema,
   UpdateDaycareScheduleSchema,
   DeliveryTripSchema,
+  StayDaySchema,
 } from "@holidoginn/shared";
 import { createInternalGuard, logInternal } from "../lib/internalAuth";
 import { createWalkInBath } from "../lib/walkInBath";
@@ -84,8 +85,8 @@ const CancelSchema = z.object({
 });
 
 const DatesSchema = z.object({
-  newCheckIn: z.coerce.date(),
-  newCheckOut: z.coerce.date(),
+  newCheckIn: StayDaySchema,
+  newCheckOut: StayDaySchema,
   applyToGroup: z.boolean().default(true),
 });
 

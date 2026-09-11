@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { stayDayAnchor } from "./pricing";
+
+/**
+ * Fecha de estadía (checkIn/checkOut) que entra al API: se ancla a las 00:00
+ * UTC de su día (ver `stayDayAnchor`). Todo body que traiga esas fechas pasa
+ * por aquí para que ninguna ruta guarde la medianoche local de un teléfono.
+ */
+export const StayDaySchema = z.coerce.date().transform((d) => stayDayAnchor(d));
 
 // ========================
 // Enums
@@ -74,8 +82,8 @@ export const CreditEntryTypeEnum = z.enum([
 export type CreditEntryType = z.infer<typeof CreditEntryTypeEnum>;
 
 export const CreateChangeRequestSchema = z.object({
-  newCheckIn: z.coerce.date(),
-  newCheckOut: z.coerce.date(),
+  newCheckIn: StayDaySchema,
+  newCheckOut: StayDaySchema,
   refundChoice: RefundChoiceEnum.optional().nullable(),
 });
 export type CreateChangeRequest = z.infer<typeof CreateChangeRequestSchema>;
@@ -534,8 +542,8 @@ export const CreateReservationSchema = z.object({
   petId: z.string().optional(),
   petIds: z.array(z.string()).min(1).optional(),
   // STAY
-  checkIn: z.coerce.date().optional(),
-  checkOut: z.coerce.date().optional(),
+  checkIn: StayDaySchema.optional(),
+  checkOut: StayDaySchema.optional(),
   roomId: z.string().optional(),
   // Multi-perro: un cuarto por mascota, en el MISMO orden que petIds (los
   // perros de un grupo no siempre caben juntos ni comparten talla). Si se
@@ -573,8 +581,8 @@ export const CreateReservationSchema = z.object({
 });
 
 export const CreateMultiReservationSchema = z.object({
-  checkIn: z.coerce.date(),
-  checkOut: z.coerce.date(),
+  checkIn: StayDaySchema,
+  checkOut: StayDaySchema,
   // Hora estimada de llegada/recogida (opcional al reservar).
   checkInTime: TimeHHmmSchema.optional(),
   checkOutTime: TimeHHmmSchema.optional(),

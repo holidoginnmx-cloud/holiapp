@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { TimeSlotGrid } from "@/components/TimeSlotPicker";
 import { useTrackedModal } from "@/lib/modalPresentation";
 import { formatTimeHHmm } from "@/lib/format";
+import { useDaycareHourPrice, subtituloRecogida } from "@/hooks/useDaycareHourPrice";
 
 /**
  * Recordatorio que se muestra al OWNER al presionar "Pagar y confirmar" en una
@@ -27,8 +28,12 @@ import { formatTimeHHmm } from "@/lib/format";
  * controllers encadenados justo antes del cobro: mientras eso pasa, Stripe no
  * puede presentar su hoja de pago y el botón se queda girando para siempre.
  */
-const REMINDER_TEXT =
-  "*RECUERDA* 💡 El *check in* se puede programar en horario de lunes a sábado de 9:00 am a 6:00 pm y el *check out* es de 9:00 am a 1:00 pm ✨👉🏼 Igual puedes programar el *check out* después de la 1:00 pm solo que empieza a considerarse el *tiempo de guardería*, tiene costo de $25 pesos la hora 🙌🏼";
+function reminderText(hourPrice: string | null): string {
+  return (
+    "*RECUERDA* 💡 El *check in* se puede programar en horario de lunes a sábado de 9:00 am a 6:00 pm y el *check out* es de 9:00 am a 1:00 pm ✨👉🏼 Igual puedes programar el *check out* después de la 1:00 pm solo que empieza a considerarse el *tiempo de guardería*, " +
+    (hourPrice ? `tiene costo de ${hourPrice} pesos la hora 🙌🏼` : "que se cobra por hora 🙌🏼")
+  );
+}
 
 /**
  * Convierte el texto con marcado `*negrita*` en segmentos <Text>. Los segmentos
@@ -72,6 +77,7 @@ export function CheckInReminderModal({
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
+  const hourPrice = useDaycareHourPrice();
 
   const trackedDismiss = useTrackedModal(visible);
 
@@ -123,7 +129,7 @@ export function CheckInReminderModal({
               subtitle={
                 pickerFor === "in"
                   ? "¿A qué hora planeas dejar a tu peludito?"
-                  : "¿A qué hora planeas recogerlo? Después de la 1:00 pm aplica guardería ($25/h)."
+                  : subtituloRecogida(hourPrice)
               }
               value={pickerFor === "in" ? checkInTime : checkOutTime}
               warnFrom={pickerFor === "out" ? "13:00" : undefined}
@@ -145,7 +151,7 @@ export function CheckInReminderModal({
                 <Ionicons name="time-outline" size={32} color={COLORS.primary} />
               </View>
 
-              <Text style={styles.message}>{renderRichText(REMINDER_TEXT)}</Text>
+              <Text style={styles.message}>{renderRichText(reminderText(hourPrice))}</Text>
 
               {/* Hora estimada (opcional). Si no la eligen aquí, se pide por
                   notificación un día antes del check-in / check-out. */}
