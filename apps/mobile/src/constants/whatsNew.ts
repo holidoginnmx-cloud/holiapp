@@ -41,11 +41,11 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         icon: "git-merge-outline",
         title: "Juntar el mismo perro capturado dos veces",
         body:
-          "En la ficha de un perro, «Juntar»: eliges el otro registro del mismo " +
-          "perro (del mismo cliente), qué ficha se queda y con qué nombre. La " +
-          "que se queda recibe reservas, cartilla, vacunas, notas y contactos, y " +
-          "la otra queda dada de baja. Por ejemplo, «SKY» y «Sky Velazquez» de " +
-          "Baltasar Soto, que eran la misma perra.",
+          "Al final de la ficha de un perro, «Juntar con otro registro de este " +
+          "perro»: eliges el otro registro (del mismo cliente) y, si se llaman " +
+          "distinto, con qué nombre se queda. Queda uno solo con las reservas, " +
+          "cartilla, vacunas, notas y contactos de los dos. Por ejemplo, «SKY» y " +
+          "«Sky Velazquez» de Baltasar Soto, que eran la misma perra.",
         roles: ["ADMIN"],
       },
       {
@@ -54,9 +54,10 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         body:
           "En Clientes, abre al cliente y toca «Juntar con otra ficha». Sirve " +
           "cuando alguien quedó dado de alta dos veces, como Francisco Acosta con " +
-          "Nala en una ficha y Luna en otra. Todo pasa a la ficha que se queda: " +
-          "perros, reservas, pagos, saldo y cotizaciones. La que se da de baja no " +
-          "puede tener cuenta de la app; para eso está «Vincular fichas».",
+          "Nala en una ficha y Luna en otra. Quedan en una sola, con los perros, " +
+          "reservas, pagos, saldo y cotizaciones de las dos; si tienen teléfono " +
+          "distinto, eliges cuál se queda. Si una tiene cuenta de la app, esa es " +
+          "la que se queda.",
         roles: ["ADMIN"],
       },
       {

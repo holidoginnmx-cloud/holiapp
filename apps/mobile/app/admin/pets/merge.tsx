@@ -109,7 +109,9 @@ export default function MergePetScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [otroId, setOtroId] = useState<string | null>(null);
-  const [quedaId, setQuedaId] = useState<string | null>(null);
+  // De cuál de los dos es el nombre que se queda; null = el de la ficha más
+  // vieja. Es lo único que se pregunta: "¿qué ficha se queda?" no se entendía
+  // (los dos son el mismo perro), y la más vieja es la del historial.
   const [nombreDeId, setNombreDeId] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
 
@@ -133,21 +135,29 @@ export default function MergePetScreen() {
 
   function elegir(o: PetLite) {
     setOtroId(o.id);
-    // Por default se queda la ficha más vieja: suele ser la del historial.
-    const viejo =
-      pet && new Date(pet.createdAt ?? 0).getTime() <= new Date(o.createdAt ?? 0).getTime() ? pet : o;
-    setQuedaId(viejo.id);
-    setNombreDeId(viejo.id);
+    setNombreDeId(null);
   }
 
+  // Se queda la ficha más vieja: suele ser la del historial. Lo que ya tiene
+  // no se toca; solo se completa lo que le falte con la otra.
+  const queda =
+    pet && otro
+      ? new Date(pet.createdAt ?? 0).getTime() <= new Date(otro.createdAt ?? 0).getTime()
+        ? pet
+        : otro
+      : null;
+  const seVa = queda && pet && otro ? (queda.id === pet.id ? otro : pet) : null;
+  const nombresDistintos =
+    !!pet && !!otro && formatName(pet.name).toLowerCase() !== formatName(otro.name).toLowerCase();
+  const nombreFinal = queda && seVa ? (nombreDeId === seVa.id ? seVa.name : queda.name) : "";
+
   async function juntar() {
-    if (!pet || !otro || !quedaId || !nombreDeId) return;
-    const queda = quedaId === pet.id ? pet : otro;
-    const seVa = quedaId === pet.id ? otro : pet;
-    const nombreFinal = nombreDeId === pet.id ? pet.name : otro.name;
+    if (!queda || !seVa) return;
+    const q = queda;
+    const v = seVa;
     Alert.alert(
       "¿Juntar los dos?",
-      `Se queda la ficha de ${formatName(queda.name)} con el nombre «${formatName(nombreFinal)}», y recibe las reservas, la cartilla, las vacunas, las notas y los contactos de ${formatName(seVa.name)}, que queda dada de baja. No se puede deshacer.`,
+      `Quedará un solo «${formatName(nombreFinal)}» con las reservas, la cartilla, las vacunas, las notas y los contactos de los dos. No se puede deshacer.`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -156,12 +166,12 @@ export default function MergePetScreen() {
           onPress: async () => {
             setTrabajando(true);
             try {
-              await mergePets(seVa.id, queda.id, nombreDeId === seVa.id);
+              await mergePets(v.id, q.id, nombreDeId === v.id);
               qc.invalidateQueries({ queryKey: ["pets"] });
               qc.invalidateQueries({ queryKey: ["pet"] });
               qc.invalidateQueries({ queryKey: ["admin"] });
               Alert.alert("Listo", `${formatName(nombreFinal)} ya es una sola ficha.`);
-              router.replace(`/pet/${queda.id}` as any);
+              router.replace(`/pet/${q.id}` as any);
             } catch (e) {
               alertaDeError(e, { respaldo: "No se pudieron juntar" });
             } finally {
@@ -187,9 +197,8 @@ export default function MergePetScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.aviso}>
-        Para cuando el mismo perro quedó capturado dos veces. La ficha que se queda conserva su
-        historial y recibe lo de la otra: reservas, cartilla, vacunas, notas y contactos. La otra
-        queda dada de baja. No se puede deshacer.
+        Para cuando el mismo perro quedó capturado dos veces. Los dos registros se vuelven uno solo,
+        con las reservas, cartilla, vacunas, notas y contactos de ambos. No se puede deshacer.
       </Text>
 
       <Text style={styles.seccion}>Este perro</Text>
@@ -205,22 +214,47 @@ export default function MergePetScreen() {
         otros.map((o) => <Fila key={o.id} pet={o} marcado={o.id === otroId} onPress={() => elegir(o)} />)
       )}
 
-      {otro && quedaId && nombreDeId && (
+      {otro && queda && seVa && (
         <>
-          <Text style={styles.seccion}>¿Qué ficha se queda?</Text>
-          <View style={styles.chips}>
-            <Chip activo={quedaId === pet.id} texto={formatName(pet.name)} onPress={() => setQuedaId(pet.id)} />
-            <Chip activo={quedaId === otro.id} texto={formatName(otro.name)} onPress={() => setQuedaId(otro.id)} />
+          {nombresDistintos && (
+            <>
+              <Text style={styles.seccion}>¿Con qué nombre se queda?</Text>
+              <View style={styles.chips}>
+                {[pet, otro].map((p) => (
+                  <Chip
+                    key={p.id}
+                    activo={(nombreDeId ?? queda.id) === p.id}
+                    texto={formatName(p.name)}
+                    onPress={() => setNombreDeId(p.id)}
+                  />
+                ))}
+              </View>
+            </>
+          )}
+
+          <Text style={styles.seccion}>Así va a quedar</Text>
+          <View style={[styles.fila, styles.resultado]}>
+            {queda.photoUrl || seVa.photoUrl ? (
+              <Image
+                source={{ uri: cloudinaryResized((queda.photoUrl ?? seVa.photoUrl)!, 96, "fill") }}
+                style={styles.foto}
+              />
+            ) : (
+              <View style={[styles.foto, styles.fotoVacia]}>
+                <Ionicons name="paw" size={14} color={COLORS.textTertiary} />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nombre}>{formatName(nombreFinal)}</Text>
+              <Text style={styles.detalle}>
+                Un solo registro con las reservas, cartilla, vacunas, notas y contactos de los dos.
+              </Text>
+            </View>
           </View>
           <Text style={styles.nota}>
-            Lo que la ficha que se queda ya tiene no se toca; solo se completa lo que le falte.
+            Si los dos tienen un dato distinto (peso, raza, veterinario), se queda el del registro
+            más viejo; lo que le falte se completa con el otro.
           </Text>
-
-          <Text style={styles.seccion}>Nombre que se queda</Text>
-          <View style={styles.chips}>
-            <Chip activo={nombreDeId === pet.id} texto={formatName(pet.name)} onPress={() => setNombreDeId(pet.id)} />
-            <Chip activo={nombreDeId === otro.id} texto={formatName(otro.name)} onPress={() => setNombreDeId(otro.id)} />
-          </View>
 
           <TouchableOpacity
             style={[styles.boton, trabajando && styles.botonOff]}
@@ -269,6 +303,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+  resultado: { borderWidth: 1, borderColor: COLORS.primary },
   foto: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.bgSection },
   fotoVacia: { alignItems: "center", justifyContent: "center" },
   nombre: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },

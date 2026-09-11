@@ -15,7 +15,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getAllPets, getUsers, type AdminUserListItem } from "@/lib/api";
 import { mergeClients } from "@/lib/api/merge";
-import { formatName, formatPhoneInput, displayEmail, formatCurrency } from "@/lib/format";
+import {
+  formatName,
+  formatPhoneInput,
+  displayEmail,
+  formatCurrency,
+  formatDayShortYear,
+} from "@/lib/format";
 import { alertaDeError } from "@/lib/errorAlert";
 import { ErrorState } from "@/components/ErrorState";
 
@@ -23,14 +29,30 @@ export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBo
 
 // Dos fichas del MISMO cliente: el equipo lo dio de alta dos veces (Francisco
 // Acosta con Nala en una y Luna en otra, con el teléfono mal escrito en una;
-// sep-2026). Todo pasa a la ficha que se queda —perros, reservas, pagos,
-// saldo, cotizaciones— y la otra queda dada de baja (API: lib/ownerMerge.ts).
+// sep-2026). Todo pasa a una sola —perros, reservas, pagos, saldo,
+// cotizaciones— y la otra queda dada de baja (API: lib/ownerMerge.ts).
 // La que se da de baja no puede tener cuenta de la app: eso es «Vincular
 // fichas», que además le hereda la sesión a la ficha.
+//
+// La pantalla NO pregunta "¿qué ficha se queda?": para quien la usa las dos
+// son la misma persona y la pregunta no se entiende (y con el mismo nombre y
+// teléfono, las dos opciones se veían idénticas). Se decide sola —la que
+// tiene app y, si ninguna, la más vieja— y solo se pregunta por un DATO cuando
+// las dos lo tienen distinto: nombre/correo (que salen de la que se queda) y
+// teléfono (que se elige aparte).
 
 const tieneApp = (u: AdminUserListItem) => !!(u as { clerkId?: string | null }).clerkId;
 const digitos = (tel: string) => tel.replace(/\D/g, "").slice(-10);
-const nombreDe = (u: AdminUserListItem) => formatName(`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim());
+// El apellido de relleno ("—") de las altas sin apellido no es parte del nombre.
+const nombreDe = (u: AdminUserListItem) =>
+  formatName(
+    `${u.firstName ?? ""} ${u.lastName ?? ""}`
+      .split(/\s+/)
+      .filter((w) => !/^[-—–.]+$/.test(w))
+      .join(" "),
+  );
+const correoDe = (u: AdminUserListItem) => displayEmail(u.email);
+const altaDe = (u: AdminUserListItem) => new Date(u.createdAt as unknown as string).getTime();
 const normal = (s: string) =>
   s
     .normalize("NFD")
@@ -40,12 +62,11 @@ const normal = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-function Chip({ activo, texto, onPress, disabled }: { activo: boolean; texto: string; onPress: () => void; disabled?: boolean }) {
+function Chip({ activo, texto, onPress }: { activo: boolean; texto: string; onPress: () => void }) {
   return (
     <TouchableOpacity
-      style={[styles.chip, activo && styles.chipOn, disabled && styles.chipOff]}
+      style={[styles.chip, activo && styles.chipOn]}
       onPress={onPress}
-      disabled={disabled}
       activeOpacity={0.7}
     >
       <Text style={[styles.chipText, activo && styles.chipTextOn]}>{texto}</Text>
@@ -59,7 +80,9 @@ export default function MergeOwnerScreen() {
   const qc = useQueryClient();
   const [busqueda, setBusqueda] = useState("");
   const [otroId, setOtroId] = useState<string | null>(null);
-  const [quedaId, setQuedaId] = useState<string | null>(null);
+  // De cuál ficha salen nombre y correo cuando las dos los tienen distintos;
+  // null = la que se decide sola.
+  const [datosDeId, setDatosDeId] = useState<string | null>(null);
   // De cuál ficha es el teléfono que se queda; null = el de la que se queda.
   // El otro deja de encontrarse (las búsquedas por teléfono ignoran las fichas
   // dadas de baja), así que si el bueno es el de la otra hay que elegirlo.
@@ -109,44 +132,8 @@ export default function MergeOwnerScreen() {
 
   function elegir(u: AdminUserListItem) {
     setOtroId(u.id);
+    setDatosDeId(null);
     setTelefonoDeId(null);
-    // La que tiene app se queda sí o sí (la que se va no puede tenerla).
-    if (este && tieneApp(u) && !tieneApp(este)) setQuedaId(u.id);
-    else setQuedaId(este?.id ?? null);
-  }
-
-  async function juntar() {
-    if (!este || !otro || !quedaId) return;
-    const queda = quedaId === este.id ? este : otro;
-    const seVa = quedaId === este.id ? otro : este;
-    const telDe = telefonoDeId ?? quedaId;
-    const telefono = telDe === seVa.id ? "from" : "into";
-    const telFinal = (telDe === seVa.id ? seVa.phone : queda.phone) || seVa.phone || queda.phone;
-    Alert.alert(
-      "¿Juntar las dos fichas?",
-      `Se queda la ficha de ${nombreDe(queda)}${telFinal ? `, con el teléfono ${formatPhoneInput(telFinal)},` : ""} y recibe los perros, reservas, pagos, saldo y cotizaciones de la otra, que queda dada de baja. No se puede deshacer.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Juntar",
-          style: "destructive",
-          onPress: async () => {
-            setTrabajando(true);
-            try {
-              await mergeClients(seVa.id, queda.id, telefono);
-              qc.invalidateQueries({ queryKey: ["admin"] });
-              qc.invalidateQueries({ queryKey: ["pets"] });
-              Alert.alert("Listo", `${nombreDe(queda)} ya es una sola ficha.`);
-              router.back();
-            } catch (e) {
-              alertaDeError(e, { respaldo: "No se pudieron juntar" });
-            } finally {
-              setTrabajando(false);
-            }
-          },
-        },
-      ],
-    );
   }
 
   if (usersQ.isError) return <ErrorState error={usersQ.error} onRetry={usersQ.refetch} />;
@@ -169,7 +156,7 @@ export default function MergeOwnerScreen() {
     const credito = Number(u.creditBalance ?? 0);
     const datos = [
       u.phone ? formatPhoneInput(u.phone) : "sin teléfono",
-      displayEmail(u.email) || null,
+      correoDe(u) || null,
       tieneApp(u) ? "tiene app" : "sin app",
       credito > 0 ? `saldo ${formatCurrency(credito)}` : null,
     ]
@@ -188,6 +175,10 @@ export default function MergeOwnerScreen() {
           <Text style={styles.nombre}>{nombreDe(u)}</Text>
           <Text style={styles.detalle}>{datos}</Text>
           <Text style={styles.detalle}>Perros: {(perrosDe.get(u.id) ?? []).join(", ") || "—"}</Text>
+          {/* Con el mismo nombre y teléfono, la fecha de alta es lo que las distingue. */}
+          <Text style={styles.detalle}>
+            Dada de alta el {formatDayShortYear(u.createdAt)}
+          </Text>
         </View>
       </>
     );
@@ -204,13 +195,85 @@ export default function MergeOwnerScreen() {
 
   const ambasConApp = !!otro && tieneApp(este) && tieneApp(otro);
 
+  // Cuál se queda. Con app, esa sí o sí (la que se va no puede tenerla). Sin
+  // app, la más vieja, salvo que el equipo elija los datos de la otra.
+  let queda: AdminUserListItem | null = null;
+  let seVa: AdminUserListItem | null = null;
+  let nombresDistintos = false;
+  let correosDistintos = false;
+  let hayApp = false;
+  if (otro && !ambasConApp) {
+    hayApp = tieneApp(este) || tieneApp(otro);
+    nombresDistintos = normal(nombreDe(este)) !== normal(nombreDe(otro));
+    correosDistintos =
+      !!correoDe(este) && !!correoDe(otro) && correoDe(este).toLowerCase() !== correoDe(otro).toLowerCase();
+    const porDefecto = tieneApp(este)
+      ? este
+      : tieneApp(otro)
+        ? otro
+        : altaDe(otro) < altaDe(este)
+          ? otro
+          : este;
+    queda = !hayApp && datosDeId ? (datosDeId === este.id ? este : otro) : porDefecto;
+    seVa = queda.id === este.id ? otro : este;
+  }
+  const hayQueElegirDatos = !!queda && !hayApp && (nombresDistintos || correosDistintos);
+  const telefonosDistintos =
+    !!otro && !!este.phone && !!otro.phone && digitos(este.phone) !== digitos(otro.phone);
+  const telDeId = telefonoDeId ?? queda?.id;
+  const telFinal =
+    queda && seVa ? (telDeId === seVa.id ? seVa.phone : queda.phone) || seVa.phone || queda.phone : null;
+  const correoFinal = queda && seVa ? correoDe(queda) || correoDe(seVa) : "";
+  const perrosFinal = queda && seVa ? [...(perrosDe.get(queda.id) ?? []), ...(perrosDe.get(seVa.id) ?? [])] : [];
+  const saldoFinal = queda && seVa ? Number(queda.creditBalance ?? 0) + Number(seVa.creditBalance ?? 0) : 0;
+
+  const etiquetaDatos = (u: AdminUserListItem) =>
+    [nombresDistintos ? nombreDe(u) : null, correosDistintos ? correoDe(u) : null].filter(Boolean).join(" · ");
+  const tituloDatos =
+    nombresDistintos && correosDistintos
+      ? "¿Con qué nombre y correo se queda?"
+      : nombresDistintos
+        ? "¿Con qué nombre se queda?"
+        : "¿Con qué correo se queda?";
+
+  async function juntar() {
+    if (!queda || !seVa) return;
+    const q = queda;
+    const v = seVa;
+    const telefono = telDeId === v.id ? "from" : "into";
+    const perros = perrosFinal.length > 0 ? ` con ${listaY(perrosFinal)}` : "";
+    Alert.alert(
+      "¿Juntar las dos fichas?",
+      `Quedará una sola ficha de ${nombreDe(q)}${telFinal ? ` (${formatPhoneInput(telFinal)})` : ""}${perros}. No se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Juntar",
+          style: "destructive",
+          onPress: async () => {
+            setTrabajando(true);
+            try {
+              await mergeClients(v.id, q.id, telefono);
+              qc.invalidateQueries({ queryKey: ["admin"] });
+              qc.invalidateQueries({ queryKey: ["pets"] });
+              Alert.alert("Listo", `${nombreDe(q)} ya es una sola ficha.`);
+              router.back();
+            } catch (e) {
+              alertaDeError(e, { respaldo: "No se pudieron juntar" });
+            } finally {
+              setTrabajando(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.aviso}>
-        Para cuando el mismo cliente quedó dado de alta dos veces. Todo pasa a la ficha que se
-        queda —perros, reservas, pagos, saldo y cotizaciones— y la otra queda dada de baja. Si
-        las dos tienen teléfono, eliges cuál se queda; el correo es el de la ficha que se queda
-        (si no tiene uno real, toma el de la otra). No se puede deshacer.
+        Para cuando el mismo cliente quedó dado de alta dos veces. Las dos fichas se vuelven una
+        sola, con los perros, reservas, pagos, saldo y cotizaciones de ambas. No se puede deshacer.
       </Text>
 
       <Text style={styles.seccion}>Esta ficha</Text>
@@ -248,46 +311,65 @@ export default function MergeOwnerScreen() {
         </Text>
       )}
 
-      {otro && !ambasConApp && quedaId && (
+      {otro && queda && seVa && (
         <>
-          <Text style={styles.seccion}>¿Qué ficha se queda?</Text>
-          <View style={styles.chips}>
-            <Chip
-              activo={quedaId === este.id}
-              texto={`${nombreDe(este)}${este.phone ? ` · ${formatPhoneInput(este.phone)}` : ""}`}
-              onPress={() => setQuedaId(este.id)}
-              disabled={tieneApp(otro)}
-            />
-            <Chip
-              activo={quedaId === otro.id}
-              texto={`${nombreDe(otro)}${otro.phone ? ` · ${formatPhoneInput(otro.phone)}` : ""}`}
-              onPress={() => setQuedaId(otro.id)}
-              disabled={tieneApp(este)}
-            />
-          </View>
-          {(tieneApp(este) || tieneApp(otro)) && (
-            <Text style={styles.nota}>La que tiene cuenta en la app es la que se queda.</Text>
+          {hayQueElegirDatos && (
+            <>
+              <Text style={styles.seccion}>{tituloDatos}</Text>
+              <View style={styles.chips}>
+                {[este, otro].map((u) => (
+                  <Chip
+                    key={u.id}
+                    activo={queda!.id === u.id}
+                    texto={etiquetaDatos(u)}
+                    onPress={() => setDatosDeId(u.id)}
+                  />
+                ))}
+              </View>
+            </>
           )}
 
-          {!!este.phone && !!otro.phone && digitos(este.phone) !== digitos(otro.phone) && (
+          {telefonosDistintos && (
             <>
-              <Text style={styles.seccion}>Teléfono que se queda</Text>
+              <Text style={styles.seccion}>¿Con qué teléfono se queda?</Text>
               <View style={styles.chips}>
-                <Chip
-                  activo={(telefonoDeId ?? quedaId) === este.id}
-                  texto={formatPhoneInput(este.phone)}
-                  onPress={() => setTelefonoDeId(este.id)}
-                />
-                <Chip
-                  activo={(telefonoDeId ?? quedaId) === otro.id}
-                  texto={formatPhoneInput(otro.phone)}
-                  onPress={() => setTelefonoDeId(otro.id)}
-                />
+                {[este, otro].map((u) => (
+                  <Chip
+                    key={u.id}
+                    activo={telDeId === u.id}
+                    texto={formatPhoneInput(u.phone!)}
+                    onPress={() => setTelefonoDeId(u.id)}
+                  />
+                ))}
               </View>
               <Text style={styles.nota}>
                 Con este teléfono lo encuentran el baño sin cita y la app. El otro deja de usarse.
               </Text>
             </>
+          )}
+
+          <Text style={styles.seccion}>Así va a quedar</Text>
+          <View style={[styles.fila, styles.resultado]}>
+            <Ionicons name="person-circle-outline" size={28} color={COLORS.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nombre}>{nombreDe(queda)}</Text>
+              <Text style={styles.detalle}>
+                {[
+                  telFinal ? formatPhoneInput(telFinal) : "sin teléfono",
+                  correoFinal || null,
+                  tieneApp(queda) ? "tiene app" : null,
+                  saldoFinal > 0 ? `saldo ${formatCurrency(saldoFinal)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+              <Text style={styles.detalle}>Perros: {perrosFinal.join(", ") || "—"}</Text>
+            </View>
+          </View>
+          {hayApp && (nombresDistintos || correosDistintos) && (
+            <Text style={styles.nota}>
+              Se quedan el nombre y el correo de la cuenta de la app.
+            </Text>
           )}
 
           <TouchableOpacity
@@ -306,6 +388,11 @@ export default function MergeOwnerScreen() {
       )}
     </ScrollView>
   );
+}
+
+function listaY(xs: string[]): string {
+  if (xs.length <= 1) return xs.join("");
+  return `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`;
 }
 
 const styles = StyleSheet.create({
@@ -337,6 +424,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+  resultado: { borderWidth: 1, borderColor: COLORS.primary },
   nombre: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   detalle: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
   buscador: {
@@ -366,7 +454,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   chipOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
-  chipOff: { opacity: 0.4 },
   chipText: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
   chipTextOn: { color: COLORS.primary },
   nota: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },

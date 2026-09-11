@@ -389,24 +389,6 @@ export default function PetDetailScreen() {
             <Text style={styles.actionButtonText}>Dueños</Text>
           </TouchableOpacity>
         )}
-        {/* El mismo perro capturado dos veces ("SKY" y "Sky Velazquez"): se
-            juntan en una ficha sin perder historial. Solo admin, y nunca en
-            una ficha ya dada de baja (la que se juntó con otra). */}
-        {role === "ADMIN" && petAny?.isActive !== false && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() =>
-              router.push({
-                pathname: "/admin/pets/merge",
-                params: { petId: id! },
-              } as any)
-            }
-            testID="pet-merge-button"
-          >
-            <Ionicons name="git-merge-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.actionButtonText}>Juntar</Text>
-          </TouchableOpacity>
-        )}
         {/* El cliente comparte a su perro él solo (invitación por liga). El
             dueño invita y quita; el co-dueño ve con quién se comparte y puede
             salirse. El equipo tiene su propia pantalla, arriba. */}
@@ -839,9 +821,31 @@ export default function PetDetailScreen() {
         <Text style={styles.emptyText}>No hay vacunas registradas</Text>
       )}
 
+      {/* El mismo perro capturado dos veces ("SKY" y "Sky Velazquez"): se
+          juntan en una ficha sin perder historial. Solo admin, y nunca en una
+          ficha ya dada de baja (la que se juntó con otra). Va aquí abajo, junto
+          a «Eliminar», y no en la fila de arriba: es de uso raro y como quinto
+          botón apretaba a los de todos los días. */}
+      {role === "ADMIN" && petAny?.isActive !== false && (
+        <TouchableOpacity
+          style={styles.mergeButton}
+          onPress={() =>
+            router.push({
+              pathname: "/admin/pets/merge",
+              params: { petId: id! },
+            } as any)
+          }
+          activeOpacity={0.85}
+          testID="pet-merge-button"
+        >
+          <Ionicons name="git-merge-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.mergeButtonText}>Juntar con otro registro de este perro</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Eliminar mascota */}
       <TouchableOpacity
-        style={styles.deleteButton}
+        style={[styles.deleteButton, role === "ADMIN" && petAny?.isActive !== false && { marginTop: 10 }]}
         onPress={confirmDelete}
         disabled={deleteMutation.isPending}
         activeOpacity={0.85}
@@ -1522,6 +1526,24 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.warningText,
     lineHeight: 20,
+  },
+  mergeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 28,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.reviewBorder,
+    backgroundColor: COLORS.reviewBg,
+  },
+  mergeButtonText: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
   },
   deleteButton: {
     flexDirection: "row",
