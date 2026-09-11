@@ -79,6 +79,9 @@ export default function ClaimAccountScreen() {
   // código. Antes aquí solo había un "escríbenos por WhatsApp".
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
+  // «Soy nuevo» ya avisó una vez que hay una ficha con ese teléfono: al
+  // segundo toque, sigue.
+  const [skipAvisado, setSkipAvisado] = useState(false);
 
   // Mascotas de TODOS los candidatos: un teléfono puede traer varios registros
   // duplicados del mismo cliente (o de un familiar que comparte teléfono).
@@ -136,7 +139,8 @@ export default function ClaimAccountScreen() {
 
   const handleSearch = async (
     prefer?: "email" | "sms",
-  ): Promise<"found" | "notfound" | "error"> => {
+    probe = false,
+  ): Promise<"found" | "notfound" | "needsCode" | "error"> => {
     setError(null);
     const valor = useEmail ? email.trim().toLowerCase() : phone.trim();
     if (!valor) {
@@ -146,10 +150,20 @@ export default function ClaimAccountScreen() {
     const payload = {
       ...(useEmail ? { email: valor } : { phone: valor }),
       ...(prefer ? { prefer } : {}),
+      ...(probe ? { probe: true } : {}),
     };
     setLoading(true);
     try {
       const res = await lookupExistingAccount(payload);
+      // Solo se preguntó (desde «Soy nuevo»): hay ficha y se le puede mandar
+      // código, pero no se mandó. Que decida él.
+      if (res.needsCode) {
+        setError(
+          res.message ??
+            "Encontramos una ficha con este teléfono. Toca «Buscar mi cuenta» para vincularla.",
+        );
+        return "needsCode";
+      }
       setCandidates([]);
       setSelectedPetIds(new Set());
       setClaimToken(null);
@@ -231,7 +245,7 @@ export default function ClaimAccountScreen() {
   // servidor ya avisó al equipo); si no, sigue. Un error del servidor no lo
   // atora: el alta nunca debe depender de que esta búsqueda funcione.
   const handleSkip = async () => {
-    if (searched) {
+    if (searched || skipAvisado) {
       await finish();
       return;
     }
@@ -244,7 +258,12 @@ export default function ClaimAccountScreen() {
       );
       return;
     }
-    const resultado = await handleSearch();
+    // `probe`: solo averiguar. Nunca se manda un código desde aquí.
+    const resultado = await handleSearch(undefined, true);
+    if (resultado === "needsCode") {
+      setSkipAvisado(true);
+      return;
+    }
     if (resultado !== "found") await finish();
   };
 

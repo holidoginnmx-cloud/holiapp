@@ -13,7 +13,7 @@ import {
   mascotaEnFichaPendiente,
 } from "./claimRequests";
 
-type Previa = { id: string; status: "PENDING" | "REJECTED" } | null;
+type Previa = { id: string; status: "PENDING" | "REJECTED"; source?: "CLIENT" | "AUTO" | "ADMIN" } | null;
 
 /** Prisma mockeado con lo que tocan estos helpers. */
 function makePrisma({
@@ -35,6 +35,7 @@ function makePrisma({
         select.typedPhone ? pendiente : previa,
       ),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "cr_nueva", ...data })),
+      update: vi.fn(async () => ({})),
     },
   };
 }
@@ -58,6 +59,27 @@ describe("abrirSolicitudClaim", () => {
     const r = await abrirSolicitudClaim(prisma as never, ANDREA, { source: "AUTO" });
     expect(r).toEqual({ id: "cr_vieja", alreadyPending: true });
     expect(prisma.claimRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("si el cliente la pide y ya había una AUTO, se vuelve suya (con su nota)", async () => {
+    const prisma = makePrisma({ previa: { id: "cr_auto", status: "PENDING", source: "AUTO" } });
+    const r = await abrirSolicitudClaim(prisma as never, ANDREA, {
+      source: "CLIENT",
+      typedPhone: "662 180 2448",
+      note: "Soy la dueña de Drago",
+    });
+    expect(r).toEqual({ id: "cr_auto", alreadyPending: true });
+    expect(prisma.claimRequest.update).toHaveBeenCalledWith({
+      where: { id: "cr_auto" },
+      data: { source: "CLIENT", typedPhone: "662 180 2448", note: "Soy la dueña de Drago" },
+    });
+    expect(prisma.claimRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("una AUTO nueva no toca la pendiente que ya pidió el cliente", async () => {
+    const prisma = makePrisma({ previa: { id: "cr_cli", status: "PENDING", source: "CLIENT" } });
+    await abrirSolicitudClaim(prisma as never, ANDREA, { source: "AUTO" });
+    expect(prisma.claimRequest.update).not.toHaveBeenCalled();
   });
 
   it("con saltarSiRechazada no insiste si el equipo ya dijo que no", async () => {
@@ -152,6 +174,21 @@ describe("mascotaEnFichaPendiente", () => {
   it("otro perro pasa", async () => {
     const prisma = makePrisma(FICHA);
     expect(await mascotaEnFichaPendiente(prisma as never, ANDREA, "Dragón Negro")).toBeNull();
+  });
+
+  it("'La Chula' no es 'La Güera', y un nombre de 2 letras no alcanza", async () => {
+    const prisma = makePrisma({
+      ...FICHA,
+      mascotas: [
+        { id: "p_guera", name: "La Güera", ownerId: "u_ficha" },
+        { id: "p_bo", name: "Bo Castro", ownerId: "u_ficha" },
+      ],
+    });
+    expect(await mascotaEnFichaPendiente(prisma as never, ANDREA, "La Chula")).toBeNull();
+    expect(await mascotaEnFichaPendiente(prisma as never, ANDREA, "Bo")).toBeNull();
+    expect(await mascotaEnFichaPendiente(prisma as never, ANDREA, "la güera")).toEqual(
+      expect.objectContaining({ id: "p_guera" }),
+    );
   });
 });
 

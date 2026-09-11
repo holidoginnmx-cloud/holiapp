@@ -65,6 +65,9 @@ export type ClaimLookupResult = {
   /** Cuando no hubo código posible, el servidor ya le abrió la solicitud al
    * equipo: la pantalla dice "ya avisamos" en vez de ofrecer el botón. */
   requestFiled?: boolean;
+  /** Solo con `probe`: hay ficha y SÍ se le puede mandar código, pero no se
+   * mandó. El cliente decide si la busca ("Buscar mi cuenta") o sigue. */
+  needsCode?: boolean;
 };
 
 /** Busca la cuenta preexistente del cliente (creada por el admin, sin app)
@@ -78,6 +81,8 @@ export const lookupExistingAccount = (data: {
   phone?: string;
   email?: string;
   prefer?: "email" | "sms";
+  /** "Soy nuevo": solo averiguar si hay ficha, sin mandar código a nadie. */
+  probe?: boolean;
 }) =>
   apiFetch<ClaimLookupResult>("/users/claim/lookup", {
     method: "POST",

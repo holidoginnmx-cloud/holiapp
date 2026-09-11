@@ -117,10 +117,25 @@ export async function abrirSolicitudClaim(
       status: opts.saltarSiRechazada ? { in: ["PENDING", "REJECTED"] } : "PENDING",
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, status: true },
+    select: { id: true, status: true, source: true },
   });
   if (previa) {
-    return previa.status === "PENDING" ? { id: previa.id, alreadyPending: true } : null;
+    if (previa.status !== "PENDING") return null;
+    // El cliente la pide él mismo y ya había una que abrió el sistema o el
+    // equipo: se vuelve suya, con su nota y lo que tecleó. Si no, el equipo
+    // leería "no la pidió el cliente" cuando sí la pidió.
+    if (opts.source === "CLIENT" && previa.source !== "CLIENT") {
+      await prisma.claimRequest.update({
+        where: { id: previa.id },
+        data: {
+          source: "CLIENT",
+          ...(opts.typedPhone?.trim() ? { typedPhone: opts.typedPhone.trim().slice(0, 40) } : {}),
+          ...(opts.typedEmail?.trim() ? { typedEmail: opts.typedEmail.trim().toLowerCase() } : {}),
+          ...(opts.note?.trim() ? { note: opts.note.trim().slice(0, 300) } : {}),
+        },
+      });
+    }
+    return { id: previa.id, alreadyPending: true };
   }
 
   const nombre = [requester.firstName, requester.lastName].filter(Boolean).join(" ").trim();
@@ -132,7 +147,7 @@ export async function abrirSolicitudClaim(
       // historial quedaría sin nombre.
       requesterName: nombre || null,
       requesterEmail: requester.email ?? null,
-      typedPhone: opts.typedPhone?.trim() || null,
+      typedPhone: opts.typedPhone?.trim().slice(0, 40) || null,
       typedEmail: opts.typedEmail?.trim().toLowerCase() || null,
       note: opts.note?.trim().slice(0, 300) || null,
       source: opts.source,
@@ -172,20 +187,33 @@ export async function detectarFichaPorTelefono(
   });
 }
 
-const primeraPalabra = (nombre: string) => normalizePetName(nombre).split(" ")[0] ?? "";
+// Palabras que no distinguen a un perro: "La Chula" y "La Güera" no son el mismo.
+const RELLENO = new Set(["el", "la", "los", "las", "mi", "don", "dona", "sr", "sra", "lil", "baby"]);
 
 /**
- * ¿El perro que está registrando ya está en la ficha que pidió vincular?
- * Compara la PRIMERA palabra normalizada: el equipo suele capturar "Drago
- * Castro" y el cliente escribe "Drago".
+ * La palabra que identifica al perro: la primera que no sea relleno, y solo si
+ * tiene 3 letras o más. El equipo captura "Drago Castro" y el cliente escribe
+ * "Drago"; "" = no alcanza para decir que son el mismo.
+ */
+export function claveNombre(nombre: string): string {
+  const palabra = normalizePetName(nombre)
+    .split(/[^a-z0-9]+/)
+    .find((t) => t && !RELLENO.has(t));
+  return palabra && palabra.length >= 3 ? palabra : "";
+}
+
+/**
+ * ¿El perro que está registrando ya está en la ficha que pidió vincular? Por
+ * nombre completo normalizado, o por la palabra clave (`claveNombre`).
  */
 export async function mascotaEnFichaPendiente(
   prisma: PrismaClient,
   owner: Pick<User, "id" | "phone">,
   nombre: string,
 ): Promise<{ id: string; name: string } | null> {
-  const buscada = primeraPalabra(nombre);
-  if (!buscada) return null;
+  const completo = normalizePetName(nombre);
+  const clave = claveNombre(nombre);
+  if (!completo) return null;
   const pendiente = await prisma.claimRequest.findFirst({
     where: { requesterId: owner.id, status: "PENDING" },
     select: { typedPhone: true, typedEmail: true },
@@ -202,7 +230,11 @@ export async function mascotaEnFichaPendiente(
     where: { ownerId: { in: fichas }, isActive: true },
     select: { id: true, name: true },
   });
-  return mascotas.find((m) => primeraPalabra(m.name) === buscada) ?? null;
+  return (
+    mascotas.find(
+      (m) => normalizePetName(m.name) === completo || (clave !== "" && claveNombre(m.name) === clave),
+    ) ?? null
+  );
 }
 
 // ─── Barrido de cuentas repetidas ─────────────────────────────

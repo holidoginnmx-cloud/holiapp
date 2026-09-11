@@ -297,8 +297,34 @@ export default function CreatePetScreen() {
     onError: (e: Error) => {
       const err = e as Error & {
         status?: number;
-        body?: { error?: string; petId?: string; message?: string };
+        body?: { error?: string; petId?: string; message?: string; reason?: string };
       };
+      // Ese perro ya está en su ficha de siempre, que el equipo está por
+      // vincularle: registrarlo otra vez es justo el duplicado que partió el
+      // expediente de Drago en dos. Si de verdad es otro perro, lo fuerza. (El
+      // servidor lo manda como DUPLICATE_PET para que la app de la tienda, que
+      // no conoce `reason`, igual ofrezca "Crear de todos modos".)
+      if (err.status === 409 && err.body?.reason === "PENDING_CLAIM") {
+        Alert.alert(
+          "Ya lo tenemos registrado",
+          err.body.message ??
+            "Esta mascota ya está en tu ficha. En cuanto el equipo la vincule aparecerá aquí.",
+          [
+            { text: "Entendido", onPress: () => router.back() },
+            {
+              text: "Es otro perro, registrarlo",
+              style: "destructive",
+              onPress: () => {
+                const data = lastSubmitRef.current;
+                if (data) {
+                  mutation.mutate({ ...data, allowDuplicateName: true });
+                }
+              },
+            },
+          ],
+        );
+        return;
+      }
       // El dueño ya tiene una mascota con ese nombre: avisamos en vez de
       // duplicar. Puede ver el perfil existente o forzar la creación (dos
       // perros que de verdad se llaman igual).
@@ -331,30 +357,6 @@ export default function CreatePetScreen() {
               },
             },
             { text: "Cancelar", style: "cancel" },
-          ],
-        );
-        return;
-      }
-      // Ese perro ya está en su ficha de siempre, que el equipo está por
-      // vincularle: registrarlo otra vez es justo el duplicado que partió el
-      // expediente de Drago en dos. Si de verdad es otro perro, lo fuerza.
-      if (err.status === 409 && err.body?.error === "PET_IN_PENDING_CLAIM") {
-        Alert.alert(
-          "Ya lo tenemos registrado",
-          err.body.message ??
-            "Esta mascota ya está en tu ficha. En cuanto el equipo la vincule aparecerá aquí.",
-          [
-            { text: "Entendido", onPress: () => router.back() },
-            {
-              text: "Es otro perro, registrarlo",
-              style: "destructive",
-              onPress: () => {
-                const data = lastSubmitRef.current;
-                if (data) {
-                  mutation.mutate({ ...data, allowDuplicateName: true });
-                }
-              },
-            },
           ],
         );
         return;

@@ -72,6 +72,7 @@ export const WHATS_NEW: WhatsNewRelease[] = [
           "es la misma persona antes de aprobar. Y en la app nueva, un cliente " +
           "que se registra ya no pasa sin que revisemos su teléfono.",
         route: "/admin/claim-requests",
+        roles: ["ADMIN"],
       },
     ],
   },

@@ -49,14 +49,20 @@ type Fusion = { into: string | null; useSourceName: boolean };
 type MascotaFicha = ClaimCandidate["pets"][number];
 type MascotaSuya = ClaimRequestRow["requesterPets"][number];
 
+// Palabras que no distinguen a un perro: "La Chula" y "La Güera" no son el mismo.
+const RELLENO = new Set(["el", "la", "los", "las", "mi", "don", "dona", "sr", "sra", "lil", "baby"]);
+
 // Para sugerir la pareja: el equipo captura "Drago Castro" y el cliente "Drago".
+// La primera palabra que no sea relleno, y solo con 3 letras o más.
 const primeraPalabra = (s: string) =>
   s
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase()
-    .split(/\s+/)[0] ?? "";
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && !RELLENO.has(t))
+    .map((t) => (t.length >= 3 ? t : ""))[0] ?? "";
 
 const TEXTO_CARTILLA: Record<string, string> = {
   APPROVED: "cartilla aprobada",
@@ -165,15 +171,23 @@ export default function AdminClaimRequests() {
     return mascotasDe(r).filter((p) => sel.has(p.id));
   }
 
+  // Pareja sugerida por nombre SOLO si no hay duda: una sola mascota de la
+  // ficha coincide y ninguna otra de su cuenta se llama igual. Juntar no se
+  // deshace, así que ante la duda no se preselecciona nada.
+  function sugerida(r: ClaimRequestRow, suya: MascotaSuya): string | null {
+    const clave = primeraPalabra(suya.name);
+    if (!clave) return null;
+    const parejas = elegiblesDe(r).filter((p) => primeraPalabra(p.name) === clave);
+    const rivales = r.requesterPets.filter((o) => primeraPalabra(o.name) === clave);
+    return parejas.length === 1 && rivales.length === 1 ? parejas[0].id : null;
+  }
+
   function fusionDe(r: ClaimRequestRow, suya: MascotaSuya): Fusion {
     const elegida = fusiones[r.id]?.[suya.id];
     if (elegida) return elegida;
-    // Sugerencia por nombre, y con el nombre que escribió el cliente: es el
-    // que va a ver en su app.
-    const pareja = elegiblesDe(r).find(
-      (p) => primeraPalabra(p.name) === primeraPalabra(suya.name),
-    );
-    return { into: pareja?.id ?? null, useSourceName: true };
+    // Por default se queda el nombre de la ficha: es el que el equipo usa para
+    // distinguir perros ("Drago Castro"). Se cambia con un toque.
+    return { into: sugerida(r, suya), useSourceName: false };
   }
 
   function cambiarFusion(r: ClaimRequestRow, suyaId: string, valor: Fusion) {
@@ -209,6 +223,14 @@ export default function AdminClaimRequests() {
     }
     const quien = nombreDe(r);
     const juntas = fusionesDe(r);
+    const destinos = juntas.map((m) => m.into);
+    if (new Set(destinos).size !== destinos.length) {
+      Alert.alert(
+        "Revisa las parejas",
+        "Dos perros de su cuenta apuntan al mismo de la ficha. Solo uno de ellos puede ser ese perro.",
+      );
+      return;
+    }
     const nombreFicha = (id: string) =>
       formatName(mascotasDe(r).find((p) => p.id === id)?.name ?? "");
     const nombreSuya = (id: string) =>

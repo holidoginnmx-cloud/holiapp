@@ -1,4 +1,5 @@
 import type { Pet, Prisma } from "@prisma/client";
+import { MAX_CO_OWNERS } from "./petInvite";
 
 /**
  * Fusión de dos fichas del MISMO perro en una sola.
@@ -15,7 +16,7 @@ import type { Pet, Prisma } from "@prisma/client";
  * estancia y pagos ya apuntan a él— y absorbe lo que traiga el origen (`from`):
  *   · conserva lo que ya tiene y completa lo vacío;
  *   · las notas se suman (son el lugar de las advertencias de conducta);
- *   · la cartilla viaja completa si la del origen está en mejor estado;
+ *   · la cartilla viaja completa si la del origen es mejor o más reciente;
  *   · todo lo que cuelga de `petId` se re-apunta al destino;
  *   · el origen queda inactivo, no se borra.
  */
@@ -72,7 +73,9 @@ const CAMPOS_CARTILLA = [
   "cartillaApprovalNote",
 ] as const satisfies readonly (keyof Pet)[];
 
-const RANGO_CARTILLA: Record<string, number> = { APPROVED: 3, PENDING: 2, REJECTED: 1 };
+// Vencida está por debajo de pendiente: una cartilla nueva por revisar sirve
+// más que una que ya caducó.
+const RANGO_CARTILLA: Record<string, number> = { APPROVED: 4, PENDING: 3, EXPIRED: 2, REJECTED: 1 };
 const rangoCartilla = (s: string | null) => (s ? (RANGO_CARTILLA[s] ?? 0) : 0);
 
 const vacio = (v: unknown) =>
@@ -93,11 +96,25 @@ export function mergeNotes(destino: string | null, origen: string | null): strin
   return `${a}\n\n${b}`;
 }
 
+/** ¿La cartilla del origen reemplaza a la del destino? */
+export function tomarCartillaDelOrigen(from: Pet, into: Pet): boolean {
+  if (!from.cartillaStatus) return false;
+  if (!into.cartillaStatus) return true;
+  // Una pendiente MÁS NUEVA que la última revisión del destino gana: es lo
+  // mismo que pasa cuando el cliente vuelve a subir su cartilla (PATCH
+  // /pets/:id la regresa a PENDING). Si no, la de este año se quedaría en un
+  // perro inactivo, fuera de la cola de revisión, y la del año pasado vencería.
+  if (from.cartillaStatus === "PENDING" && into.cartillaStatus !== "PENDING") {
+    return from.updatedAt > (into.cartillaReviewedAt ?? into.updatedAt);
+  }
+  return rangoCartilla(from.cartillaStatus) > rangoCartilla(into.cartillaStatus);
+}
+
 /** Qué cambia en el destino. Pura: la regla vive aquí y se prueba sin BD. */
 export function planPetMerge(
   from: Pet,
   into: Pet,
-  opts: { useSourceName?: boolean } = {},
+  opts: { useSourceName?: boolean; conservarTalla?: boolean } = {},
 ): Prisma.PetUncheckedUpdateInput {
   const data: Record<string, unknown> = {};
 
@@ -106,14 +123,18 @@ export function planPetMerge(
   }
 
   // Peso y talla juntos: la talla sale del peso (derivePetSize), así que
-  // tomar uno sin el otro dejaría una talla que no corresponde.
-  if (into.weight == null && from.weight != null) {
-    data.weight = from.weight;
-    data.size = from.size;
-    data.sizeDeclared = from.sizeDeclared;
-  } else if (into.weight == null && !into.sizeDeclared && from.sizeDeclared) {
-    data.size = from.size;
-    data.sizeDeclared = true;
+  // tomar uno sin el otro dejaría una talla que no corresponde. Y nunca con
+  // una reserva activa: cambiar la talla ahí se saltaría la revisión contra el
+  // cuarto que ya tiene asignado (tallaChocaConCuartoActivo).
+  if (!opts.conservarTalla) {
+    if (into.weight == null && from.weight != null) {
+      data.weight = from.weight;
+      data.size = from.size;
+      data.sizeDeclared = from.sizeDeclared;
+    } else if (into.weight == null && !into.sizeDeclared && from.sizeDeclared) {
+      data.size = from.size;
+      data.sizeDeclared = true;
+    }
   }
 
   // Si alguna de las dos dice que sí, es que alguien lo sabe.
@@ -123,7 +144,7 @@ export function planPetMerge(
   const notas = mergeNotes(into.notes, from.notes);
   if (notas !== (into.notes?.trim() || null)) data.notes = notas;
 
-  if (rangoCartilla(from.cartillaStatus) > rangoCartilla(into.cartillaStatus)) {
+  if (tomarCartillaDelOrigen(from, into)) {
     for (const campo of CAMPOS_CARTILLA) data[campo] = from[campo];
   }
 
@@ -132,6 +153,11 @@ export function planPetMerge(
 
   return data as Prisma.PetUncheckedUpdateInput;
 }
+
+const encimadas = (
+  a: { checkIn: Date | null; checkOut: Date | null },
+  b: { checkIn: Date | null; checkOut: Date | null },
+) => !!(a.checkIn && a.checkOut && b.checkIn && b.checkOut && a.checkIn < b.checkOut && b.checkIn < a.checkOut);
 
 /**
  * Fusiona `fromId` en `intoId` dentro de la transacción que le pasen. Devuelve
@@ -157,7 +183,21 @@ export async function mergePetInto(
     throw new PetMergeError(`${into.name} está dada de baja: no puede recibir la fusión.`);
   }
 
-  const data = planPetMerge(from, into, opts);
+  // Dos estancias vivas en las mismas fechas, una por ficha: juntarlas dejaría
+  // al mismo perro con dos cuartos y dos cobros. Eso lo decide una persona.
+  const activas = await tx.reservation.findMany({
+    where: { petId: { in: [fromId, intoId] }, status: { in: ["CONFIRMED", "CHECKED_IN"] } },
+    select: { petId: true, checkIn: true, checkOut: true },
+  });
+  const deOrigen = activas.filter((r) => r.petId === fromId);
+  const deDestino = activas.filter((r) => r.petId === intoId);
+  if (deOrigen.some((a) => deDestino.some((b) => encimadas(a, b)))) {
+    throw new PetMergeError(
+      `${from.name} y ${into.name} tienen reservas activas en las mismas fechas. Cancela una antes de juntarlos: si no, quedarían dos cuartos y dos cobros para el mismo perro.`,
+    );
+  }
+
+  const data = planPetMerge(from, into, { ...opts, conservarTalla: deDestino.length > 0 });
   const copiedFields = Object.keys(data);
   if (copiedFields.length > 0) {
     await tx.pet.update({ where: { id: intoId }, data });
@@ -187,6 +227,30 @@ export async function mergePetInto(
     },
   });
   await tx.petCoOwner.updateMany(mover);
+
+  // Invitaciones para compartir: la liga que el cliente ya mandó por WhatsApp
+  // sigue sirviendo, ahora para el perro que sobrevive, mientras quepa en el
+  // tope de co-dueños. Las que ya no caben se cancelan: aceptarlas pasaría el
+  // tope. Las usadas, canceladas o vencidas se mueven igual (son el rastro).
+  const ahora = new Date();
+  const viva = { acceptedAt: null, revokedAt: null, expiresAt: { gt: ahora } };
+  const vivasOrigen = await tx.petInvite.findMany({
+    where: { petId: fromId, ...viva },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (vivasOrigen.length > 0) {
+    const [coDuenos, vivasDestino] = await Promise.all([
+      tx.petCoOwner.count({ where: { petId: intoId } }),
+      tx.petInvite.count({ where: { petId: intoId, ...viva } }),
+    ]);
+    const cupo = Math.max(0, MAX_CO_OWNERS - coDuenos - vivasDestino);
+    const sobran = vivasOrigen.slice(cupo).map((i) => i.id);
+    if (sobran.length > 0) {
+      await tx.petInvite.updateMany({ where: { id: { in: sobran } }, data: { revokedAt: ahora } });
+    }
+  }
+  await tx.petInvite.updateMany(mover);
 
   await tx.pet.update({ where: { id: fromId }, data: { isActive: false } });
 

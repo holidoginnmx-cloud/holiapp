@@ -1,5 +1,5 @@
 import type { PrismaClient, User } from "@prisma/client";
-import { mergePetInto, type PetMergePair } from "./petMerge";
+import { mergePetInto, PetMergeError, type PetMergePair } from "./petMerge";
 
 // Error tipado para colisiones de carrera (otra petición vinculó a un registro
 // mientras tanto). La ruta lo traduce a un 409 amistoso.
@@ -222,11 +222,20 @@ export async function claimPetsIntoAccount(
     const propiasActivas = new Set(freshPets.filter((p) => p.isActive).map((p) => p.id));
     const elegidas = new Set(petIds);
     const fusionadas = new Set<string>();
+    const destinos = new Set<string>();
     for (const f of fusiones) {
       if (!propiasActivas.has(f.from) || !elegidas.has(f.into) || fusionadas.has(f.from)) {
         throw new ClaimForbiddenError();
       }
+      // Dos perros de la cuenta nueva no pueden ser el mismo de la ficha
+      // ("Luna" y "Luna Bella" juntas en "Luna Castro" no se deshace).
+      if (destinos.has(f.into)) {
+        throw new PetMergeError(
+          "Dos perros de su cuenta apuntan al mismo de la ficha: solo uno de ellos puede ser ese perro.",
+        );
+      }
       fusionadas.add(f.from);
+      destinos.add(f.into);
     }
 
     if (discardPetIds && discardPetIds.length > 0) {

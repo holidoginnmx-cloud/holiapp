@@ -106,17 +106,33 @@ describe("planPetMerge", () => {
     });
   });
 
-  it("no cambia una cartilla aprobada por una pendiente", () => {
-    const into = pet({ cartillaStatus: "APPROVED", cartillaPhotos: ["a"] });
-    const from = pet({ cartillaStatus: "PENDING", cartillaPhotos: ["b"] });
+  it("no cambia una cartilla aprobada por una pendiente más vieja que la revisión", () => {
+    const into = pet({ cartillaStatus: "APPROVED", cartillaPhotos: ["a"], cartillaReviewedAt: new Date("2026-09-05") });
+    const from = pet({ cartillaStatus: "PENDING", cartillaPhotos: ["b"], updatedAt: new Date("2026-09-01") });
     expect(planPetMerge(from, into)).not.toHaveProperty("cartillaStatus");
+  });
+
+  it("una pendiente más nueva que la revisión del destino gana (el cliente subió la de este año)", () => {
+    const into = pet({ cartillaStatus: "APPROVED", cartillaPhotos: ["2025"], cartillaReviewedAt: new Date("2025-09-01") });
+    const from = pet({ cartillaStatus: "PENDING", cartillaPhotos: ["2026"], updatedAt: new Date("2026-09-10") });
+    expect(planPetMerge(from, into)).toMatchObject({
+      cartillaStatus: "PENDING",
+      cartillaPhotos: ["2026"],
+      cartillaReviewedAt: null,
+    });
   });
 
   it("cambia una cartilla rechazada por una pendiente, en bloque", () => {
     const into = pet({ cartillaStatus: "REJECTED", cartillaRejectionReason: "borrosa", cartillaPhotos: ["a"] });
-    const from = pet({ cartillaStatus: "PENDING", cartillaPhotos: ["b"] });
+    const from = pet({ cartillaStatus: "PENDING", cartillaPhotos: ["b"], updatedAt: new Date("2026-09-10") });
     const data = planPetMerge(from, into);
     expect(data).toMatchObject({ cartillaStatus: "PENDING", cartillaPhotos: ["b"], cartillaRejectionReason: null });
+  });
+
+  it("una vencida no se cambia por una rechazada", () => {
+    const into = pet({ cartillaStatus: "EXPIRED", cartillaPhotos: ["a"] });
+    const from = pet({ cartillaStatus: "REJECTED", cartillaPhotos: ["b"] });
+    expect(planPetMerge(from, into)).not.toHaveProperty("cartillaStatus");
   });
 
   it("el nombre solo cambia si se pide", () => {
@@ -128,6 +144,13 @@ describe("planPetMerge", () => {
     const from = pet({ weight: 22, size: "L", sizeDeclared: false });
     expect(planPetMerge(from, pet())).toMatchObject({ weight: 22, size: "L", sizeDeclared: false });
     expect(planPetMerge(from, pet({ weight: 8, size: "M" }))).not.toHaveProperty("size");
+  });
+
+  it("con una reserva activa en el destino no toca peso ni talla", () => {
+    const from = pet({ weight: 22, size: "L" });
+    const data = planPetMerge(from, pet(), { conservarTalla: true });
+    expect(data).not.toHaveProperty("weight");
+    expect(data).not.toHaveProperty("size");
   });
 
   it("un 'sí' en cualquiera de las dos gana en los booleanos", () => {
@@ -155,14 +178,25 @@ describe("mergeNotes", () => {
   });
 });
 
-function makeTx(pets: Record<string, Pet>, coOwnersDestino: string[] = []) {
+type Activa = { petId: string; checkIn: Date | null; checkOut: Date | null };
+
+function makeTx(
+  pets: Record<string, Pet>,
+  {
+    coOwnersDestino = [] as string[],
+    activas = [] as Activa[],
+    vivasOrigen = [] as string[],
+    coDuenosDestino = 0,
+    vivasDestino = 0,
+  } = {},
+) {
   const updateMany = () => vi.fn(async () => ({ count: 1 }));
   return {
     pet: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => pets[where.id] ?? null),
       update: vi.fn(async () => ({})),
     },
-    reservation: { updateMany: updateMany() },
+    reservation: { updateMany: updateMany(), findMany: vi.fn(async () => activas) },
     vaccine: { updateMany: updateMany() },
     deworming: { updateMany: updateMany() },
     stayUpdate: { updateMany: updateMany() },
@@ -173,6 +207,12 @@ function makeTx(pets: Record<string, Pet>, coOwnersDestino: string[] = []) {
       findMany: vi.fn(async () => coOwnersDestino.map((userId) => ({ userId }))),
       deleteMany: vi.fn(async () => ({ count: 0 })),
       updateMany: updateMany(),
+      count: vi.fn(async () => coDuenosDestino),
+    },
+    petInvite: {
+      findMany: vi.fn(async () => vivasOrigen.map((id) => ({ id }))),
+      count: vi.fn(async () => vivasDestino),
+      updateMany: updateMany(),
     },
   };
 }
@@ -180,7 +220,7 @@ function makeTx(pets: Record<string, Pet>, coOwnersDestino: string[] = []) {
 describe("mergePetInto", () => {
   const PETS = { drago_app: DRAGO_APP, drago_ficha: DRAGO_FICHA };
 
-  it("re-apunta todo lo que cuelga de la mascota, reservas incluidas", async () => {
+  it("re-apunta todo lo que cuelga de la mascota, reservas e invitaciones incluidas", async () => {
     const tx = makeTx(PETS);
     await mergePetInto(tx as never, "drago_app", "drago_ficha");
     const esperado = { where: { petId: "drago_app" }, data: { petId: "drago_ficha" } };
@@ -193,6 +233,7 @@ describe("mergePetInto", () => {
       tx.staffAlert,
       tx.quotePet,
       tx.petCoOwner,
+      tx.petInvite,
     ]) {
       expect(modelo.updateMany).toHaveBeenCalledWith(esperado);
     }
@@ -214,13 +255,48 @@ describe("mergePetInto", () => {
   });
 
   it("antes de mover co-dueños quita los que chocarían con el único (petId, userId)", async () => {
-    const tx = makeTx(PETS, ["u_pareja"]);
+    const tx = makeTx(PETS, { coOwnersDestino: ["u_pareja"] });
     await mergePetInto(tx as never, "drago_app", "drago_ficha");
     expect(tx.petCoOwner.deleteMany).toHaveBeenCalledWith({
       where: { petId: "drago_app", userId: { in: ["u_ficha", "u_pareja"] } },
     });
     const orden = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0];
     expect(orden(tx.petCoOwner.deleteMany)).toBeLessThan(orden(tx.petCoOwner.updateMany));
+  });
+
+  it("las invitaciones vivas pasan hasta el tope de co-dueños; las que no caben se cancelan", async () => {
+    // Destino con 2 co-dueños: queda lugar para 1 de las 2 invitaciones vivas.
+    const tx = makeTx(PETS, { vivasOrigen: ["inv_1", "inv_2"], coDuenosDestino: 2 });
+    await mergePetInto(tx as never, "drago_app", "drago_ficha");
+    expect(tx.petInvite.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["inv_2"] } },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it("no junta dos estancias activas encimadas", async () => {
+    const tx = makeTx(PETS, {
+      activas: [
+        { petId: "drago_ficha", checkIn: new Date("2026-09-10"), checkOut: new Date("2026-09-15") },
+        { petId: "drago_app", checkIn: new Date("2026-09-14"), checkOut: new Date("2026-09-16") },
+      ],
+    });
+    await expect(mergePetInto(tx as never, "drago_app", "drago_ficha")).rejects.toBeInstanceOf(PetMergeError);
+    expect(tx.reservation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("estancias en fechas distintas sí se juntan, y con la del destino activa no toca la talla", async () => {
+    const conPeso = { ...PETS, drago_ficha: { ...DRAGO_FICHA, weight: null } };
+    const tx = makeTx(conPeso, {
+      activas: [
+        { petId: "drago_ficha", checkIn: new Date("2026-09-10"), checkOut: new Date("2026-09-15") },
+        { petId: "drago_app", checkIn: new Date("2026-10-01"), checkOut: new Date("2026-10-03") },
+      ],
+    });
+    await mergePetInto(tx as never, "drago_app", "drago_ficha");
+    const datos = (tx.pet.update.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data;
+    expect(datos).not.toHaveProperty("weight");
+    expect(tx.reservation.updateMany).toHaveBeenCalled();
   });
 
   it("rechaza fusionar una mascota consigo misma, una que no existe o un destino dado de baja", async () => {

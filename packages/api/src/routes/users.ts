@@ -104,6 +104,39 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   const findLegacyCandidates = (phone: string | null, email: string | null, excludeId: string) =>
     buscarFichasLegacy(prisma, phone, email, excludeId);
 
+  // Búsquedas del equipo (fichas y cuentas). Cada palabra tiene que estar en
+  // algún campo: "Andrea Castro" no está completo ni en firstName ni en
+  // lastName, y buscarlo entero no encontraba a nadie. El teléfono se guarda
+  // con formato ("+52 (662) 180 2448"), así que en SQL va por los últimos 4
+  // dígitos y `coincide` lo confirma completo.
+  function criterioBusqueda(q: string, conCorreo: boolean) {
+    const digits = q.replace(/\D/g, "");
+    const palabras = q.split(/\s+/).filter((w) => w && !/^[\d+()-]+$/.test(w));
+    const campos = (w: string) => [
+      { firstName: { contains: w, mode: "insensitive" as const } },
+      { lastName: { contains: w, mode: "insensitive" as const } },
+      ...(conCorreo ? [{ email: { contains: w, mode: "insensitive" as const } }] : []),
+    ];
+    const where = {
+      OR: [
+        ...(palabras.length > 0 ? [{ AND: palabras.map((w) => ({ OR: campos(w) })) }] : []),
+        ...(digits.length >= 4 ? [{ phone: { contains: digits.slice(-4) } }] : []),
+      ],
+    };
+    const coincide = (u: {
+      firstName: string;
+      lastName: string | null;
+      email?: string | null;
+      phone: string | null;
+    }) => {
+      const texto = `${u.firstName} ${u.lastName ?? ""} ${conCorreo ? (u.email ?? "") : ""}`.toLowerCase();
+      const porNombre = palabras.length > 0 && palabras.every((w) => texto.includes(w.toLowerCase()));
+      const porTelefono = digits.length >= 4 && (u.phone ?? "").replace(/\D/g, "").includes(digits);
+      return porNombre || porTelefono;
+    };
+    return { where, coincide };
+  }
+
   // Lo que la pantalla necesita para que el cliente reconozca su ficha
   // (primer nombre + mascotas). Solo se entrega DESPUÉS de verificar el código.
   async function candidatesPayload(ids: string[]) {
@@ -158,7 +191,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   // tiene teléfono capturado y solo el 16% un correo real. Si no hay ningún
   // canal, se devuelve el respaldo de WhatsApp —con las mascotas de la ficha,
   // ya solo informativas: ver `petsPreview`— para que el equipo la vincule.
-  fastify.post<{ Body: { phone?: string; email?: string; v?: number; prefer?: "email" | "sms" } }>(
+  fastify.post<{
+    Body: { phone?: string; email?: string; v?: number; prefer?: "email" | "sms"; probe?: boolean };
+  }>(
     "/users/claim/lookup",
     {
       preHandler: [authMiddleware],
@@ -188,7 +223,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       if (phone) {
         const guardado = await prisma.user.updateMany({
           where: { id: currentUserId, phone: null },
-          data: { phone: request.body!.phone!.trim() },
+          data: { phone: request.body!.phone!.trim().slice(0, 40) },
         });
         if (guardado.count > 0) invalidateAuthCache(request.dbUser?.clerkId);
       }
@@ -309,6 +344,21 @@ export default async function usersRoutes(fastify: FastifyInstance) {
           "[claim] sin canal para el código",
         );
         return reply.send(await respaldoWhatsapp());
+      }
+
+      // "Soy nuevo" solo pregunta si hay ficha: no se manda un código que nadie
+      // pidió (le llegaría al dueño de la ficha cuando pulsa la pareja que
+      // comparte teléfono, y con Twilio encendido costaría un SMS). Con ficha
+      // SIN canal ya se respondió arriba, con la solicitud abierta.
+      if (request.body?.probe === true) {
+        return reply.send({
+          found: true,
+          channel: "none",
+          candidates: [],
+          needsCode: true,
+          message:
+            "Encontramos una ficha con este teléfono. Toca «Buscar mi cuenta» y te mandamos un código para vincularla. Si no es tuya, vuelve a tocar «Soy nuevo».",
+        });
       }
 
       const code = newCode();
@@ -483,23 +533,14 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       if (!q || q.length < 2) {
         return reply.status(400).send({ error: "Escribe al menos 2 letras" });
       }
-      const digits = q.replace(/\D/g, "");
+      const { where, coincide } = criterioBusqueda(q, false);
       // Solo fichas sin cuenta vinculada: las demás no se pueden consolidar.
       const fichas = await prisma.user.findMany({
-        where: {
-          clerkId: null,
-          isActive: true,
-          role: "OWNER",
-          OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
-            ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
-          ],
-        },
-        select: { id: true },
-        take: 15,
+        where: { clerkId: null, isActive: true, role: "OWNER", ...where },
+        select: { id: true, firstName: true, lastName: true, phone: true },
+        take: 50,
       });
-      return candidatesPayload(fichas.map((f) => f.id));
+      return candidatesPayload(fichas.filter(coincide).slice(0, 15).map((f) => f.id));
     }
   );
 
@@ -516,21 +557,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       if (!q || q.length < 2) {
         return reply.status(400).send({ error: "Escribe al menos 2 letras" });
       }
-      const digits = q.replace(/\D/g, "");
-      // El teléfono se guarda con formato ("+52 (662) 180 2448"), así que en
-      // SQL se busca por los últimos 4 dígitos y aquí se confirma completo.
+      const { where, coincide } = criterioBusqueda(q, true);
       const cuentas = await prisma.user.findMany({
-        where: {
-          clerkId: { not: null },
-          isActive: true,
-          role: "OWNER",
-          OR: [
-            { firstName: { contains: q, mode: "insensitive" } },
-            { lastName: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
-            ...(digits.length >= 4 ? [{ phone: { contains: digits.slice(-4) } }] : []),
-          ],
-        },
+        where: { clerkId: { not: null }, isActive: true, role: "OWNER", ...where },
         select: {
           id: true,
           firstName: true,
@@ -543,15 +572,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         orderBy: { createdAt: "desc" },
         take: 50,
       });
-      const texto = q.toLowerCase();
-      const coinciden = cuentas
-        .filter(
-          (c) =>
-            `${c.firstName} ${c.lastName}`.toLowerCase().includes(texto) ||
-            c.email.toLowerCase().includes(texto) ||
-            (digits.length >= 4 && (c.phone ?? "").replace(/\D/g, "").includes(digits)),
-        )
-        .slice(0, 15);
+      const coinciden = cuentas.filter(coincide).slice(0, 15);
       const pendientes = await prisma.claimRequest.findMany({
         where: { requesterId: { in: coinciden.map((c) => c.id) }, status: "PENDING" },
         select: { id: true, requesterId: true },
@@ -659,6 +680,13 @@ export default async function usersRoutes(fastify: FastifyInstance) {
             (request.body?.discardPetIds ?? []).filter((x) => typeof x === "string" && x),
           ),
         ];
+        // Otras pendientes de la MISMA cuenta (un doble toque, o el sistema y
+        // el cliente a la vez): se leen ahora, porque el merge borra la cuenta
+        // y su `requesterId` pasa a null.
+        const hermanas = await prisma.claimRequest.findMany({
+          where: { requesterId: fresh.id, status: "PENDING", id: { not: solicitud.id } },
+          select: { id: true },
+        });
         // Perros repetidos: "este de su cuenta es aquel de la ficha". Se
         // fusionan en vez de descartarse (lib/petMerge.ts): el de la ficha
         // sobrevive y se queda con la cartilla, los contactos y las notas que
@@ -690,6 +718,19 @@ export default async function usersRoutes(fastify: FastifyInstance) {
             mergedIntoId: merged.id,
           },
         });
+        // Si no se cerraran, quedarían en la bandeja para siempre: su cuenta ya
+        // no existe y no hay nada que aprobar.
+        if (hermanas.length > 0) {
+          await prisma.claimRequest.updateMany({
+            where: { id: { in: hermanas.map((h) => h.id) } },
+            data: {
+              status: "APPROVED",
+              resolvedById: request.userId!,
+              resolvedAt: new Date(),
+              mergedIntoId: merged.id,
+            },
+          });
+        }
         invalidateAuthCache(fresh.clerkId);
         await notifyUsers(prisma, [merged.id], {
           type: "GENERAL",
@@ -720,7 +761,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         if (err instanceof ClaimDiscardError) {
           return reply.status(409).send({
             error:
-              "Esa mascota ya tiene reservas a su nombre, así que no se puede descartar. Márcala como el mismo perro que el de la ficha para fusionarlas.",
+              "Esa mascota ya tiene reservas a su nombre, así que no se puede descartar. Actualiza la app para poder juntarla con la de la ficha.",
           });
         }
         if (err instanceof PetMergeError) {

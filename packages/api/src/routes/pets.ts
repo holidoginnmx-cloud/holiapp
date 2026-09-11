@@ -251,10 +251,15 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           );
           const enFicha = await mascotaEnFichaPendiente(prisma, owner, parsed.data.name);
           if (enFicha) {
-            // Sin `petId`: esa mascota todavía no es suya en la app.
+            // Con la forma de DUPLICATE_PET para que la app de la tienda, que no
+            // conoce `reason`, igual ofrezca "Crear de todos modos". Sin `petId`
+            // (todavía no es suya) y con el nombre que ÉL tecleó, nunca el de la
+            // ficha: si no, esto serviría para sacar los nombres de las mascotas
+            // de un teléfono ajeno.
             return reply.status(409).send({
-              error: "PET_IN_PENDING_CLAIM",
-              message: `${enFicha.name} ya está en tu ficha de Holidog Inn. En cuanto el equipo la vincule aparecerá aquí con su historial, sin que tengas que capturarlo otra vez.`,
+              error: "DUPLICATE_PET",
+              reason: "PENDING_CLAIM",
+              message: `Parece que ${parsed.data.name.trim()} ya está en tu ficha de Holidog Inn. En cuanto el equipo la vincule aparecerá aquí con su historial, sin que tengas que capturarlo otra vez.`,
             });
           }
         }
