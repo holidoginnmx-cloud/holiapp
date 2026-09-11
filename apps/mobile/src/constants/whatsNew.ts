@@ -34,6 +34,44 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-11-c",
+    title: "Juntar lo que se capturó dos veces",
+    items: [
+      {
+        icon: "git-merge-outline",
+        title: "Juntar el mismo perro capturado dos veces",
+        body:
+          "En la ficha de un perro, «Juntar»: eliges el otro registro del mismo " +
+          "perro (del mismo cliente), qué ficha se queda y con qué nombre. La " +
+          "que se queda recibe reservas, cartilla, vacunas, notas y contactos, y " +
+          "la otra queda dada de baja. Por ejemplo, «SKY» y «Sky Velazquez» de " +
+          "Baltasar Soto, que eran la misma perra.",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "people-outline",
+        title: "Juntar dos fichas del mismo cliente",
+        body:
+          "En Clientes, abre al cliente y toca «Juntar con otra ficha». Sirve " +
+          "cuando alguien quedó dado de alta dos veces, como Francisco Acosta con " +
+          "Nala en una ficha y Luna en otra. Todo pasa a la ficha que se queda: " +
+          "perros, reservas, pagos, saldo y cotizaciones. La que se da de baja no " +
+          "puede tener cuenta de la app; para eso está «Vincular fichas».",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "alert-circle-outline",
+        title: "Aviso de perro con nombre parecido",
+        body:
+          "Si el cliente ya tiene un perro con la misma primera palabra del " +
+          "nombre («Sky» y «Sky Velazquez»), la app avisa antes de crear otro, " +
+          "igual que hacía con el nombre exacto. Si de verdad es otro perro, toca " +
+          "«Crear de todos modos».",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-11-b",
     title: "La lista de cuartos, más limpia",
     items: [

@@ -20,6 +20,7 @@ import { getAllPets, getUsers } from "@/lib/api";
 import type { PetWithOwner } from "@/lib/api";
 import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
+import { useAuthStore } from "@/store/authStore";
 
 type OwnerGroup = {
   id: string;
@@ -34,6 +35,7 @@ export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBo
 export default function AdminClients() {
   const [search, setSearch] = useState("");
   const router = useRouter();
+  const role = useAuthStore((s) => s.role);
 
   const { data: pets, isLoading: loadingPets, isError: petsError, error: petsErrorObj, refetch: refetchPets, isRefetching } = useQuery({
     queryKey: ["admin", "pets"],
@@ -278,6 +280,21 @@ export default function AdminClients() {
                   </TouchableOpacity>
                 );
               })}
+              {/* El mismo cliente dado de alta dos veces (Francisco Acosta,
+                  sep-2026): se juntan las fichas. Solo admin. */}
+              {role === "ADMIN" && (
+                <TouchableOpacity
+                  style={styles.mergeRow}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    router.push(`/admin/pets/merge-owner?ownerId=${item.id}` as any)
+                  }
+                  testID={`client-merge-${item.id}`}
+                >
+                  <Ionicons name="git-merge-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.mergeText}>Juntar con otra ficha</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -543,6 +560,19 @@ const styles = StyleSheet.create({
   },
   petRowLast: {
     borderBottomWidth: 0,
+  },
+  mergeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgSection,
+  },
+  mergeText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
   },
   petPhoto: {
     width: 36,

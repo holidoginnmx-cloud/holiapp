@@ -389,6 +389,24 @@ export default function PetDetailScreen() {
             <Text style={styles.actionButtonText}>Dueños</Text>
           </TouchableOpacity>
         )}
+        {/* El mismo perro capturado dos veces ("SKY" y "Sky Velazquez"): se
+            juntan en una ficha sin perder historial. Solo admin, y nunca en
+            una ficha ya dada de baja (la que se juntó con otra). */}
+        {role === "ADMIN" && petAny?.isActive !== false && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              router.push({
+                pathname: "/admin/pets/merge",
+                params: { petId: id! },
+              } as any)
+            }
+            testID="pet-merge-button"
+          >
+            <Ionicons name="git-merge-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.actionButtonText}>Juntar</Text>
+          </TouchableOpacity>
+        )}
         {/* El cliente comparte a su perro él solo (invitación por liga). El
             dueño invita y quita; el co-dueño ve con quién se comparte y puede
             salirse. El equipo tiene su propia pantalla, arriba. */}

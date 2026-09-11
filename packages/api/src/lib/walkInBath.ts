@@ -192,6 +192,10 @@ export async function createWalkInBath(
       });
       // `findPetByName` normaliza espacios y acentos: es el candado que atrapa
       // el caso "DUGAN " (con espacio final) que partió un expediente en dos.
+      // Solo el nombre EXACTO, no el parecido (`findSimilarPetByName`): la
+      // pantalla del baño sin cita no tiene "es otro perro" (nadie manda
+      // `forceNewPet`), así que con "Luna" y "Luna Negra" el equipo solo podría
+      // cancelar o cargarle el baño a la otra perra.
       const match = findPetByName(suyas, input.pet.name);
       if (match && !input.forceNewPet) {
         return fail(

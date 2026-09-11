@@ -37,6 +37,7 @@ import quotesRoutes from "./routes/quotes";
 import telemetryRoutes from "./routes/telemetry";
 import internalReservationsRoutes from "./routes/internalReservations";
 import internalClaimsRoutes from "./routes/internalClaims";
+import adminMergeRoutes from "./routes/adminMerge";
 import pricingRoutes from "./routes/pricing";
 
 // trustProxy: 1 → la API vive detrás del proxy de Railway (un salto). Sin
@@ -199,6 +200,7 @@ app.register(quotesRoutes);
 app.register(telemetryRoutes);
 app.register(internalReservationsRoutes);
 app.register(internalClaimsRoutes);
+app.register(adminMergeRoutes);
 app.register(pricingRoutes);
 
 const start = async () => {

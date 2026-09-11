@@ -1,6 +1,6 @@
 import type { PrismaClient, User } from "@prisma/client";
 import { normalizePhone } from "./phone";
-import { normalizePetName } from "./petName";
+import { claveNombre, normalizePetName } from "./petName";
 import { adminsActivosIds, notifyUsers } from "./notify";
 
 /**
@@ -185,21 +185,6 @@ export async function detectarFichaPorTelefono(
     typedPhone: user.phone,
     saltarSiRechazada: true,
   });
-}
-
-// Palabras que no distinguen a un perro: "La Chula" y "La Güera" no son el mismo.
-const RELLENO = new Set(["el", "la", "los", "las", "mi", "don", "dona", "sr", "sra", "lil", "baby"]);
-
-/**
- * La palabra que identifica al perro: la primera que no sea relleno, y solo si
- * tiene 3 letras o más. El equipo captura "Drago Castro" y el cliente escribe
- * "Drago"; "" = no alcanza para decir que son el mismo.
- */
-export function claveNombre(nombre: string): string {
-  const palabra = normalizePetName(nombre)
-    .split(/[^a-z0-9]+/)
-    .find((t) => t && !RELLENO.has(t));
-  return palabra && palabra.length >= 3 ? palabra : "";
 }
 
 /**

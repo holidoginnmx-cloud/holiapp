@@ -14,7 +14,7 @@ import {
   accessiblePetFilter,
   invalidatePetAccessCache,
 } from "../lib/petAccess";
-import { findPetByName } from "../lib/petName";
+import { findPetByName, findSimilarPetByName } from "../lib/petName";
 import { detectarFichaPorTelefono, mascotaEnFichaPendiente } from "../lib/claimRequests";
 import { stripInternalFieldsList } from "../lib/stripInternal";
 import { sizeFromWeight } from "../lib/pricing";
@@ -230,12 +230,25 @@ export default async function petsRoutes(fastify: FastifyInstance) {
           where: { ...accessible, isActive: true },
           select: { id: true, name: true },
         });
-        const dup = findPetByName(candidatos, parsed.data.name);
+        // Al EQUIPO también se le avisa del mismo perro capturado con otro
+        // apellido: "SKY" y "Sky Velazquez" eran la misma Chihuahua y el
+        // candado exacto la dejó pasar (sep-2026); su app lo puede forzar. Al
+        // cliente, solo el exacto: el sitio público no tiene cómo forzarlo, y
+        // "Coco" y "Coco Chanel" lo dejarían sin poder registrar a su perro.
+        const exacto = findPetByName(candidatos, parsed.data.name);
+        const dup = isEquipo(request.userRole)
+          ? findSimilarPetByName(candidatos, parsed.data.name)
+          : exacto
+            ? { pet: exacto, exacto: true }
+            : undefined;
         if (dup) {
           return reply.status(409).send({
             error: "DUPLICATE_PET",
-            petId: dup.id,
-            message: `Ya tienes registrado a ${dup.name}.`,
+            petId: dup.pet.id,
+            petName: dup.pet.name,
+            message: dup.exacto
+              ? `Ya tienes registrado a ${dup.pet.name}.`
+              : `Ya tienes a ${dup.pet.name}. ¿Es el mismo perro?`,
           });
         }
 

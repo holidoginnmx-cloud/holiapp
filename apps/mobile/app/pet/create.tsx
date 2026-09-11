@@ -297,7 +297,7 @@ export default function CreatePetScreen() {
     onError: (e: Error) => {
       const err = e as Error & {
         status?: number;
-        body?: { error?: string; petId?: string; message?: string; reason?: string };
+        body?: { error?: string; petId?: string; petName?: string; message?: string; reason?: string };
       };
       // Ese perro ya está en su ficha de siempre, que el equipo está por
       // vincularle: registrarlo otra vez es justo el duplicado que partió el
@@ -334,7 +334,9 @@ export default function CreatePetScreen() {
         // a X"), así que en el alta desde admin lo reescribimos en tercera
         // persona: quien está capturando no es el dueño.
         const duplicateMsg = isAdminCreate
-          ? `${ownerName ?? "Ese cliente"} ya tiene una mascota registrada con ese nombre.`
+          ? err.body.petName
+            ? `${ownerName ?? "Ese cliente"} ya tiene a ${err.body.petName}. ¿Es el mismo perro?`
+            : `${ownerName ?? "Ese cliente"} ya tiene una mascota registrada con ese nombre.`
           : err.body.message ?? "Ya tienes una mascota registrada con ese nombre.";
         Alert.alert(
           "Mascota ya registrada",

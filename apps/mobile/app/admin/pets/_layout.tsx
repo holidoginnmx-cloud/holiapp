@@ -31,6 +31,14 @@ export default function AdminPetsLayout() {
         name="co-owners"
         options={{ title: "Dueños", headerLeft: backButton }}
       />
+      <Stack.Screen
+        name="merge"
+        options={{ title: "Juntar perros", headerLeft: backButton }}
+      />
+      <Stack.Screen
+        name="merge-owner"
+        options={{ title: "Juntar fichas", headerLeft: backButton }}
+      />
     </Stack>
   );
 }
