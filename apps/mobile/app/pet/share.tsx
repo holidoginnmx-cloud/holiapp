@@ -94,14 +94,28 @@ export default function PetShareScreen() {
     mutationFn: () => createPetInvite(petId!),
     onSuccess: async (invite) => {
       invalidate();
-      // Si cerró la hoja sin mandarla, esa invitación no le llegó a nadie: se
-      // cancela sola. Si no, cada intento fallido apartaba un lugar del tope
-      // durante una semana.
+      // Si cerró la hoja sin mandarla, esa invitación apartaría un lugar del
+      // tope durante una semana. Pero iOS se entera de "sin mandar" por lo que
+      // le reporte la app elegida, y no todas lo reportan bien: se pregunta en
+      // vez de cancelarla a ciegas. Cerrar el aviso la deja viva.
       const sent = await share(invite.shareText);
       if (!sent) {
-        revokePetInvite(petId!, invite.id)
-          .then(invalidate)
-          .catch(() => {});
+        Alert.alert(
+          "¿Se mandó la invitación?",
+          "Si cerraste sin mandarla, mejor cancélala: mientras siga pendiente aparta uno de los lugares.",
+          [
+            { text: "Sí, se mandó", style: "cancel" },
+            {
+              text: "No, cancelarla",
+              style: "destructive",
+              onPress: () => {
+                revokePetInvite(petId!, invite.id)
+                  .then(invalidate)
+                  .catch(() => {});
+              },
+            },
+          ],
+        );
       }
     },
     onError: (err) => {

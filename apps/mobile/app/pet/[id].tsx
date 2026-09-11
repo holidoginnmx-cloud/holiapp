@@ -225,7 +225,11 @@ export default function PetDetailScreen() {
   const confirmDelete = () => {
     // Si el perro está en dos cuentas, eliminarlo lo quita para los dos: hay que
     // decirlo antes, no después.
-    const shared = sharedLabel(pet as any, userId);
+    // sharedLabel es desde el punto de vista de un dueño: para el equipo toda
+    // mascota es "ajena", así que ahí se cuenta a los co-dueños.
+    const shared = esEquipo
+      ? ((pet as any)?.coOwners?.length ?? 0) > 0
+      : !!sharedLabel(pet as any, userId);
     Alert.alert(
       "Eliminar mascota",
       `¿Seguro que quieres eliminar a ${formatName(pet?.name ?? "tu mascota")}? ${
@@ -255,7 +259,8 @@ export default function PetDetailScreen() {
   }
 
   const petAny = pet as any;
-  const sharedSummary = sharedLabel(petAny, userId);
+  // Solo para el cliente: al equipo le salía "Compartida por <dueño>" en todas.
+  const sharedSummary = esEquipo ? null : sharedLabel(petAny, userId);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
