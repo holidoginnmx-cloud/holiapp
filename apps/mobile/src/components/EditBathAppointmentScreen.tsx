@@ -15,7 +15,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getReservationById, getBathSlots, updateBathAppointment } from "@/lib/api";
 import { formatName, formatTime, formatWeekdayDayShort } from "@/lib/format";
 import { DateTimeField } from "@/components/DateTimeField";
-import { SwitchRow } from "@/components/SwitchRow";
 import { ErrorState } from "@/components/ErrorState";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import {
@@ -23,6 +22,7 @@ import {
   localDayKey,
   formatDurationMin,
 } from "@/hooks/useBathConflict";
+import { BathConflictNotice } from "@/components/BathConflictNotice";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -66,16 +66,17 @@ export function EditBathAppointmentScreen({ id }: { id: string }) {
     () => (appointmentAt ? localDayKey(appointmentAt) : null),
     [appointmentAt],
   );
+  const loadBathSlots = (dateYMD: string) =>
+    getBathSlots(dateYMD, {
+      petId: reservation!.petId,
+      deslanado,
+      corte,
+      // La cita no debe estorbarse a sí misma al moverse dentro de su día.
+      excludeReservationId: id,
+    });
   const { data: bathSlots } = useQuery({
     queryKey: ["bath-slots-edit", bathDateYMD, reservation?.petId, deslanado, corte, id],
-    queryFn: () =>
-      getBathSlots(bathDateYMD!, {
-        petId: reservation!.petId,
-        deslanado,
-        corte,
-        // La cita no debe estorbarse a sí misma al moverse dentro de su día.
-        excludeReservationId: id,
-      }),
+    queryFn: () => loadBathSlots(bathDateYMD!),
     enabled: !!bathDateYMD && !!reservation?.petId,
   });
 
@@ -202,14 +203,18 @@ export function EditBathAppointmentScreen({ id }: { id: string }) {
         )}
 
         {bathConflict && !unchanged && (
-          <>
-            <Text style={styles.estimateWarn}>{bathConflict}</Text>
-            <SwitchRow
-              label="Agendar de todos modos"
-              value={forceSchedule}
-              onValueChange={setForceSchedule}
-            />
-          </>
+          <BathConflictNotice
+            conflict={bathConflict}
+            appointmentAt={appointmentAt}
+            force={forceSchedule}
+            onForceChange={setForceSchedule}
+            onPick={(d) => {
+              setAppointmentAt(d);
+              setForceSchedule(false);
+            }}
+            loadSlots={loadBathSlots}
+            queryKey={["bath-slots-edit", reservation.petId, deslanado, corte, id]}
+          />
         )}
       </View>
 
@@ -275,11 +280,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
-  },
-  estimateWarn: {
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.errorText,
   },
   hintBox: {
     flexDirection: "row",

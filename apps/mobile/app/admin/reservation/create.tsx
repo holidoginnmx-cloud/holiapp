@@ -78,6 +78,7 @@ import {
   localDayKey,
   formatDurationMin,
 } from "@/hooks/useBathConflict";
+import { BathConflictNotice } from "@/components/BathConflictNotice";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -556,19 +557,20 @@ export default function AdminCreateReservation() {
   // tienen peso: la duración depende de la talla, y la ficha todavía dice "M"
   // por default. Sin esto, la agenda mostraría el bloque equivocado.
   const tallaDelPrimero = petIds[0] ? tallaDeclarada[petIds[0]] : undefined;
+  const loadBathSlots = (dateYMD: string) =>
+    getBathSlots(dateYMD, {
+      petId: petIds[0],
+      ...(tallaDelPrimero
+        ? { petSize: tallaDelPrimero as "XS" | "S" | "M" | "L" | "XL" }
+        : {}),
+      deslanado,
+      corte,
+    });
   const { data: bathSlots } = useQuery({
     queryKey: [
       "admin", "bath-slots", bathDateYMD, petIds[0], tallaDelPrimero, deslanado, corte,
     ],
-    queryFn: () =>
-      getBathSlots(bathDateYMD!, {
-        petId: petIds[0],
-        ...(tallaDelPrimero
-          ? { petSize: tallaDelPrimero as "XS" | "S" | "M" | "L" | "XL" }
-          : {}),
-        deslanado,
-        corte,
-      }),
+    queryFn: () => loadBathSlots(bathDateYMD!),
     enabled: reservationType === "BATH" && !!bathDateYMD && petIds.length > 0,
   });
 
@@ -1539,15 +1541,19 @@ export default function AdminCreateReservation() {
               </Text>
             )}
 
-            {bathConflict && (
-              <>
-                <Text style={styles.estimateWarn}>{bathConflict}</Text>
-                <SwitchRow
-                  label="Agendar de todos modos"
-                  value={forceSchedule}
-                  onValueChange={setForceSchedule}
-                />
-              </>
+            {bathConflict && appointmentAt && (
+              <BathConflictNotice
+                conflict={bathConflict}
+                appointmentAt={appointmentAt}
+                force={forceSchedule}
+                onForceChange={setForceSchedule}
+                onPick={(d) => {
+                  setAppointmentAt(d);
+                  setForceSchedule(false);
+                }}
+                loadSlots={loadBathSlots}
+                queryKey={["admin", "bath-slots", petIds[0], tallaDelPrimero, deslanado, corte]}
+              />
             )}
 
             {bathEstimate != null ? (

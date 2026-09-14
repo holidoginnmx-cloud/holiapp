@@ -43,6 +43,7 @@ import {
   localDayKey,
   formatDurationMin,
 } from "@/hooks/useBathConflict";
+import { BathConflictNotice } from "@/components/BathConflictNotice";
 import { SIZE_RANGES_KG, sizeRangeLabel, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 /**
@@ -121,9 +122,11 @@ export default function AdminGuestBath() {
   // en vez de petId, así que la duración sale de la variante y no del respaldo
   // genérico de 60 min. queryKey propia para no cruzar caché con create.tsx.
   const dayKey = localDayKey(appointmentAt);
+  const loadBathSlots = (dateYMD: string) =>
+    getBathSlots(dateYMD, { petSize: size || undefined, deslanado, corte });
   const { data: bathSlots } = useQuery({
     queryKey: ["admin", "bath-slots-walkin", dayKey, size, deslanado, corte],
-    queryFn: () => getBathSlots(dayKey, { petSize: size || undefined, deslanado, corte }),
+    queryFn: () => loadBathSlots(dayKey),
     enabled: !!size,
   });
   const bathConflict = useBathConflict(bathSlots, appointmentAt);
@@ -455,14 +458,18 @@ export default function AdminGuestBath() {
         )}
 
         {bathConflict && (
-          <>
-            <Text style={styles.estimateWarn}>{bathConflict}</Text>
-            <SwitchRow
-              label="Agendar de todos modos"
-              value={forceSchedule}
-              onValueChange={setForceSchedule}
-            />
-          </>
+          <BathConflictNotice
+            conflict={bathConflict}
+            appointmentAt={appointmentAt}
+            force={forceSchedule}
+            onForceChange={setForceSchedule}
+            onPick={(d) => {
+              setAppointmentAt(d);
+              setForceSchedule(false);
+            }}
+            loadSlots={loadBathSlots}
+            queryKey={["admin", "bath-slots-walkin", size, deslanado, corte]}
+          />
         )}
 
         {bathEstimate != null ? (

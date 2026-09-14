@@ -70,6 +70,35 @@ export const WHATS_NEW: WhatsNewRelease[] = [
     ],
   },
   {
+    id: "2026-09-14",
+    title: "La agenda de baños te dice por qué no cabe",
+    items: [
+      {
+        icon: "time-outline",
+        title: "El aviso de horario ahora trae la hora que sí sirve",
+        body:
+          "Cuando una cita de baño no cabe, el aviso ya no se queda en «No alcanza " +
+          "a terminar»: dice a qué hora sale la estilista y lo más tarde que puede " +
+          "empezar (por ejemplo, «La estilista sale a las 6:00 p.m. Lo más tarde " +
+          "que puede empezar es a las 4:00 p.m.»). Debajo salen los horarios libres " +
+          "más cercanos; tócalos y la cita se mueve ahí. Si ese día ya no hay lugar, " +
+          "te ofrece el próximo día libre. Funciona al crear reservación, en baño " +
+          "de invitado y al reagendar.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "checkmark-circle-outline",
+        title: "«Agendar de todos modos» ya no se ve como error",
+        body:
+          "Al encenderlo, el aviso rojo pasa a una nota gris que dice lo que estás " +
+          "aceptando, como «Se agenda fuera de horario: termina 1 hora después de " +
+          "que salga la estilista».",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-11-c",
     title: "Juntar lo que se capturó dos veces",
     items: [
