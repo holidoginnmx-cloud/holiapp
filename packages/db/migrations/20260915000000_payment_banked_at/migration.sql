@@ -70,9 +70,18 @@ begin
     v_dia := v_arrival::date;
   elsif p_available is not null then
     v_dia := p_available::date;
+  elsif p_paid_at = date_trunc('day', p_paid_at) then
+    -- ANCLA DE DÍA: el panel guardó durante meses "YYYY-MM-DD" a secas, que en
+    -- la base son las 00:00:00.000Z EXACTAS — un día SIN hora. Leerlo en hora
+    -- del hotel lo correría al día anterior. Un cobro real jamás cae en la
+    -- medianoche exacta al milisegundo, así que ese valor se reconoce como día
+    -- y se lee en UTC. Misma regla que `fechaDeCobro` en el panel
+    -- (lib/reservacion.ts): sin ella, esos cobros viejos se moverían un día al
+    -- rellenar el histórico.
+    v_dia := p_paid_at::date;
   elsif p_paid_at is not null then
-    -- `paidAt` sí es un instante real: su día es el del HOTEL (un cobro en
-    -- efectivo de las 6 pm es del día siguiente en UTC).
+    -- `paidAt` con hora real: su día es el del HOTEL (un cobro en efectivo de
+    -- las 6 pm es del día siguiente en UTC).
     v_dia := (p_paid_at at time zone 'UTC' at time zone 'America/Hermosillo')::date;
   else
     return null;
