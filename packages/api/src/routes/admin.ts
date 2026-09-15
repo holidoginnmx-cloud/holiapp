@@ -118,10 +118,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // completo. Sin join a reservations, así que incluye TODO lo cobrado:
         // hospedaje, estética, guardería y las ventas de tienda (mostrador y en
         // línea, que desde la entrega de ventas de tienda sí generan Payment).
+        //
+        // El mes se corta por `bankedAt` (el día en que el dinero CAE AL BANCO)
+        // y no por `paidAt`: un cobro de Stripe del 31 se deposita en el mes
+        // siguiente, y contarlo aquí mostraba un ingreso que el banco todavía no
+        // había recibido. Ver schema.prisma (Payment.bankedAt).
         prisma.payment.aggregate({
           where: {
             status: { in: ["PAID", "PARTIAL"] },
-            paidAt: { gte: monthStart, lt: monthEnd },
+            bankedAt: { gte: monthStart, lt: monthEnd },
           },
           _sum: { amount: true },
         }),
@@ -130,7 +135,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         prisma.payment.aggregate({
           where: {
             status: "REFUNDED",
-            paidAt: { gte: monthStart, lt: monthEnd },
+            bankedAt: { gte: monthStart, lt: monthEnd },
           },
           _sum: { amount: true },
         }),
@@ -347,10 +352,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       // Incluimos PAID/PARTIAL (cobrados) y REFUNDED (reembolsos por
       // cancelación). Los REFUNDED se restan al total y se marcan en la lista
       // para que admin vea claramente qué pagos quedaron cancelados.
+      //
+      // El mes se corta por `bankedAt` (día del depósito), igual que /admin/stats
+      // y que las vistas del panel: lo que se reporta del mes es el dinero que
+      // entró a la cuenta, no el que el cliente tecleó en la app.
       const payments = await prisma.payment.findMany({
         where: {
           status: { in: ["PAID", "PARTIAL", "REFUNDED"] },
-          paidAt: { gte: monthStart, lt: monthEnd },
+          bankedAt: { gte: monthStart, lt: monthEnd },
         },
         include: {
           reservation: {
@@ -374,7 +383,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             },
           },
         },
-        orderBy: { paidAt: "desc" },
+        orderBy: { bankedAt: "desc" },
       });
 
       // Classify each payment as HOTEL, BATH, or MIXED based on its

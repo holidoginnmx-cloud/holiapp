@@ -860,6 +860,20 @@ model Payment {
   // el siguiente hábil. Una vez conciliado el depósito real, manda la arrivalDate
   // del StripePayout enlazado vía payoutLines. NULL = no aplica o aún sin dato.
   stripeAvailableOn     DateTime?
+  // EL DÍA EN QUE EL DINERO CAE AL BANCO, y con el que se reportan los ingresos
+  // (vistas del dashboard, /admin/revenue, Movimientos del panel). `paidAt` es
+  // cuándo pagó el cliente; un cobro de Stripe se deposita uno o dos días
+  // hábiles después, así que cortar el mes por `paidAt` nunca cuadraba contra el
+  // estado de cuenta. Precedencia: arrivalDate del depósito conciliado →
+  // stripeAvailableOn (estimado) → paidAt (efectivo/transferencia/terminal: el
+  // dinero ya está).
+  //
+  // NO LA ESCRIBE LA APLICACIÓN: la mantiene el trigger `trg_payments_banked_at`
+  // (migración 20260915000000), porque los pagos nacen desde tres repos y una
+  // decena de caminos y el que se olvidara la dejaría fuera del mes. Viene
+  // anclada a mediodía UTC: es un DÍA, y así se lee igual en UTC que en hora del
+  // hotel.
+  bankedAt              DateTime?
   // Recargo por pago con tarjeta en la terminal física (Getnet). Snapshot de la
   // tasa aplicada al momento del cobro; las escribe el admin web (Config →
   // Tarifas define las tasas vigentes en LodgingPricing.cardFee*).
@@ -907,6 +921,7 @@ model Payment {
   @@index([reservationId]) // includes anidados en cada reserva (FK no indexada)
   @@index([orderId]) // ingresos de tienda por pedido (FK no indexada)
   @@index([status, paidAt]) // agregados de ingresos/refunds (admin)
+  @@index([status, bankedAt]) // los mismos agregados, ya por fecha de depósito
   @@index([userId]) // pagos de un cliente / merge de cuentas (FK sin índice)
   @@map("payments")
 }

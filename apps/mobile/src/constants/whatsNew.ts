@@ -34,6 +34,28 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-15",
+    title: "Los ingresos van por la fecha del banco",
+    items: [
+      {
+        icon: "business-outline",
+        title: "Un cobro cuenta el día que el dinero cae a la cuenta",
+        body:
+          "Lo que se paga desde la app no llega al banco ese mismo día: Stripe lo " +
+          "deposita uno o dos días hábiles después. Hasta ahora Ingresos lo " +
+          "contaba el día en que el cliente pagó, así que el total del mes nunca " +
+          "cuadraba con el estado de cuenta y un anticipo del 31 aparecía en un " +
+          "mes en el que el banco no lo había recibido. Ahora cada cobro cuenta " +
+          "en el día en que se deposita —y en efectivo, transferencia o terminal " +
+          "no cambia nada, porque el dinero ya está—. En la lista de pagos la " +
+          "fecha es la del depósito y, si el cliente pagó otro día, sale también " +
+          "«cobrado el …».",
+        route: "/admin/revenue",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-11-c",
     title: "Juntar lo que se capturó dos veces",
     items: [

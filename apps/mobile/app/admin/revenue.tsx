@@ -152,7 +152,12 @@ export default function AdminRevenue() {
       }
     >
       <Text style={styles.heading}>Ingresos del mes</Text>
-      <Text style={styles.sub}>{monthLabel}</Text>
+      <Text style={styles.subMes}>{monthLabel}</Text>
+      {/* Cada pago cuenta en el mes en que el dinero CAYÓ AL BANCO, no en el
+          que el cliente pagó: lo de Stripe se deposita uno o dos días hábiles
+          después. Decirlo aquí evita la pregunta de por qué un cobro del 31 no
+          aparece en el mes. */}
+      <Text style={styles.subNota}>Por fecha de depósito en el banco</Text>
 
       {/* Total cobrado */}
       <View style={styles.totalCard}>
@@ -382,6 +387,10 @@ export default function AdminRevenue() {
             : "—";
           const cat = CATEGORY_STYLE[item.category] ?? CATEGORY_FALLBACK;
           const isRefund = item.kind === "REFUND";
+          // Día en que el dinero cayó al banco (con el que se agrupa el mes) y
+          // día en que el cliente pagó. Coinciden salvo en Stripe.
+          const diaBanco = item.bankedAt ? formatDate(item.bankedAt) : null;
+          const diaCobro = item.paidAt ? formatDate(item.paidAt) : null;
           return (
             <TouchableOpacity
               key={item.id}
@@ -428,7 +437,14 @@ export default function AdminRevenue() {
                 <Text style={styles.paymentMeta}>
                   {isRefund ? "Reembolso · " : ""}
                   {methodLabel(item.method)}
-                  {item.paidAt ? ` · ${formatDate(item.paidAt)}` : ""}
+                  {/* La fecha que manda es la del depósito: es la que decide en
+                      qué mes cuenta el pago. Si el cliente pagó otro día (lo
+                      normal en Stripe), se dice, porque es la fecha que él
+                      recuerda y por la que pregunta. */}
+                  {diaBanco ? ` · ${diaBanco}` : diaCobro ? ` · ${diaCobro}` : ""}
+                  {diaBanco && diaCobro && diaBanco !== diaCobro
+                    ? ` · cobrado ${diaCobro}`
+                    : ""}
                 </Text>
                 <View style={styles.paymentOriginRow}>
                   <View
@@ -496,13 +512,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgPage,
   },
   heading: { fontSize: 22, fontFamily: "Outfit_600SemiBold", color: COLORS.textPrimary },
-  sub: {
+  subMes: {
     fontSize: 13,
     color: COLORS.textTertiary,
     marginTop: 2,
-    marginBottom: 16,
     textTransform: "capitalize",
     fontFamily: "PlusJakartaSans_600SemiBold",
+  },
+  // Criterio del corte (fecha de depósito). Sin `capitalize`: es una frase.
+  subNota: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 2,
+    marginBottom: 16,
   },
   // Total hero card
   totalCard: {

@@ -72,6 +72,10 @@ export type AdminRevenueBreakdown = {
     status: string;
     kind: "PAYMENT" | "REFUND";
     paidAt: string | null;
+    // Día en que el dinero CAE AL BANCO (depósito de Stripe ya conciliado, su
+    // estimado, o `paidAt` en efectivo/transferencia/terminal). Es la fecha con
+    // la que el mes se corta, no `paidAt`. Ver schema.prisma (Payment.bankedAt).
+    bankedAt: string | null;
     createdAt: string;
     // true = importado del Excel/web histórico; false = registrado en la app.
     originLegacy: boolean;
