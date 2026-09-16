@@ -6,18 +6,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
 import { ErrorState } from "@/components/ErrorState";
-import { formatName, utcDayKey, localDayKey } from "@/lib/format";
+import { formatName, isHotelToday } from "@/lib/format";
 
 export default function AdminCheckoutsToday() {
   const router = useRouter();
-  const today = localDayKey();
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["admin", "reservations", "checkouts-today"],
     queryFn: async () => {
       const checkedIn = await getReservations({ status: "CHECKED_IN" });
       return checkedIn.filter(
-        (r) => r.pet && r.checkOut && utcDayKey(r.checkOut) === today
+        (r) => r.pet && r.checkOut && isHotelToday(r.checkOut)
       );
     },
     refetchInterval: 60_000,

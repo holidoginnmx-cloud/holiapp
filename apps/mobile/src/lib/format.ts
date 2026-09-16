@@ -236,6 +236,22 @@ export function hotelTodayYMD(): string {
 }
 
 /**
+ * True si un DÍA DE ESTADÍA (`checkIn`/`checkOut`, guardados a las 00:00 UTC)
+ * cae HOY en el hotel.
+ *
+ * Es la única forma correcta de armar las listas de "check-ins/check-outs de
+ * hoy", y existe porque cada pantalla la escribía a mano y una la escribió mal:
+ * leer las componentes LOCALES de las 00:00 UTC (`d.getDate()`) devuelve el día
+ * ANTERIOR en Hermosillo (UTC-7 → 5 p.m. del día previo), así que la lista de
+ * hoy mostraba las estancias de MAÑANA. El día de la estadía se lee en UTC
+ * (`utcDayKey`) y "hoy" es el del hotel, nunca el del teléfono.
+ */
+export function isHotelToday(date: string | Date | null | undefined): boolean {
+  if (!date) return false;
+  return utcDayKey(date) === hotelTodayYMD();
+}
+
+/**
  * Días de `a` a `b`, ambos como "YYYY-MM-DD" (positivo si `b` es después).
  * Para comparar un día de estadía (`utcDayKey(checkIn)`) contra
  * `hotelTodayYMD()` sin que la zona del teléfono mueva el resultado.

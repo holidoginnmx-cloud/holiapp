@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { getStaffStays } from "@/lib/api";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
-import { formatName, hotelTodayYMD, utcDayKey } from "@/lib/format";
+import { formatName, isHotelToday } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { TeamFeedbackModal } from "@/components/TeamFeedbackModal";
@@ -70,11 +70,6 @@ function MenuItem({
 
 // checkIn/checkOut son días a medianoche UTC; compararlos en hora local del
 // teléfono los corría al día anterior (UTC-7). "Hoy" es el día del hotel.
-function isHotelToday(date: Date | string | null | undefined): boolean {
-  if (!date) return false;
-  return utcDayKey(date) === hotelTodayYMD();
-}
-
 export default function StaffMore() {
   const router = useRouter();
   const { isTablet } = useResponsive();

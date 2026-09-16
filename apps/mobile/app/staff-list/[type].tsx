@@ -17,7 +17,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
-import { formatName, formatTimeHHmm } from "@/lib/format";
+import { formatName, formatTimeHHmm, isHotelToday } from "@/lib/format";
 
 type ListType = "hospedados" | "alertas" | "checkins" | "checkouts" | "reportes";
 
@@ -56,17 +56,6 @@ const COPY: Record<
     emptyIcon: "checkmark-done-circle-outline",
   },
 };
-
-function isSameLocalDay(date: Date | string | null | undefined): boolean {
-  if (!date) return false;
-  const d = new Date(date);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
 
 export default function StaffListScreen() {
   const { type } = useLocalSearchParams<{ type: ListType }>();
@@ -123,11 +112,16 @@ export default function StaffListScreen() {
   ) => (a[campo] ?? "99:99").localeCompare(b[campo] ?? "99:99");
 
   // Derivados
+  // "Hoy" es el día del HOTEL y el día de la estadía se lee en UTC
+  // (`isHotelToday`). Comparando las componentes locales de las 00:00 UTC, esta
+  // lista iba un día ADELANTADA: el 16 enseñaba las entradas y salidas del 17,
+  // mientras los contadores del panel (que sí usaban el día del hotel) decían
+  // otra cosa.
   const checkInsToday = confirmed
-    .filter((s) => isSameLocalDay(s.checkIn))
+    .filter((s) => isHotelToday(s.checkIn))
     .sort(porHora("checkInTime"));
   const checkOutsToday = active
-    .filter((s) => isSameLocalDay(s.checkOut))
+    .filter((s) => isHotelToday(s.checkOut))
     .sort(porHora("checkOutTime"));
   const staysWithoutChecklist = active.filter((s) => s.checklists.length === 0);
   const staysWithMedication = active.filter(

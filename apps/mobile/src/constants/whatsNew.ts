@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-16",
+    title: "Los check-ins y check-outs de hoy ya son los de hoy",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "Las listas de hoy iban un día adelantadas",
+        body:
+          "«Check-ins de hoy» y «Check-outs de hoy» enseñaban las entradas y " +
+          "salidas del DÍA SIGUIENTE, aunque los contadores del panel dijeran " +
+          "otra cosa. Ya coinciden: la lista trae exactamente las estancias que " +
+          "empiezan o terminan hoy en el hotel.",
+        route: "/staff-list/checkouts",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-11-c",
     title: "Juntar lo que se capturó dos veces",
     items: [
