@@ -1,0 +1,142 @@
+name: OTA (app móvil)
+
+# Publica una actualización OTA (EAS Update) de la app móvil.
+#
+# Por qué existe: un arreglo de JS/TS de la app NO llega al teléfono del equipo
+# al hacer merge a `main` — eso solo redeploya el API en Railway. Antes había que
+# acordarse de correr `eas update` a mano desde una compu con sesión de Expo, y
+# el arreglo se quedaba días en `main` sin que nadie lo viera.
+#
+# Qué SÍ puede salir por aquí: cambios de JS/TS, imágenes y textos. Lo que toca
+# el lado NATIVO (dependencias con código nativo, permisos, plugins de
+# `app.json`, `runtimeVersion`) necesita build nueva de tienda: un OTA no
+# reemplaza el binario. Por eso el `runtimeVersion` de `app.json` es un string
+# fijo — el OTA solo llega a las builds que declaran ESE runtime, y si lo subes
+# sin publicar la build, el update simplemente no le aparece a nadie.
+#
+# Requisito único: el secret `EXPO_TOKEN` del repo (Expo → Account Settings →
+# Access tokens → robot con permiso de publicar updates). Sin él el job falla
+# con un mensaje claro en vez de publicar a medias.
+
+on:
+  push:
+    branches: ["main"]
+    # Solo lo que acaba DENTRO del bundle de la app. Un cambio en packages/api
+    # o packages/db no cambia ni un byte de lo que corre en el teléfono: no
+    # tiene caso publicar un update idéntico y mandarle descarga a todos.
+    paths:
+      - "apps/mobile/**"
+      - "packages/shared/**"
+      - "package-lock.json"
+  # Para republicar a mano (o mandar algo al canal `preview` sin tocar `main`).
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Canal de EAS Update al que se publica"
+        type: choice
+        options: ["production", "preview"]
+        default: "production"
+
+concurrency:
+  # A diferencia de CI, aquí NO se cancela la corrida en curso: cancelar un
+  # `eas update` a media subida deja el canal en un estado que hay que ir a
+  # revisar a mano. Las corridas se hacen fila.
+  group: ota-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  update:
+    name: eas update · canal ${{ github.event.inputs.channel || 'production' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exigir EXPO_TOKEN
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Falta el secret EXPO_TOKEN del repo (Settings → Secrets and variables → Actions)." \
+                 "Créalo en expo.dev → Account Settings → Access tokens y vuelve a correr este workflow."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Instalar (lockfile congelado)
+        run: npm ci
+
+      # Igual que en ci.yml: `dist/` está gitignoreado y `tsc` sigue
+      # `types`/`main` → dist/, no la condición `react-native` que resuelve
+      # Metro. Sin este paso el typecheck de abajo truena con ~195 errores.
+      - name: Compilar @holidoginn/shared (tipos que consume la app)
+        run: npm run build --workspace=@holidoginn/shared
+
+      # Un OTA entra SOLO al teléfono, sin revisión de tienda de por medio: si
+      # el bundle está roto, el equipo se queda con la app tronada y el
+      # rollback también es un update. Vale los dos minutos de typecheck aquí
+      # aunque ci.yml ya lo corra en el mismo commit.
+      - name: tsc --noEmit
+        working-directory: apps/mobile
+        run: npx tsc --noEmit
+
+      # Las EXPO_PUBLIC_* se INCRUSTAN en el bundle al empaquetar, y
+      # `src/constants/api.ts` truena a propósito si falta la del API: un OTA
+      # empaquetado sin ellas es una app que no abre. Se leen del MISMO perfil
+      # de `eas.json` con el que se compila la build de tienda para que el
+      # bundle del OTA y el del binario apunten a lo mismo; duplicar los
+      # valores en este archivo era garantizar que algún día divergieran.
+      - name: Inyectar las EXPO_PUBLIC_* del perfil de eas.json
+        working-directory: apps/mobile
+        env:
+          PERFIL: ${{ github.event.inputs.channel || 'production' }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const perfil = process.env.PERFIL;
+            const env = require("./eas.json").build?.[perfil]?.env ?? {};
+            const requeridas = [
+              "EXPO_PUBLIC_API_URL",
+              "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
+              "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+              "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME",
+              "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET",
+            ];
+            const faltan = requeridas.filter((k) => !env[k]);
+            if (faltan.length > 0) {
+              console.log(`::error::eas.json → build.${perfil}.env no trae: ${faltan.join(", ")}`);
+              process.exit(1);
+            }
+            fs.appendFileSync(
+              process.env.GITHUB_ENV,
+              Object.entries(env).map(([k, v]) => `${k}=${v}`).join("\n") + "\n",
+            );
+          '
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # El mensaje del update se saca de `git log`, no de la interpolación de
+      # GitHub: así el asunto del commit no se interpreta como shell.
+      - name: eas update
+        working-directory: apps/mobile
+        env:
+          CANAL: ${{ github.event.inputs.channel || 'production' }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          MENSAJE="$(git log -1 --pretty=%s)"
+          eas update \
+            --channel "$CANAL" \
+            --message "$MENSAJE" \
+            --non-interactive
