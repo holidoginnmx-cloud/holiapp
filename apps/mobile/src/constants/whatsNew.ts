@@ -34,6 +34,25 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-21",
+    title: "El baño de invitado ya deja registrar con el teléfono puesto",
+    items: [
+      {
+        icon: "call-outline",
+        title: "«Falta el teléfono» con el teléfono escrito",
+        body:
+          "En el baño de invitado, el botón «Registrar baño» se quedaba " +
+          "apagado diciendo que faltaba el teléfono aunque estuviera completo: " +
+          "el campo pinta el «+52» y esos dos dígitos se estaban contando " +
+          "como parte de los diez. Ya cuenta sólo el número. De paso, un " +
+          "teléfono a medias (ocho dígitos) ya no pasa como bueno, ni aquí ni " +
+          "al dar de alta un cliente.",
+        route: "/admin/reservation/guest-bath",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-16",
     title: "Los check-ins y check-outs de hoy ya son los de hoy",
     items: [

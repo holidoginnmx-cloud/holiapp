@@ -16,7 +16,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { createUser } from "@/lib/api";
-import { formatFullName, formatPhoneInput } from "@/lib/format";
+import { formatFullName, formatPhoneInput, phoneNationalDigits } from "@/lib/format";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -40,11 +40,14 @@ export default function AdminCreateClient() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
-  const phoneDigits = phone.replace(/\D/g, "");
+  // Los dígitos NACIONALES: el campo se pinta con `formatPhoneInput`, que
+  // agrega el "+52", así que contar los dígitos crudos daba por bueno un
+  // teléfono de 8 dígitos (8 + los dos de la lada = 10) y lo guardaba a medias.
+  const phoneDigits = phoneNationalDigits(phone);
   const emailTrimmed = email.trim();
   const emailLooksValid =
     emailTrimmed.length === 0 || /^\S+@\S+\.\S+$/.test(emailTrimmed);
-  const phoneLooksValid = phoneDigits.length === 0 || phoneDigits.length >= 10;
+  const phoneLooksValid = phoneDigits.length === 0 || phoneDigits.length === 10;
   const canSubmit =
     firstName.trim().length > 0 && phoneLooksValid && emailLooksValid;
 

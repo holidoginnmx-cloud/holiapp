@@ -29,7 +29,12 @@ import {
   type WalkInBathBody,
   type WalkInOwnerCandidate,
 } from "@/lib/api";
-import { formatWeekdayDayShort, formatTime, formatPhoneInput } from "@/lib/format";
+import {
+  formatWeekdayDayShort,
+  formatTime,
+  formatPhoneInput,
+  phoneNationalDigits,
+} from "@/lib/format";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import { alertaDeError } from "@/lib/errorAlert";
 import { ApiError } from "@/lib/api/client";
@@ -77,8 +82,6 @@ function ahoraRedondeado(): Date {
   d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
   return d;
 }
-
-const soloDigitos = (s: string) => s.replace(/\D/g, "");
 
 export default function AdminGuestBath() {
   const router = useRouter();
@@ -132,7 +135,11 @@ export default function AdminGuestBath() {
     if (petName.trim().length < 2) f.push("el nombre del perrito");
     if (!size) f.push("la talla");
     if (ownerName.trim().length < 2) f.push("el nombre del cliente");
-    if (soloDigitos(phone).length !== 10) f.push("el teléfono (10 dígitos)");
+    // `phoneNationalDigits` y no un `replace(/\D/g, "")` a secas: el campo se
+    // pinta con `formatPhoneInput`, o sea "+52 (662) 123 4567". Contando esos
+    // dígitos pelones, un teléfono COMPLETO daba 12 y el botón se quedaba
+    // trabado en "falta el teléfono"; uno de 8 dígitos daba 10 y pasaba.
+    if (phoneNationalDigits(phone).length !== 10) f.push("el teléfono (10 dígitos)");
     if (bathConflict && !forceSchedule) f.push("resolver el horario");
     // Sin variante Y sin precio a mano no hay nada que cobrar. A diferencia de
     // create.tsx, aquí basta con escribir el total: el perro ya está enfrente y
@@ -147,7 +154,7 @@ export default function AdminGuestBath() {
   const cobroNum = cobro.trim() ? Number(cobro) : null;
 
   const armarBody = (extra: Partial<WalkInBathBody> = {}): WalkInBathBody => ({
-    owner: { name: ownerName.trim(), phone: soloDigitos(phone) },
+    owner: { name: ownerName.trim(), phone: phoneNationalDigits(phone) },
     pet: {
       name: petName.trim(),
       size: size as Talla,

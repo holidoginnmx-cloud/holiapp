@@ -90,6 +90,31 @@ export function toUTCDayISO(d: Date): string {
 }
 
 /**
+ * Los 10 dígitos NACIONALES de un teléfono, sin la lada de país.
+ *
+ * Es la contraparte de `formatPhoneInput`: como aquél PINTA el "+52", contar
+ * los dígitos del campo con un `replace(/\D/g, "")` pelón devuelve 12 y no 10.
+ * Ese fue el bug del baño de invitado: el botón se quedaba deshabilitado
+ * diciendo "falta el teléfono" con el teléfono completo escrito, y en cambio
+ * daba por bueno un número de 8 dígitos (8 + los dos del "52" = 10).
+ *
+ * Úsalo para VALIDAR y para MANDAR al servidor lo que se capturó en un campo
+ * formateado con `formatPhoneInput`.
+ */
+export function phoneNationalDigits(input: string | null | undefined): string {
+  if (!input) return "";
+  // Se quita nuestro propio "+52" primero; si no, sus dígitos se reciclan en el
+  // número local en cada tecla y el campo se queda en "+52 (525) ...".
+  const raw = String(input).replace(/^\s*\+52/, "");
+  let digits = raw.replace(/\D/g, "");
+  // Pegar un E.164 "52XXXXXXXXXX" sin el "+".
+  if (digits.length > 10 && digits.startsWith("52")) {
+    digits = digits.slice(2);
+  }
+  return digits.slice(0, 10);
+}
+
+/**
  * Format a phone number for display as a Mexican mobile: `+52 (662) 429 6727`.
  *
  * Accepts any input — ignores non-digits, strips a leading `52` country code if
@@ -97,17 +122,7 @@ export function toUTCDayISO(d: Date): string {
  * stays readable mid-edit.
  */
 export function formatPhoneInput(input: string | null | undefined): string {
-  if (!input) return "";
-  // Drop our own "+52" prefix first; otherwise its "52" digits get folded back
-  // into the parsed local number on every keystroke and the field locks onto
-  // "+52 (525) ...".
-  const raw = String(input).replace(/^\s*\+52/, "");
-  let digits = raw.replace(/\D/g, "");
-  // Handle paste of an E.164-style "52XXXXXXXXXX" without the "+".
-  if (digits.length > 10 && digits.startsWith("52")) {
-    digits = digits.slice(2);
-  }
-  digits = digits.slice(0, 10);
+  const digits = phoneNationalDigits(input);
   if (digits.length === 0) return "";
   let out = "+52 (" + digits.slice(0, Math.min(3, digits.length));
   if (digits.length >= 3) out += ")";
