@@ -2,6 +2,14 @@
 // GOOGLE_MAPS_API_KEY); la app móvil nunca la ve. El origen del cálculo de
 // distancia son las instalaciones HDI (env HDI_ORIGIN_LAT / HDI_ORIGIN_LNG).
 
+// Places API (New). Google ya no deja habilitar la "Places API (Legacy)" en
+// proyectos nuevos y, si la key solo tiene la New, el endpoint legacy responde
+// REQUEST_DENIED: la app lo veía como "Sin resultados" y nunca salían opciones.
+// Por eso se intenta primero la New y, si falla, la legacy (keys viejas que
+// solo tengan esa habilitada siguen funcionando).
+const PLACES_NEW_AUTOCOMPLETE =
+  "https://places.googleapis.com/v1/places:autocomplete";
+const PLACES_NEW_DETAILS = "https://places.googleapis.com/v1/places";
 const PLACES_AUTOCOMPLETE =
   "https://maps.googleapis.com/maps/api/place/autocomplete/json";
 const PLACE_DETAILS = "https://maps.googleapis.com/maps/api/place/details/json";
@@ -29,10 +37,78 @@ export type PlacePrediction = { placeId: string; description: string };
 
 // Bounding box de Sonora (rectangle:south,west|north,east). Google no permite
 // filtrar por estado vía `components`, así que se restringe geográficamente.
-const SONORA_BOUNDS = "rectangle:26.0,-115.10|32.55,-108.30";
+const SONORA = { south: 26.0, west: -115.1, north: 32.55, east: -108.3 };
+const SONORA_BOUNDS = `rectangle:${SONORA.south},${SONORA.west}|${SONORA.north},${SONORA.east}`;
+
+/** Corre la versión New y, si truena, la legacy. Si ambas fallan, junta los dos errores. */
+async function newThenLegacy<T>(
+  viaNew: () => Promise<T>,
+  viaLegacy: () => Promise<T>
+): Promise<T> {
+  try {
+    return await viaNew();
+  } catch (errNew) {
+    try {
+      return await viaLegacy();
+    } catch (errLegacy) {
+      throw new Error(
+        `${(errNew as Error).message} | legacy: ${(errLegacy as Error).message}`
+      );
+    }
+  }
+}
 
 /** Autocompletado de direcciones (restringido a Sonora, México). */
-export async function placesAutocomplete(
+export function placesAutocomplete(
+  input: string,
+  sessionToken?: string
+): Promise<PlacePrediction[]> {
+  return newThenLegacy(
+    () => placesAutocompleteNew(input, sessionToken),
+    () => placesAutocompleteLegacy(input, sessionToken)
+  );
+}
+
+async function placesAutocompleteNew(
+  input: string,
+  sessionToken?: string
+): Promise<PlacePrediction[]> {
+  const res = await fetch(PLACES_NEW_AUTOCOMPLETE, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey(),
+    },
+    body: JSON.stringify({
+      input,
+      languageCode: "es",
+      includedRegionCodes: ["mx"],
+      locationRestriction: {
+        rectangle: {
+          low: { latitude: SONORA.south, longitude: SONORA.west },
+          high: { latitude: SONORA.north, longitude: SONORA.east },
+        },
+      },
+      ...(sessionToken ? { sessionToken } : {}),
+    }),
+  });
+  const json: any = await res.json();
+  if (!res.ok) {
+    throw new Error(
+      `Places (New) autocomplete: ${res.status} ${json?.error?.message ?? ""}`
+    );
+  }
+  // Sin coincidencias la New responde `{}` (no hay status ZERO_RESULTS).
+  return (json.suggestions ?? [])
+    .map((s: any) => s.placePrediction)
+    .filter((p: any) => p?.placeId)
+    .map((p: any) => ({
+      placeId: p.placeId,
+      description: p.text?.text ?? "",
+    }));
+}
+
+async function placesAutocompleteLegacy(
   input: string,
   sessionToken?: string
 ): Promise<PlacePrediction[]> {
@@ -56,11 +132,53 @@ export async function placesAutocomplete(
   }));
 }
 
+type PlaceDetails = { lat: number; lng: number; address: string };
+
 /** Detalle de un lugar → coordenadas + dirección formateada. */
-export async function placeDetails(
+export function placeDetails(
   placeId: string,
   sessionToken?: string
-): Promise<{ lat: number; lng: number; address: string }> {
+): Promise<PlaceDetails> {
+  return newThenLegacy(
+    () => placeDetailsNew(placeId, sessionToken),
+    () => placeDetailsLegacy(placeId, sessionToken)
+  );
+}
+
+async function placeDetailsNew(
+  placeId: string,
+  sessionToken?: string
+): Promise<PlaceDetails> {
+  const params = new URLSearchParams({ languageCode: "es" });
+  if (sessionToken) params.set("sessionToken", sessionToken);
+  const res = await fetch(
+    `${PLACES_NEW_DETAILS}/${encodeURIComponent(placeId)}?${params.toString()}`,
+    {
+      headers: {
+        "X-Goog-Api-Key": apiKey(),
+        "X-Goog-FieldMask": "location,formattedAddress",
+      },
+    }
+  );
+  const json: any = await res.json();
+  if (!res.ok) {
+    throw new Error(
+      `Place (New) details: ${res.status} ${json?.error?.message ?? ""}`
+    );
+  }
+  const loc = json.location;
+  if (!loc) throw new Error("Place (New) details: sin geometría");
+  return {
+    lat: loc.latitude,
+    lng: loc.longitude,
+    address: json.formattedAddress ?? "",
+  };
+}
+
+async function placeDetailsLegacy(
+  placeId: string,
+  sessionToken?: string
+): Promise<PlaceDetails> {
   const params = new URLSearchParams({
     place_id: placeId,
     key: apiKey(),

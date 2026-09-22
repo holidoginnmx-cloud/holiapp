@@ -45,6 +45,10 @@ export function DeliveryAddressPicker({
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [searching, setSearching] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  // Un fallo del servidor/Google NO es "sin resultados": antes el catch vaciaba
+  // la lista y el usuario leía "Sin resultados" aunque el buscador estuviera
+  // caído, sin forma de saber que no era culpa de lo que escribió.
+  const [error, setError] = useState<string | null>(null);
   // Session token: vive mientras dura una búsqueda; se regenera al elegir.
   const sessionToken = useRef<string>(Crypto.randomUUID());
 
@@ -55,6 +59,7 @@ export function DeliveryAddressPicker({
     const q = query.trim();
     if (q.length < 3) {
       setPredictions([]);
+      setError(null);
       // Si se borra el texto mientras había una búsqueda en vuelo, el cleanup
       // la cancela: sin esto el spinner se quedaba girando para siempre.
       setSearching(false);
@@ -65,9 +70,17 @@ export function DeliveryAddressPicker({
     const handle = setTimeout(async () => {
       try {
         const res = await deliveryAutocomplete(q, sessionToken.current);
-        if (!cancelled) setPredictions(res.predictions);
+        if (!cancelled) {
+          setPredictions(res.predictions);
+          setError(null);
+        }
       } catch {
-        if (!cancelled) setPredictions([]);
+        if (!cancelled) {
+          setPredictions([]);
+          setError(
+            "No pudimos buscar la dirección. Revisa tu conexión e intenta de nuevo."
+          );
+        }
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -80,6 +93,7 @@ export function DeliveryAddressPicker({
 
   async function handleSelect(p: PlacePrediction) {
     setLoadingDetails(true);
+    setError(null);
     try {
       const details = await deliveryPlaceDetails(p.placeId, sessionToken.current);
       onChange({
@@ -94,6 +108,7 @@ export function DeliveryAddressPicker({
       sessionToken.current = Crypto.randomUUID();
     } catch {
       // Dejamos las predicciones para que el usuario reintente.
+      setError("No pudimos obtener esa dirección. Intenta de nuevo.");
     } finally {
       setLoadingDetails(false);
     }
@@ -103,6 +118,7 @@ export function DeliveryAddressPicker({
     onChange(null);
     setQuery("");
     setPredictions([]);
+    setError(null);
     sessionToken.current = Crypto.randomUUID();
   }
 
@@ -152,7 +168,13 @@ export function DeliveryAddressPicker({
           </TouchableOpacity>
         ) : null}
       </View>
-      {!searching && query.trim().length >= 3 && predictions.length === 0 ? (
+      {error ? (
+        <Text style={[styles.emptyText, styles.errorText]}>{error}</Text>
+      ) : null}
+      {!error &&
+      !searching &&
+      query.trim().length >= 3 &&
+      predictions.length === 0 ? (
         <Text style={styles.emptyText}>
           Sin resultados. Prueba con la calle y el número.
         </Text>
@@ -224,6 +246,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
+  },
+  errorText: {
+    color: COLORS.errorText,
   },
   predictionText: {
     flex: 1,
