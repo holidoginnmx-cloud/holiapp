@@ -18,26 +18,35 @@ name: Create a reservation end-to-end (pet → dates → room → confirm)
 - assertVisible:
     id: "reservation-create-screen"
 
-# Dates. The date pickers are native; we tap the trigger and accept the
-# default value the picker opens to. On iOS this dismisses via the
-# "Done" button; on Android the first tap commits the date.
+# Dates. Un solo selector: se abre el calendario y se tocan los dos días
+# (entrada y salida); al fijar la salida el sheet se cierra solo.
+# Los días se tapean por su testID "day-YYYY-MM-DD", que es lo único estable:
+# el número del día se repite entre meses.
 # TODO: parameterize dates once we have a backend fixture that guarantees
 # room availability on a known-future date.
-- tapOn:
-    id: "reservation-create-checkin-button"
-- runFlow:
-    when:
-      visible: "Done"
-    commands:
-      - tapOn: "Done"
+- evalScript: ${var a = new Date(); a.setDate(a.getDate() + 3); var b = new Date(); b.setDate(b.getDate() + 5); output.checkIn = a.getFullYear() + '-' + ('0' + (a.getMonth() + 1)).slice(-2) + '-' + ('0' + a.getDate()).slice(-2); output.checkOut = b.getFullYear() + '-' + ('0' + (b.getMonth() + 1)).slice(-2) + '-' + ('0' + b.getDate()).slice(-2)}
 
 - tapOn:
-    id: "reservation-create-checkout-button"
+    id: "reservation-create-dates"
+
+# El calendario abre en el mes de hoy: si el día cae en el siguiente, se avanza.
 - runFlow:
     when:
-      visible: "Done"
+      notVisible:
+        id: "day-${output.checkIn}"
     commands:
-      - tapOn: "Done"
+      - tapOn: "Mes siguiente"
+- tapOn:
+    id: "day-${output.checkIn}"
+
+- runFlow:
+    when:
+      notVisible:
+        id: "day-${output.checkOut}"
+    commands:
+      - tapOn: "Mes siguiente"
+- tapOn:
+    id: "day-${output.checkOut}"
 
 # Pet: select the first pet chip. The chip carries the pet id, but the
 # list order is stable for seeded QA data, so we rely on the "-first"

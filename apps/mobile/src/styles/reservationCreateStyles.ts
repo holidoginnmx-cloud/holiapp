@@ -47,30 +47,9 @@ export const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
   hint: { fontSize: 13, color: COLORS.textTertiary, marginTop: -8 },
-  label: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary, marginBottom: 4 },
-  dateRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  dateCol: { flex: 1 },
-  dateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: COLORS.white,
-  },
-  dateText: { fontSize: 15, color: COLORS.textPrimary },
+  // Las fechas ya no llevan campos propios: las pinta DateRangeField (un solo
+  // selector con su calendario), así que aquí solo queda el contador de noches.
   nightsText: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.primary, textAlign: "center" },
-  datePickersRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: 12,
-    marginTop: 8,
-  },
   // Pets
   petSectionHighlight: {
     borderWidth: 2,

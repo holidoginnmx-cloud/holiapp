@@ -8,11 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getReservationById,
@@ -25,9 +23,9 @@ import {
   localDateFromUTCDay,
   toUTCDayISO,
   formatCurrency,
-  formatWeekdayDayShort,
 } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { DateRangeField } from "@/components/DateRangeField";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -53,8 +51,6 @@ export default function ModifyReservationScreen() {
 
   const [newCheckIn, setNewCheckIn] = useState<Date | null>(null);
   const [newCheckOut, setNewCheckOut] = useState<Date | null>(null);
-  const [showCheckInPicker, setShowCheckInPicker] = useState(false);
-  const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
   const [refundChoice, setRefundChoice] = useState<RefundChoice>("CREDIT");
   const [preview, setPreview] = useState<ChangePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -71,7 +67,14 @@ export default function ModifyReservationScreen() {
 
   // Debounced preview
   useEffect(() => {
-    if (!newCheckIn || !newCheckOut || !id) return;
+    // Elegir una entrada nueva deja la salida en blanco hasta el segundo toque:
+    // mientras tanto no hay cotización que mostrar, y dejar la anterior en
+    // pantalla haría creer que el precio ya es el de las fechas nuevas.
+    if (!newCheckIn || !newCheckOut || !id) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
     if (newCheckOut <= newCheckIn) {
       setPreview(null);
       setPreviewError("La salida debe ser posterior a la entrada");
@@ -174,59 +177,20 @@ export default function ModifyReservationScreen() {
       )}
 
       <View style={styles.card}>
-        <Text style={styles.label}>Entrada</Text>
-        <TouchableOpacity
-          style={[styles.dateField, isCheckedIn && styles.dateFieldDisabled]}
-          onPress={() => !isCheckedIn && setShowCheckInPicker(true)}
-          disabled={isCheckedIn}
-        >
-          <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
-          <Text style={styles.dateText}>
-            {newCheckIn ? formatWeekdayDayShort(newCheckIn) : "—"}
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.label}>Salida</Text>
-        <TouchableOpacity
-          style={styles.dateField}
-          onPress={() => setShowCheckOutPicker(true)}
-        >
-          <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
-          <Text style={styles.dateText}>
-            {newCheckOut ? formatWeekdayDayShort(newCheckOut) : "—"}
-          </Text>
-        </TouchableOpacity>
-
-        {showCheckInPicker && newCheckIn && (
-          <DateTimePicker
-            value={newCheckIn >= today ? newCheckIn : today}
-            mode="date"
-            minimumDate={today}
-            themeVariant="light"
-            textColor={COLORS.textPrimary}
-            onChange={(_, date) => {
-              setShowCheckInPicker(Platform.OS === "ios");
-              if (date) setNewCheckIn(date);
-            }}
-          />
-        )}
-        {showCheckOutPicker && newCheckOut && (() => {
-          const coMin = isCheckedIn ? today : newCheckIn ?? today;
-          const coValue = newCheckOut >= coMin ? newCheckOut : coMin;
-          return (
-            <DateTimePicker
-              value={coValue}
-              mode="date"
-              minimumDate={coMin}
-              themeVariant="light"
-              textColor={COLORS.textPrimary}
-              onChange={(_, date) => {
-                setShowCheckOutPicker(Platform.OS === "ios");
-                if (date) setNewCheckOut(date);
-              }}
-            />
-          );
-        })()}
+        {/* Un solo calendario para las dos fechas: así se ve la estancia nueva
+            completa mientras se mueve un extremo. Durante la estancia la
+            entrada queda fija y sólo se elige la salida. */}
+        <DateRangeField
+          checkIn={newCheckIn}
+          checkOut={newCheckOut}
+          minDate={today}
+          lockStart={isCheckedIn}
+          onChange={(desde, hasta) => {
+            setNewCheckIn(desde);
+            setNewCheckOut(hasta);
+          }}
+          testID="modify-dates"
+        />
       </View>
 
       {previewError && (
@@ -378,25 +342,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 10,
   },
-  label: {
-    fontSize: 13,
-    fontFamily: "PlusJakartaSans_600SemiBold",
-    color: COLORS.textTertiary,
-    marginTop: 4,
-  },
-  dateField: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.bgPage,
-  },
-  dateFieldDisabled: { opacity: 0.5 },
-  dateText: { fontSize: 15, color: COLORS.textPrimary, fontFamily: "PlusJakartaSans_600SemiBold" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
