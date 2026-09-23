@@ -118,6 +118,17 @@ export default function ChecklistForm() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: source === "camera-video" ? ["videos"] : ["images"],
         quality: 0.8,
+        // Video en 720p H.264 y 30 s como tope. Medido el 22-sep-2026 sobre los
+        // videos ya subidos: el iPhone graba a 1080p y 15.5 Mbps, o sea ~2 MB
+        // por segundo, y salían de 40 MB. En 720p son ~0.35 MB/s: el mismo clip
+        // de 20 s pasa de 38 MB a 7 MB. La duración casi no importaba (ya
+        // duraban 20 s en promedio); lo que pesaba era el bitrate.
+        //
+        // videoExportPreset es lo que de verdad comprime. NO usar
+        // UIImagePickerControllerQualityType.IFrame1280x720: ese preset es
+        // formato de edición, ~40 Mbps, y haría los archivos MÁS grandes.
+        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+        videoMaxDuration: 30,
       });
       if (result.canceled) return;
       setMediaItems((prev) => [...prev, assetToPick(result.assets[0])]);
@@ -134,6 +145,21 @@ export default function ChecklistForm() {
       allowsMultipleSelection: true,
     });
     if (result.canceled) return;
+
+    // Un video traído de la galería NO pasa por la compresión del picker: sube
+    // tal cual lo grabó el teléfono (40 MB o más). No lo bloqueamos, porque a
+    // veces el video bueno ya está en el carrete, pero sí avisamos: cada MB se
+    // paga dos veces, al guardarlo y cada vez que alguien lo abre.
+    const pesados = result.assets.filter(
+      (a) => a.type === "video" && (a.fileSize ?? 0) > 15 * 1024 * 1024,
+    );
+    if (pesados.length > 0) {
+      Alert.alert(
+        pesados.length === 1 ? "Ese video pesa mucho" : "Esos videos pesan mucho",
+        "Los videos de la galería se suben sin comprimir. Para que pesen menos, " +
+          "grábalos desde «Grabar video» aquí en la app.",
+      );
+    }
     setMediaItems((prev) => [...prev, ...result.assets.map(assetToPick)]);
   }
 

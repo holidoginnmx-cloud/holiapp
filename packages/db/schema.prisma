@@ -746,6 +746,12 @@ model DailyChecklist {
   photosCount Int @default(0)
   videosCount Int @default(0)
 
+  // Cuándo se borraron los videos de este reporte (purga automática al terminar
+  // la reservación, ver lib/purgeEvidence.ts). `videosCount` se conserva como
+  // registro de lo que el equipo subió; esta marca es lo que deja a la app
+  // decir "ya no disponibles" en vez de ofrecer videos que ya no existen.
+  videosPurgedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

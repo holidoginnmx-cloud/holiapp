@@ -37,6 +37,7 @@ import quotesRoutes from "./routes/quotes";
 import telemetryRoutes from "./routes/telemetry";
 import internalReservationsRoutes from "./routes/internalReservations";
 import internalClaimsRoutes from "./routes/internalClaims";
+import internalMaintenanceRoutes from "./routes/internalMaintenance";
 import adminMergeRoutes from "./routes/adminMerge";
 import pricingRoutes from "./routes/pricing";
 
@@ -200,6 +201,7 @@ app.register(quotesRoutes);
 app.register(telemetryRoutes);
 app.register(internalReservationsRoutes);
 app.register(internalClaimsRoutes);
+app.register(internalMaintenanceRoutes);
 app.register(adminMergeRoutes);
 app.register(pricingRoutes);
 

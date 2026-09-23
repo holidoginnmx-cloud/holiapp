@@ -34,6 +34,36 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-22",
+    title: "Los videos del reporte pesan menos y se borran al final",
+    items: [
+      {
+        icon: "videocam-outline",
+        title: "Graba igual que siempre: la app ya los comprime",
+        body:
+          "Los videos del reporte diario ahora se graban en 720p y hasta 30 " +
+          "segundos. Se ven bien y pesan seis veces menos, que es lo que nos " +
+          "estaba acabando el espacio. No tienes que hacer nada distinto: toca " +
+          "«Grabar video» como siempre. Ojo: si eliges un video de la galería " +
+          "se sube sin comprimir, así que mejor grábalo desde aquí.",
+        route: "/staff/stays",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "trash-outline",
+        title: "Al terminar la reservación, los videos se borran solos",
+        body:
+          "Cuando una reservación se marca como finalizada, sus videos se " +
+          "borran automáticamente. Las fotos se quedan para siempre, igual que " +
+          "la foto del perro y su cartilla. Si el cliente quiere guardar un " +
+          "video, dile que lo descargue mientras su perro sigue hospedado. En " +
+          "los reportes viejos verás «ya no disponibles» junto al número de " +
+          "videos.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-21",
     title: "El baño de invitado ya deja registrar con el teléfono puesto",
     items: [

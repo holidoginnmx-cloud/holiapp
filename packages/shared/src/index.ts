@@ -995,6 +995,10 @@ export const DailyChecklistSchema = z.object({
   additionalNotes: z.string().nullable(),
   photosCount: z.number().int(),
   videosCount: z.number().int(),
+  // Fecha en que se borraron los videos de este reporte (purga automática al
+  // terminar la reservación). Con marca, la app dice "ya no disponibles" en
+  // vez de ofrecer videos que ya no existen.
+  videosPurgedAt: z.coerce.date().nullable().default(null),
   reservationId: z.string(),
   staffId: z.string(),
   createdAt: z.coerce.date(),

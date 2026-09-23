@@ -143,7 +143,16 @@ export function ChecklistSummaryCard({
         </View>
         <View style={styles.evidenceChip}>
           <Ionicons name="videocam-outline" size={12} color={COLORS.textTertiary} />
-          <Text style={styles.evidenceText}>{checklist.videosCount} videos</Text>
+          {/* Los videos se borran cuando la reservación termina (ver
+              lib/purgeEvidence.ts en el API). El conteo se conserva como
+              registro de lo que el equipo subió ese día, pero hay que decir que
+              ya no se pueden abrir: si no, se lee como una falla de la app. */}
+          <Text style={styles.evidenceText}>
+            {checklist.videosCount} videos
+            {checklist.videosPurgedAt && checklist.videosCount > 0
+              ? " · ya no disponibles"
+              : ""}
+          </Text>
         </View>
       </View>
     </View>

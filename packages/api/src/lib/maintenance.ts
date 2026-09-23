@@ -5,6 +5,7 @@ import {
   notifyExpiringVaccines,
   requestPendingReviews,
 } from "./auto-actions";
+import { purgaAutomaticaEncendida, purgeFinishedStayVideos } from "./purgeEvidence";
 
 // Tareas de mantenimiento periódicas: auto-checkout de estancias vencidas y
 // recordatorios de vacunas por vencer.
@@ -69,5 +70,21 @@ export async function runMaintenance(prisma: PrismaClient): Promise<void> {
     await notifyExpiringVaccines(prisma);
   } catch (err) {
     console.error("[maintenance] notifyExpiringVaccines falló:", err);
+  }
+  // Después del auto-checkout a propósito: las estancias que ese job acaba de
+  // cerrar entran a la purga en el mismo ciclo. Apagada salvo que Railway
+  // tenga EVIDENCE_PURGE_ENABLED=true.
+  if (purgaAutomaticaEncendida()) {
+    try {
+      const r = await purgeFinishedStayVideos(prisma);
+      if (r.filasEliminadas > 0 || r.fallidos > 0) {
+        console.log(
+          `[maintenance] purga de videos: ${r.filasEliminadas} borrados, ` +
+            `${r.fallidos} fallidos, ${r.restantes} pendientes`
+        );
+      }
+    } catch (err) {
+      console.error("[maintenance] purgeFinishedStayVideos falló:", err);
+    }
   }
 }
