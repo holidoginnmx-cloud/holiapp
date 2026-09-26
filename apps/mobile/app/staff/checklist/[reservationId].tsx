@@ -22,7 +22,11 @@ import * as ImagePicker from "expo-image-picker";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { getChecklists, createDailyChecklist, getStaffStayById } from "@/lib/api";
 import { ErrorState } from "@/components/ErrorState";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import {
+  CLOUDINARY_MAX_VIDEO_BYTES,
+  uploadToCloudinary,
+} from "@/lib/cloudinary";
+import { reportUploadFailure } from "@/lib/uploadTelemetry";
 import type { MoodLevel } from "@holidoginn/shared";
 import { formatName, utcDayKey, localDayKey, formatDateLong } from "@/lib/format";
 import { useResponsive, CONTENT_MAX_WIDTH } from "@/lib/responsive";
@@ -59,7 +63,14 @@ export default function ChecklistForm() {
   // Evidencias del día (fotos y/o videos). Cada nueva selección se agrega;
   // las anteriores no se pisan. Al guardar, todas se suben como StayUpdates
   // separados (una llamada al API).
-  type MediaPick = { uri: string; type: "image" | "video" };
+  type MediaPick = {
+    uri: string;
+    type: "image" | "video";
+    // Para el rastro cuando una subida falla (src/lib/uploadTelemetry.ts).
+    source: "camera" | "library";
+    fileSize: number | null;
+    durationMs: number | null;
+  };
   const [mediaItems, setMediaItems] = useState<MediaPick[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const confettiRef = useRef<ConfettiCannon>(null);
@@ -99,10 +110,16 @@ export default function ChecklistForm() {
     }
   }, [existing?.id]);
 
-  function assetToPick(asset: ImagePicker.ImagePickerAsset): MediaPick {
+  function assetToPick(
+    asset: ImagePicker.ImagePickerAsset,
+    source: MediaPick["source"],
+  ): MediaPick {
     return {
       uri: asset.uri,
       type: asset.type === "video" ? "video" : "image",
+      source,
+      fileSize: asset.fileSize ?? null,
+      durationMs: asset.duration ?? null,
     };
   }
 
@@ -131,7 +148,7 @@ export default function ChecklistForm() {
         videoMaxDuration: 30,
       });
       if (result.canceled) return;
-      setMediaItems((prev) => [...prev, assetToPick(result.assets[0])]);
+      setMediaItems((prev) => [...prev, assetToPick(result.assets[0], "camera")]);
       return;
     }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -146,11 +163,36 @@ export default function ChecklistForm() {
     });
     if (result.canceled) return;
 
+    // Por encima de 100 MB Cloudinary (plan gratuito) rechaza el archivo, pero
+    // solo después de subirlo entero: el equipo esperaba minutos y al Guardar
+    // fallaba TODO el reporte, fotos incluidas. Se quedan fuera desde aquí.
+    const excedidos = result.assets.filter(
+      (a) => a.type === "video" && (a.fileSize ?? 0) > CLOUDINARY_MAX_VIDEO_BYTES,
+    );
+    const aceptados = result.assets.filter((a) => !excedidos.includes(a));
+    if (excedidos.length > 0) {
+      const pesoMb = Math.round((excedidos[0]!.fileSize ?? 0) / (1024 * 1024));
+      Alert.alert(
+        excedidos.length === 1
+          ? "Ese video es demasiado grande"
+          : "Algunos videos son demasiado grandes",
+        (excedidos.length === 1
+          ? `Pesa ${pesoMb} MB y el máximo es 100 MB, así que no se agregó. `
+          : `${excedidos.length} videos pasan de 100 MB y no se agregaron. `) +
+          "Grábalo desde «Grabar video» aquí en la app: ahí se comprime solo.",
+      );
+      setMediaItems((prev) => [
+        ...prev,
+        ...aceptados.map((a) => assetToPick(a, "library")),
+      ]);
+      return;
+    }
+
     // Un video traído de la galería NO pasa por la compresión del picker: sube
     // tal cual lo grabó el teléfono (40 MB o más). No lo bloqueamos, porque a
     // veces el video bueno ya está en el carrete, pero sí avisamos: cada MB se
     // paga dos veces, al guardarlo y cada vez que alguien lo abre.
-    const pesados = result.assets.filter(
+    const pesados = aceptados.filter(
       (a) => a.type === "video" && (a.fileSize ?? 0) > 15 * 1024 * 1024,
     );
     if (pesados.length > 0) {
@@ -160,7 +202,10 @@ export default function ChecklistForm() {
           "grábalos desde «Grabar video» aquí en la app.",
       );
     }
-    setMediaItems((prev) => [...prev, ...result.assets.map(assetToPick)]);
+    setMediaItems((prev) => [
+      ...prev,
+      ...aceptados.map((a) => assetToPick(a, "library")),
+    ]);
   }
 
   function promptMedia() {
@@ -180,11 +225,28 @@ export default function ChecklistForm() {
     mutationFn: async () => {
       if (mediaItems.length === 0)
         throw new Error("Agrega al menos una foto o video del día");
-      const uploads = await Promise.all(
-        mediaItems.map((it) =>
-          uploadToCloudinary(it.uri, "checklists", it.type),
-        ),
-      );
+      // Una por una y no en paralelo: con la señal del hotel, tres videos a la
+      // vez se reparten el ancho de banda y los tres se pasan del tiempo
+      // límite. Así cada uno tiene su tope completo y, si uno falla, el aviso
+      // dice cuál.
+      const uploads = [];
+      for (const [i, it] of mediaItems.entries()) {
+        try {
+          uploads.push(await uploadToCloudinary(it.uri, "checklists", it.type));
+        } catch (e) {
+          reportUploadFailure(e, {
+            screen: "staff-checklist",
+            mediaType: it.type,
+            source: it.source,
+            fileSize: it.fileSize,
+            durationMs: it.durationMs,
+          });
+          if (mediaItems.length > 1 && e instanceof Error) {
+            e.message = `${it.type === "video" ? "Video" : "Foto"} ${i + 1} de ${mediaItems.length}: ${e.message}`;
+          }
+          throw e;
+        }
+      }
       // UTC midnight de la fecha LOCAL del staff. Así el server (en cualquier TZ)
       // y Postgres @db.Date guardan el día correcto sin shifts.
       const now = new Date();

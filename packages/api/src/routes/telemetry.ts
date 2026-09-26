@@ -41,6 +41,25 @@ const BodySchema = z.object({
   events: z.array(EventSchema).max(50),
 });
 
+const UploadFailureSchema = z.object({
+  screen: z.string().max(40),
+  mediaType: z.enum(["image", "video"]),
+  source: z.string().max(20).optional(),
+  fileSize: z.number().nonnegative().nullable().optional(),
+  durationMs: z.number().nonnegative().nullable().optional(),
+  httpStatus: z.number().int().nullable().optional(),
+  message: z.string().max(200).nullable().optional(),
+  detail: z.string().max(300).optional(),
+  app: z
+    .object({
+      version: z.string().max(20).nullable().optional(),
+      platform: z.string().max(20).optional(),
+      updateId: z.string().max(80).nullable().optional(),
+      runtimeVersion: z.string().max(20).nullable().optional(),
+    })
+    .optional(),
+});
+
 export default async function telemetryRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
@@ -80,4 +99,31 @@ export default async function telemetryRoutes(fastify: FastifyInstance) {
       return reply.status(204).send();
     },
   );
+
+  // POST /telemetry/upload — una subida de foto/video a Cloudinary que falló.
+  //
+  // Las subidas van directo del teléfono a Cloudinary, así que esta API nunca
+  // veía el error: "no me dejó subir el video" llegaba sin nada que revisar
+  // (25-sep-2026). Igual que el de pagos, solo a los logs de Railway; buscar
+  // por `tag: "upload-failure"`.
+  fastify.post(
+    "/telemetry/upload",
+    {
+      preHandler: [authMiddleware],
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const parsed = UploadFailureSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const failure = parsed.data;
+      request.log.warn(
+        { tag: "upload-failure", userId: request.userId, ...failure },
+        `[subida] ${failure.screen} ${failure.mediaType} falló`,
+      );
+      return reply.status(204).send();
+    },
+  );
 }
+

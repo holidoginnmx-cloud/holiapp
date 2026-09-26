@@ -34,6 +34,35 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-26",
+    title: "Si un video no sube, la app ya te dice por qué",
+    items: [
+      {
+        icon: "cloud-upload-outline",
+        title: "Avisos claros cuando falla una subida",
+        body:
+          "Antes, si un video no subía, la app mostraba un error en inglés o " +
+          "se quedaba girando. Ahora te dice qué pasó: si el video es muy " +
+          "grande, si se cortó la señal o si el espacio de fotos está " +
+          "suspendido (en ese caso avisa a administración). Si mandas varios, " +
+          "te dice cuál falló. Y nosotros también recibimos el motivo, para " +
+          "arreglarlo sin tener que pedirte captura.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "videocam-outline",
+        title: "Videos de más de 100 MB: grábalos desde la app",
+        body:
+          "Un video de la galería de más de 100 MB no se puede subir, así que " +
+          "la app ya no lo agrega y te avisa al momento, en vez de fallar al " +
+          "final y tirar todo el reporte. Usa «Grabar video» en la app: ahí " +
+          "se comprime solo y pesa unos 10 MB.",
+        route: "/staff/stays",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-09-22",
     title: "Los videos del reporte pesan menos y se borran al final",
     items: [
