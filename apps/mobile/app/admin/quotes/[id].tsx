@@ -214,6 +214,18 @@ export default function AdminQuoteDetail() {
               El cliente la abrió {quote.viewCount} {quote.viewCount === 1 ? "vez" : "veces"}
             </Text>
           )}
+          {data.needsResend && (
+            // Se corrigió DESPUÉS de mandarla. La liga es la misma, así que el
+            // cliente ya puede ver lo nuevo — pero si no la vuelve a abrir se
+            // queda con el precio viejo en la cabeza.
+            <View style={styles.avisoResend}>
+              <Ionicons name="refresh-circle" size={16} color={COLORS.warningText} />
+              <Text style={styles.avisoResendText}>
+                La corregiste después de mandarla. Reenvíasela para que vea los
+                cambios.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Desglose */}
@@ -271,6 +283,21 @@ export default function AdminQuoteDetail() {
         )}
 
         {/* Acciones secundarias */}
+        {!cerrada && (
+          // Corregir sin cancelar: conserva folio y liga, así que el cliente abre
+          // la que ya tiene. Se lista primero porque es lo que se busca cuando
+          // algo salió mal, que es justo cuando nadie quiere ponerse a leer.
+          <TouchableOpacity
+            style={styles.accion}
+            onPress={() => router.push(`/admin/quotes/create?editId=${quote.id}`)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.accionText}>Editar cotización</Text>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity style={styles.accion} onPress={verComoCliente} activeOpacity={0.7}>
           <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
           <Text style={styles.accionText}>Ver como la ve el cliente</Text>
@@ -428,6 +455,19 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_600SemiBold",
     color: COLORS.successText,
     marginTop: 6,
+  },
+  avisoResend: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "flex-start",
+    marginTop: 8,
+  },
+  avisoResendText: {
+    flex: 1,
+    color: COLORS.warningText,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: "PlusJakartaSans_600SemiBold",
   },
   label: {
     fontSize: 13,

@@ -1,6 +1,7 @@
 import { ENDPOINTS } from "@/constants/api";
 import { apiFetch } from "./client";
 import type {
+  CreateQuote,
   QuoteBreakdown,
   QuoteItemKind,
   QuotePreviewInput,
@@ -140,6 +141,15 @@ export type QuoteDetail = {
   whatsappMessage: string;
   isExpired: boolean;
   prefill: QuotePrefill;
+  /**
+   * El formulario de COTIZACIÓN ya lleno, para editarla. Lo arma el servidor
+   * (igual que `prefill`) para que la app y el panel rehidraten lo mismo: las
+   * reglas de lectura —el deslanado que se deduce de la etiqueta, la cortesía
+   * que es una línea en $0— no se reimplementan aquí.
+   */
+  editInput: CreateQuote;
+  /** Se editó DESPUÉS de mandarse: la liga que tiene el cliente dice otra cosa. */
+  needsResend: boolean;
 };
 
 export type QuoteListItem = QuoteRow & { publicUrl: string; isExpired: boolean };
@@ -161,6 +171,18 @@ export const previewQuote = (input: QuotePreviewInput) =>
 export const createQuote = (input: Record<string, unknown>) =>
   apiFetch<QuoteDetail>(ENDPOINTS.quotes, {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+
+/**
+ * RECOTIZA la misma cotización: conserva folio y token, así que el cliente abre
+ * la liga que ya tenía y ve lo corregido. Es corregir un error de captura, no
+ * hacer una nueva — antes había que cancelar y recapturarlo todo, y eso dejaba
+ * muerto el link que el cliente ya había abierto.
+ */
+export const reviseQuote = (id: string, input: Record<string, unknown>) =>
+  apiFetch<QuoteDetail>(`${ENDPOINTS.quotes}/${id}`, {
+    method: "PUT",
     body: JSON.stringify(input),
   });
 

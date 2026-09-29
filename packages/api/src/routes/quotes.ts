@@ -39,12 +39,13 @@ import {
   publicQuoteUrl,
   registerQuoteView,
   renderQuote,
+  reviseQuote,
   updateQuote,
   type PublicQuoteContext,
   type QuoteFailure,
   type QuoteWithRelations,
 } from "../lib/quotes";
-import { buildQuotePrefill } from "../lib/quoteToReservation";
+import { buildQuoteEditInput, buildQuotePrefill } from "../lib/quoteToReservation";
 
 export default async function quotesRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -96,6 +97,14 @@ export default async function quotesRoutes(fastify: FastifyInstance) {
       // reservación". Se arma en el servidor (y no en cada cliente) para que
       // móvil y web precarguen exactamente lo mismo.
       prefill: buildQuotePrefill(quote),
+      // Formulario de COTIZACIÓN ya lleno, para el botón "Editar". Gemelo del
+      // prefill de arriba: se arma aquí para que la app y el panel rehidraten
+      // exactamente lo mismo.
+      editInput: buildQuoteEditInput(quote),
+      // La editaron DESPUÉS de mandársela al cliente: la liga que él tiene ya
+      // dice otra cosa. La UI lo usa para pedir que se la reenvíen.
+      needsResend:
+        quote.sentAt != null && quote.revisedAt != null && quote.revisedAt > quote.sentAt,
     };
   }
 
@@ -132,6 +141,26 @@ export default async function quotesRoutes(fastify: FastifyInstance) {
       const result = await createQuote(prisma, parsed.data, actorId);
       if (!result.ok) return fail(reply, result);
       return reply.status(201).send(quotePayload(result.quote));
+    },
+
+    // PUT /quotes/:id — RECOTIZA conservando folio y token, es decir el mismo
+    // link que el cliente ya tiene. Es corregir un error de captura ("la salida
+    // era jueves, no viernes"), no una cotización nueva: antes había que
+    // cancelar y recapturar, y eso dejaba muerta la liga que el cliente ya había
+    // abierto. Recibe el MISMO cuerpo que el alta, porque recalcula todo.
+    revise: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = CreateQuoteSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const actorId = await resolveActor(request);
+      if (!actorId) {
+        return reply.status(500).send({ error: "No hay un usuario al que atribuir la edición" });
+      }
+      const result = await reviseQuote(prisma, id, parsed.data, actorId);
+      if (!result.ok) return fail(reply, result);
+      return quotePayload(result.quote);
     },
 
     list: async (request) => {
@@ -283,7 +312,7 @@ export default async function quotesRoutes(fastify: FastifyInstance) {
   // ─── Registro: las mismas rutas en las dos puertas ───────────
 
   const ROUTES: {
-    method: "get" | "post" | "patch" | "delete";
+    method: "get" | "post" | "put" | "patch" | "delete";
     path: string;
     handler: keyof typeof handlers;
   }[] = [
@@ -292,6 +321,7 @@ export default async function quotesRoutes(fastify: FastifyInstance) {
     { method: "get", path: "/quotes", handler: "list" },
     { method: "get", path: "/quotes/:id", handler: "detail" },
     { method: "get", path: "/quotes/:id/html", handler: "html" },
+    { method: "put", path: "/quotes/:id", handler: "revise" },
     { method: "patch", path: "/quotes/:id", handler: "update" },
     { method: "post", path: "/quotes/:id/send", handler: "send" },
     { method: "post", path: "/quotes/:id/converted", handler: "converted" },

@@ -34,6 +34,26 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-09-28",
+    title: "Ya puedes corregir una cotización sin volver a hacerla",
+    items: [
+      {
+        icon: "create-outline",
+        title: "«Editar cotización»: mismo folio y misma liga",
+        body:
+          "Si te equivocaste en la fecha o en un servicio, abre la cotización y " +
+          "toca «Editar cotización». Cambias lo que esté mal y se recalcula el " +
+          "total. Conserva el mismo folio y la MISMA liga, así que el cliente " +
+          "abre la que ya le mandaste y ve lo corregido: ya no hay que " +
+          "cancelarla, capturar todo otra vez ni mandarle un link nuevo " +
+          "pidiendo disculpas. Si ya se la habías mandado y cambió el precio, la " +
+          "cotización te avisa que se la reenvíes.",
+        route: "/admin/quotes",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-22",
     title: "Los videos del reporte pesan menos y se borran al final",
     items: [

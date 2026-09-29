@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTimeField } from "@/components/DateTimeField";
 import { SwitchRow } from "@/components/SwitchRow";
@@ -28,6 +28,8 @@ import { ErrorState } from "@/components/ErrorState";
 import {
   getAllPets,
   createQuote,
+  getQuote,
+  reviseQuote,
   getDeliveryStatus,
   type PetWithOwner,
 } from "@/lib/api";
@@ -42,7 +44,7 @@ import {
   formatCurrency,
 } from "@/lib/format";
 import { useQuotePreview } from "@/hooks/useQuotePreview";
-import type { QuotePreviewInput } from "@holidoginn/shared";
+import type { CreateQuote, QuotePreviewInput } from "@holidoginn/shared";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -77,6 +79,17 @@ function toYMD(d: Date): string {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
+/**
+ * "YYYY-MM-DD" → Date LOCAL a medianoche, para devolverle al picker la fecha que
+ * se cotizó. Se construye por componentes y NO con `new Date(ymd)`, que lo lee
+ * como UTC: en Hermosillo (UTC-7) el 6 de octubre volvería como el 5 a las 17:00
+ * y el formulario mostraría un día menos del que el cliente tiene en su liga.
+ */
+function fromYMD(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function toHHmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
@@ -102,6 +115,13 @@ export default function AdminCreateQuote() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+
+  // Editar una cotización EXISTENTE: misma pantalla, mismo formulario. Se
+  // recotiza conservando folio y token, así que el cliente abre la liga que ya
+  // tenía y ve lo corregido; antes había que cancelar y capturar todo de nuevo,
+  // y eso dejaba muerto el link que él ya había abierto.
+  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const modoEdicion = Boolean(editId);
 
   const [serviceType, setServiceType] = useState<ServiceType>("STAY");
   const [destinatario, setDestinatario] = useState<Destinatario>("CLIENTE");
@@ -169,6 +189,24 @@ export default function AdminCreateQuote() {
     refetch,
   } = useQuery<PetWithOwner[]>({ queryKey: ["all-pets"], queryFn: getAllPets });
 
+  // La cotización que se está editando. El servidor manda `editInput`: el
+  // formulario reconstruido desde las líneas congeladas, para que la app y el
+  // panel rehidraten exactamente lo mismo.
+  const {
+    data: cotizacionAEditar,
+    isLoading: cargandoCotizacion,
+    isError: errorCotizacion,
+    refetch: recargarCotizacion,
+  } = useQuery({
+    queryKey: ["quote", editId],
+    queryFn: () => getQuote(editId as string),
+    enabled: modoEdicion,
+    // Se hidrata UNA vez y el formulario pasa a ser la fuente: un refetch en
+    // medio de la captura pisaría lo que el operador lleva escrito.
+    staleTime: Infinity,
+    gcTime: 0,
+  });
+
   // ¿El servicio a domicilio está prendido? Si no, la opción ni se muestra.
   const { data: deliveryStatus } = useQuery({
     queryKey: ["delivery-status"],
@@ -176,6 +214,84 @@ export default function AdminCreateQuote() {
     staleTime: 1000 * 60 * 10,
   });
   const domicilioDisponible = deliveryStatus?.active === true;
+
+  // ── Hidratar el formulario al editar ──────────────────────────────────────
+  // Una sola vez: a partir de ahí manda lo que el operador tiene en pantalla. El
+  // `editInput` viene del servidor ya reconstruido (ver buildQuoteEditInput), así
+  // que aquí solo se traduce a los controles: fechas a Date, banderas a switches.
+  const hidratado = useRef(false);
+  useEffect(() => {
+    if (hidratado.current) return;
+    const detalle = cotizacionAEditar;
+    if (!detalle) return;
+    hidratado.current = true;
+
+    const input = detalle.editInput;
+    setServiceType(input.serviceType);
+
+    if (input.ownerId) {
+      setDestinatario("CLIENTE");
+      setOwnerId(input.ownerId);
+      setPetIds(input.pets.map((p) => p.petId).filter((id): id is string => Boolean(id)));
+    } else {
+      setDestinatario("PROSPECTO");
+      setProspectName(input.clientName);
+      setProspectPhone(input.clientPhone ?? "");
+      setPerrosLibres(
+        input.pets.length > 0
+          ? input.pets.map((p, i) => ({
+              key: `p${i}`,
+              name: p.name,
+              weight: p.weightKg != null ? String(p.weightKg) : "",
+              breed: p.breed ?? "",
+            }))
+          : [{ key: "p0", name: "", weight: "", breed: "" }],
+      );
+    }
+
+    if (input.checkIn) setCheckIn(fromYMD(input.checkIn));
+    if (input.checkOut) setCheckOut(fromYMD(input.checkOut));
+    if (input.date) setFechaServicio(fromYMD(input.date));
+    if (input.checkInTime) setDcInTime(input.checkInTime);
+    if (input.checkOutTime) setDcOutTime(input.checkOutTime);
+    // Noches pactadas a mano: es lo que distingue "cinco noches en diciembre"
+    // de unas fechas cerradas.
+    if (input.nightsOverride != null) {
+      setSinFechas(true);
+      setNoches(String(input.nightsOverride));
+    }
+
+    if (input.bath) {
+      setConBano(true);
+      setDeslanado(input.bath.deslanado);
+      setCorte(input.bath.corte);
+    }
+    setDesparasitante(Boolean(input.deworming));
+    setProbarf(Boolean(input.probarf));
+    setMedicamento(input.pets.some((p) => p.hasMedication));
+
+    if (input.homeDelivery) {
+      setConDomicilio(true);
+      setDireccionDomicilio({
+        address: input.homeDelivery.address,
+        lat: input.homeDelivery.lat,
+        lng: input.homeDelivery.lng,
+        ...(input.homeDelivery.placeId ? { placeId: input.homeDelivery.placeId } : {}),
+      });
+      if (input.homeDelivery.trip) setViaje(input.homeDelivery.trip);
+    }
+
+    const cortesias = input.courtesy ?? [];
+    setBanoCortesia(cortesias.includes("BATH"));
+    setDomicilioCortesia(cortesias.includes("HOME_DELIVERY"));
+
+    setDiscountCode(input.discountCode ?? "");
+    setDepositSuggested(input.depositSuggested != null ? String(input.depositSuggested) : "");
+    setNotas(input.notes ?? "");
+    setNotasInternas(input.internalNotes ?? "");
+    // La vigencia NO se repone: al recotizar se recorre sola desde hoy, que es
+    // lo que el equipo espera de un documento que se acaba de corregir.
+  }, [cotizacionAEditar]);
 
   // ── Clientes derivados de las mascotas activas (mismo criterio que la
   // pantalla de crear reservación: se busca por nombre de cliente O de perro).
@@ -345,7 +461,7 @@ export default function AdminCreateQuote() {
 
     setSubmitting(true);
     try {
-      const detalle = await createQuote({
+      const cuerpo = {
         ...previewInput,
         ownerId: destinatario === "CLIENTE" ? ownerId : null,
         clientName: nombre,
@@ -355,24 +471,33 @@ export default function AdminCreateQuote() {
         internalNotes: notasInternas.trim() || null,
         validUntil: vigencia ? toYMD(vigencia) : undefined,
         depositSuggested: depositSuggested.trim() ? Number(depositSuggested) : null,
-        source: "APP_ADMIN",
-      });
+        source: "APP_ADMIN" as const,
+      };
+      // Al editar se RECOTIZA la misma (mismo folio, mismo link); al crear nace
+      // una nueva. El cuerpo es idéntico porque el servidor recalcula todo.
+      const detalle = editId
+        ? await reviseQuote(editId, cuerpo)
+        : await createQuote(cuerpo);
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      if (editId) queryClient.invalidateQueries({ queryKey: ["quote", editId] });
       // replace y no push: volver "atrás" desde el detalle debe llevar a la
       // lista, no al formulario que acaba de guardarse.
       router.replace(`/admin/quotes/${detalle.quote.id}`);
     } catch (err) {
-      alertaDeError(err, { titulo: "No se pudo guardar", respaldo: "Intenta de nuevo." });
+      alertaDeError(err, {
+        titulo: editId ? "No se pudo guardar el cambio" : "No se pudo guardar",
+        respaldo: "Intenta de nuevo.",
+      });
     } finally {
       setSubmitting(false);
     }
   }, [
     previewInput, breakdown, previewError, destinatario, selectedOwner, prospectName,
     prospectPhone, ownerId, notas, notasInternas, vigencia, depositSuggested,
-    queryClient, router, soloDomicilio,
+    queryClient, router, soloDomicilio, editId,
   ]);
 
-  if (isLoading) {
+  if (isLoading || (modoEdicion && cargandoCotizacion)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -381,6 +506,14 @@ export default function AdminCreateQuote() {
   }
   if (isError) {
     return <ErrorState message="No se pudieron cargar los clientes" onRetry={refetch} />;
+  }
+  if (modoEdicion && errorCotizacion) {
+    return (
+      <ErrorState
+        message="No se pudo cargar la cotización"
+        onRetry={() => void recargarCotizacion()}
+      />
+    );
   }
 
   // Qué tan lejos puede avanzar el formulario. Cotizar el traslado no necesita
@@ -396,11 +529,33 @@ export default function AdminCreateQuote() {
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      {/* La pila titula esta pantalla "Nueva cotización": al editar no lo es. */}
+      {modoEdicion && <Stack.Screen options={{ title: "Editar cotización" }} />}
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
+        {modoEdicion && (
+          // El cliente ya tiene esta liga. Que quede claro ANTES de capturar:
+          // el link no cambia (por eso no hay que volver a mandarlo si nada más
+          // se corrige una nota), pero si el total se mueve hay que avisarle.
+          <View style={styles.avisoEdicion}>
+            <Ionicons name="information-circle" size={18} color={COLORS.primary} />
+            <Text style={styles.avisoEdicionText}>
+              Estás corrigiendo la cotización{" "}
+              <Text style={styles.avisoEdicionFolio}>
+                COT-{String(cotizacionAEditar?.quote.folio ?? "").padStart(6, "0")}
+              </Text>
+              . Conserva el mismo folio y la misma liga: el cliente abre la que ya
+              tiene y ve lo corregido.
+              {cotizacionAEditar?.quote.sentAt
+                ? " Ya se la mandaste, así que si cambia el precio conviene avisarle."
+                : ""}
+            </Text>
+          </View>
+        )}
+
         <LevelSelector
           label="Servicio a cotizar"
           options={[
@@ -1011,7 +1166,9 @@ export default function AdminCreateQuote() {
           {submitting ? (
             <ActivityIndicator color={COLORS.white} />
           ) : (
-            <Text style={styles.submitText}>Guardar cotización</Text>
+            <Text style={styles.submitText}>
+              {modoEdicion ? "Guardar cambios" : "Guardar cotización"}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -1294,4 +1451,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "PlusJakartaSans_700Bold",
   },
+  avisoEdicion: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-start",
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  avisoEdicionText: {
+    flex: 1,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "PlusJakartaSans_400Regular",
+  },
+  avisoEdicionFolio: { fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
 });

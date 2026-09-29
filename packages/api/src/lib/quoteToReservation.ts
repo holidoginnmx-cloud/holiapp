@@ -20,6 +20,7 @@
  * su transacción y sus notificaciones.
  */
 
+import type { CreateQuote } from "@holidoginn/shared";
 import type { QuoteWithRelations } from "./quotes";
 
 export interface QuotePrefill {
@@ -225,5 +226,99 @@ export function buildQuotePrefill(quote: QuoteWithRelations): QuotePrefill {
 
     pendientes,
     internalNotesSugeridas,
+  };
+}
+
+/**
+ * Reconstruye el FORMULARIO DE COTIZACIÓN a partir de una cotización guardada,
+ * para el botón "Editar" (PUT /quotes/:id). Es el gemelo de `buildQuotePrefill`,
+ * que reconstruye el de RESERVA; van juntos porque comparten el problema: leer
+ * de vuelta lo que se congeló en las líneas.
+ *
+ * Vive en el servidor, y no en cada cliente, por la misma razón que el prefill:
+ * la app y el panel tienen que rehidratar EXACTAMENTE lo mismo, y las reglas de
+ * lectura (el deslanado que se deduce de la etiqueta, la cortesía que es una
+ * línea en $0) no deben reimplementarse dos veces.
+ *
+ * Lo que devuelve es un `CreateQuote` válido: mandarlo tal cual de vuelta al PUT
+ * tiene que reproducir la misma cotización. Lo único que NO se reconstruye son
+ * los conceptos libres con precio de catálogo, que no existen: un CUSTOM siempre
+ * se captura con su importe.
+ */
+export function buildQuoteEditInput(quote: QuoteWithRelations): CreateQuote {
+  const items = quote.items;
+  const bathItem = items.find((i) => i.kind === "BATH");
+
+  // La cortesía se guarda como una línea con `isCourtesy` y amount 0, no como
+  // una bandera del formulario: se lee de vuelta desde ahí.
+  const courtesy = items
+    .filter((i) => i.isCourtesy)
+    .map((i) => i.kind) as NonNullable<CreateQuote["courtesy"]>;
+
+  const extraHoursItem = items.find((i) => i.kind === "EXTRA_HOURS");
+
+  return {
+    serviceType: quote.reservationType as CreateQuote["serviceType"],
+    pets: quote.pets.map((p) => ({
+      ...(p.petId ? { petId: p.petId } : {}),
+      name: p.name,
+      weightKg: p.weightKg,
+      size: p.size as CreateQuote["pets"][number]["size"],
+      // El peso ya está congelado en la fila; si hay talla, la puso el catálogo
+      // o un humano, pero al reeditar se respeta la que se cotizó. Ver la regla
+      // de `sizeDeclared` en shared/pricing: sin esto un perro sin peso volvería
+      // a caer en el "M" de relleno y el precio cambiaría solo.
+      sizeDeclared: p.size != null,
+      breed: p.breed,
+      hasMedication: p.hasMedication,
+      medicationNotes: p.medicationNotes,
+    })),
+    checkIn: toYMD(quote.checkIn),
+    checkOut: toYMD(quote.checkOut),
+    date: toYMD(quote.appointmentAt),
+    checkInTime: quote.checkInTime,
+    checkOutTime: quote.checkOutTime,
+    // Solo cuenta como "noches pactadas a mano" si NO hay fechas: con fechas,
+    // las noches se derivan y mandarlas otra vez las duplicaría como override.
+    nightsOverride: quote.checkIn == null && quote.totalDays != null ? quote.totalDays : null,
+    bath: bathItem
+      ? { deslanado: /deslanado/i.test(bathItem.label), corte: /corte/i.test(bathItem.label) }
+      : null,
+    deworming: items.some((i) => i.kind === "DEWORMING"),
+    probarf: items.some((i) => /probarf/i.test(i.label)),
+    extraHours: extraHoursItem ? Number(extraHoursItem.quantity) : null,
+    homeDelivery:
+      quote.homeDelivery && quote.homeDeliveryLat != null && quote.homeDeliveryLng != null
+        ? {
+            address: quote.homeDeliveryAddress ?? "",
+            lat: quote.homeDeliveryLat,
+            lng: quote.homeDeliveryLng,
+            ...(quote.homeDeliveryPlaceId ? { placeId: quote.homeDeliveryPlaceId } : {}),
+            trip: quote.homeDeliveryTrip as NonNullable<CreateQuote["homeDelivery"]>["trip"],
+          }
+        : null,
+    discountCode: quote.discountCodeSnapshot,
+    courtesy,
+    customItems: items
+      .filter((i) => i.kind === "CUSTOM")
+      .map((i) => ({
+        label: i.label,
+        detail: i.detail,
+        quantity: Number(i.quantity),
+        unitPrice: Number(i.unitPrice),
+      })),
+    // El total pactado NO se puede distinguir del calculado mirando la fila: se
+    // deja vacío a propósito y, si el operador lo había fijado, lo vuelve a
+    // escribir. Reponerlo a ciegas congelaría un total viejo sobre servicios
+    // nuevos, que es justo el error que se está corrigiendo.
+    totalOverride: null,
+
+    ownerId: quote.ownerId,
+    clientName: quote.clientName,
+    clientPhone: quote.clientPhone,
+    clientEmail: quote.clientEmail,
+    notes: quote.notes,
+    internalNotes: quote.internalNotes,
+    depositSuggested: quote.depositSuggested != null ? Number(quote.depositSuggested) : null,
   };
 }

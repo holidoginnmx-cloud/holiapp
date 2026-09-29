@@ -335,6 +335,154 @@ export async function createQuote(
   return { ok: true, quote };
 }
 
+/**
+ * Recotiza una cotización EXISTENTE conservando su identidad: mismo folio, mismo
+ * token y, por tanto, el MISMO LINK que el cliente ya tiene en su chat. Es la
+ * corrección de un error de captura (la salida era jueves, no viernes), no una
+ * cotización nueva: cancelar y recrear dejaba muerto el link que el cliente ya
+ * había abierto y obligaba a recapturarlo todo.
+ *
+ * Todo lo que depende del precio se RECALCULA con las tarifas de hoy —incluido
+ * `pricingSnapshot`, que es la evidencia de con qué se cotizó—, y las líneas se
+ * reescriben desde cero en la misma transacción. Lo que NO se toca es el
+ * historial: quién la creó y cuándo, los envíos y las vistas del cliente.
+ */
+export async function reviseQuote(
+  prisma: PrismaClient,
+  id: string,
+  rawInput: CreateQuote,
+  actorId: string
+): Promise<QuoteResult<{ quote: QuoteWithRelations }>> {
+  const existing = await prisma.quote.findUnique({ where: { id } });
+  if (!existing) return { ok: false, kind: "NOT_FOUND", message: "Cotización no encontrada" };
+
+  // Mismas dos puertas que `updateQuote`, por la misma razón: una convertida es
+  // un documento histórico con una reserva colgando y un precio ya cobrado.
+  if (existing.status === "CONVERTED") {
+    return {
+      ok: false,
+      kind: "CONFLICT",
+      message: "Esta cotización ya se convirtió en reservación y no se puede editar",
+      code: "QUOTE_CONVERTED",
+    };
+  }
+  // Una cancelada le dice al cliente "escríbenos y te preparamos una nueva".
+  // Editarla la resucitaría bajo sus pies sin que nadie decidiera reactivarla.
+  if (existing.status === "CANCELLED") {
+    return {
+      ok: false,
+      kind: "CONFLICT",
+      message: "Esta cotización está cancelada. Haz una nueva.",
+      code: "QUOTE_CANCELLED",
+    };
+  }
+
+  if (!rawInput.ownerId && !rawInput.clientName.trim()) {
+    return badRequest("Indica a quién se le cotiza");
+  }
+
+  // Idéntico al alta: se enriquece ANTES del preview para que el snapshot que se
+  // persiste sea el mismo dato con el que se calculó el precio.
+  const input = { ...rawInput, ...(await conDatosDeLaFicha(prisma, rawInput)) };
+
+  const preview = await previewQuote(prisma, input);
+  if (!preview.ok) return preview;
+  const { breakdown, delivery, discount } = preview;
+
+  const discountCodeId = discount
+    ? (await prisma.discountCode.findUnique({ where: { code: discount.code } }))?.id ?? null
+    : null;
+
+  const catalog = await loadQuoteCatalog(prisma);
+  const { anchors, error } = buildDateAnchors(input);
+  if (error) return badRequest(error);
+
+  const quote = await prisma.$transaction(async (tx) => {
+    // Las líneas se reescriben enteras: recalcular en sitio exigiría casar cada
+    // línea vieja con su equivalente nueva, y al cambiar de servicio o de
+    // mascotas puede no haber equivalente. Los items cuelgan de la cotización
+    // con onDelete: Cascade, pero se borran explícitamente porque el quote NO
+    // se borra.
+    await tx.quoteItem.deleteMany({ where: { quoteId: id } });
+    await tx.quotePet.deleteMany({ where: { quoteId: id } });
+
+    await tx.quote.update({
+      where: { id },
+      data: {
+        reservationType: input.serviceType,
+        ...anchors,
+        totalDays: breakdown.totalDays,
+        daycareHours: breakdown.daycareHours,
+        ownerId: input.ownerId ?? null,
+        clientName: input.clientName.trim(),
+        clientPhone: input.clientPhone?.trim() || null,
+        clientPhoneNormalized: normalizePhone(input.clientPhone),
+        clientEmail: input.clientEmail?.trim() || null,
+        subtotal: breakdown.subtotal,
+        discountTotal: breakdown.discountTotal,
+        deliveryFee: breakdown.deliveryFee,
+        total: breakdown.total,
+        depositSuggested: input.depositSuggested ?? null,
+        discountCodeId,
+        discountCodeSnapshot: discount?.code ?? null,
+        homeDelivery: Boolean(input.homeDelivery && delivery?.active),
+        homeDeliveryAddress: input.homeDelivery?.address ?? null,
+        homeDeliveryLat: input.homeDelivery?.lat ?? null,
+        homeDeliveryLng: input.homeDelivery?.lng ?? null,
+        homeDeliveryPlaceId: input.homeDelivery?.placeId ?? null,
+        homeDeliveryDistanceKm: delivery?.distanceKm ?? null,
+        homeDeliveryTrip: input.homeDelivery?.trip ?? "PICKUP",
+        validUntil: resolveValidUntil(input.validUntil),
+        notes: input.notes?.trim() || null,
+        internalNotes: input.internalNotes?.trim() || null,
+        pricingSnapshot: buildPricingSnapshot(catalog) as unknown as Prisma.InputJsonValue,
+        // Rastro de que el documento cambió DESPUÉS de mandarse: la app y el
+        // panel comparan `revisedAt` con `sentAt` para avisar que hay que
+        // reenviar la liga. Sin esto, el cliente se quedaría leyendo un total
+        // que ya nadie sostiene y el equipo no tendría cómo notarlo.
+        revisedAt: new Date(),
+        revisionCount: { increment: 1 },
+        revisedById: actorId,
+      },
+    });
+
+    let itemPosition = 0;
+    for (let i = 0; i < input.pets.length; i++) {
+      const petInput = input.pets[i];
+      const petBreakdown = breakdown.pets[i];
+      const quotePet = await tx.quotePet.create({
+        data: {
+          quoteId: id,
+          position: i,
+          petId: petInput.petId ?? null,
+          name: petInput.name.trim(),
+          weightKg: petInput.weightKg ?? null,
+          size: petBreakdown.size ?? null,
+          breed: petInput.breed?.trim() || null,
+          hasMedication: petInput.hasMedication ?? false,
+          medicationNotes: petInput.medicationNotes?.trim() || null,
+          subtotal: petBreakdown.subtotal,
+        },
+      });
+      for (const line of petBreakdown.lines) {
+        await tx.quoteItem.create({
+          data: lineData(id, quotePet.id, line, itemPosition++),
+        });
+      }
+    }
+
+    for (const line of breakdown.lines.filter((l) => l.petKey === null)) {
+      await tx.quoteItem.create({
+        data: lineData(id, null, line, itemPosition++),
+      });
+    }
+
+    return tx.quote.findUniqueOrThrow({ where: { id }, include: QUOTE_INCLUDE });
+  });
+
+  return { ok: true, quote };
+}
+
 function lineData(
   quoteId: string,
   quotePetId: string | null,

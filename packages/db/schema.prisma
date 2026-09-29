@@ -282,6 +282,7 @@ model User {
   quotesOwned     Quote[] @relation("QuoteOwner")
   quotesCreated   Quote[] @relation("QuoteCreator")
   quotesConverted Quote[] @relation("QuoteConverter")
+  quotesRevised   Quote[] @relation("QuoteReviser")
 
   @@index([expressIntakeAt]) // walk-ins por completar
   @@map("users")
@@ -2105,6 +2106,16 @@ model Quote {
   firstViewedAt DateTime? @db.Timestamptz(6)
   lastViewedAt  DateTime? @db.Timestamptz(6)
   viewCount     Int       @default(0)
+
+  // ── Revisión ───────────────────────────────────────────────
+  // Se corrigió DESPUÉS de crearse (PUT /quotes/:id): mismo folio y mismo link,
+  // otro contenido. Comparar `revisedAt` con `sentAt` es lo que permite avisar
+  // "la editaste después de mandarla, reenvíale la liga"; y en un documento que
+  // el cliente ya leyó, saber que cambió —y cuántas veces— es auditoría.
+  revisedAt     DateTime? @db.Timestamptz(6)
+  revisionCount Int       @default(0)
+  revisedById   String?
+  revisedBy     User?     @relation("QuoteReviser", fields: [revisedById], references: [id])
 
   // ── Conversión ─────────────────────────────────────────────
   convertedAt        DateTime? @db.Timestamptz(6)
