@@ -64,6 +64,10 @@ const MS_PER_DAY = 86_400_000;
  * comentario del modelo en schema.prisma). Pasarlos por `localYMD` les restaría
  * 7 h y los correría al día anterior — el "¡Llegada HOY!" saldría un día tarde.
  * El `appointmentAt` de DAYCARE está anclado a mediodía UTC y también cae aquí.
+ *
+ * ⚠️ Es para leer FECHAS GUARDADAS, nunca el reloj: `utcDayKey(new Date())` es
+ * el día UTC de este instante, que a partir de las 17:00 del hotel ya es el de
+ * mañana. Para "qué día es hoy" va `localYMD`.
  */
 function utcDayKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -150,13 +154,18 @@ export function buildNewReservationMessage(params: {
   // sobre una fecha a medianoche daría falsos positivos y negativos. El día
   // calendario es lo que el equipo realmente opera.
   //
-  // Cada tipo se compara contra el "hoy" que le corresponde: hospedaje y
-  // guardería viven en días UTC; las citas de baño, en días del hotel.
+  // "HOY" es SIEMPRE el día del hotel, para los tres servicios. `now` es un
+  // INSTANTE, y un instante se lee en la zona del hotel; que el `checkIn` se
+  // guarde anclado a UTC no cambia en qué día vive el equipo.
+  //
+  // ⚠️ Leerlo en UTC (como se hacía hasta el 28 sep 2026) rompía el aviso todas
+  // las tardes: de las 17:00 en adelante el reloj UTC ya trae el día siguiente,
+  // así que a las 21:26 una reserva que entraba MAÑANA se anunció "Entra HOY 29
+  // sep" — y, peor y en silencio, una que entraba ESA MISMA NOCHE dejaba de ser
+  // urgente: salía sin 🚨, sin cuarto y sin el nombre del cliente.
   const isBath = type === "BATH";
-  const todayKey = isBath ? localYMD(now) : utcDayKey(now);
-  const tomorrowKey = isBath
-    ? localYMD(new Date(now.getTime() + MS_PER_DAY))
-    : utcDayKey(new Date(now.getTime() + MS_PER_DAY));
+  const todayKey = localYMD(now);
+  const tomorrowKey = localYMD(new Date(now.getTime() + MS_PER_DAY));
 
   const eventDate =
     type === "STAY" ? (first?.checkIn ?? null) : (first?.appointmentAt ?? null);

@@ -50,6 +50,51 @@ describe("buildNewReservationMessage — hospedaje", () => {
     expect(msg.body).toContain("Mayra Leticia Martinez Davila");
   });
 
+  // ── La ventana de las tardes ──────────────────────────────────────────────
+  // De las 17:00 del hotel en adelante, el reloj UTC ya trae el día siguiente.
+  // Mientras el "hoy" se calculó así, el aviso salió corrido toda la tarde: a
+  // las 21:26 del 28 sep 2026 una reserva del 29 llegó como "Entra HOY 29 sep".
+  it("de noche en el hotel, una llegada de MAÑANA no se anuncia como HOY", () => {
+    const msg = buildNewReservationMessage({
+      reservations: [stay()],
+      owner,
+      // 21:26 del 20 ago en el hotel = 04:26 UTC del 21. El check-in es el 21.
+      now: hotelTime("2026-08-20", "21:26"),
+    });
+
+    expect(msg.relDay).toBe("MAÑANA");
+    expect(msg.title).toBe("🚨 ¡Llegada MAÑANA! Nueva reservación");
+    expect(msg.body).not.toContain("Entra HOY");
+  });
+
+  it("de noche en el hotel, una llegada de HOY SIGUE siendo urgente", () => {
+    // El daño silencioso del mismo error: con el "hoy" en UTC, el check-in de
+    // esta misma noche caía en "ayer" y el push salía sin 🚨, sin cuarto y sin
+    // el nombre del cliente — justo cuando el perro está por llegar.
+    const msg = buildNewReservationMessage({
+      reservations: [stay()],
+      owner,
+      now: hotelTime("2026-08-21", "21:26"),
+    });
+
+    expect(msg.urgent).toBe(true);
+    expect(msg.relDay).toBe("HOY");
+    expect(msg.body).toContain("Entra HOY 21 ago");
+    expect(msg.body).toContain("Cuarto 01");
+    expect(msg.body).toContain("Mayra Leticia Martinez Davila");
+  });
+
+  it("de madrugada UTC pero aún de tarde en el hotel, dos días siguen sin ser urgentes", () => {
+    const msg = buildNewReservationMessage({
+      reservations: [stay()],
+      owner,
+      now: hotelTime("2026-08-19", "23:30"),
+    });
+
+    expect(msg.urgent).toBe(false);
+    expect(msg.relDay).toBeNull();
+  });
+
   it("marca urgente cuando el check-in es MAÑANA", () => {
     const msg = buildNewReservationMessage({
       reservations: [stay()],

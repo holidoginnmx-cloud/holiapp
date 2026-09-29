@@ -51,6 +51,17 @@ export const WHATS_NEW: WhatsNewRelease[] = [
         route: "/admin/quotes",
         roles: ["ADMIN"],
       },
+      {
+        icon: "notifications-outline",
+        title: "El aviso de llegada ya no se adelanta un día en la noche",
+        body:
+          "Las reservaciones capturadas después de las 5 de la tarde mandaban el " +
+          "aviso con el día corrido: una llegada de mañana decía «Entra HOY» y, " +
+          "peor, una que entraba esa misma noche llegaba sin la alerta roja, sin " +
+          "el cuarto y sin el nombre del cliente. Ya quedó: el aviso usa el día " +
+          "de Hermosillo a cualquier hora.",
+        roles: ["ADMIN", "STAFF"],
+      },
     ],
   },
   {
