@@ -7,7 +7,8 @@ import {
   orderConfirmedTemplate,
   sendEmail,
 } from "../lib/email";
-import { notifyUser, notifyUsers } from "../lib/notify";
+import { notifyUser, notifyUsers, adminsActivosIds } from "../lib/notify";
+import { formatMoney } from "../lib/notifyTeamPayment";
 import { syncPayout, avisarPayoutSincronizado } from "../lib/payouts";
 import { guardarComisionStripe } from "../lib/stripeFees";
 import { Prisma } from "@holidoginn/db";
@@ -165,6 +166,7 @@ async function handlePaymentIntentSucceeded(
     console.warn(
       `[webhook] payment_intent.succeeded ${pi.id} sin Payment en DB tras esperar — el cliente mobile debió crearlo. Posible app crash.`
     );
+    programarAvisoCobroSinRegistro(prisma, pi);
     return;
   }
 
@@ -206,6 +208,96 @@ async function handlePaymentIntentSucceeded(
       reservationStatus: payment.reservation.status,
     });
     await sendEmail({ to: payment.user.email, ...tpl });
+  }
+}
+
+// Cuánto se le da a la app para registrar el pago antes de avisar al equipo.
+const GRACIA_COBRO_SIN_REGISTRO_MS = 90_000;
+
+/**
+ * Vuelve a mirar al rato y, si el pago SIGUE sin registrarse, avisa.
+ *
+ * La espera del webhook (~5 s) alcanza para el caso normal, pero no para una
+ * red lenta: avisar ahí mismo llenaría a los admins de alarmas por cobros que
+ * se registran solos unos segundos después. El timer es en memoria a
+ * propósito: si Railway reinicia en esos 90 s se pierde UN aviso de un caso
+ * raro, que no justifica una cola ni una tabla.
+ */
+function programarAvisoCobroSinRegistro(
+  prisma: FastifyInstance["prisma"],
+  pi: Stripe.PaymentIntent
+) {
+  const timer = setTimeout(() => {
+    void (async () => {
+      try {
+        const payment = await prisma.payment.findUnique({
+          where: { stripePaymentIntentId: pi.id },
+          select: { id: true },
+        });
+        if (payment) return;
+        await avisarCobroSinRegistro(prisma, pi);
+      } catch (err) {
+        console.error("[webhook] revisión de cobro sin registro falló:", err);
+      }
+    })();
+  }, GRACIA_COBRO_SIN_REGISTRO_MS);
+  // No mantener vivo el proceso (ni los tests) por este timer.
+  timer.unref?.();
+}
+
+/**
+ * Stripe cobró y la app nunca registró el pago (se cerró, perdió la red…).
+ *
+ * Antes esto era solo un `console.warn`: el dinero entraba a Stripe, la
+ * reserva no existía o seguía con saldo, y nadie del equipo se enteraba hasta
+ * que el cliente reclamaba. Ahora les llega a los ADMIN.
+ *
+ * Puede ser una falsa alarma que se arregla sola: si el cliente reabre la app,
+ * la confirmación pendiente se reenvía (lib/pendingConfirmation en el móvil).
+ * Por eso el texto pide REVISAR, no cobrar de nuevo.
+ *
+ * Nunca lanza: un aviso fallido no debe hacer que Stripe reintente el webhook.
+ */
+async function avisarCobroSinRegistro(
+  prisma: FastifyInstance["prisma"],
+  pi: Stripe.PaymentIntent
+) {
+  try {
+    // Una sola vez por cobro, aunque Stripe reenvíe el evento. También cubre
+    // el cobro huérfano de /reservations/multi, que manda su propio aviso (ya
+    // con el reembolso hecho) con este mismo `paymentIntentId`.
+    const yaAvisado = await prisma.notification.findFirst({
+      where: {
+        type: "STAFF_ALERT",
+        data: { path: ["paymentIntentId"], equals: pi.id },
+      },
+      select: { id: true },
+    });
+    if (yaAvisado) return;
+
+    const admins = await adminsActivosIds(prisma);
+    if (admins.length === 0) return;
+
+    const amount = pi.amount / 100;
+    const reservationId =
+      typeof pi.metadata?.reservationId === "string" && pi.metadata.reservationId
+        ? pi.metadata.reservationId
+        : undefined;
+
+    await notifyUsers(prisma, admins, {
+      type: "STAFF_ALERT",
+      title: "⚠️ Cobro en Stripe sin registrar",
+      body: `Stripe cobró ${formatMoney(amount)} y la app no registró el pago. Revisa el cobro en Stripe antes de volver a cobrarle al cliente.`,
+      data: {
+        kind: "ORPHAN_STRIPE_CHARGE",
+        paymentIntentId: pi.id,
+        amount,
+        ...(reservationId ? { reservationId } : {}),
+      },
+      priority: "high",
+    });
+  } catch (err) {
+    console.error("[webhook] avisarCobroSinRegistro falló:", err);
   }
 }
 

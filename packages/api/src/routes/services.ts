@@ -9,6 +9,7 @@ import {
   createStaffMiddleware,
 } from "../middleware/auth";
 import { notifyUsers } from "../lib/notify";
+import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import { maybeConcludeStandaloneBath } from "./baths";
 import { billableBathSize, bathSizeKey } from "../lib/pricing";
 
@@ -265,6 +266,13 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
           price: Number(variant.price),
         });
       }
+      if (!isStaffOrAdmin) {
+        void notifyPaymentToAdmins(prisma, {
+          reservationId: reservation.id,
+          amount: paymentIntent.amount / 100,
+          concept: "BATH_ADDON",
+        });
+      }
 
       return reply.send({ success: true, addon, payment });
     }
@@ -375,6 +383,14 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
 
       // Si era baño suelto y ya quedó todo saldado, concluirlo.
       await maybeConcludeStandaloneBath(prisma, addon.reservation.id);
+
+      // Esta ruta solo la puede llamar el dueño (403 arriba): siempre es un
+      // pago del cliente. El retorno temprano por `PAID` evita el doble aviso.
+      void notifyPaymentToAdmins(prisma, {
+        reservationId: addon.reservation.id,
+        amount: paymentIntent.amount / 100,
+        concept: "BATH_EXTRAS",
+      });
 
       return reply.send({ success: true, addon: updated, payment });
     },

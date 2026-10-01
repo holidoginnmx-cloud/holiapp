@@ -41,6 +41,30 @@ const BodySchema = z.object({
   events: z.array(EventSchema).max(50),
 });
 
+/**
+ * Cierres de la app (ver apps/mobile/src/lib/crashBreadcrumb.ts).
+ *
+ *  - `unclosed`: la app murió con algo delicado abierto (`tag`, p. ej.
+ *    "picker-time"). Es la huella de un cierre NATIVO, que no deja error JS.
+ *  - `js_fatal`: el último error JS fatal antes de que la app se cerrara.
+ */
+const ClientCrashSchema = z.object({
+  kind: z.enum(["unclosed", "js_fatal"]),
+  tag: z.string().max(60).optional(),
+  message: z.string().max(300).optional(),
+  stack: z.string().max(1500).optional(),
+  at: z.number(),
+  app: z
+    .object({
+      version: z.string().max(20).nullable().optional(),
+      buildNumber: z.string().max(20).nullable().optional(),
+      runtimeVersion: z.string().max(20).nullable().optional(),
+      updateId: z.string().max(80).nullable().optional(),
+      platform: z.string().max(40).nullable().optional(),
+    })
+    .optional(),
+});
+
 export default async function telemetryRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
   const authMiddleware = createAuthMiddleware(prisma);
@@ -77,6 +101,32 @@ export default async function telemetryRoutes(fastify: FastifyInstance) {
         );
       }
 
+      return reply.status(204).send();
+    },
+  );
+
+  // POST /telemetry/client — la app se cerró sola en el arranque anterior.
+  // Igual que arriba: solo log (se busca en Railway por `client-crash`).
+  fastify.post(
+    "/telemetry/client",
+    {
+      preHandler: [authMiddleware],
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const parsed = ClientCrashSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const { kind, tag, message } = parsed.data;
+      request.log.warn(
+        {
+          tag: "client-crash",
+          userId: request.userId,
+          crash: parsed.data,
+        },
+        `[cierre] ${kind} ${tag ?? message ?? ""}`,
+      );
       return reply.status(204).send();
     },
   );

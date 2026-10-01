@@ -443,7 +443,7 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             },
           });
 
-          return { reservation };
+          return { reservation, paidNow, isPartial };
         });
 
         const pet = await prisma.pet.findUnique({
@@ -463,6 +463,12 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
             price: Number(variant.price),
             owner: pet.owner ?? undefined,
             source: "SITIO_WEB",
+            // Lo que Stripe cobró de verdad, no el precio de hoy: si la
+            // tarifa cambió entre el intent y el confirm, manda el cobro.
+            paid: {
+              amount: stripeAmount > 0 ? stripeAmount : result.paidNow,
+              kind: result.isPartial ? "DEPOSIT" : "FULL",
+            },
           });
         }
 

@@ -1573,6 +1573,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       owner,
       source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
       createdByUserId: request.userId ?? null,
+      // Solo cuando reservó el cliente: lo que captura el equipo no lleva monto.
+      paid:
+        request.userRole === "OWNER"
+          ? {
+              amount: amountDue,
+              kind: paymentType === "DEPOSIT" ? "DEPOSIT" : "FULL",
+            }
+          : null,
     });
 
     // Email de confirmación al dueño

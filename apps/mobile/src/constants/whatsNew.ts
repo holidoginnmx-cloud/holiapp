@@ -34,6 +34,57 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-01",
+    title: "Avisos de pagos y un selector de fecha y hora nuevo",
+    items: [
+      {
+        icon: "cash-outline",
+        title: "Te avisamos cuando un cliente paga",
+        body:
+          "Cuando un cliente paga desde la app o el sitio, te llega un aviso " +
+          "con el monto: el saldo de su reservación, un baño que agregó, los " +
+          "extras del baño o una extensión. Y el aviso de «Nueva reservación» " +
+          "ahora dice cuánto dejó pagado («Anticipo $500 pagado»). Al tocarlo " +
+          "abres la reservación. Los cobros que tú registras en efectivo o " +
+          "con terminal no avisan, porque esos ya los conoces.",
+        route: "/admin/notifications",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "notifications-off-outline",
+        title: "Si tienes las notificaciones apagadas, la app te lo dice",
+        body:
+          "Los avisos de reservaciones nuevas solo llegan si las notificaciones " +
+          "están prendidas en tu teléfono. Si están apagadas, ahora verás un " +
+          "aviso amarillo en el Panel: tócalo y te lleva directo a Ajustes " +
+          "para prenderlas. Si no ves ese aviso, estás bien.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "calendar-outline",
+        title: "Nuevo selector de fecha y hora",
+        body:
+          "A una compañera se le cerraba la app al tocar la fecha o la hora al " +
+          "crear una reservación. Cambiamos ese selector por uno propio: las " +
+          "fechas se eligen en un calendario del mes y las horas en dos " +
+          "columnas (hora y minutos). Toca «Listo» para confirmar, igual que " +
+          "antes.",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "alert-circle-outline",
+        title: "Aviso si Stripe cobra y el pago no se registra",
+        body:
+          "Si a un cliente se le cierra la app justo después de pagar, Stripe " +
+          "cobra pero la reservación no registra el pago. Antes nadie se " +
+          "enteraba hasta que el cliente reclamaba; ahora te llega una alerta " +
+          "para que lo revises en Stripe antes de volver a cobrarle.",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-09-28",
     title: "Ya puedes corregir una cotización sin volver a hacerla",
     items: [

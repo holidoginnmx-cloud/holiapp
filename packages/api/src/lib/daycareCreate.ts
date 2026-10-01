@@ -429,6 +429,12 @@ export async function createDaycareGroup(
     owner,
     source: params.source ?? "SITIO_WEB",
     createdByUserId: params.createdByUserId ?? null,
+    // La guardería se paga completa al reservar. Si la capturó el equipo
+    // (APP_ADMIN) no lleva monto: no es un pago del cliente.
+    paid:
+      params.source === "APP_ADMIN"
+        ? null
+        : { amount: Number(grandTotal.toFixed(2)), kind: "FULL" },
   });
 
   return { ok: true, reservations, grandTotal, groupId, hours, creditApplied };

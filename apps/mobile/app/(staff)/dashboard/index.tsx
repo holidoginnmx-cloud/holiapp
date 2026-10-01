@@ -26,6 +26,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { CardGrid } from "@/components/CardGrid";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { PushOffNotice } from "@/components/PushOffNotice";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import {
   formatName,
@@ -279,6 +280,8 @@ export default function StaffDashboard() {
         <Text style={styles.greeting}>Hola, {formatName(firstName)}</Text>
         <Text style={styles.date}>{formatDate()}</Text>
       </View>
+
+      <PushOffNotice />
 
       {/* Stats — 2+3 en teléfono, tira de 5 en iPad */}
       {isTablet ? (

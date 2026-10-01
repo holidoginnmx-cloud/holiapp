@@ -522,6 +522,12 @@ export async function createReservationGroup(
     source: params.source ?? "SITIO_WEB",
     // El flujo de invitado no tiene sesión del equipo: nadie que excluir.
     createdByUserId: null,
+    // Mismo redondeo que el cobro (guestReservations cobra el `ceil` del 20%):
+    // con `roundMoney` el aviso decía $246.8 cuando Stripe cobró $247.
+    paid: {
+      amount: isDeposit ? Math.ceil(grandTotal * 0.2) : grandTotal,
+      kind: isDeposit ? "DEPOSIT" : "FULL",
+    },
   });
 
   if (owner.email) {

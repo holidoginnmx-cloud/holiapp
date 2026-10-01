@@ -10,6 +10,7 @@ import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser, notifyPetAudience } from "../lib/notify";
 import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
+import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import {
   getLodgingPricing,
   billableBathSize,
@@ -652,6 +653,17 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           data: { reservationId, amount: paymentIntent.amount / 100 },
         }
       ).catch((err) => fastify.log.error({ err }, "notifyPetAudience(pago saldo) falló"));
+    }
+
+    // Aviso a los ADMIN: el cliente liquidó su saldo. Si quien confirma es del
+    // equipo (cobra con la tarjeta del cliente en el mostrador) no se avisa.
+    // No hay doble aviso por reintento: el `already` de arriba sale antes.
+    if (!isStaffOrAdmin(request.userRole)) {
+      void notifyPaymentToAdmins(prisma, {
+        reservationId,
+        amount: paymentIntent.amount / 100,
+        concept: "BALANCE",
+      });
     }
 
     return reply.send({ success: true });

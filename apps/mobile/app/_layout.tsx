@@ -27,7 +27,15 @@ import { useAuthStore } from "@/store/authStore";
 import { clearSessionState } from "@/lib/session";
 import { DevRoleSwitcher } from "@/components/DevRoleSwitcher";
 import { AnimatedSplash } from "@/components/splash";
-import { registerForPushNotifications } from "@/lib/pushNotifications";
+import {
+  getPushStatus,
+  registerForPushNotifications,
+  resetPushStatus,
+} from "@/lib/pushNotifications";
+import {
+  installFatalErrorRecorder,
+  reportPreviousCrash,
+} from "@/lib/crashBreadcrumb";
 import * as Notifications from "expo-notifications";
 import { getMyLegalStatus } from "@/lib/api";
 import {
@@ -47,6 +55,11 @@ import {
 } from "@/lib/pendingConfirmation";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
 import { readPendingInvite } from "@/lib/pendingInvite";
+
+// Guarda el último error JS fatal para reportarlo en el siguiente arranque.
+// Es JS puro (no toca ningún módulo nativo hasta que hay un error), así que
+// puede instalarse al importar.
+installFatalErrorRecorder();
 
 // Mantiene visible el splash NATIVO (blanco) hasta que las fuentes estén
 // cargadas; así el relevo al splash animado no muestra un parpadeo.
@@ -129,6 +142,14 @@ function ClerkTokenSync() {
         // vuelo y su backoff largo no dispara en segundo plano.
         if (useAuthStore.getState().syncStatus === "failed") {
           void useAuthStore.getState().syncUser();
+        }
+        // Push: si el registro no quedó (sin red, o las notificaciones estaban
+        // apagadas y las acaban de prender en Ajustes), volver a la app es el
+        // momento de reintentar. Antes era un solo intento por sesión y un
+        // fallo dejaba al teléfono sin avisos hasta reabrir la app.
+        const pushStatus = getPushStatus();
+        if (pushStatus !== null && pushStatus !== "ok" && pushStatus !== "not-device") {
+          registerForPushNotifications({ prompt: false }).catch(() => {});
         }
       } else if (interval) {
         clearInterval(interval);
@@ -233,8 +254,17 @@ function ClerkTokenSync() {
     if (isSignedIn === false) {
       clearSessionState();
       pushRegisteredRef.current = false;
+      resetPushStatus();
     }
   }, [isSignedIn]);
+
+  // Si en el arranque anterior la app se cerró sola, se reporta ahora que hay
+  // sesión (el endpoint pide auth). Ver lib/crashBreadcrumb.
+  // `reportPreviousCrash` solo actúa una vez por arranque.
+  useEffect(() => {
+    if (!isSignedIn || !dbUserId) return;
+    void reportPreviousCrash();
+  }, [isSignedIn, dbUserId]);
 
   return null;
 }

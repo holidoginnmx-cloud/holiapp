@@ -11,6 +11,7 @@ import {
 } from "../middleware/auth";
 import { computeChangeTotal, getLodgingPricing } from "../lib/pricing";
 import { notifyUser, notifyPetAudience } from "../lib/notify";
+import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import { checkRoomCapacity } from "../lib/roomOccupancy";
 import {
   lockRoomsAndVerifyCapacity,
@@ -648,6 +649,17 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
           });
         }
       });
+
+      // Ruta exclusiva del dueño (403 arriba). Solo se avisa si ESTA llamada
+      // creó el pago: en un reintento el `existingPayment` ya estaba y no se
+      // repite el aviso.
+      if (!existingPayment) {
+        void notifyPaymentToAdmins(prisma, {
+          reservationId: cr.reservationId,
+          amount,
+          concept: "EXTENSION",
+        });
+      }
 
       return reply.send({ success: true });
     }

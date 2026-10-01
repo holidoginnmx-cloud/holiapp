@@ -12,7 +12,8 @@
  * `notifyNewReservation`; la audiencia y el formato viven en un solo lugar.
  */
 import type { PrismaClient } from "@holidoginn/db";
-import { notifyUsers, equipoActivoIds } from "./notify";
+import { notifyUsers, equipoActivoIds, adminsActivosIds } from "./notify";
+import { formatMoney } from "./notifyTeamPayment";
 import { TZ_HOTEL, localYMD } from "./bathAvailability";
 
 /** De dónde vino la reserva. Viaja en el `data` del push para diagnóstico. */
@@ -51,9 +52,30 @@ export type NotifyNewReservationParams = {
   bathLabel?: string | null;
   /** Solo BATH: precio de la cita. */
   price?: number | null;
+  /**
+   * Lo que el CLIENTE pagó al reservar (tarjeta + saldo a favor). Solo se pasa
+   * cuando reservó el cliente; lo que captura el equipo no lleva monto.
+   *
+   * Va en este mismo aviso, y no en uno aparte, para que una reserva no vibre
+   * dos veces. Y solo lo leen los ADMIN: el staff no ve dinero.
+   */
+  paid?: { amount: number; kind: "DEPOSIT" | "FULL" } | null;
   /** Inyectable para tests. */
   now?: Date;
 };
+
+/**
+ * " · Anticipo $500 pagado" / " · Pagado $2,500", o "" si no hubo pago.
+ * Exportada para los tests.
+ */
+export function paidSuffix(
+  paid: { amount: number; kind: "DEPOSIT" | "FULL" } | null | undefined
+): string {
+  if (!paid || !(paid.amount > 0)) return "";
+  return paid.kind === "DEPOSIT"
+    ? ` · Anticipo ${formatMoney(paid.amount)} pagado`
+    : ` · Pagado ${formatMoney(paid.amount)}`;
+}
 
 const MS_PER_DAY = 86_400_000;
 
@@ -252,20 +274,45 @@ export async function notifyNewReservation(
     if (targets.length === 0) return;
 
     const msg = buildNewReservationMessage(params);
+    const data = {
+      reservationId: first.id,
+      reservationType: first.reservationType,
+      kind: "NEW_RESERVATION",
+      urgent: msg.urgent,
+      source,
+    };
+    const priority = msg.urgent ? ("high" as const) : ("default" as const);
 
-    const pushed = await notifyUsers(prisma, targets, {
-      type: "NEW_RESERVATION",
-      title: msg.title,
-      body: msg.body,
-      data: {
-        reservationId: first.id,
-        reservationType: first.reservationType,
-        kind: "NEW_RESERVATION",
-        urgent: msg.urgent,
-        source,
-      },
-      priority: msg.urgent ? "high" : "default",
-    });
+    // Con pago del cliente, el monto va SOLO en el aviso de los ADMIN; al
+    // staff le llega el mismo texto de siempre, sin dinero.
+    const moneySuffix = paidSuffix(params.paid);
+    let adminTargets: string[] = [];
+    let restTargets = targets;
+    if (moneySuffix) {
+      const admins = new Set(await adminsActivosIds(prisma, createdByUserId));
+      adminTargets = targets.filter((id) => admins.has(id));
+      restTargets = targets.filter((id) => !admins.has(id));
+    }
+
+    let pushed = 0;
+    if (adminTargets.length > 0) {
+      pushed += await notifyUsers(prisma, adminTargets, {
+        type: "NEW_RESERVATION",
+        title: msg.title,
+        body: `${msg.body}${moneySuffix}`,
+        data: { ...data, paidAmount: params.paid?.amount ?? null },
+        priority,
+      });
+    }
+    if (restTargets.length > 0) {
+      pushed += await notifyUsers(prisma, restTargets, {
+        type: "NEW_RESERVATION",
+        title: msg.title,
+        body: msg.body,
+        data,
+        priority,
+      });
+    }
 
     // Railway solo guarda logs: sin esta línea no hay forma de saber si un
     // aviso salió y a cuántos llegó de verdad.
@@ -276,6 +323,7 @@ export async function notifyNewReservation(
       source,
       targets: targets.length,
       pushed,
+      paid: params.paid?.amount ?? null,
     });
   } catch (err) {
     console.error("[notifyNewReservation] falló:", err);

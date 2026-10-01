@@ -20,6 +20,7 @@ import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { PushOffNotice } from "@/components/PushOffNotice";
 import { formatName, formatDateLong, hotelYMD } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
 import { LIVE_OPS } from "@/lib/queryOptions";
@@ -188,6 +189,8 @@ export default function AdminDashboard() {
       {/* Greeting */}
       <Text style={styles.greeting}>Hola, {formatName(firstName) || "Admin"}</Text>
       <Text style={styles.date}>{todayStr}</Text>
+
+      <PushOffNotice />
 
       {pendingCount > 0 && (
         <TouchableOpacity

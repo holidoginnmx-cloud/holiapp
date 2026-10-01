@@ -103,6 +103,8 @@ export async function notifyBathBooked(
     owner?: { firstName?: string | null; lastName?: string | null };
     source?: NewReservationSource;
     createdByUserId?: string | null;
+    /** Lo que el cliente pagó al reservar (ver `notifyNewReservation`). */
+    paid?: { amount: number; kind: "DEPOSIT" | "FULL" } | null;
   }
 ) {
   await notifyNewReservation(prisma, {
@@ -119,6 +121,7 @@ export async function notifyBathBooked(
     createdByUserId: params.createdByUserId ?? null,
     bathLabel: describeBath(params.deslanado, params.corte),
     price: params.price,
+    paid: params.paid ?? null,
   });
 }
 
@@ -1853,7 +1856,7 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             });
           }
 
-          return { reservation, payment };
+          return { reservation, payment, paidNow, isPartial };
         });
 
         // Avisar al equipo
@@ -1876,6 +1879,18 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
             owner: pet.owner ?? undefined,
             source: request.userRole === "OWNER" ? "APP_CLIENTE" : "APP_ADMIN",
             createdByUserId: request.userId ?? null,
+            paid:
+              request.userRole === "OWNER"
+                ? {
+                    // Lo cobrado de verdad (tarjeta + saldo a favor), no el
+                    // precio de hoy: la tarifa pudo cambiar desde el intent.
+                    amount:
+                      stripeAmount + creditApplied > 0
+                        ? stripeAmount + creditApplied
+                        : result.paidNow,
+                    kind: result.isPartial ? "DEPOSIT" : "FULL",
+                  }
+                : null,
           }).catch((err) => fastify.log.error({ err }, "notifyBathBooked falló"));
         }
 

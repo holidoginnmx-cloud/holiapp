@@ -20,9 +20,9 @@ const STATUS_DOT: Record<string, string> = {
   CANCELLED: COLORS.errorText,
 };
 
-const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
+export const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 
-const MONTH_NAMES = [
+export const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];

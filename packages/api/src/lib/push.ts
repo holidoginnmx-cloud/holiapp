@@ -24,6 +24,8 @@ export type PushPayload = {
  * usuario. Silencia fallas individuales (tokens caducos) y borra de la DB
  * cualquier token que Expo marque como inválido (DeviceNotRegistered).
  *
+ * Devuelve true si Expo aceptó el envío a por lo menos un dispositivo.
+ *
  * Nunca lanza — la notificación in-app ya se creó; el push es best-effort.
  */
 export async function sendPushToUser(
@@ -73,16 +75,23 @@ export async function sendPushToUser(
 
   // Manejar tickets con error (DeviceNotRegistered → borrar)
   const tokensToDelete: string[] = [];
+  let accepted = 0;
   tickets.forEach((ticket, idx) => {
-    if (ticket.status === "error") {
-      const details = ticket.details as { error?: string } | undefined;
-      const msg = messages[idx];
-      const toToken = typeof msg.to === "string" ? msg.to : null;
-      if (details?.error === "DeviceNotRegistered" && toToken) {
-        tokensToDelete.push(toToken);
-      } else {
-        console.warn(`[push] Ticket error: ${ticket.message}`);
-      }
+    if (ticket.status === "ok") {
+      accepted += 1;
+      return;
+    }
+    const details = ticket.details as { error?: string } | undefined;
+    const msg = messages[idx];
+    const toToken = typeof msg?.to === "string" ? msg.to : null;
+    if (details?.error === "DeviceNotRegistered" && toToken) {
+      tokensToDelete.push(toToken);
+    } else {
+      // Con el userId y el código de Expo: sin esto, "no le llegan los avisos"
+      // no se podía distinguir de "Apple rechazó las credenciales".
+      console.warn(
+        `[push] Ticket error para user ${userId}: ${details?.error ?? "?"} — ${ticket.message}`
+      );
     }
   });
 
@@ -92,8 +101,10 @@ export async function sendPushToUser(
     });
   }
 
-  // Tuvo al menos un token válido al que se le envió push.
-  return true;
+  // true solo si Expo ACEPTÓ al menos un envío. Antes devolvía true con haber
+  // intentado, y el `pushed` de los logs contaba como entregados avisos que
+  // Expo había rechazado (token muerto, credenciales, chunk caído).
+  return accepted > 0;
 }
 
 /**

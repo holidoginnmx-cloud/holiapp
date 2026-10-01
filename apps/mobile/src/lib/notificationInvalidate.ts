@@ -82,7 +82,10 @@ export function notificationInvalidationKeys(
   const touchesReservations =
     type === "NEW_RESERVATION" ||
     kind === "NEW_RESERVATION" ||
-    kind === "RESERVATION_UPDATED";
+    kind === "RESERVATION_UPDATED" ||
+    // Un pago del cliente cambia el saldo de la reserva: si el admin la tiene
+    // abierta, que no siga viendo el adeudo viejo.
+    kind === "TEAM_PAYMENT";
 
   if (!touchesReservations) return [];
 

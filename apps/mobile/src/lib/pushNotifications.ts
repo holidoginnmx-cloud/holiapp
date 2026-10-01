@@ -33,17 +33,73 @@ function configureNotificationHandler() {
 }
 
 /**
- * Registra el dispositivo para push y sincroniza el token Expo con el backend.
- * Idempotente: llamable varias veces — el backend hace upsert.
+ * En qué quedó el registro de push de este teléfono.
  *
- * Returns el token Expo si todo salió bien, null si:
- *   - corre en simulador/emulador (Expo no emite tokens ahí)
- *   - el usuario rechazó permisos
- *   - no hay projectId configurado
+ * El porqué: las tres formas de fallar (permiso negado, Expo no dio token, el
+ * backend no lo guardó) terminaban en un `return null` que solo se veía en
+ * consola de desarrollo. En producción el equipo simplemente "no se enteraba"
+ * de las reservas nuevas y no había forma de saber por qué.
+ *
+ *  - "ok"         → token guardado en el backend: los avisos llegan.
+ *  - "denied"     → las notificaciones están apagadas en Ajustes. Es el único
+ *                   caso que solo la persona puede arreglar: se le avisa.
+ *  - "no-token"   → Expo no entregó token (red, credenciales). Se reintenta.
+ *  - "not-synced" → hay token pero el backend no lo guardó. Se reintenta.
+ *  - "not-device" → simulador: no aplica.
  */
-export async function registerForPushNotifications(): Promise<string | null> {
+export type PushStatus = "ok" | "denied" | "no-token" | "not-synced" | "not-device";
+
+let pushStatus: PushStatus | null = null;
+let registerInFlight: Promise<string | null> | null = null;
+const statusListeners = new Set<() => void>();
+
+function setPushStatus(next: PushStatus | null) {
+  if (pushStatus === next) return;
+  pushStatus = next;
+  statusListeners.forEach((l) => l());
+}
+
+export function getPushStatus(): PushStatus | null {
+  return pushStatus;
+}
+
+export function subscribeToPushStatus(listener: () => void): () => void {
+  statusListeners.add(listener);
+  return () => statusListeners.delete(listener);
+}
+
+/** Al cerrar sesión: el estado es de la cuenta que se va. */
+export function resetPushStatus() {
+  setPushStatus(null);
+}
+
+/**
+ * Registra el dispositivo para push y sincroniza el token Expo con el backend.
+ * Idempotente: llamable varias veces — el backend hace upsert, y si ya hay un
+ * registro en vuelo se devuelve ese mismo.
+ *
+ * Returns el token Expo si todo salió bien, null si no (el motivo queda en
+ * `getPushStatus()`).
+ */
+export function registerForPushNotifications(
+  options: { prompt?: boolean } = {},
+): Promise<string | null> {
+  if (registerInFlight) return registerInFlight;
+  registerInFlight = doRegister(options.prompt ?? true).finally(() => {
+    registerInFlight = null;
+  });
+  return registerInFlight;
+}
+
+/**
+ * @param prompt false en los reintentos: solo se revisa el permiso, no se
+ *   vuelve a pedir. En Android un segundo `requestPermissionsAsync` le
+ *   reabriría el diálogo a quien ya dijo que no.
+ */
+async function doRegister(prompt: boolean): Promise<string | null> {
   if (!Device.isDevice) {
     if (__DEV__) console.log("[push] Saltando — no es dispositivo físico");
+    setPushStatus("not-device");
     return null;
   }
 
@@ -53,12 +109,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
   // Pedir permisos si no los tenemos
   const { status: existing } = await Notifications.getPermissionsAsync();
   let finalStatus = existing;
-  if (existing !== "granted") {
+  if (existing !== "granted" && prompt) {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
   if (finalStatus !== "granted") {
     if (__DEV__) console.log("[push] Permisos denegados");
+    setPushStatus("denied");
     return null;
   }
 
@@ -83,6 +140,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     );
   } catch (err) {
     if (__DEV__) console.error("[push] Error obteniendo token Expo:", err);
+    setPushStatus("no-token");
     return null;
   }
 
@@ -93,9 +151,11 @@ export async function registerForPushNotifications(): Promise<string | null> {
       Platform.OS === "ios" ? "ios" : "android"
     );
     if (__DEV__) console.log("[push] Token sincronizado con el backend");
+    setPushStatus("ok");
   } catch (err) {
     if (__DEV__) console.error("[push] Error sincronizando con backend:", err);
-    // Aun así devolvemos el token — se reintenta en el próximo arranque
+    // Aun así devolvemos el token — se reintenta al volver a primer plano.
+    setPushStatus("not-synced");
   }
 
   return token;
