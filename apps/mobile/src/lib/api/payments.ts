@@ -1,6 +1,7 @@
 import { ENDPOINTS } from "@/constants/api";
 import type { Payment } from "@holidoginn/shared";
 import { apiFetch } from "./client";
+import type { ManualPaymentMethod, CardBrand } from "@/lib/paymentMethod";
 import type {
   BathSelectionsByPet,
   MedicationByPet,
@@ -62,7 +63,8 @@ export const confirmBalancePayment = (reservationId: string, stripePaymentIntent
 export const registerManualPayment = (data: {
   reservationId: string;
   amount: number;
-  method: "CASH" | "TRANSFER";
+  method: ManualPaymentMethod;
+  cardBrand?: CardBrand;
   notes?: string;
 }) =>
   apiFetch<Payment>("/admin/payments/manual", {

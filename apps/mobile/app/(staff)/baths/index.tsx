@@ -1,4 +1,8 @@
 import { COLORS } from "@/constants/colors";
+import {
+  askPaymentMethod,
+  type ManualMethodPayload,
+} from "@/lib/paymentMethod";
 import { useMemo, useRef, useState } from "react";
 import {
   View,
@@ -188,8 +192,11 @@ export default function StaffBaths() {
   } | null>(null);
 
   const confirmPickupMutation = useMutation({
-    mutationFn: (vars: { addonId: string; method: "CASH" | "TRANSFER" }) =>
-      confirmExtrasPaidAtPickup(vars.addonId, { method: vars.method }),
+    mutationFn: (vars: { addonId: string } & ManualMethodPayload) =>
+      confirmExtrasPaidAtPickup(vars.addonId, {
+        method: vars.method,
+        cardBrand: vars.cardBrand,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     },
@@ -432,28 +439,14 @@ export default function StaffBaths() {
               <TouchableOpacity
                 style={styles.extrasPickupBtn}
                 onPress={() => {
-                  Alert.alert(
+                  askPaymentMethod(
                     "Confirmar pago",
                     `¿Cómo recibiste ${formatCurrency(bathAddon.extraPrice)} de ${formatName(item.pet?.name ?? "—")}?`,
-                    [
-                      { text: "Cancelar", style: "cancel" },
-                      {
-                        text: "Efectivo",
-                        onPress: () =>
-                          confirmPickupMutation.mutate({
-                            addonId: bathAddon.id,
-                            method: "CASH",
-                          }),
-                      },
-                      {
-                        text: "Transferencia",
-                        onPress: () =>
-                          confirmPickupMutation.mutate({
-                            addonId: bathAddon.id,
-                            method: "TRANSFER",
-                          }),
-                      },
-                    ],
+                    (payload) =>
+                      confirmPickupMutation.mutate({
+                        addonId: bathAddon.id,
+                        ...payload,
+                      }),
                   );
                 }}
               >

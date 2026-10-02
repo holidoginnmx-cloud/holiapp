@@ -10,6 +10,7 @@ import { paymentReceivedTemplate, sendEmail } from "../lib/email";
 import { notifyUser, notifyPetAudience } from "../lib/notify";
 import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
+import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from "../lib/manualPayment";
 import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import {
   getLodgingPricing,
@@ -678,24 +679,27 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
     Body: {
       reservationId: string;
       amount: number;
-      method: "CASH" | "TRANSFER";
+      method: "CASH" | "TRANSFER" | "CARD";
+      cardBrand?: CardBrand;
       notes?: string;
     };
   }>(
     "/admin/payments/manual",
     { preHandler: [authMiddleware, staffMiddleware] },
     async (request, reply) => {
-      const { reservationId, amount, method, notes } = request.body;
+      const { reservationId, amount, notes } = request.body;
 
-      if (!reservationId || !amount || !method) {
+      if (!reservationId || !amount || !request.body.method) {
         return reply.status(400).send({ error: "Faltan campos requeridos" });
       }
       if (amount <= 0) {
         return reply.status(400).send({ error: "El monto debe ser positivo" });
       }
-      if (!["CASH", "TRANSFER"].includes(method)) {
-        return reply.status(400).send({ error: "Método inválido" });
+      const parsedMethod = parseManualMethod(request.body.method, request.body.cardBrand);
+      if (!parsedMethod.ok) {
+        return reply.status(400).send({ error: parsedMethod.error });
       }
+      const { method, cardBrand } = parsedMethod;
 
       const reservation = await prisma.reservation.findUnique({
         where: { id: reservationId },
@@ -721,12 +725,13 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
         data: {
           amount,
           method,
+          ...(await cardFeeSnapshot(prisma, method, cardBrand, amount)),
           status: "PAID",
           kind,
           paidAt: new Date(),
           reservationId,
           userId: reservation.ownerId,
-          notes: notes || `Pago manual registrado por admin (${method})`,
+          notes: notes || `Pago manual registrado por admin (${methodTag(method, cardBrand)})`,
         },
       });
 

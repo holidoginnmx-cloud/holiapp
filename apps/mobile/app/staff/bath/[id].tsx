@@ -1,4 +1,8 @@
 import { COLORS } from "@/constants/colors";
+import {
+  askPaymentMethod,
+  type ManualMethodPayload,
+} from "@/lib/paymentMethod";
 import { ErrorState } from "@/components/ErrorState";
 import { useSuccessBanner } from "@/components/SuccessBanner";
 import {
@@ -117,8 +121,11 @@ export default function StaffBathDetail() {
   });
 
   const confirmPickupMutation = useMutation({
-    mutationFn: (vars: { addonId: string; method: "CASH" | "TRANSFER" }) =>
-      confirmExtrasPaidAtPickup(vars.addonId, { method: vars.method }),
+    mutationFn: (vars: { addonId: string } & ManualMethodPayload) =>
+      confirmExtrasPaidAtPickup(vars.addonId, {
+        method: vars.method,
+        cardBrand: vars.cardBrand,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff-baths"] });
     },
@@ -643,28 +650,14 @@ export default function StaffBathDetail() {
                     <TouchableOpacity
                       style={styles.extrasPickupBtn}
                       onPress={() => {
-                        Alert.alert(
+                        askPaymentMethod(
                           "Confirmar pago",
                           `¿Cómo recibiste ${formatCurrency(bathAddon.extraPrice)} de ${formatName(bath.pet?.name ?? "—")}?`,
-                          [
-                            { text: "Cancelar", style: "cancel" },
-                            {
-                              text: "Efectivo",
-                              onPress: () =>
-                                confirmPickupMutation.mutate({
-                                  addonId: bathAddon.id,
-                                  method: "CASH",
-                                }),
-                            },
-                            {
-                              text: "Transferencia",
-                              onPress: () =>
-                                confirmPickupMutation.mutate({
-                                  addonId: bathAddon.id,
-                                  method: "TRANSFER",
-                                }),
-                            },
-                          ],
+                          (payload) =>
+                            confirmPickupMutation.mutate({
+                              addonId: bathAddon.id,
+                              ...payload,
+                            }),
                         );
                       }}
                     >
@@ -852,6 +845,7 @@ function ManualPaymentSection({
       const res = await registerBathManualPayment(reservationId, {
         amount: values.amount,
         method: values.method,
+        cardBrand: values.cardBrand,
         notes: values.notes,
       });
       onSuccess();

@@ -207,6 +207,7 @@ export default function StayDetail() {
       registerStayManualPayment(id!, {
         amount: values.amount,
         method: values.method,
+        cardBrand: values.cardBrand,
         notes: values.notes,
       }),
     onSuccess: (res) => {

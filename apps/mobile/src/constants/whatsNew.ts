@@ -34,6 +34,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-02-b",
+    title: "Cobros con tarjeta",
+    items: [
+      {
+        icon: "card-outline",
+        title: "Ya puedes registrar pagos con tarjeta",
+        body:
+          "Al registrar un pago ahora hay tres opciones: Efectivo, " +
+          "Transferencia y Tarjeta. Si eliges Tarjeta, pregúntale al cliente " +
+          "si es débito o crédito (o Amex) y márcalo: sin eso no deja " +
+          "registrar. Escribe el total que cobraste en la terminal. Funciona " +
+          "en el pago de estancias, baños, guardería, al cobrar extras al " +
+          "recoger y al crear una reservación o un baño de invitado.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-02",
     title: "Domicilio en el baño de invitado",
     items: [

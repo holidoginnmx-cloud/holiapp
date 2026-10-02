@@ -1,4 +1,11 @@
 import { COLORS } from "@/constants/colors";
+import {
+  CARD_BRAND_OPTIONS,
+  MANUAL_METHOD_OPTIONS,
+  manualMethodPayload,
+  type CardBrand,
+  type ManualPaymentMethod,
+} from "@/lib/paymentMethod";
 import { useMemo, useState } from "react";
 import {
   View,
@@ -63,7 +70,10 @@ export default function StaffDaycareDetail() {
   const router = useRouter();
   const qc = useQueryClient();
   const currentUserId = useAuthStore((s) => s.userId);
-  const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
+  const [payMethod, setPayMethod] = useState<ManualPaymentMethod>("CASH");
+  // Sin default: hay que preguntarle al cliente si es débito o crédito.
+  const [payCardBrand, setPayCardBrand] = useState<CardBrand | null>(null);
+  const payMethodPayload = manualMethodPayload(payMethod, payCardBrand);
   const [payAmount, setPayAmount] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
@@ -132,7 +142,11 @@ export default function StaffDaycareDetail() {
 
   const payMutation = useMutation({
     mutationFn: (amount: number) =>
-      registerDaycareManualPayment(id, { amount, method: payMethod }),
+      registerDaycareManualPayment(id, {
+        amount,
+        // El botón queda deshabilitado mientras falte el tipo de tarjeta.
+        ...(payMethodPayload ?? { method: payMethod }),
+      }),
     onSuccess: (res) => {
       invalidate();
       setPayAmount("");
@@ -548,7 +562,7 @@ export default function StaffDaycareDetail() {
                 Cobra el saldo pendiente ({formatCurrency(balance)}) al entregar.
               </Text>
               <View style={styles.methodRow}>
-                {(["CASH", "TRANSFER"] as const).map((m) => (
+                {MANUAL_METHOD_OPTIONS.map(({ key: m, label }) => (
                   <TouchableOpacity
                     key={m}
                     style={[
@@ -563,11 +577,39 @@ export default function StaffDaycareDetail() {
                         payMethod === m && styles.methodChipTextActive,
                       ]}
                     >
-                      {m === "CASH" ? "Efectivo" : "Transferencia"}
+                      {label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
+              {payMethod === "CARD" && (
+                <>
+                  <Text style={styles.paySub}>
+                    Tipo de tarjeta (pregúntale al cliente)
+                  </Text>
+                  <View style={styles.methodRow}>
+                    {CARD_BRAND_OPTIONS.map(({ key: b, label }) => (
+                      <TouchableOpacity
+                        key={b}
+                        style={[
+                          styles.methodChip,
+                          payCardBrand === b && styles.methodChipActive,
+                        ]}
+                        onPress={() => setPayCardBrand(b)}
+                      >
+                        <Text
+                          style={[
+                            styles.methodChipText,
+                            payCardBrand === b && styles.methodChipTextActive,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
               <View style={styles.inputWrap}>
                 <Text style={styles.currency}>$</Text>
                 <TextInput
@@ -582,14 +624,14 @@ export default function StaffDaycareDetail() {
               <TouchableOpacity
                 style={[
                   styles.payBtn,
-                  payMutation.isPending && { opacity: 0.6 },
+                  (payMutation.isPending || !payMethodPayload) && { opacity: 0.6 },
                 ]}
                 onPress={() => {
                   const amount = parseFloat(payAmount) || balance;
-                  if (amount <= 0) return;
+                  if (amount <= 0 || !payMethodPayload) return;
                   payMutation.mutate(amount);
                 }}
-                disabled={payMutation.isPending}
+                disabled={payMutation.isPending || !payMethodPayload}
               >
                 {payMutation.isPending ? (
                   <ActivityIndicator color={COLORS.white} />

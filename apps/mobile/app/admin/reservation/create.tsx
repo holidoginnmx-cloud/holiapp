@@ -1,4 +1,10 @@
 import { COLORS } from "@/constants/colors";
+import {
+  CARD_BRAND_OPTIONS,
+  MANUAL_METHOD_OPTIONS,
+  type CardBrand,
+  type ManualPaymentMethod,
+} from "@/lib/paymentMethod";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -206,7 +212,8 @@ export default function AdminCreateReservation() {
   // "anticipo acordado" no generaba ningún pago: el dinero no aparecía en el
   // admin web, que cuenta lo pagado como la suma de los pagos.
   const [depositAgreed, setDepositAgreed] = useState("");
-  const [payMethod, setPayMethod] = useState<"CASH" | "TRANSFER">("CASH");
+  const [payMethod, setPayMethod] = useState<ManualPaymentMethod>("CASH");
+  const [payCardBrand, setPayCardBrand] = useState<CardBrand | null>(null);
 
   // Cotización de origen (si la hay): folio y total prometido, para el banner y
   // para el switch de "respetar el precio cotizado".
@@ -804,6 +811,11 @@ export default function AdminCreateReservation() {
       Alert.alert("Faltan datos", "Selecciona la dirección de domicilio.");
       return;
     }
+    // Con tarjeta, la comisión de la terminal depende del tipo.
+    if (Number(depositAgreed) > 0 && payMethod === "CARD" && !payCardBrand) {
+      Alert.alert("Faltan datos", "Elige el tipo de tarjeta (débito, crédito o Amex).");
+      return;
+    }
 
     // Total manual pactado (opcional, cualquier servicio). Con varias
     // mascotas es el total del GRUPO; el server lo reparte entre las filas.
@@ -969,6 +981,8 @@ export default function AdminCreateReservation() {
       // En grupos multi-perro se reparte proporcional al total de cada fila
       // (la última absorbe el residuo) para que ninguna quede desbalanceada.
       const amount = Number(depositAgreed);
+      const payCardField =
+        payMethod === "CARD" && payCardBrand ? { cardBrand: payCardBrand } : {};
       if (depositAgreed.trim() && amount > 0 && created?.id) {
         const groupRows = (
           created as unknown as {
@@ -992,6 +1006,7 @@ export default function AdminCreateReservation() {
                 reservationId: groupRows[i].id,
                 amount: share,
                 method: payMethod,
+                ...payCardField,
               });
             }
           }
@@ -1000,6 +1015,7 @@ export default function AdminCreateReservation() {
             reservationId: created.id,
             amount,
             method: payMethod,
+            ...payCardField,
           });
         }
       }
@@ -1758,12 +1774,17 @@ export default function AdminCreateReservation() {
             {depositAgreed.trim().length > 0 && (
               <LevelSelector
                 label="Método de pago"
-                options={[
-                  { key: "CASH", label: "Efectivo" },
-                  { key: "TRANSFER", label: "Transferencia" },
-                ]}
+                options={MANUAL_METHOD_OPTIONS}
                 selected={payMethod}
-                onSelect={(k) => setPayMethod(k as "CASH" | "TRANSFER")}
+                onSelect={(k) => setPayMethod(k as ManualPaymentMethod)}
+              />
+            )}
+            {depositAgreed.trim().length > 0 && payMethod === "CARD" && (
+              <LevelSelector
+                label="Tipo de tarjeta (pregúntale al cliente)"
+                options={CARD_BRAND_OPTIONS}
+                selected={payCardBrand ?? ""}
+                onSelect={(k) => setPayCardBrand(k as CardBrand)}
               />
             )}
             {depositAgreed.trim().length > 0 &&

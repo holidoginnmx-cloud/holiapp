@@ -14,6 +14,7 @@ import type {
   CreateStayUpdate,
 } from "@holidoginn/shared";
 import { apiFetch } from "./client";
+import type { ManualPaymentMethod, CardBrand } from "@/lib/paymentMethod";
 import type { ReservationAddonWithVariant } from "./types";
 import type { ChangeRequest } from "./change-requests";
 
@@ -99,21 +100,22 @@ export const setBathExtrasPrice = (
 
 export const confirmExtrasPaidAtPickup = (
   addonId: string,
-  payload: { method?: "CASH" | "TRANSFER" } = {},
+  payload: { method?: ManualPaymentMethod; cardBrand?: CardBrand } = {},
 ) =>
   apiFetch<ReservationAddonWithVariant>(
     `/staff/addons/${addonId}/confirm-pickup-paid`,
     { method: "POST", body: JSON.stringify(payload) },
   );
 
-// Staff registra un pago manual (efectivo/transferencia) con monto específico.
+// Staff registra un pago manual (efectivo/transferencia/tarjeta) con monto específico.
 // Soporta pagos parciales. Cuando el acumulado cubre todo el saldo, el
 // endpoint marca extras como PAID y concluye el baño.
 export const registerBathManualPayment = (
   reservationId: string,
   payload: {
     amount: number;
-    method?: "CASH" | "TRANSFER";
+    method?: ManualPaymentMethod;
+    cardBrand?: CardBrand;
     notes?: string;
   },
 ) =>
@@ -183,7 +185,12 @@ export const updateDaycareSchedule = (
 
 export const registerDaycareManualPayment = (
   reservationId: string,
-  payload: { amount: number; method?: "CASH" | "TRANSFER"; notes?: string },
+  payload: {
+    amount: number;
+    method?: ManualPaymentMethod;
+    cardBrand?: CardBrand;
+    notes?: string;
+  },
 ) =>
   apiFetch<{ success: boolean; amount: number; concluded: boolean }>(
     `/staff/daycares/${reservationId}/register-manual-payment`,
@@ -278,13 +285,14 @@ export const staffCheckout = (id: string) =>
     { method: "POST", body: JSON.stringify({}) }
   );
 
-// Staff registra pago manual (efectivo/transferencia) para una estancia.
+// Staff registra pago manual (efectivo/transferencia/tarjeta) para una estancia.
 // Útil cuando el owner liquida el saldo del anticipo al check-in.
 export const registerStayManualPayment = (
   reservationId: string,
   payload: {
     amount: number;
-    method?: "CASH" | "TRANSFER";
+    method?: ManualPaymentMethod;
+    cardBrand?: CardBrand;
     notes?: string;
   },
 ) =>

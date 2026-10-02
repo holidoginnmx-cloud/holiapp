@@ -1,4 +1,10 @@
 import { COLORS } from "@/constants/colors";
+import {
+  CARD_BRAND_OPTIONS,
+  MANUAL_METHOD_OPTIONS,
+  type CardBrand,
+  type ManualPaymentMethod,
+} from "@/lib/paymentMethod";
 import React, { useMemo, useState } from "react";
 import {
   View,
@@ -116,7 +122,8 @@ export default function AdminGuestBath() {
   const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
   const [totalOverride, setTotalOverride] = useState("");
   const [cobro, setCobro] = useState("");
-  const [metodo, setMetodo] = useState<"CASH" | "TRANSFER">("CASH");
+  const [metodo, setMetodo] = useState<ManualPaymentMethod>("CASH");
+  const [cardBrand, setCardBrand] = useState<CardBrand | null>(null);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -193,8 +200,13 @@ export default function AdminGuestBath() {
     // create.tsx, aquí basta con escribir el total: el perro ya está enfrente y
     // el precio se pacta de viva voz.
     if (bathEstimate == null && !totalOverride.trim()) f.push("el total a cobrar");
+    // Con tarjeta, la comisión depende del tipo: hay que preguntarlo.
+    if (cobro.trim() && metodo === "CARD" && !cardBrand) f.push("el tipo de tarjeta");
     return f;
   }, [
+    cobro,
+    metodo,
+    cardBrand,
     petName,
     size,
     ownerName,
@@ -284,6 +296,7 @@ export default function AdminGuestBath() {
             reservationId: res.reservation.id,
             amount: cobroNum,
             method: metodo,
+            ...(metodo === "CARD" && cardBrand ? { cardBrand } : {}),
           });
         } catch {
           avisoCobro.push(
@@ -649,12 +662,17 @@ export default function AdminGuestBath() {
         {cobro.trim() !== "" && (
           <LevelSelector
             label="Método"
-            options={[
-              { key: "CASH", label: "Efectivo" },
-              { key: "TRANSFER", label: "Transferencia" },
-            ]}
+            options={MANUAL_METHOD_OPTIONS}
             selected={metodo}
-            onSelect={(k) => setMetodo(k as "CASH" | "TRANSFER")}
+            onSelect={(k) => setMetodo(k as ManualPaymentMethod)}
+          />
+        )}
+        {cobro.trim() !== "" && metodo === "CARD" && (
+          <LevelSelector
+            label="Tipo de tarjeta (pregúntale al cliente)"
+            options={CARD_BRAND_OPTIONS}
+            selected={cardBrand ?? ""}
+            onSelect={(k) => setCardBrand(k as CardBrand)}
           />
         )}
 

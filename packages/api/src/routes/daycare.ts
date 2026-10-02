@@ -5,6 +5,7 @@ import {
   UpdateDaycareScheduleSchema,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
+import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from "../lib/manualPayment";
 import Stripe from "stripe";
 import {
   createAuthMiddleware,
@@ -716,21 +717,27 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
 
   // ────────────────────────────────────────────────────────────
   //  POST /staff/daycares/:id/register-manual-payment
-  //  Efectivo/transferencia al recoger (espejo del de baños). Si el
+  //  Efectivo/transferencia/tarjeta al recoger (espejo del de baños). Si el
   //  acumulado cubre el total y ya está CHECKED_IN, concluye.
   // ────────────────────────────────────────────────────────────
   fastify.post<{
     Params: { id: string };
-    Body: { amount?: number; method?: "CASH" | "TRANSFER"; notes?: string };
+    Body: {
+      amount?: number;
+      method?: "CASH" | "TRANSFER" | "CARD";
+      cardBrand?: CardBrand;
+      notes?: string;
+    };
   }>(
     "/staff/daycares/:id/register-manual-payment",
     { preHandler: staffAuth },
     async (request, reply) => {
-      const method = request.body?.method ?? "CASH";
-      const amount = request.body?.amount;
-      if (!["CASH", "TRANSFER"].includes(method)) {
-        return reply.status(400).send({ error: "Método inválido" });
+      const parsedMethod = parseManualMethod(request.body?.method, request.body?.cardBrand);
+      if (!parsedMethod.ok) {
+        return reply.status(400).send({ error: parsedMethod.error });
       }
+      const { method, cardBrand } = parsedMethod;
+      const amount = request.body?.amount;
       if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
         return reply
           .status(400)
@@ -778,13 +785,14 @@ export default async function daycareRoutes(fastify: FastifyInstance) {
         data: {
           amount: new Prisma.Decimal(amount),
           method,
+          ...(await cardFeeSnapshot(prisma, method, cardBrand, amount)),
           status: "PAID",
           paidAt: new Date(),
           reservationId: reservation.id,
           userId: reservation.ownerId,
           notes:
             request.body?.notes?.trim() ||
-            `Pago manual (${method}) registrado por staff`,
+            `Pago manual (${methodTag(method, cardBrand)}) registrado por staff`,
         },
       });
 

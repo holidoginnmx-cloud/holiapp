@@ -12,14 +12,29 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
+import {
+  CARD_BRAND_OPTIONS,
+  MANUAL_METHOD_OPTIONS,
+  manualMethodPayload,
+  type CardBrand,
+  type ManualPaymentMethod,
+} from "@/lib/paymentMethod";
 
-export type ManualPaymentMethod = "CASH" | "TRANSFER";
+export type { ManualPaymentMethod } from "@/lib/paymentMethod";
 
 export interface ManualPaymentValues {
   amount: number;
   method: ManualPaymentMethod;
+  /** Solo con method = CARD (débito/crédito/Amex). */
+  cardBrand?: CardBrand;
   notes?: string;
 }
+
+const METHOD_ICON: Record<ManualPaymentMethod, keyof typeof Ionicons.glyphMap> = {
+  CASH: "cash-outline",
+  TRANSFER: "swap-horizontal-outline",
+  CARD: "card-outline",
+};
 
 interface PaymentManualModalProps {
   visible: boolean;
@@ -43,7 +58,8 @@ interface PaymentManualModalProps {
 
 /**
  * Modal reutilizable de "Registrar pago manual" (monto + método efectivo/
- * transferencia + notas). Extraído de las pantallas admin/reservation/[id],
+ * transferencia/tarjeta + notas). Con tarjeta exige el tipo (débito/crédito/
+ * Amex): la comisión de la terminal depende de él. Extraído de las pantallas admin/reservation/[id],
  * staff/stay/[id] y staff/bath/[id], donde era casi byte-idéntico. La mutación
  * que registra el pago (y su invalidación/Alert) se queda en cada padre vía
  * `onSubmit`; este componente solo captura los datos del formulario.
@@ -58,6 +74,9 @@ export function PaymentManualModal({
 }: PaymentManualModalProps) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<ManualPaymentMethod>("CASH");
+  // Sin default a propósito: quien cobra tiene que preguntar si es débito o
+  // crédito, no dejar pasar el que viniera preseleccionado.
+  const [cardBrand, setCardBrand] = useState<CardBrand | null>(null);
   const [notes, setNotes] = useState("");
 
   // Resetea el formulario cada vez que se abre, reproduciendo lo que antes hacía
@@ -66,6 +85,7 @@ export function PaymentManualModal({
     if (visible) {
       setAmount(initialAmount ?? "");
       setMethod("CASH");
+      setCardBrand(null);
       setNotes("");
     }
     // initialAmount se lee al abrir; no resetear a mitad de edición.
@@ -74,10 +94,12 @@ export function PaymentManualModal({
 
   const parsed = parseFloat(amount);
   const isAmountValid = Number.isFinite(parsed) && parsed > 0;
+  const methodPayload = manualMethodPayload(method, cardBrand);
+  const canSubmit = isAmountValid && methodPayload != null && !submitting;
 
   function handleSubmit() {
-    if (!isAmountValid || submitting) return;
-    onSubmit({ amount: parsed, method, notes: notes.trim() || undefined });
+    if (!canSubmit || !methodPayload) return;
+    onSubmit({ amount: parsed, ...methodPayload, notes: notes.trim() || undefined });
   }
 
   return (
@@ -110,7 +132,7 @@ export function PaymentManualModal({
 
             <Text style={styles.inputLabel}>Método</Text>
             <View style={styles.methodRow}>
-              {(["CASH", "TRANSFER"] as const).map((m) => (
+              {MANUAL_METHOD_OPTIONS.map(({ key: m, label }) => (
                 <TouchableOpacity
                   key={m}
                   style={[
@@ -120,9 +142,7 @@ export function PaymentManualModal({
                   onPress={() => setMethod(m)}
                 >
                   <Ionicons
-                    name={
-                      m === "CASH" ? "cash-outline" : "swap-horizontal-outline"
-                    }
+                    name={METHOD_ICON[m]}
                     size={16}
                     color={method === m ? COLORS.white : COLORS.textTertiary}
                   />
@@ -132,11 +152,43 @@ export function PaymentManualModal({
                       method === m && { color: COLORS.white },
                     ]}
                   >
-                    {m === "CASH" ? "Efectivo" : "Transferencia"}
+                    {label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            {method === "CARD" && (
+              <>
+                <Text style={styles.inputLabel}>
+                  Tipo de tarjeta (pregúntale al cliente)
+                </Text>
+                <View style={styles.methodRow}>
+                  {CARD_BRAND_OPTIONS.map(({ key: b, label }) => (
+                    <TouchableOpacity
+                      key={b}
+                      style={[
+                        styles.methodChip,
+                        cardBrand === b && styles.methodChipActive,
+                      ]}
+                      onPress={() => setCardBrand(b)}
+                    >
+                      <Text
+                        style={[
+                          styles.methodChipText,
+                          cardBrand === b && { color: COLORS.white },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.hint}>
+                  Registra el total que cobraste en la terminal.
+                </Text>
+              </>
+            )}
 
             <Text style={styles.inputLabel}>Notas (opcional)</Text>
             <TextInput
@@ -159,10 +211,10 @@ export function PaymentManualModal({
               <TouchableOpacity
                 style={[
                   styles.modalBtnConfirm,
-                  (!isAmountValid || submitting) && { opacity: 0.5 },
+                  !canSubmit && { opacity: 0.5 },
                 ]}
                 onPress={handleSubmit}
-                disabled={!isAmountValid || submitting}
+                disabled={!canSubmit}
               >
                 <Text style={styles.modalBtnConfirmText}>
                   {submitting ? "Registrando..." : "Registrar"}
@@ -232,6 +284,12 @@ const styles = StyleSheet.create({
   },
   methodChipActive: {
     backgroundColor: COLORS.primary,
+  },
+  hint: {
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginTop: 6,
   },
   methodChipText: {
     fontSize: 13,

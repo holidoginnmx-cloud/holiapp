@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma, ReservationStatus } from "@holidoginn/db";
+import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from "../lib/manualPayment";
 import {
   createAuthMiddleware,
   createStaffMiddleware,
@@ -436,21 +437,27 @@ export default async function staffRoutes(fastify: FastifyInstance) {
   );
 
   // ─── POST /staff/stays/:id/register-manual-payment ────────────
-  //  Staff registra un pago manual (efectivo/transferencia) para una
-  //  estancia. Útil cuando el owner paga el saldo del anticipo al hacer
+  //  Staff registra un pago manual (efectivo/transferencia/tarjeta) para
+  //  una estancia. Útil cuando el owner paga el saldo del anticipo al hacer
   //  check-in. Soporta pagos parciales: el staff puede registrar varios.
   fastify.post<{
     Params: { id: string };
-    Body: { amount?: number; method?: "CASH" | "TRANSFER"; notes?: string };
+    Body: {
+      amount?: number;
+      method?: "CASH" | "TRANSFER" | "CARD";
+      cardBrand?: CardBrand;
+      notes?: string;
+    };
   }>(
     "/staff/stays/:id/register-manual-payment",
     { preHandler },
     async (request, reply) => {
-      const method = request.body?.method ?? "CASH";
-      const amount = request.body?.amount;
-      if (!["CASH", "TRANSFER"].includes(method)) {
-        return reply.status(400).send({ error: "Método inválido" });
+      const parsedMethod = parseManualMethod(request.body?.method, request.body?.cardBrand);
+      if (!parsedMethod.ok) {
+        return reply.status(400).send({ error: parsedMethod.error });
       }
+      const { method, cardBrand } = parsedMethod;
+      const amount = request.body?.amount;
       if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
         return reply.status(400).send({
           error: "El monto debe ser un número mayor a 0",
@@ -505,12 +512,13 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
       const noteText =
         request.body?.notes?.trim() ||
-        `Pago manual (${method}) registrado por staff`;
+        `Pago manual (${methodTag(method, cardBrand)}) registrado por staff`;
 
       const payment = await prisma.payment.create({
         data: {
           amount: new Prisma.Decimal(amount),
           method,
+          ...(await cardFeeSnapshot(prisma, method, cardBrand, amount)),
           status: "PAID",
           paidAt: new Date(),
           reservationId: reservation.id,
@@ -1190,19 +1198,20 @@ export default async function staffRoutes(fastify: FastifyInstance) {
 
   // ─── POST /staff/addons/:id/confirm-pickup-paid — marcar como cobrado ─
   //  Cuando el owner eligió "Pagar al recoger", staff confirma aquí.
-  //  Se captura el método (CASH/TRANSFER) y se genera el Payment record para
+  //  Se captura el método (CASH/TRANSFER/CARD + tipo) y se genera el Payment record para
   //  que el cobro aparezca en la sección de Pagos del owner.
   fastify.post<{
     Params: { id: string };
-    Body: { method?: "CASH" | "TRANSFER" };
+    Body: { method?: "CASH" | "TRANSFER" | "CARD"; cardBrand?: CardBrand };
   }>(
     "/staff/addons/:id/confirm-pickup-paid",
     { preHandler },
     async (request, reply) => {
-      const method = request.body?.method ?? "CASH";
-      if (!["CASH", "TRANSFER"].includes(method)) {
-        return reply.status(400).send({ error: "Método inválido" });
+      const parsedMethod = parseManualMethod(request.body?.method, request.body?.cardBrand);
+      if (!parsedMethod.ok) {
+        return reply.status(400).send({ error: parsedMethod.error });
       }
+      const { method, cardBrand } = parsedMethod;
       const addon = await prisma.reservationAddon.findUnique({
         where: { id: request.params.id },
         include: {
@@ -1221,6 +1230,7 @@ export default async function staffRoutes(fastify: FastifyInstance) {
       }
 
       const extraAmount = addon.extraPrice ? Number(addon.extraPrice) : 0;
+      const cardSnapshot = await cardFeeSnapshot(prisma, method, cardBrand, extraAmount);
 
       const updated = await prisma.$transaction(async (tx) => {
         const updatedAddon = await tx.reservationAddon.update({
@@ -1236,11 +1246,12 @@ export default async function staffRoutes(fastify: FastifyInstance) {
             data: {
               amount: new Prisma.Decimal(extraAmount),
               method,
+              ...cardSnapshot,
               status: "PAID",
               paidAt: new Date(),
               reservationId: addon.reservation.id,
               userId: addon.reservation.ownerId,
-              notes: `Extras de baño (${method}) cobrado al recoger`,
+              notes: `Extras de baño (${methodTag(method, cardBrand)}) cobrado al recoger`,
             },
           });
         }

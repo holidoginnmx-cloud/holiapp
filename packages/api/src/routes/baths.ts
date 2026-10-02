@@ -6,6 +6,7 @@ import {
   UpdateBathAppointmentSchema,
 } from "@holidoginn/shared";
 import { Prisma, PetSize } from "@holidoginn/db";
+import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from "../lib/manualPayment";
 import Stripe from "stripe";
 import { createAuthMiddleware, createAdminMiddleware, createStaffMiddleware } from "../middleware/auth";
 import {
@@ -1078,23 +1079,29 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
   // ────────────────────────────────────────────────────────────
   //  POST /staff/baths/:id/register-manual-payment
-  //  Staff registra un pago manual (efectivo/transferencia) con monto
+  //  Staff registra un pago manual (efectivo/transferencia/tarjeta) con monto
   //  específico. Crea un Payment record y, si el total acumulado cubre
   //  el saldo (deposit + extras), marca extras como PAID y concluye.
   //  Soporta pagos parciales: el staff puede registrar varios.
   // ────────────────────────────────────────────────────────────
   fastify.post<{
     Params: { id: string };
-    Body: { amount?: number; method?: "CASH" | "TRANSFER"; notes?: string };
+    Body: {
+      amount?: number;
+      method?: "CASH" | "TRANSFER" | "CARD";
+      cardBrand?: CardBrand;
+      notes?: string;
+    };
   }>(
     "/staff/baths/:id/register-manual-payment",
     { preHandler: staffAuth },
     async (request, reply) => {
-      const method = request.body?.method ?? "CASH";
-      const amount = request.body?.amount;
-      if (!["CASH", "TRANSFER"].includes(method)) {
-        return reply.status(400).send({ error: "Método inválido" });
+      const parsedMethod = parseManualMethod(request.body?.method, request.body?.cardBrand);
+      if (!parsedMethod.ok) {
+        return reply.status(400).send({ error: parsedMethod.error });
       }
+      const { method, cardBrand } = parsedMethod;
+      const amount = request.body?.amount;
       if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
         return reply.status(400).send({
           error: "El monto debe ser un número mayor a 0",
@@ -1159,13 +1166,15 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
 
       const noteText =
         request.body?.notes?.trim() ||
-        `Pago manual (${method}) registrado por staff`;
+        `Pago manual (${methodTag(method, cardBrand)}) registrado por staff`;
 
+      const cardSnapshot = await cardFeeSnapshot(prisma, method, cardBrand, amount);
       await prisma.$transaction(async (tx) => {
         await tx.payment.create({
           data: {
             amount: new Prisma.Decimal(amount),
             method,
+            ...cardSnapshot,
             status: "PAID",
             paidAt: new Date(),
             reservationId: reservation.id,
