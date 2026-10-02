@@ -22,10 +22,22 @@ import { LevelSelector } from "@/components/LevelSelector";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { KeyboardDoneBar, KEYBOARD_DONE_ID } from "@/components/KeyboardDoneBar";
 import {
+  DeliveryAddressPicker,
+  type SelectedAddress,
+} from "@/components/DeliveryAddressPicker";
+import {
+  VIAJES_DOMICILIO,
+  VIAJE_HINT_EQUIPO,
+  viajeSufijo,
+} from "@/constants/delivery";
+import {
   getBathVariants,
   getBathSlots,
   createWalkInBath,
   registerManualPayment,
+  getDeliveryStatus,
+  deliveryQuote,
+  type DeliveryTrip,
   type WalkInBathBody,
   type WalkInOwnerCandidate,
 } from "@/lib/api";
@@ -98,6 +110,10 @@ export default function AdminGuestBath() {
   const [deslanado, setDeslanado] = useState(false);
   const [corte, setCorte] = useState(false);
   const [forceSchedule, setForceSchedule] = useState(false);
+  // Servicio a domicilio: mismos tres datos que en crear reservación.
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [deliveryTrip, setDeliveryTrip] = useState<DeliveryTrip>("PICKUP");
+  const [deliveryAddress, setDeliveryAddress] = useState<SelectedAddress | null>(null);
   const [totalOverride, setTotalOverride] = useState("");
   const [cobro, setCobro] = useState("");
   const [metodo, setMetodo] = useState<"CASH" | "TRANSFER">("CASH");
@@ -131,6 +147,31 @@ export default function AdminGuestBath() {
   });
   const bathConflict = useBathConflict(bathSlots, appointmentAt);
 
+  // Domicilio: gate por config + cotización del servidor (vista previa; al
+  // guardar la vuelve a calcular él). Mismas query keys que create.tsx: es la
+  // misma pregunta con la misma respuesta.
+  const { data: deliveryStatus } = useQuery({
+    queryKey: ["delivery-status"],
+    queryFn: getDeliveryStatus,
+    staleTime: 1000 * 60 * 10,
+  });
+  const deliveryServiceActive = deliveryStatus?.active === true;
+  // Si el servicio se apaga con el switch ya prendido, el switch desaparece de
+  // la pantalla: sin esto se seguiría mandando un domicilio que nadie ve.
+  const conDomicilio = deliveryEnabled && deliveryServiceActive;
+  const {
+    data: deliveryQuoteData,
+    isFetching: deliveryQuoting,
+    isError: deliveryQuoteFailed,
+  } = useQuery({
+    // El viaje entra en la key: cambiar de sencillo a redondo cambia la tarifa.
+    queryKey: ["delivery-quote", deliveryAddress?.lat, deliveryAddress?.lng, deliveryTrip],
+    queryFn: () => deliveryQuote(deliveryAddress!.lat, deliveryAddress!.lng, deliveryTrip),
+    enabled: conDomicilio && !!deliveryAddress,
+  });
+  const deliveryFee =
+    conDomicilio && deliveryAddress && deliveryQuoteData?.active ? deliveryQuoteData.fee : null;
+
   // Qué falta, en el orden en que se llena la pantalla. El botón lo dice en voz
   // alta en vez de esperar a que lo toquen para reclamar.
   const faltantes = useMemo(() => {
@@ -144,17 +185,42 @@ export default function AdminGuestBath() {
     // trabado en "falta el teléfono"; uno de 8 dígitos daba 10 y pasaba.
     if (phoneNationalDigits(phone).length !== 10) f.push("el teléfono (10 dígitos)");
     if (bathConflict && !forceSchedule) f.push("resolver el horario");
+    // Sin tarifa no se manda: el servidor rechazaría el baño entero, y aquí se
+    // puede decir de antemano en vez de después de tocar el botón.
+    if (conDomicilio && !deliveryAddress) f.push("la dirección del domicilio");
+    else if (conDomicilio && deliveryFee == null) f.push("la tarifa del domicilio");
     // Sin variante Y sin precio a mano no hay nada que cobrar. A diferencia de
     // create.tsx, aquí basta con escribir el total: el perro ya está enfrente y
     // el precio se pacta de viva voz.
     if (bathEstimate == null && !totalOverride.trim()) f.push("el total a cobrar");
     return f;
-  }, [petName, size, ownerName, phone, bathConflict, forceSchedule, bathEstimate, totalOverride]);
+  }, [
+    petName,
+    size,
+    ownerName,
+    phone,
+    bathConflict,
+    forceSchedule,
+    conDomicilio,
+    deliveryAddress,
+    deliveryFee,
+    bathEstimate,
+    totalOverride,
+  ]);
 
   const canSubmit = faltantes.length === 0 && !submitting;
 
   const totalNum = totalOverride.trim() ? Number(totalOverride) : null;
   const cobroNum = cobro.trim() ? Number(cobro) : null;
+
+  // Lo que va a quedar en la reserva: el baño (pactado a mano o de la talla)
+  // MÁS el domicilio. Sólo se pinta con domicilio; sin él, el total es el campo.
+  const banoNum =
+    totalNum != null && Number.isFinite(totalNum) && totalNum >= 0 ? totalNum : bathEstimate;
+  const totalConDomicilio =
+    deliveryFee != null && banoNum != null
+      ? Math.round((banoNum + deliveryFee) * 100) / 100
+      : null;
 
   const armarBody = (extra: Partial<WalkInBathBody> = {}): WalkInBathBody => ({
     owner: { name: ownerName.trim(), phone: phoneNationalDigits(phone) },
@@ -172,6 +238,17 @@ export default function AdminGuestBath() {
       ? { totalAmountOverride: totalNum }
       : {}),
     ...(forceSchedule ? { scheduleOverride: true } : {}),
+    ...(conDomicilio && deliveryAddress
+      ? {
+          homeDelivery: {
+            address: deliveryAddress.address,
+            lat: deliveryAddress.lat,
+            lng: deliveryAddress.lng,
+            placeId: deliveryAddress.placeId,
+            trip: deliveryTrip,
+          },
+        }
+      : {}),
     ...extra,
   });
 
@@ -224,12 +301,24 @@ export default function AdminGuestBath() {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       queryClient.invalidateQueries({ queryKey: ["staff", "baths"] });
 
-      const avisos = [...res.warnings, ...res.agendaWarnings, ...avisoCobro];
+      // Un servidor que todavía no conoce el campo lo descarta sin avisar y el
+      // baño nace sin el viaje. Mejor decirlo que dejar a recepción creyendo
+      // que la camioneta ya está apuntada.
+      const pidioDomicilio = conDomicilio && !!deliveryAddress;
+      const avisoDomicilio =
+        pidioDomicilio && res.pricing.deliveryFee == null
+          ? ["OJO: el domicilio NO se guardó. Agrégalo desde el detalle del baño."]
+          : [];
+
+      const avisos = [...res.warnings, ...res.agendaWarnings, ...avisoDomicilio, ...avisoCobro];
       Alert.alert(
         "Baño registrado",
         [
           `${res.pet.name} · ${formatTime(appointmentAt)}`,
           `Total $${res.pricing.amount}`,
+          res.pricing.deliveryFee
+            ? `Incluye $${res.pricing.deliveryFee} de domicilio.`
+            : null,
           res.owner.created ? null : `Se usó la ficha que ya existía de ${res.owner.name}.`,
           res.pet.created ? null : "Se agendó con la ficha del perro que ya existía.",
           ...avisos,
@@ -482,7 +571,49 @@ export default function AdminGuestBath() {
           </Text>
         ) : null}
 
-        <Text style={styles.label}>Total a cobrar</Text>
+        {/* ── Servicio a domicilio (opcional) ── */}
+        {deliveryServiceActive && (
+          <>
+            <SwitchRow
+              label="Servicio a domicilio"
+              value={deliveryEnabled}
+              onValueChange={setDeliveryEnabled}
+            />
+            {deliveryEnabled && (
+              <>
+                <LevelSelector
+                  label="Viaje"
+                  options={VIAJES_DOMICILIO}
+                  selected={deliveryTrip}
+                  onSelect={(k) => setDeliveryTrip(k as DeliveryTrip)}
+                />
+                <Text style={styles.hint}>{VIAJE_HINT_EQUIPO[deliveryTrip]}</Text>
+                <View style={styles.addressBox}>
+                  <DeliveryAddressPicker
+                    value={deliveryAddress}
+                    onChange={setDeliveryAddress}
+                    placeholder="Dirección de entrega/recolección"
+                  />
+                </View>
+                {deliveryFee != null ? (
+                  <Text style={styles.estimate}>
+                    Tarifa domicilio: ${deliveryFee} ({deliveryQuoteData!.distanceKm} km){" "}
+                    {viajeSufijo(deliveryTrip)}
+                  </Text>
+                ) : deliveryAddress && deliveryQuoting ? (
+                  <Text style={styles.hint}>Calculando la tarifa…</Text>
+                ) : deliveryAddress && (deliveryQuoteFailed || deliveryQuoteData?.active === false) ? (
+                  <Text style={styles.estimateWarn}>
+                    No se pudo calcular la tarifa de esa dirección. Elige otra, o
+                    apaga el domicilio y agrégalo después desde el detalle del baño.
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </>
+        )}
+
+        <Text style={styles.label}>{conDomicilio ? "Total del baño" : "Total a cobrar"}</Text>
         <TextInput
           style={styles.amountInput}
           value={totalOverride}
@@ -494,7 +625,13 @@ export default function AdminGuestBath() {
         />
         <Text style={styles.hint}>
           Déjalo vacío para cobrar el precio de la talla. Escribe 0 si es cortesía.
+          {conDomicilio ? " El domicilio se suma aparte." : ""}
         </Text>
+        {totalConDomicilio != null && (
+          <Text style={styles.estimate}>
+            Total a cobrar: ${totalConDomicilio} (baño ${banoNum} + domicilio ${deliveryFee})
+          </Text>
+        )}
 
         <Text style={styles.label}>Cobro ahora (opcional)</Text>
         <TextInput
@@ -608,6 +745,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   dateRow: { flexDirection: "row", gap: 10, marginBottom: 6, alignItems: "flex-start" },
+  addressBox: { marginTop: 8 },
   dateCol: { flex: 1 },
   estimate: {
     fontSize: 14,

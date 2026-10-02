@@ -1,6 +1,7 @@
 import { ENDPOINTS } from "@/constants/api";
 import type { Reservation, DailyChecklist } from "@holidoginn/shared";
 import { apiFetch } from "./client";
+import type { DeliveryTrip } from "./delivery";
 import type {
   ReservationListItem,
   ReservationDetail,
@@ -53,6 +54,8 @@ export type WalkInBathBody = {
   totalAmountOverride?: number;
   depositAgreed?: number;
   scheduleOverride?: boolean;
+  /** Servicio a domicilio. La tarifa la cotiza el servidor y se SUMA al total. */
+  homeDelivery?: HomeDeliveryInput & { trip?: DeliveryTrip };
   /** Respuestas a un 409: "sí, es la misma persona" / "es el mismo perro". */
   confirmReuseOwnerId?: string;
   confirmReusePetId?: string;
@@ -65,7 +68,16 @@ export type WalkInBathResult = {
   owner: { id: string; name: string; phone: string | null; created: boolean };
   pet: { id: string; name: string; size: string; photoUrl: string | null; created: boolean };
   /** Lo que REALMENTE se va a cobrar: nunca recalcular el precio en la pantalla. */
-  pricing: { amount: number; variantId: string | null; sizeSource: "declared" | "weight" };
+  pricing: {
+    amount: number;
+    /**
+     * Lo que de `amount` es domicilio. Falta (undefined) si el servidor todavía
+     * no conoce el campo: en ese caso el domicilio NO se guardó.
+     */
+    deliveryFee?: number;
+    variantId: string | null;
+    sizeSource: "declared" | "weight";
+  };
   agendaWarnings: string[];
   warnings: string[];
 };

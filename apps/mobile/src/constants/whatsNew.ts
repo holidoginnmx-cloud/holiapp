@@ -34,6 +34,26 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-02",
+    title: "Domicilio en el baño de invitado",
+    items: [
+      {
+        icon: "car-outline",
+        title: "El baño de invitado ya acepta servicio a domicilio",
+        body:
+          "Al registrar un baño de invitado ahora aparece el interruptor " +
+          "«Servicio a domicilio», debajo del precio. Lo prendes, eliges el " +
+          "viaje (solo ida, solo vuelta o redondo), buscas la dirección y la " +
+          "app calcula la tarifa. Esa tarifa se suma aparte al total del baño: " +
+          "si el baño es de $450 y el domicilio de $120, verás «Total a " +
+          "cobrar: $570». Ya no hace falta registrar el baño y después entrar " +
+          "al detalle para agregarle el viaje.",
+        route: "/admin/reservation/guest-bath",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-01",
     title: "Avisos de pagos y un selector de fecha y hora nuevo",
     items: [

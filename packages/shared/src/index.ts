@@ -855,6 +855,10 @@ export const WalkInBathSchema = z.object({
   depositAgreed: z.number().nonnegative().optional(),
   staffId: z.string().optional(),
   scheduleOverride: z.boolean().optional(),
+  // Servicio a domicilio: vamos por el perro o lo regresamos a su casa. La
+  // tarifa la recotiza SIEMPRE el servidor desde lat/lng y se SUMA al total del
+  // baño (también al pactado a mano: `totalAmountOverride` es sólo el baño).
+  homeDelivery: HomeDeliveryInputSchema.optional(),
 
   // ── Resolución de duplicados (segunda vuelta, tras un 409) ──────────────
   // El servidor NUNCA decide solo si dos personas con el mismo teléfono son la

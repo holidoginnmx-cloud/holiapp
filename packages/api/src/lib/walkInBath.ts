@@ -8,6 +8,7 @@ import { findPetByName } from "./petName";
 import { sharedPetIds } from "./petAccess";
 import { evaluateStart, localYMD } from "./bathAvailability";
 import { loadScheduleCfg, loadBusyIntervals, resolveBathDuration, ensureConfig } from "./bathAvailabilityDb";
+import { quoteDelivery } from "./delivery";
 import { createTeamReservation, type CreatedReservation } from "./reservationTeamCreate";
 import type { OpResult } from "./reservationAdminOps";
 
@@ -61,7 +62,12 @@ export type WalkInBathData = {
   reservation: CreatedReservation;
   owner: { id: string; name: string; phone: string | null; created: boolean };
   pet: { id: string; name: string; size: string; photoUrl: string | null; created: boolean };
-  pricing: { amount: number; variantId: string | null; sizeSource: "declared" | "weight" };
+  pricing: {
+    amount: number;
+    deliveryFee: number;
+    variantId: string | null;
+    sizeSource: "declared" | "weight";
+  };
   agendaWarnings: string[];
   warnings: string[];
 };
@@ -278,6 +284,36 @@ export async function createWalkInBath(
     return fail(409, agendaWarnings.join(" "), "AGENDA_CONFLICT", { warnings: agendaWarnings });
   }
 
+  // Domicilio: se cotiza AQUÍ, antes de escribir, aunque `createTeamReservation`
+  // lo vuelva a cotizar. Dos razones: si el servicio está apagado, aquélla lo
+  // IGNORA en silencio y el baño nacería sin el viaje que recepción cree haber
+  // capturado; y si Google truena, allá es una excepción que se salta el
+  // rollback de abajo y deja las fichas recién creadas huérfanas.
+  if (input.homeDelivery) {
+    let cotizable = false;
+    try {
+      const quote = await quoteDelivery(
+        prisma,
+        input.homeDelivery.lat,
+        input.homeDelivery.lng,
+        input.homeDelivery.trip ?? "PICKUP"
+      );
+      if (!quote.active) {
+        return fail(400, "El servicio a domicilio está desactivado", "DELIVERY_DISABLED");
+      }
+      cotizable = Number.isFinite(quote.fee);
+    } catch {
+      cotizable = false;
+    }
+    if (!cotizable) {
+      return fail(
+        502,
+        "No se pudo calcular la tarifa del domicilio. Intenta de nuevo o registra el baño sin domicilio y agrégalo después desde el detalle.",
+        "DELIVERY_QUOTE_FAILED"
+      );
+    }
+  }
+
   // ── 4. ESCRIBIR: dueño y perro ─────────────────────────────────────────
   if (!ownerId) {
     // Ficha walk-in: sin cuenta, con correo placeholder. `originLegacy` la deja
@@ -366,6 +402,7 @@ export async function createWalkInBath(
       depositAgreed: input.depositAgreed,
       staffId: input.staffId,
       scheduleOverride: input.scheduleOverride,
+      homeDelivery: input.homeDelivery,
     },
     actorUserId: params.actorUserId,
     source: params.source ?? "APP_ADMIN",
@@ -401,6 +438,9 @@ export async function createWalkInBath(
       },
       pricing: {
         amount: Number(row.totalAmount),
+        // Lo que de `amount` es domicilio (0 si no lleva). Sale de la fila ya
+        // guardada, no de lo que se pidió: es la prueba de que el viaje quedó.
+        deliveryFee: row.homeDelivery ? Number(row.homeDeliveryFee ?? 0) : 0,
         variantId: variant.id,
         sizeSource: usaPeso ? "weight" : "declared",
       },

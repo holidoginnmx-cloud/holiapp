@@ -14,6 +14,9 @@ vi.mock("./bathAvailabilityDb", () => ({
   loadBusyIntervals: vi.fn(async () => []),
   resolveBathDuration: vi.fn(async () => ({ durationMinutes: 90, variantId: "v1", resolved: true })),
 }));
+vi.mock("./delivery", () => ({
+  quoteDelivery: vi.fn(async () => ({ active: true, distanceKm: 4.2, fee: 120 })),
+}));
 vi.mock("./bathAvailability", () => ({
   localYMD: vi.fn(() => "2026-09-09"),
   evaluateStart: vi.fn(() => ({ ok: true })),
@@ -21,6 +24,7 @@ vi.mock("./bathAvailability", () => ({
 
 import { createTeamReservation } from "./reservationTeamCreate";
 import { evaluateStart } from "./bathAvailability";
+import { quoteDelivery } from "./delivery";
 import { createWalkInBath } from "./walkInBath";
 
 const RESERVA_OK = {
@@ -75,6 +79,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(createTeamReservation).mockResolvedValue(RESERVA_OK as never);
   vi.mocked(evaluateStart).mockReturnValue({ ok: true } as never);
+  vi.mocked(quoteDelivery).mockResolvedValue({ active: true, distanceKm: 4.2, fee: 120 });
 });
 
 describe("createWalkInBath — alta limpia", () => {
@@ -381,6 +386,87 @@ describe("createWalkInBath — pre-flight: fallar ANTES de escribir", () => {
     const res = await createWalkInBath(makePrisma(), { input: INPUT as never, actorUserId: null });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.code).toBe("BATH_DISABLED");
+  });
+});
+
+describe("createWalkInBath — servicio a domicilio", () => {
+  const DOMICILIO = {
+    address: "Calle 1 #23, Hermosillo",
+    lat: 29.07,
+    lng: -110.95,
+    trip: "ROUND_TRIP" as const,
+  };
+  const creados = (prisma: unknown) =>
+    prisma as {
+      user: { create: ReturnType<typeof vi.fn> };
+      pet: { create: ReturnType<typeof vi.fn> };
+    };
+
+  it("sin domicilio no se cotiza nada y la tarifa reportada es 0", async () => {
+    const res = await createWalkInBath(makePrisma(), { input: INPUT as never, actorUserId: null });
+    expect(quoteDelivery).not.toHaveBeenCalled();
+    expect(vi.mocked(createTeamReservation).mock.calls.at(-1)![1].input.homeDelivery)
+      .toBeUndefined();
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.pricing.deliveryFee).toBe(0);
+  });
+
+  it("la dirección y el viaje llegan intactos a la reserva", async () => {
+    vi.mocked(createTeamReservation).mockResolvedValue({
+      ok: true,
+      data: {
+        reservations: [
+          {
+            id: "res_1", totalAmount: 690, pet: { name: "Camila" }, groupId: null,
+            homeDelivery: true, homeDeliveryFee: 240,
+          },
+        ],
+        groupId: null,
+        agendaWarnings: [],
+      },
+    } as never);
+    const res = await createWalkInBath(makePrisma(), {
+      input: { ...INPUT, homeDelivery: DOMICILIO } as never,
+      actorUserId: null,
+    });
+
+    expect(quoteDelivery).toHaveBeenCalledWith(expect.anything(), 29.07, -110.95, "ROUND_TRIP");
+    expect(vi.mocked(createTeamReservation).mock.calls.at(-1)![1].input.homeDelivery)
+      .toEqual(DOMICILIO);
+    expect(res.ok).toBe(true);
+    // La tarifa reportada es la de la FILA guardada, no la del pre-flight.
+    if (res.ok) {
+      expect(res.data.pricing.amount).toBe(690);
+      expect(res.data.pricing.deliveryFee).toBe(240);
+    }
+  });
+
+  it("con el servicio apagado no se crea nada (allá se ignoraría en silencio)", async () => {
+    vi.mocked(quoteDelivery).mockResolvedValue({ active: false, distanceKm: 0, fee: 0 });
+    const prisma = makePrisma();
+    const res = await createWalkInBath(prisma, {
+      input: { ...INPUT, homeDelivery: DOMICILIO } as never,
+      actorUserId: null,
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.code).toBe("DELIVERY_DISABLED");
+    expect(creados(prisma).user.create).not.toHaveBeenCalled();
+    expect(creados(prisma).pet.create).not.toHaveBeenCalled();
+    expect(createTeamReservation).not.toHaveBeenCalled();
+  });
+
+  it("si Google truena al cotizar, falla ANTES de crear las fichas", async () => {
+    vi.mocked(quoteDelivery).mockRejectedValue(new Error("Distance Matrix: OVER_QUERY_LIMIT"));
+    const prisma = makePrisma();
+    const res = await createWalkInBath(prisma, {
+      input: { ...INPUT, homeDelivery: DOMICILIO } as never,
+      actorUserId: null,
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.code).toBe("DELIVERY_QUOTE_FAILED");
+    expect(creados(prisma).user.create).not.toHaveBeenCalled();
+    expect(creados(prisma).pet.create).not.toHaveBeenCalled();
+    expect(createTeamReservation).not.toHaveBeenCalled();
   });
 });
 
