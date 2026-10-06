@@ -171,8 +171,18 @@ export default function AdminCreateQuote() {
 
   // Cortesías, descuento y precio
   const [banoCortesia, setBanoCortesia] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState("");
+  // Código de una cotización hecha antes de que el descuento fuera por
+  // porcentaje. Ya no se captura, pero al editar se conserva para que guardar
+  // no le quite el descuento al cliente sin que nadie lo decida.
   const [discountCode, setDiscountCode] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
+  // Coma decimal incluida: el teclado numérico de iOS en español no trae punto.
+  const porcentajeNum = Number(discountPercent.trim().replace(",", "."));
+  const porcentajeValido =
+    discountPercent.trim() !== "" && porcentajeNum > 0 && porcentajeNum <= 100
+      ? Math.round(porcentajeNum * 100) / 100
+      : null;
   const [depositSuggested, setDepositSuggested] = useState("");
 
   // Presentación
@@ -285,6 +295,7 @@ export default function AdminCreateQuote() {
     setBanoCortesia(cortesias.includes("BATH"));
     setDomicilioCortesia(cortesias.includes("HOME_DELIVERY"));
 
+    setDiscountPercent(input.discountPercent != null ? String(input.discountPercent) : "");
     setDiscountCode(input.discountCode ?? "");
     setDepositSuggested(input.depositSuggested != null ? String(input.depositSuggested) : "");
     setNotas(input.notes ?? "");
@@ -415,7 +426,8 @@ export default function AdminCreateQuote() {
         ...(banoCortesia ? (["BATH"] as const) : []),
         ...(domicilioCortesia ? (["HOME_DELIVERY"] as const) : []),
       ],
-      discountCode: discountCode.trim() || null,
+      discountPercent: porcentajeValido,
+      discountCode: porcentajeValido == null ? discountCode.trim() || null : null,
       // El precio pactado reemplaza el total de los SERVICIOS y el domicilio se
       // suma aparte: en una cotización de solo traslado no hay nada que pactar.
       totalOverride:
@@ -424,7 +436,7 @@ export default function AdminCreateQuote() {
   }, [
     serviceType, petsPayload, sinFechas, checkIn, checkOut, noches, fechaServicio,
     dcInTime, dcOutTime, conBano, deslanado, corte, desparasitante, probarf,
-    banoCortesia, discountCode, totalOverride, conDomicilio, direccionDomicilio,
+    banoCortesia, discountCode, porcentajeValido, totalOverride, conDomicilio, direccionDomicilio,
     domicilioCortesia, soloDomicilio, domicilioActivo, viaje,
   ]);
 
@@ -1062,16 +1074,30 @@ export default function AdminCreateQuote() {
         {/* ── Precio ── */}
         {listoParaCotizar && (
           <>
-            <Text style={styles.label}>Código de descuento (opcional)</Text>
+            <Text style={styles.label}>Descuento en % (opcional)</Text>
             <TextInput
               style={styles.amountInput}
-              placeholder="PROMO10"
+              placeholder="10"
               placeholderTextColor={COLORS.textDisabled}
-              value={discountCode}
-              onChangeText={setDiscountCode}
-              autoCapitalize="characters"
-              autoCorrect={false}
+              value={discountPercent}
+              onChangeText={setDiscountPercent}
+              keyboardType="numeric"
+              inputAccessoryViewID={KEYBOARD_DONE_ID}
             />
+            {discountPercent.trim() !== "" && porcentajeValido == null ? (
+              <Text style={styles.previewWarn}>Escribe un porcentaje entre 1 y 100.</Text>
+            ) : discountCode && porcentajeValido == null ? (
+              <Text style={styles.hint}>
+                Esta cotización tiene el código {discountCode}.{" "}
+                <Text style={styles.hintLink} onPress={() => setDiscountCode("")}>
+                  Quitar
+                </Text>
+              </Text>
+            ) : (
+              <Text style={styles.hint}>
+                Se aplica a los servicios. El servicio a domicilio no entra.
+              </Text>
+            )}
 
             {/* El precio pactado reemplaza el total de los SERVICIOS y el
                 domicilio se suma aparte: en una cotización de solo traslado no
@@ -1285,6 +1311,10 @@ const styles = StyleSheet.create({
   },
   dateRow: { flexDirection: "row", gap: 10, marginBottom: 6, alignItems: "flex-start" },
   dateCol: { flex: 1 },
+  hintLink: {
+    color: COLORS.primary,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+  },
   hint: {
     fontSize: 12,
     fontFamily: "PlusJakartaSans_400Regular",

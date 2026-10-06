@@ -1442,6 +1442,10 @@ export const QuotePreviewSchema = z.object({
   // quoteDelivery (nunca se acepta un fee del cliente).
   homeDelivery: HomeDeliveryInputSchema.nullable().optional(),
   discountCode: z.string().trim().max(40).nullable().optional(),
+  // Descuento directo en porcentaje, sin código de por medio. Si viene, manda
+  // sobre `discountCode`. Igual que el código: se aplica al subtotal de los
+  // servicios, nunca al domicilio.
+  discountPercent: z.number().positive().max(100).nullable().optional(),
   // Conceptos regalados: se imprimen con su precio de catálogo pero no suman.
   courtesy: z.array(QuoteItemKindEnum).optional(),
   customItems: z.array(QuoteCustomItemSchema).max(10).optional(),

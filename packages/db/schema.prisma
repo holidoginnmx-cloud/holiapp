@@ -2061,6 +2061,9 @@ model Quote {
   discountCodeId       String?
   discountCode         DiscountCode? @relation(fields: [discountCodeId], references: [id])
   discountCodeSnapshot String? // el código tal cual, por si después se borra
+  // Descuento directo en % (sin código). Se guarda para poder reeditar la
+  // cotización; el monto ya congelado vive en `discountTotal`.
+  discountPercent      Decimal?      @db.Decimal(5, 2)
 
   // ── Servicio a domicilio ───────────────────────────────────
   // Se guardan lat/lng además de la dirección porque el fee se RECALCULA al

@@ -59,6 +59,7 @@ function quoteBase(over: Partial<QuoteWithRelations> = {}): QuoteWithRelations {
     depositSuggested: D(350),
     discountCodeId: null,
     discountCodeSnapshot: null,
+    discountPercent: null,
     homeDelivery: true,
     homeDeliveryAddress: "Chardonnay 23, Villa de Parras, Hermosillo",
     homeDeliveryLat: 29.05,
@@ -193,5 +194,17 @@ describe("buildQuoteEditInput — el formulario vuelve tal como se cotizó", () 
 
     const sinFechas = quoteBase({ checkIn: null, checkOut: null, totalDays: 5 } as Partial<QuoteWithRelations>);
     expect(buildQuoteEditInput(sinFechas).nightsOverride).toBe(5);
+  });
+
+  it("repone el descuento por porcentaje como número, no como Decimal", () => {
+    // Sin esto, editar una cotización con 10% para mover la fecha la guardaría
+    // SIN descuento sobre la liga que el cliente ya tiene.
+    expect(buildQuoteEditInput(quoteBase()).discountPercent).toBeNull();
+
+    const conDescuento = quoteBase({
+      discountTotal: D(70),
+      discountPercent: D(10),
+    } as Partial<QuoteWithRelations>);
+    expect(buildQuoteEditInput(conDescuento).discountPercent).toBe(10);
   });
 });

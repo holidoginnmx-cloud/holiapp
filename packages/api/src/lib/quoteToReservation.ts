@@ -298,6 +298,7 @@ export function buildQuoteEditInput(quote: QuoteWithRelations): CreateQuote {
           }
         : null,
     discountCode: quote.discountCodeSnapshot,
+    discountPercent: quote.discountPercent != null ? Number(quote.discountPercent) : null,
     courtesy,
     customItems: items
       .filter((i) => i.kind === "CUSTOM")

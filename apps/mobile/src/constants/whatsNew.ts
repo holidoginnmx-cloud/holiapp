@@ -34,6 +34,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-06",
+    title: "Descuento por porcentaje al cotizar",
+    items: [
+      {
+        icon: "pricetag-outline",
+        title: "El descuento de la cotización ahora es un porcentaje",
+        body:
+          "Al hacer una cotización ya no hace falta tener un código: en " +
+          "\"Descuento en %\" escribe el porcentaje (por ejemplo \"10\") y el " +
+          "total se ajusta al momento. Al cliente le sale la línea " +
+          "\"Descuento 10%\" en su cotización. Se aplica a los servicios; el " +
+          "servicio a domicilio se sigue sumando aparte.",
+        route: "/admin/quotes/create",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-10-02-b",
     title: "Cobros con tarjeta",
     items: [

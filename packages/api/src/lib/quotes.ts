@@ -105,7 +105,15 @@ export async function previewQuote(
 
   let discount: QuotePreviewOutput["discount"] = null;
   let discountError: string | null = null;
-  if (input.discountCode) {
+  if (input.discountPercent) {
+    // Porcentaje tecleado por el equipo: no hay nada que validar contra el
+    // catálogo. La "clave" es el propio porcentaje porque es lo que se imprime
+    // en la línea ("Descuento 10%").
+    discount = {
+      code: `${input.discountPercent}%`,
+      amount: Math.round(base.breakdown.subtotal * input.discountPercent) / 100,
+    };
+  } else if (input.discountCode) {
     const resolved = await resolveDiscount(prisma, {
       code: input.discountCode,
       subtotal: base.breakdown.subtotal,
@@ -244,7 +252,7 @@ export async function createQuote(
   // El código se guarda referenciado pero NO se consume: incrementar usesCount
   // al cotizar quemaría usos de códigos que nunca cierran. Se revalida y se
   // consume al convertir.
-  const discountCodeId = discount
+  const discountCodeId = discount && !input.discountPercent
     ? (await prisma.discountCode.findUnique({ where: { code: discount.code } }))?.id ?? null
     : null;
 
@@ -272,7 +280,8 @@ export async function createQuote(
         total: breakdown.total,
         depositSuggested: input.depositSuggested ?? null,
         discountCodeId,
-        discountCodeSnapshot: discount?.code ?? null,
+        discountCodeSnapshot: input.discountPercent ? null : discount?.code ?? null,
+        discountPercent: input.discountPercent ?? null,
         homeDelivery: Boolean(input.homeDelivery && delivery?.active),
         homeDeliveryAddress: input.homeDelivery?.address ?? null,
         homeDeliveryLat: input.homeDelivery?.lat ?? null,
@@ -389,7 +398,7 @@ export async function reviseQuote(
   if (!preview.ok) return preview;
   const { breakdown, delivery, discount } = preview;
 
-  const discountCodeId = discount
+  const discountCodeId = discount && !input.discountPercent
     ? (await prisma.discountCode.findUnique({ where: { code: discount.code } }))?.id ?? null
     : null;
 
@@ -424,7 +433,8 @@ export async function reviseQuote(
         total: breakdown.total,
         depositSuggested: input.depositSuggested ?? null,
         discountCodeId,
-        discountCodeSnapshot: discount?.code ?? null,
+        discountCodeSnapshot: input.discountPercent ? null : discount?.code ?? null,
+        discountPercent: input.discountPercent ?? null,
         homeDelivery: Boolean(input.homeDelivery && delivery?.active),
         homeDeliveryAddress: input.homeDelivery?.address ?? null,
         homeDeliveryLat: input.homeDelivery?.lat ?? null,
