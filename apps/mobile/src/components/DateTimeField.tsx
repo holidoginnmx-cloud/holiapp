@@ -176,6 +176,197 @@ export function DateTimeField({
   );
 }
 
+// ─── Rango de fechas (entrada → salida) ────────────────────────────────────
+
+type RangeProps = {
+  start: Date | null;
+  end: Date | null;
+  /** Texto de cada fecha, ya en español (también el de "sin elegir"). */
+  format: (date: Date | null) => string;
+  /**
+   * Mes que se muestra si todavía no hay fechas, y de donde sale la HORA de
+   * las fechas elegidas (los llamadores pasan "hoy a medianoche").
+   */
+  defaultDate: Date;
+  /** Mínimo para la ENTRADA. La salida siempre es posterior a la entrada. */
+  minimumDate?: Date;
+  onChange: (start: Date | null, end: Date | null) => void;
+  startLabel?: string;
+  endLabel?: string;
+  testID?: string;
+};
+
+/**
+ * Entrada y salida de una estancia en UNA sola hoja: se toca el día de
+ * entrada, la hoja pasa sola a la salida y se toca el segundo día. Antes eran
+ * dos `DateTimeField` y había que abrir el calendario dos veces.
+ *
+ * Los dos cuadros abren la misma hoja; el de salida la abre ya en el paso de
+ * salida (para corregir solo esa fecha). En el paso de salida, tocar un día
+ * igual o anterior a la entrada se toma como una entrada NUEVA: es lo que uno
+ * quiere cuando se equivocó con el primer toque.
+ *
+ * El calendario es el propio (JS) también en Android: el diálogo del sistema
+ * solo sabe elegir una fecha.
+ */
+export function DateRangeField({
+  start,
+  end,
+  format,
+  defaultDate,
+  minimumDate,
+  onChange,
+  startLabel = "Entrada",
+  endLabel = "Salida",
+  testID,
+}: RangeProps) {
+  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<"start" | "end">("start");
+  const [draft, setDraft] = useState<{ start: Date | null; end: Date | null }>({
+    start: null,
+    end: null,
+  });
+
+  const abrir = (wanted: "start" | "end") => {
+    markRiskyOpen("picker-range");
+    setDraft({ start, end });
+    // Sin entrada no hay contra qué elegir la salida.
+    setPhase(start ? wanted : "start");
+    setOpen(true);
+  };
+
+  const confirmar = () => {
+    clearRiskyOpen();
+    setOpen(false);
+    onChange(draft.start, draft.end);
+  };
+
+  const elegir = (date: Date) => {
+    if (phase === "end" && draft.start && dayNumber(date) > dayNumber(draft.start)) {
+      setDraft({ start: draft.start, end: date });
+      return;
+    }
+    // Entrada nueva: la salida se conserva solo si sigue quedando después.
+    const keepEnd = draft.end && dayNumber(draft.end) > dayNumber(date);
+    setDraft({ start: date, end: keepEnd ? draft.end : null });
+    setPhase("end");
+  };
+
+  const noches =
+    draft.start && draft.end
+      ? Math.round(
+          (Date.UTC(
+            draft.end.getFullYear(),
+            draft.end.getMonth(),
+            draft.end.getDate(),
+          ) -
+            Date.UTC(
+              draft.start.getFullYear(),
+              draft.start.getMonth(),
+              draft.start.getDate(),
+            )) /
+            86400000,
+        )
+      : null;
+
+  const campo = (which: "start" | "end") => {
+    const date = which === "start" ? start : end;
+    return (
+      <TouchableOpacity
+        style={[styles.field, styles.rangeCol]}
+        onPress={() => abrir(which)}
+        activeOpacity={0.7}
+        testID={testID ? `${testID}-${which}` : undefined}
+      >
+        <View style={styles.fieldTextCol}>
+          <Text style={styles.fieldLabel}>
+            {which === "start" ? startLabel : endLabel}
+          </Text>
+          <Text style={[styles.fieldValue, !date && styles.fieldValueEmpty]}>
+            {format(date)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const pestana = (which: "start" | "end") => {
+    const date = which === "start" ? draft.start : draft.end;
+    const active = phase === which;
+    return (
+      <TouchableOpacity
+        style={[styles.rangeTab, active && styles.rangeTabActive]}
+        onPress={() => setPhase(which)}
+        // La salida no se puede elegir antes que la entrada.
+        disabled={which === "end" && !draft.start}
+        activeOpacity={0.7}
+        testID={testID ? `${testID}-tab-${which}` : undefined}
+      >
+        <Text style={styles.fieldLabel}>
+          {which === "start" ? startLabel : endLabel}
+        </Text>
+        <Text style={[styles.fieldValue, !date && styles.fieldValueEmpty]}>
+          {format(date)}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <>
+      <View style={styles.rangeRow}>
+        {campo("start")}
+        {campo("end")}
+      </View>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="slide"
+        onRequestClose={confirmar}
+      >
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={confirmar} />
+          <View style={styles.sheet}>
+            <View style={styles.header}>
+              <Text style={styles.title}>
+                {phase === "start"
+                  ? "Elige el día de entrada"
+                  : noches != null
+                    ? `${noches} ${noches === 1 ? "noche" : "noches"}`
+                    : "Ahora el día de salida"}
+              </Text>
+              <TouchableOpacity
+                onPress={confirmar}
+                hitSlop={12}
+                testID={testID ? `${testID}-done` : undefined}
+              >
+                <Text style={styles.done}>Listo</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.rangeTabs}>
+              {pestana("start")}
+              {pestana("end")}
+            </View>
+            {/* `open &&`: el mes a la vista se fija al montar, así cada
+                apertura arranca en el mes de las fechas actuales. */}
+            {open && (
+              <MonthGrid
+                value={draft.start ?? defaultDate}
+                // En el paso de salida no se bloquean los días anteriores a la
+                // entrada: tocarlos mueve la entrada (ver `elegir`).
+                minimumDate={minimumDate}
+                range={draft}
+                onSelect={elegir}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 // ─── Calendario del mes ────────────────────────────────────────────────────
 
 /** Día de calendario LOCAL como número comparable (20261001). */
@@ -187,10 +378,13 @@ function MonthGrid({
   value,
   minimumDate,
   onSelect,
+  range,
 }: {
   value: Date;
   minimumDate?: Date;
   onSelect: (date: Date) => void;
+  /** Modo rango: marca los dos extremos y sombrea los días de en medio. */
+  range?: { start: Date | null; end: Date | null };
 }) {
   // El mes a la vista arranca en el del valor; después lo mueve la persona.
   const [year, setYear] = useState(value.getFullYear());
@@ -198,6 +392,8 @@ function MonthGrid({
 
   const minDay = minimumDate ? dayNumber(minimumDate) : null;
   const selectedDay = dayNumber(value);
+  const startDay = range?.start ? dayNumber(range.start) : null;
+  const endDay = range?.end ? dayNumber(range.end) : null;
   const todayDay = dayNumber(new Date());
 
   const firstWeekday = new Date(year, month, 1).getDay(); // 0 = domingo
@@ -273,7 +469,15 @@ function MonthGrid({
             if (day === null) return <View key={`e-${di}`} style={styles.dayCell} />;
             const cellDay = year * 10000 + (month + 1) * 100 + day;
             const disabled = minDay != null && cellDay < minDay;
-            const selected = cellDay === selectedDay;
+            const selected = range
+              ? cellDay === startDay || cellDay === endDay
+              : cellDay === selectedDay;
+            // Banda del rango: completa en los días de en medio y de medio
+            // ancho en los extremos, para que arranque y termine en el círculo.
+            const hasRange = startDay != null && endDay != null;
+            const inRange = hasRange && cellDay > startDay && cellDay < endDay;
+            const bandFromHere = hasRange && cellDay === startDay;
+            const bandToHere = hasRange && cellDay === endDay;
             const isToday = cellDay === todayDay;
             return (
               <TouchableOpacity
@@ -291,6 +495,15 @@ function MonthGrid({
                   onSelect(next);
                 }}
               >
+                {(inRange || bandFromHere || bandToHere) && (
+                  <View
+                    style={[
+                      styles.rangeBand,
+                      bandFromHere && styles.rangeBandStart,
+                      bandToHere && styles.rangeBandEnd,
+                    ]}
+                  />
+                )}
                 <View
                   style={[
                     styles.dayNumber,
@@ -489,6 +702,22 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.primary,
   },
+  // Rango (entrada → salida)
+  rangeRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  rangeCol: { flex: 1 },
+  rangeTabs: { flexDirection: "row", gap: 10, marginTop: 12 },
+  rangeTab: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderLight,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  rangeTabActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
   // Calendario
   monthHeader: {
     flexDirection: "row",
@@ -534,6 +763,16 @@ const styles = StyleSheet.create({
   todayCircle: { borderWidth: 2, borderColor: COLORS.primary },
   todayText: { color: COLORS.primary, fontFamily: "PlusJakartaSans_700Bold" },
   selectedCircle: { backgroundColor: COLORS.primary },
+  rangeBand: {
+    position: "absolute",
+    top: 3,
+    left: 0,
+    right: 0,
+    height: DAY_SIZE,
+    backgroundColor: COLORS.primaryLight,
+  },
+  rangeBandStart: { left: "50%" },
+  rangeBandEnd: { right: "50%" },
   selectedText: { color: COLORS.white, fontFamily: "PlusJakartaSans_700Bold" },
   // Hora
   timePreview: {

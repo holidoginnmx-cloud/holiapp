@@ -838,8 +838,8 @@ export default function CreatePetScreen() {
           ))}
           <ImagePickerButton
             imageUrl={null}
-            onImageUploaded={(url) => {
-              const next = [...cartillaPhotos, url];
+            onImagesUploaded={(urls) => {
+              const next = [...cartillaPhotos, ...urls];
               if (isEditing) {
                 cartillaMutation.mutate(next);
               } else {

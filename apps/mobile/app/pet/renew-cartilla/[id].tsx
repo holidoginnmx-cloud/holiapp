@@ -214,7 +214,7 @@ export default function RenewCartillaScreen() {
       {/* Upload */}
       <Text style={styles.uploadLabel}>Cartilla actualizada</Text>
       <Text style={styles.cartillaHelp}>
-        Puedes subir varias fotos (una por una). Toca "Agregar más" para añadir páginas adicionales.
+        Puedes subir varias fotos: desde la galería elige todas las páginas de una vez. Toca "Agregar más" para añadir otras.
       </Text>
 
       <ScrollView
@@ -241,8 +241,8 @@ export default function RenewCartillaScreen() {
         ))}
         <ImagePickerButton
           imageUrl={null}
-          onImageUploaded={(url) => {
-            const next = [...cartillaPhotos, url];
+          onImagesUploaded={(urls) => {
+            const next = [...cartillaPhotos, ...urls];
             cartillaMutation.mutate(next);
           }}
           folder="cartillas"

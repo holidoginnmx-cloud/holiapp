@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { DateTimeField } from "@/components/DateTimeField";
+import { DateRangeField, DateTimeField } from "@/components/DateTimeField";
 import { SwitchRow } from "@/components/SwitchRow";
 import { LevelSelector } from "@/components/LevelSelector";
 import {
@@ -840,25 +840,16 @@ export default function AdminCreateQuote() {
             ) : (
               <View style={styles.dateRow}>
                 <View style={styles.dateCol}>
-                  <DateTimeField
-                    label="Entrada"
-                    text={formatDate(checkIn)}
-                    empty={!checkIn}
-                    mode="date"
-                    pickerValue={checkIn ?? hoy()}
+                  <DateRangeField
+                    start={checkIn}
+                    end={checkOut}
+                    format={formatDate}
+                    defaultDate={hoy()}
                     minimumDate={hoy()}
-                    onChange={setCheckIn}
-                  />
-                </View>
-                <View style={styles.dateCol}>
-                  <DateTimeField
-                    label="Salida"
-                    text={formatDate(checkOut)}
-                    empty={!checkOut}
-                    mode="date"
-                    pickerValue={checkOut ?? checkIn ?? hoy()}
-                    minimumDate={checkIn ?? hoy()}
-                    onChange={setCheckOut}
+                    onChange={(start, end) => {
+                      setCheckIn(start);
+                      setCheckOut(end);
+                    }}
                   />
                 </View>
               </View>

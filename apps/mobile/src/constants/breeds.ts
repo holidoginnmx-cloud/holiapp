@@ -95,6 +95,7 @@ export const DOG_BREEDS: string[] = [
   "Pug",
   "Rottweiler",
   "Rhodesian Ridgeback",
+  "Salchicha (Dachshund)",
   "Samoyedo",
   "San Bernardo",
   "Schnauzer Estándar",
@@ -108,7 +109,6 @@ export const DOG_BREEDS: string[] = [
   "Spitz Alemán",
   "Spitz Japonés",
   "Staffordshire Bull Terrier",
-  "Teckel",
   "Terranova",
   "Terrier Escocés",
   "Terrier Ruso Negro",
@@ -119,6 +119,13 @@ export const DOG_BREEDS: string[] = [
   "Xoloitzcuintle",
   "Yorkshire Terrier",
 ];
+
+// Otros nombres con los que alguien puede buscar una raza. La sugerencia que se
+// muestra (y se guarda) es siempre la del catálogo: "Teckel" era el nombre que
+// salía antes y nadie del equipo lo reconocía como el salchicha.
+export const BREED_ALIASES: Record<string, string[]> = {
+  "Salchicha (Dachshund)": ["Teckel", "Perro Salchicha"],
+};
 
 // Normaliza para comparar sin acentos ni mayúsculas.
 export function normalizeBreed(s: string): string {

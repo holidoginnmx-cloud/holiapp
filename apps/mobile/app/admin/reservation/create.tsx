@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { DateTimeField } from "@/components/DateTimeField";
+import { DateRangeField, DateTimeField } from "@/components/DateTimeField";
 import { SelectField } from "@/components/SelectField";
 import { SwitchRow } from "@/components/SwitchRow";
 import { useRoomOccupancy, textoOcupantes } from "@/hooks/useRoomOccupancy";
@@ -1261,32 +1261,19 @@ export default function AdminCreateReservation() {
             <Text style={styles.label}>Fechas</Text>
             <View style={styles.dateRow}>
               <View style={styles.dateCol}>
-                <DateTimeField
-                  label="Entrada"
-                  title="Fecha de entrada"
-                  text={formatDate(checkIn)}
-                  empty={!checkIn}
-                  mode="date"
-                  pickerValue={checkIn ?? today}
+                <DateRangeField
+                  start={checkIn}
+                  end={checkOut}
+                  format={formatDate}
+                  defaultDate={today}
                   // Sin minimumDate a propósito, igual que la cita de baño: el
                   // equipo registra estancias que ya empezaron. El aviso "ya
                   // pasó" + "Registrar de todos modos" hacen el gate.
-                  onChange={(date) => {
-                    setCheckIn(date);
-                    if (checkOut && date >= checkOut) setCheckOut(null);
+                  onChange={(start, end) => {
+                    setCheckIn(start);
+                    setCheckOut(end);
                   }}
-                />
-              </View>
-              <View style={styles.dateCol}>
-                <DateTimeField
-                  label="Salida"
-                  title="Fecha de salida"
-                  text={formatDate(checkOut)}
-                  empty={!checkOut}
-                  mode="date"
-                  pickerValue={checkOut ?? checkIn ?? today}
-                  minimumDate={checkIn ?? today}
-                  onChange={setCheckOut}
+                  testID="stay-dates"
                 />
               </View>
             </View>

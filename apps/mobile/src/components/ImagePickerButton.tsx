@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { pickAndUploadPhoto } from "@/lib/photoPicker";
+import { pickAndUploadPhoto, pickAndUploadPhotos } from "@/lib/photoPicker";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -18,7 +18,7 @@ type Props = {
   /** Current image URL (from Cloudinary or existing) */
   imageUrl: string | null;
   /** Called with the Cloudinary secure_url after upload */
-  onImageUploaded: (url: string) => void;
+  onImageUploaded?: (url: string) => void;
   /** Cloudinary subfolder (e.g. "pets", "stays") */
   folder?: string;
   /** Size of the preview */
@@ -31,6 +31,11 @@ type Props = {
   allowsEditing?: boolean;
   /** Disable from outside (e.g. while a parent mutation is in-flight). */
   disabled?: boolean;
+  /**
+   * Si se pasa, desde la galería se pueden elegir varias fotos a la vez y
+   * llegan todas juntas aquí (en vez de `onImageUploaded`). Sin recorte.
+   */
+  onImagesUploaded?: (urls: string[]) => void;
 };
 
 export function ImagePickerButton({
@@ -42,17 +47,26 @@ export function ImagePickerButton({
   label = "Agregar foto",
   allowsEditing = true,
   disabled = false,
+  onImagesUploaded,
 }: Props) {
   const [uploading, setUploading] = useState(false);
 
   const handlePress = async () => {
     try {
+      if (onImagesUploaded) {
+        const urls = await pickAndUploadPhotos({
+          folder,
+          onUploadStart: () => setUploading(true),
+        });
+        if (urls.length > 0) onImagesUploaded(urls);
+        return;
+      }
       const url = await pickAndUploadPhoto({
         folder,
         allowsEditing,
         onUploadStart: () => setUploading(true),
       });
-      if (url) onImageUploaded(url);
+      if (url) onImageUploaded?.(url);
     } catch (error: any) {
       alertaDeError(error, { respaldo: "No se pudo subir la imagen" });
     } finally {

@@ -2,7 +2,7 @@ import { COLORS } from "@/constants/colors";
 import { useMemo, useState } from "react";
 import { View, TextInput, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { DOG_BREEDS, normalizeBreed } from "@/constants/breeds";
+import { BREED_ALIASES, DOG_BREEDS, normalizeBreed } from "@/constants/breeds";
 
 interface Props {
   value: string;
@@ -23,7 +23,12 @@ export function BreedAutocomplete({ value, onChange, placeholder }: Props) {
     const q = normalizeBreed(value);
     if (!q) return [];
     return DOG_BREEDS.map((b) => ({ b, n: normalizeBreed(b) }))
-      .filter((x) => x.n.includes(q))
+      .filter(
+        (x) =>
+          x.n.includes(q) ||
+          // También por alias ("teckel" → Salchicha).
+          (BREED_ALIASES[x.b] ?? []).some((a) => normalizeBreed(a).includes(q)),
+      )
       // Prefijo (empieza-con) primero, luego alfabético en español.
       .sort((a, z) => {
         const ap = a.n.startsWith(q) ? 0 : 1;

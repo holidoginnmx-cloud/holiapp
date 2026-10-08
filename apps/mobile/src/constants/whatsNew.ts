@@ -34,6 +34,42 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-07",
+    title: "Fechas en un solo paso y varias fotos a la vez",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "Entrada y salida en el mismo calendario",
+        body:
+          "Al crear un hospedaje (o cotizarlo) ya no hay que abrir el " +
+          "calendario dos veces: toca el día de entrada y, sin cerrar, el de " +
+          "salida. Se pinta el rango y arriba te dice cuántas noches son. Si " +
+          "te equivocas, toca otro día o cambia entre Entrada y Salida ahí " +
+          "mismo, y al final \"Listo\".",
+        route: "/admin/reservation/create",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "images-outline",
+        title: "Sube todas las páginas de la cartilla de un jalón",
+        body:
+          "Al agregar fotos de la cartilla, elige \"Galería\" y marca todas " +
+          "las páginas juntas (hasta 10): se suben en el orden en que las " +
+          "tocaste. Ya no es una por una.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "paw-outline",
+        title: "\"Teckel\" ahora se llama Salchicha",
+        body:
+          "En la lista de razas, el Teckel ahora aparece como \"Salchicha " +
+          "(Dachshund)\". Lo encuentras escribiendo salchicha, dachshund o " +
+          "teckel.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-06",
     title: "Descuento por porcentaje al cotizar",
     items: [
