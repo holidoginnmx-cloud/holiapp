@@ -296,3 +296,51 @@ export function paymentFailedTemplate(d: PaymentFailedData) {
   const text = `Hola ${d.ownerFirstName}, no pudimos procesar tu pago${d.petName ? ` para ${d.petName}` : ""}. Abre la app e intenta de nuevo.\n\n— HolidogInn`;
   return { subject, html, text };
 }
+
+// ─── Avisos al cliente (recordatorios, cartilla) ───────────────
+
+/**
+ * Correo gemelo de un aviso que ya salió por push.
+ *
+ * Existe porque el push no basta: un cliente con las notificaciones apagadas
+ * (o que nunca abrió la app después de reservar) no recibía NADA. Pasó con la
+ * nota de la cartilla ("solo falta la desparasitación") y con el recordatorio
+ * de la cita: el equipo creía que el mensaje había llegado y el cliente nunca
+ * se enteró. El correo es la red para esos casos.
+ *
+ * El texto puede traer una nota escrita por el equipo: se escapa siempre.
+ */
+export type ClientNoticeData = {
+  firstName?: string | null;
+  subject: string;
+  /** Párrafos del cuerpo, texto plano. */
+  paragraphs: string[];
+};
+
+const escapeHtml = (s: string) =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+export function clientNoticeTemplate(d: ClientNoticeData) {
+  const saludo = d.firstName?.trim() ? `Hola, ${d.firstName.trim()}` : "Hola";
+  const html = layout(
+    d.subject,
+    `
+    <h1 style="font-size:20px;margin:0 0 12px;">${escapeHtml(saludo)}</h1>
+    ${d.paragraphs
+      .map(
+        (p) =>
+          `<p style="font-size:15px;line-height:1.5;margin:0 0 12px;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`
+      )
+      .join("\n")}
+    <p style="font-size:14px;color:#666;line-height:1.5;">
+      Puedes ver el detalle en la app de Holidog Inn o respondernos por WhatsApp.
+    </p>
+  `
+  );
+  const text = `${saludo}\n\n${d.paragraphs.join("\n\n")}\n\n— HolidogInn`;
+  return { subject: d.subject, html, text };
+}

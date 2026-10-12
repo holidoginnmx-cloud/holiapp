@@ -6,6 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import rawBody from "fastify-raw-body";
 import { clerkPlugin } from "@clerk/fastify";
 import prismaPlugin from "./plugins/prisma";
+import { startClientRemindersLoop } from "./lib/clientReminders";
 import usersRoutes from "./routes/users";
 import petsRoutes from "./routes/pets";
 import petInvitesRoutes from "./routes/petInvites";
@@ -210,6 +211,9 @@ const start = async () => {
     const port = Number(process.env.PORT) || 4000;
     await app.listen({ port, host: "0.0.0.0" });
     console.log(`Server running on http://localhost:${port}`);
+    // Recordatorios de cita al cliente cada 10 min, sin depender del cron de
+    // GitHub (que se salta corridas). Ver lib/clientReminders.ts.
+    startClientRemindersLoop(app.prisma);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

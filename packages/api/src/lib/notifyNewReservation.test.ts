@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildClientConfirmationMessage,
   buildNewReservationMessage,
   type NewReservationRow,
 } from "./notifyNewReservation";
@@ -256,5 +257,32 @@ describe("buildNewReservationMessage — casos degenerados", () => {
 
     expect(msg.urgent).toBe(false);
     expect(msg.body).toBe("Una mascota — Entra sin fecha");
+  });
+});
+
+describe("buildClientConfirmationMessage — confirmación al cliente", () => {
+  it("baño: fecha y hora del hotel, y promete el recordatorio", () => {
+    const m = buildClientConfirmationMessage({
+      reservations: [
+        { id: "b", reservationType: "BATH", appointmentAt: new Date("2026-10-16T16:00:00Z"), pet: { name: "Wero" } },
+      ],
+      bathLabel: "Baño + Corte",
+    });
+    expect(m.title).toContain("baño");
+    expect(m.body).toContain("Wero tiene baño (Baño + Corte)");
+    expect(m.body).toContain("16 oct");
+    expect(m.body).toContain("recordatorio");
+  });
+
+  it("hospedaje multi-mascota: nombres y fechas guardadas en UTC", () => {
+    const m = buildClientConfirmationMessage({
+      reservations: [
+        { id: "a", reservationType: "STAY", checkIn: new Date("2026-11-20T00:00:00Z"), checkOut: new Date("2026-11-23T00:00:00Z"), pet: { name: "Wero" } },
+        { id: "b", reservationType: "STAY", checkIn: new Date("2026-11-20T00:00:00Z"), checkOut: new Date("2026-11-23T00:00:00Z"), pet: { name: "Federico" } },
+      ],
+    });
+    expect(m.body).toContain("Wero y Federico");
+    expect(m.body).toContain("20 nov");
+    expect(m.body).toContain("23 nov");
   });
 });

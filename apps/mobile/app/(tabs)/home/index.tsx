@@ -26,6 +26,7 @@ import { formatName, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { TabFab } from "@/components/TabFab";
 import { GlobalReviewPrompt } from "@/components/GlobalReviewPrompt";
+import { PushOffNotice } from "@/components/PushOffNotice";
 
 const URGENT_BALANCE_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -211,6 +212,8 @@ export default function HomeScreen() {
       <Text style={styles.greeting}>
         {getTimeGreeting()}, {formatName(firstName)} 👋
       </Text>
+
+      <PushOffNotice body="Así no te llegan la confirmación de tus reservas, los recordatorios de tus citas ni los mensajes del equipo sobre tu peludito. Toca aquí para prenderlas en Ajustes." />
 
       {/* Mis mascotas */}
       {activePets.length > 0 && (

@@ -19,6 +19,7 @@ import { Prisma } from "@holidoginn/db";
 import {
   notifyUsers,
   notifyPetAudience,
+  emailPetAudience,
   notifyTeamReservationUpdated,
 } from "../lib/notify";
 import { triggerMaintenance } from "../lib/maintenance";
@@ -1722,6 +1723,28 @@ export default async function adminRoutes(fastify: FastifyInstance) {
               hasNote: Boolean(note),
             },
           });
+          // También por correo: la nota suele pedir algo al cliente ("solo
+          // falta la desparasitación") y el push no le llega si tiene las
+          // notificaciones apagadas. Así pasó: el equipo mandaba la nota
+          // creyendo que había llegado y el cliente nunca la vio.
+          await emailPetAudience(
+            prisma,
+            { petId: pet.id, ownerId: pet.ownerId },
+            {
+              subject: note
+                ? `Cartilla de ${pet.name}: aprobada, con una nota del equipo`
+                : `Cartilla de ${pet.name} aprobada ✅`,
+              paragraphs: note
+                ? [
+                    `Revisamos la cartilla de ${pet.name} y quedó aprobada.`,
+                    `Nota del equipo HDI:\n${note}`,
+                  ]
+                : [
+                    `Revisamos la cartilla de ${pet.name} y quedó aprobada. Ya puedes reservar sus estancias.`,
+                  ],
+            },
+            { excludeUserId: request.userId }
+          );
         }
 
         const updated = await prisma.pet.findUnique({ where: { id: pet.id } });
@@ -1750,6 +1773,20 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         } Sube una nueva para revisarla.`,
         data: { petId: pet.id, kind: "CARTILLA_REVIEW", action: "REJECT" },
       });
+      await emailPetAudience(
+        prisma,
+        { petId: pet.id, ownerId: pet.ownerId },
+        {
+          subject: `Cartilla de ${pet.name}: necesitamos una foto nueva`,
+          paragraphs: [
+            `Revisamos la cartilla de ${pet.name} y no la pudimos aprobar${
+              reason?.trim() ? `. Motivo: ${reason.trim()}` : "."
+            }`,
+            "Sube una foto nueva desde la app, en el perfil de tu mascota, para revisarla de nuevo.",
+          ],
+        },
+        { excludeUserId: request.userId }
+      );
 
       return updated;
     }

@@ -16,8 +16,15 @@ import { getPushStatus, subscribeToPushStatus } from "@/lib/pushNotifications";
  * Solo se muestra con el permiso NEGADO, que es lo único que la persona puede
  * arreglar. Los otros fallos (sin red, token sin guardar) se reintentan solos
  * al volver a la app (ver app/_layout.tsx).
+ *
+ * También vive en el Inicio del CLIENTE (con su propio texto): un cliente con
+ * las notificaciones apagadas no recibía la confirmación de su reserva, el
+ * recordatorio de la cita ni la nota de la cartilla, y nadie lo sabía.
  */
-export function PushOffNotice() {
+const TEAM_BODY =
+  "En este teléfono no te van a llegar los avisos de reservaciones nuevas. Toca aquí para prenderlas en Ajustes.";
+
+export function PushOffNotice({ body = TEAM_BODY }: { body?: string } = {}) {
   const status = useSyncExternalStore(subscribeToPushStatus, getPushStatus);
   if (status !== "denied") return null;
 
@@ -33,10 +40,7 @@ export function PushOffNotice() {
       <Ionicons name="notifications-off-outline" size={22} color={COLORS.warningText} />
       <View style={styles.textCol}>
         <Text style={styles.title}>Las notificaciones están apagadas</Text>
-        <Text style={styles.body}>
-          En este teléfono no te van a llegar los avisos de reservaciones
-          nuevas. Toca aquí para prenderlas en Ajustes.
-        </Text>
+        <Text style={styles.body}>{body}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={COLORS.warningText} />
     </TouchableOpacity>

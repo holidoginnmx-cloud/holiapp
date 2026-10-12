@@ -211,7 +211,11 @@ describe("applyReservationTimesUpdate", () => {
     const kinds = ((where.AND as { OR: { data: { equals: string } }[] }[])[1].OR).map(
       (c) => c.data.equals,
     );
-    expect(kinds).toEqual(["REMINDER_90MIN", "DAYCARE_REMINDER"]);
+    expect(kinds).toEqual([
+      "REMINDER_90MIN",
+      "DAYCARE_REMINDER",
+      "STAY_CHECKIN_REMINDER",
+    ]);
     expect(kinds).not.toContain("CHECKIN_TIME");
     expect(kinds).not.toContain("CHECKOUT_TIME");
   });

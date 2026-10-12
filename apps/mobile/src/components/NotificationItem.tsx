@@ -23,6 +23,7 @@ const TYPE_STYLE: Record<string, TypeStyle> = {
   CHECK_IN: { icon: "log-in-outline", tint: COLORS.successText },
   CHECK_OUT: { icon: "log-out-outline", tint: COLORS.textTertiary },
   RESERVATION_REMINDER: { icon: "alarm-outline", tint: COLORS.warningText },
+  RESERVATION_CONFIRMED: { icon: "calendar-outline", tint: COLORS.successText },
   NEW_UPDATE: { icon: "camera-outline", tint: COLORS.primary },
   PAYMENT_RECEIVED: { icon: "card-outline", tint: COLORS.successText },
   GENERAL: { icon: "information-circle-outline", tint: COLORS.infoText },

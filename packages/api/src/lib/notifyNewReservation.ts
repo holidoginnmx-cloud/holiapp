@@ -12,7 +12,12 @@
  * `notifyNewReservation`; la audiencia y el formato viven en un solo lugar.
  */
 import type { PrismaClient } from "@holidoginn/db";
-import { notifyUsers, equipoActivoIds, adminsActivosIds } from "./notify";
+import {
+  notifyUsers,
+  notifyPetAudience,
+  equipoActivoIds,
+  adminsActivosIds,
+} from "./notify";
 import { formatMoney } from "./notifyTeamPayment";
 import { TZ_HOTEL, localYMD } from "./bathAvailability";
 
@@ -270,6 +275,8 @@ export async function notifyNewReservation(
     const first = reservations[0];
     if (!first) return;
 
+    await notifyClientReservationConfirmed(prisma, params);
+
     const targets = await equipoActivoIds(prisma, createdByUserId);
     if (targets.length === 0) return;
 
@@ -328,4 +335,97 @@ export async function notifyNewReservation(
   } catch (err) {
     console.error("[notifyNewReservation] falló:", err);
   }
+}
+
+/**
+ * Confirmación al CLIENTE de que su reserva quedó registrada (push + inbox).
+ *
+ * Hasta octubre de 2026 el cliente solo recibía un correo de confirmación, y
+ * únicamente en hospedaje: un baño o una guardería no le confirmaban nada, y
+ * quien no revisa el correo se quedaba "un poco perdido", sin saber si su
+ * reserva había entrado. Vive aquí porque TODOS los caminos de creación (app,
+ * sitio, equipo, cotización convertida) ya pasan por `notifyNewReservation`.
+ *
+ * Va también cuando la captura el equipo: es justo cuando el cliente no vio
+ * ninguna pantalla de "listo". Nunca lanza.
+ */
+export async function notifyClientReservationConfirmed(
+  prisma: PrismaClient,
+  params: Pick<NotifyNewReservationParams, "reservations" | "bathLabel">
+): Promise<void> {
+  try {
+    const first = params.reservations[0];
+    if (!first) return;
+    // Los call sites no traen todos el dueño/mascota (los baños pasan una fila
+    // mínima): se resuelven de la reserva misma.
+    const row = await prisma.reservation.findUnique({
+      where: { id: first.id },
+      select: { petId: true, ownerId: true },
+    });
+    if (!row) return;
+
+    const msg = buildClientConfirmationMessage(params);
+    await notifyPetAudience(
+      prisma,
+      { petId: row.petId, ownerId: row.ownerId },
+      {
+        type: "RESERVATION_CONFIRMED",
+        title: msg.title,
+        body: msg.body,
+        data: { reservationId: first.id, kind: "RESERVATION_CONFIRMED" },
+      }
+    );
+  } catch (err) {
+    console.error("[notifyClientReservationConfirmed] falló:", err);
+  }
+}
+
+/** Texto de la confirmación al cliente. Pura y exportada para los tests. */
+export function buildClientConfirmationMessage(params: {
+  reservations: NewReservationRow[];
+  bathLabel?: string | null;
+}): { title: string; body: string } {
+  const { reservations, bathLabel } = params;
+  const first = reservations[0];
+  const type = first?.reservationType ?? "STAY";
+  const names = [
+    ...new Set(
+      reservations.map((r) => r.pet?.name).filter((n): n is string => Boolean(n))
+    ),
+  ];
+  const who =
+    names.length === 0
+      ? "Tu peludito"
+      : names.length === 1
+        ? names[0]
+        : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  const recordatorio = " Te mandaremos un recordatorio un día antes.";
+
+  if (type === "BATH") {
+    const at = first?.appointmentAt ?? null;
+    const when = at ? ` el ${hotelDateTimeLabel(at)}` : "";
+    const servicio = bathLabel ? ` (${bathLabel})` : "";
+    return {
+      title: "Cita de baño confirmada 🛁",
+      body: `${who} tiene baño${servicio}${when}.${recordatorio}`,
+    };
+  }
+
+  if (type === "DAYCARE") {
+    const at = first?.appointmentAt ?? null;
+    const inT = first?.checkInTime ?? null;
+    const outT = first?.checkOutTime ?? null;
+    const horario = inT && outT ? `, de ${inT} a ${outT}` : "";
+    return {
+      title: "Guardería confirmada 🐾",
+      body: `${who} tiene guardería${at ? ` el ${utcDayLabel(at)}` : ""}${horario}.${recordatorio}`,
+    };
+  }
+
+  const entra = first?.checkIn ? ` del ${utcDayLabel(first.checkIn)}` : "";
+  const sale = first?.checkOut ? ` al ${utcDayLabel(first.checkOut)}` : "";
+  return {
+    title: "Reservación confirmada 🏨",
+    body: `La estancia de ${who}${entra}${sale} quedó registrada.${recordatorio}`,
+  };
 }

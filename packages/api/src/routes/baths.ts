@@ -25,7 +25,11 @@ import { notifyBalanceDue } from "../lib/balanceReminder";
 import { quoteDelivery, type DeliveryTripMode } from "../lib/delivery";
 import { billableBathSize, bathSizeKey, getLodgingPricing } from "../lib/pricing";
 import { resolveDiscount } from "../lib/discounts";
-import { instanteDeLlegada, rangoDeMananaHotel } from "../lib/stayTimes";
+import {
+  sendDayBeforeReminders,
+  sendNinetyMinuteReminders,
+  sendStayTimeReminders,
+} from "../lib/clientReminders";
 import {
   TZ_HOTEL,
   TZ_OFFSET_HOURS,
@@ -1220,312 +1224,41 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   );
 
   // ────────────────────────────────────────────────────────────
-  //  POST /internal/bath-reminders — cron endpoint
-  //  Envía recordatorio 24h antes de cada cita de baño pendiente.
-  //  Protegido por header x-cron-secret. CRON_SECRET DEBE estar configurado en
-  //  producción: si falta, el endpoint queda cerrado (401) en vez de abierto.
-  //  Idempotente: no reenvía si ya hay una notificación RESERVATION_REMINDER
-  //  para la misma reservación.
+  //  Recordatorios al cliente — endpoints de RESPALDO
+  //  La API ya los corre sola cada 10 min (lib/clientReminders.ts, arrancado
+  //  en index.ts): el cron de GitHub se saltaba la mayoría de las corridas y
+  //  los avisos no salían. Estas rutas quedan para el cron como red y para
+  //  dispararlos a mano. Todo es idempotente.
+  //  Protegidas por x-cron-secret. CRON_SECRET DEBE estar configurado en
+  //  producción: si falta, quedan cerradas (401) en vez de abiertas.
   // ────────────────────────────────────────────────────────────
+  const cronAuthorized = (request: { headers: Record<string, unknown> }) => {
+    const secret = process.env.CRON_SECRET;
+    return Boolean(secret) && request.headers["x-cron-secret"] === secret;
+  };
+
+  // Día anterior: baño, guardería y llegada al hotel (push + correo).
   fastify.post("/internal/bath-reminders", async (request, reply) => {
-    const secret = process.env.CRON_SECRET;
-    if (!secret || request.headers["x-cron-secret"] !== secret) {
+    if (!cronAuthorized(request)) {
       return reply.status(401).send({ error: "No autorizado" });
     }
-
-    const now = new Date();
-    const windowStart = new Date(now.getTime() + 23 * 3600 * 1000);
-    const windowEnd = new Date(now.getTime() + 25 * 3600 * 1000);
-
-    // Guarderías: su appointmentAt está anclado a MEDIODÍA UTC (no codifica la
-    // hora real — esa vive en checkInTime), así que se recuerdan con ventana de
-    // día completo, no con la ventana fina de 23-25h de los baños.
-    const [upcoming, upcomingDaycares] = await Promise.all([
-      prisma.reservation.findMany({
-        where: {
-          reservationType: "BATH",
-          status: { not: "CANCELLED" },
-          appointmentAt: { gte: windowStart, lt: windowEnd },
-        },
-        include: {
-          pet: { select: { name: true } },
-        },
-      }),
-      prisma.reservation.findMany({
-        where: {
-          reservationType: "DAYCARE",
-          status: "CONFIRMED",
-          appointmentAt: { gte: windowStart, lt: windowEnd },
-        },
-        include: {
-          pet: { select: { name: true } },
-        },
-      }),
-    ]);
-
-    let sent = 0;
-    for (const res of upcoming) {
-      if (!res.appointmentAt) continue;
-
-      const alreadyReminded = await prisma.notification.findFirst({
-        where: {
-          userId: res.ownerId,
-          type: "RESERVATION_REMINDER",
-          data: { path: ["reservationId"], equals: res.id },
-        },
-      });
-      if (alreadyReminded) continue;
-
-      const when = res.appointmentAt.toLocaleString("es-MX", {
-        timeZone: TZ_HOTEL,
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
-        
-        type: "RESERVATION_REMINDER",
-        title: "Recordatorio: cita de baño mañana 🛁",
-        body: `${res.pet.name} tiene baño el ${when}. ¡Te esperamos!`,
-        data: { reservationId: res.id, kind: "BATH_REMINDER" },
-      });
-      sent++;
-    }
-
-    for (const res of upcomingDaycares) {
-      if (!res.appointmentAt) continue;
-
-      const alreadyReminded = await prisma.notification.findFirst({
-        where: {
-          userId: res.ownerId,
-          type: "RESERVATION_REMINDER",
-          data: { path: ["reservationId"], equals: res.id },
-        },
-      });
-      if (alreadyReminded) continue;
-
-      const day = res.appointmentAt.toLocaleString("es-MX", {
-        timeZone: TZ_HOTEL,
-        day: "numeric",
-        month: "short",
-      });
-
-      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
-        
-        type: "RESERVATION_REMINDER",
-        title: "Recordatorio: guardería mañana 🐾",
-        body: `${res.pet.name} tiene guardería el ${day}${res.checkInTime ? ` a las ${res.checkInTime}` : ""}. ¡Te esperamos!`,
-        data: { reservationId: res.id, kind: "DAYCARE_REMINDER" },
-      });
-      sent++;
-    }
-
-    return reply.send({
-      sent,
-      checked: upcoming.length + upcomingDaycares.length,
-    });
+    return reply.send(await sendDayBeforeReminders(prisma));
   });
 
-  // ────────────────────────────────────────────────────────────
-  //  POST /internal/reservation-reminders-90min
-  //  Recordatorio 1.5 horas antes de la hora de cita:
-  //   - BATH: 1.5h antes de appointmentAt
-  //   - STAY: 1.5h antes de checkIn
-  //  Idempotente: usa Notification.data.kind === "REMINDER_90MIN" para evitar
-  //  duplicados.
-  // ────────────────────────────────────────────────────────────
+  // 1.5 h antes de la cita de baño o de la llegada al hotel.
   fastify.post("/internal/reservation-reminders-90min", async (request, reply) => {
-    const secret = process.env.CRON_SECRET;
-    if (!secret || request.headers["x-cron-secret"] !== secret) {
+    if (!cronAuthorized(request)) {
       return reply.status(401).send({ error: "No autorizado" });
     }
-
-    const now = new Date();
-    // Ventana de 1h centrada en t-1.5h. Toleramos cron cada ~30 min.
-    const windowStart = new Date(now.getTime() + 60 * 60 * 1000);   // +60 min
-    const windowEnd = new Date(now.getTime() + 120 * 60 * 1000);    // +120 min
-
-    // La llegada real de una estancia NO se puede filtrar en SQL: `checkIn`
-    // guarda el DÍA a las 00:00 UTC y la hora vive aparte, en `checkInTime`
-    // ("HH:mm" local). Se traen las estancias cuyo día ronda la ventana y el
-    // instante se resuelve abajo, en memoria.
-    //
-    // Antes se comparaba `checkIn` —o sea, las 00:00 UTC— directamente contra
-    // la ventana: el recordatorio salía a las 5 p.m. del día ANTERIOR y le
-    // anunciaba al cliente esa misma hora inventada.
-    const UN_DIA_MS = 24 * 60 * 60 * 1000;
-    const upcoming = await prisma.reservation.findMany({
-      where: {
-        status: { notIn: ["CANCELLED", "CHECKED_OUT"] },
-        OR: [
-          {
-            reservationType: "BATH",
-            appointmentAt: { gte: windowStart, lt: windowEnd },
-          },
-          {
-            reservationType: "STAY",
-            checkInTime: { not: null },
-            checkIn: {
-              gte: new Date(now.getTime() - UN_DIA_MS),
-              lt: new Date(now.getTime() + 2 * UN_DIA_MS),
-            },
-          },
-        ],
-      },
-      include: {
-        pet: { select: { name: true } },
-      },
-    });
-
-    let sent = 0;
-    for (const res of upcoming) {
-      const alreadyReminded = await prisma.notification.findFirst({
-        where: {
-          userId: res.ownerId,
-          type: "RESERVATION_REMINDER",
-          data: { path: ["kind"], equals: "REMINDER_90MIN" },
-          AND: [{ data: { path: ["reservationId"], equals: res.id } }],
-        },
-      });
-      if (alreadyReminded) continue;
-
-      const target = instanteDeLlegada(res);
-      if (!target) continue;
-      // Para las estancias el filtro de la ventana se hace aquí (ver arriba).
-      if (target < windowStart || target >= windowEnd) continue;
-
-      const when = target.toLocaleString("es-MX", {
-        timeZone: TZ_HOTEL,
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const isBath = res.reservationType === "BATH";
-      const title = isBath
-        ? `Baño de ${res.pet.name} en 1.5 horas 🛁`
-        : `Check-in de ${res.pet.name} en 1.5 horas 🏨`;
-      const body = isBath
-        ? `${res.pet.name} tiene cita a las ${when}. ¡Te esperamos!`
-        : `${res.pet.name} entra al hotel a las ${when}. Prepara su cartilla y maletita.`;
-
-      await notifyPetAudience(prisma, { petId: res.petId, ownerId: res.ownerId }, {
-        
-        type: "RESERVATION_REMINDER",
-        title,
-        body,
-        data: { reservationId: res.id, kind: "REMINDER_90MIN" },
-      });
-      sent++;
-    }
-
-    return reply.send({ sent, checked: upcoming.length });
+    return reply.send(await sendNinetyMinuteReminders(prisma));
   });
 
-  // ────────────────────────────────────────────────────────────
-  //  POST /internal/stay-time-reminders — cron endpoint (diario)
-  //  Un día antes del check-in (o check-out) de un hospedaje, si el cliente
-  //  NO ha indicado la hora estimada de llegada (o recogida), se le pide por
-  //  push. "Mañana" es el día calendario siguiente en Hermosillo
-  //  (rangoDeMananaHotel), no una ventana de horas desde que corre el cron.
-  //  Idempotente: dedup por Notification.data.groupKey + kind (una sola
-  //  notificación por grupo multi-mascota).
-  // ────────────────────────────────────────────────────────────
+  // Hospedaje de mañana sin hora de llegada/recogida: se le pide al cliente.
   fastify.post("/internal/stay-time-reminders", async (request, reply) => {
-    const secret = process.env.CRON_SECRET;
-    if (!secret || request.headers["x-cron-secret"] !== secret) {
+    if (!cronAuthorized(request)) {
       return reply.status(401).send({ error: "No autorizado" });
     }
-
-    const { start: windowStart, end: windowEnd } = rangoDeMananaHotel();
-
-    const [checkins, checkouts] = await Promise.all([
-      prisma.reservation.findMany({
-        where: {
-          reservationType: "STAY",
-          status: "CONFIRMED",
-          checkInTime: null,
-          checkIn: { gte: windowStart, lt: windowEnd },
-        },
-        include: { pet: { select: { name: true } } },
-      }),
-      prisma.reservation.findMany({
-        where: {
-          reservationType: "STAY",
-          status: { in: ["CONFIRMED", "CHECKED_IN"] },
-          checkOutTime: null,
-          checkOut: { gte: windowStart, lt: windowEnd },
-        },
-        include: { pet: { select: { name: true } } },
-      }),
-    ]);
-
-    // Tarifa de guardería vigente (Config → Tarifas) para el aviso de
-    // recogida: antes decía "$25/h" quemado y la tarifa real ya era otra.
-    const { daycareHourPrice } = await getLodgingPricing(prisma);
-    const tarifaGuarderia =
-      daycareHourPrice > 0 ? `, $${daycareHourPrice.toLocaleString("es-MX")}/h` : "";
-
-    let sent = 0;
-    const remind = async (
-      group: (typeof checkins)[number][],
-      kind: "CHECKIN_TIME" | "CHECKOUT_TIME",
-    ) => {
-      const first = group[0];
-      const groupKey = first.groupId ?? first.id;
-
-      const alreadyReminded = await prisma.notification.findFirst({
-        where: {
-          userId: first.ownerId,
-          type: "RESERVATION_REMINDER",
-          data: { path: ["kind"], equals: kind },
-          AND: [{ data: { path: ["groupKey"], equals: groupKey } }],
-        },
-      });
-      if (alreadyReminded) return;
-
-      const names = group.map((r) => r.pet.name);
-      const who =
-        names.length === 1 ? names[0] : "tus peluditos";
-      const title =
-        kind === "CHECKIN_TIME"
-          ? `¿A qué hora llega ${who} mañana? 🐾`
-          : `¿A qué hora recoges a ${who} mañana?`;
-      const body =
-        kind === "CHECKIN_TIME"
-          ? "Mañana es su check-in. Indícanos la hora de entrada en la app para tenerlo todo listo."
-          : `Mañana es su check-out. Indícanos la hora de recogida en la app (después de la 1:00 pm aplica guardería${tarifaGuarderia}).`;
-
-      await notifyPetAudience(prisma, { petId: first.petId, ownerId: first.ownerId }, {
-        
-        type: "RESERVATION_REMINDER",
-        title,
-        body,
-        data: { reservationId: first.id, kind, groupKey },
-      });
-      sent++;
-    };
-
-    // Agrupa por groupId (multi-mascota) para mandar UNA notificación por
-    // reserva del dueño, no una por mascota.
-    const groupBy = (rows: typeof checkins) => {
-      const map = new Map<string, typeof checkins>();
-      for (const r of rows) {
-        const key = r.groupId ?? r.id;
-        const arr = map.get(key) ?? [];
-        arr.push(r);
-        map.set(key, arr);
-      }
-      return [...map.values()];
-    };
-
-    for (const group of groupBy(checkins)) await remind(group, "CHECKIN_TIME");
-    for (const group of groupBy(checkouts)) await remind(group, "CHECKOUT_TIME");
-
-    return reply.send({
-      sent,
-      checked: checkins.length + checkouts.length,
-    });
+    return reply.send(await sendStayTimeReminders(prisma));
   });
 
   // ────────────────────────────────────────────────────────────

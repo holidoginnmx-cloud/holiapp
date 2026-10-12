@@ -1,6 +1,10 @@
 import type { PrismaClient, NotificationType, Notification, Prisma } from "@holidoginn/db";
 import { sendPushToUser, sendPushToUsers } from "./push";
 import { petAudienceIds } from "./petAccess";
+import { clientNoticeTemplate, sendEmail, type ClientNoticeData } from "./email";
+
+/** Fichas sin cuenta (walk-in): su correo es inventado y no hay a quién mandarle. */
+const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
 
 type NotifyData = {
   userId: string;
@@ -101,6 +105,49 @@ export async function notifyPetAudience(
   let ids = await petAudienceIds(prisma, target.petId, target.ownerId);
   if (excludeUserId) ids = ids.filter((id) => id !== excludeUserId);
   return await notifyUsers(prisma, ids, rest);
+}
+
+/**
+ * Manda por CORREO un aviso al dueño y co-dueños de la mascota.
+ *
+ * Complemento de `notifyPetAudience`, no sustituto: se usa en los avisos que el
+ * cliente NO se puede perder (recordatorio de la cita, resultado de la cartilla
+ * con la nota del equipo). El push solo llega si la persona tiene la app con
+ * las notificaciones prendidas, y no había forma de saber cuándo no era así.
+ *
+ * Nunca lanza. Devuelve a cuántos correos se mandó.
+ */
+export async function emailPetAudience(
+  prisma: PrismaClient,
+  target: { petId: string; ownerId?: string },
+  notice: Omit<ClientNoticeData, "firstName">,
+  opts: { excludeUserId?: string | null } = {}
+): Promise<number> {
+  try {
+    let ids = await petAudienceIds(prisma, target.petId, target.ownerId);
+    if (opts.excludeUserId) ids = ids.filter((id) => id !== opts.excludeUserId);
+    if (ids.length === 0) return 0;
+    const users = await prisma.user.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: { email: true, firstName: true },
+    });
+    const seen = new Set<string>();
+    let sent = 0;
+    for (const u of users) {
+      const email = u.email?.trim().toLowerCase();
+      if (!email || WALKIN_EMAIL_RE.test(email) || seen.has(email)) continue;
+      seen.add(email);
+      await sendEmail({
+        to: email,
+        ...clientNoticeTemplate({ ...notice, firstName: u.firstName }),
+      });
+      sent++;
+    }
+    return sent;
+  } catch (err) {
+    console.error("[emailPetAudience] falló:", err);
+    return 0;
+  }
 }
 
 /**

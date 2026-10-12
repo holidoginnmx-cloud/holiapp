@@ -34,6 +34,44 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-12-b",
+    title: "Los avisos ahora sí le llegan al cliente",
+    items: [
+      {
+        icon: "alarm-outline",
+        title: "Recordatorio un día antes de cada cita",
+        body:
+          "El recordatorio de baño casi nunca salía: dependía de un reloj " +
+          "externo que se saltaba la mayoría de las corridas. Ahora el " +
+          "sistema lo manda solo, entre 9 a.m. y 9 p.m. del día anterior, " +
+          "para baño, guardería y hospedaje, por notificación Y por correo, " +
+          "y le pide al cliente avisar si no va a poder llegar.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "mail-outline",
+        title: "La nota de la cartilla también llega por correo",
+        body:
+          "Al aprobar o rechazar una cartilla, el mensaje (por ejemplo \"falta " +
+          "desparasitación\") ya no depende solo de la notificación: también " +
+          "se le manda por correo, por si el cliente tiene las " +
+          "notificaciones apagadas.",
+        route: "/admin/cartillas",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "checkmark-circle-outline",
+        title: "Confirmación al reservar",
+        body:
+          "Cada reserva nueva (baño, guardería u hospedaje, la haga el " +
+          "cliente o la capture el equipo) le manda al cliente una " +
+          "confirmación con la fecha. Y si tiene las notificaciones " +
+          "apagadas, su Inicio se lo dice para que las prenda.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-12",
     title: "Dos arreglos: check-ins de hoy y editar mascota",
     items: [

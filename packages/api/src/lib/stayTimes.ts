@@ -120,7 +120,13 @@ export async function applyReservationTimesUpdate(
   // el cron le manda al cliente cuando FALTA la hora. Borrarlos de paso hacía
   // que fijar la llegada volviera a pedirle la recogida al día siguiente —
   // justo después de que el equipo ya la había resuelto.
-  const KINDS_A_REPROGRAMAR = ["REMINDER_90MIN", "DAYCARE_REMINDER"];
+  // STAY_CHECKIN_REMINDER: el aviso del día anterior anuncia la hora de
+  // llegada (lib/clientReminders.ts); si cambia, se vuelve a mandar.
+  const KINDS_A_REPROGRAMAR = [
+    "REMINDER_90MIN",
+    "DAYCARE_REMINDER",
+    "STAY_CHECKIN_REMINDER",
+  ];
   const delGrupo = await prisma.reservation.findMany({
     where: scope,
     select: { id: true },

@@ -4,9 +4,11 @@ name: HDI cron jobs
 # El secreto compartido va en el header x-cron-secret y se lee del secret
 # de GitHub Actions `CRON_SECRET` (debe coincidir con el de Railway).
 #
-# Nota: GitHub Actions cron NO es exacto (puede retrasarse minutos bajo carga).
-# Para los recordatorios hay holgura suficiente. Si necesitas precisión fina,
-# considera Railway Cron como alternativa.
+# Nota: GitHub Actions cron NO es confiable: en octubre de 2026 corría ~10
+# veces al día en vez de las ~100 pedidas, con huecos de hasta 6 h, y los
+# recordatorios de cita casi nunca salían. Desde entonces el API los corre solo
+# cada 10 min (packages/api/src/lib/clientReminders.ts). Los jobs de
+# recordatorios de aquí quedan solo como RESPALDO (son idempotentes).
 
 on:
   schedule:
