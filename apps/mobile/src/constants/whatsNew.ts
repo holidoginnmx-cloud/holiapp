@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-12",
+    title: "Dos arreglos: check-ins de hoy y editar mascota",
+    items: [
+      {
+        icon: "log-in-outline",
+        title: "\"Check-ins hoy\" ya coincide con su lista",
+        body:
+          "La tarjeta del Panel contaba también a los perros que ya habían " +
+          "entrado hoy, y al tocarla la lista salía vacía. Ahora cuenta solo " +
+          "las llegadas que faltan, igual que la lista. Además el \"hoy\" de " +
+          "esos contadores ya no se adelanta al día siguiente después de las " +
+          "5 p.m.",
+        route: "/admin/checkins",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "create-outline",
+        title: "Subir la cartilla ya no borra lo que escribiste",
+        body:
+          "Al editar una mascota, si llenabas datos y luego subías la " +
+          "cartilla, se borraba todo lo que aún no guardabas. Ya no: la foto " +
+          "se sube y lo demás se queda como lo dejaste. La pantalla ahora " +
+          "dice \"Editar mascota\" arriba cuando estás editando.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-07",
     title: "Fechas en un solo paso y varias fotos a la vez",
     items: [

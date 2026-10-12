@@ -13,6 +13,7 @@ import {
   AdminUpdateReservationSchema,
   AdminCreateAddonSchema,
   AdminUpdateAddonSchema,
+  HOTEL_TZ_OFFSET_HOURS,
 } from "@holidoginn/shared";
 import { Prisma } from "@holidoginn/db";
 import {
@@ -62,8 +63,19 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     async () => {
       triggerMaintenance(prisma);
       const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const todayEnd = new Date(todayStart.getTime() + 86_400_000);
+      // "Hoy" es el día del HOTEL, no el del servidor (Railway corre en UTC):
+      // con el reloj del servidor, a partir de las 5 p.m. estos contadores ya
+      // eran los de mañana. Los días de estadía se guardan a las 00:00 UTC de
+      // su día calendario, así que se comparan contra esa misma ancla.
+      const hotelNow = new Date(now.getTime() - HOTEL_TZ_OFFSET_HOURS * 3_600_000);
+      const stayDayStart = new Date(
+        Date.UTC(hotelNow.getUTCFullYear(), hotelNow.getUTCMonth(), hotelNow.getUTCDate())
+      );
+      const stayDayEnd = new Date(stayDayStart.getTime() + 86_400_000);
+      // Instante en que empezó el día en el hotel (para `createdAt`).
+      const todayStart = new Date(
+        stayDayStart.getTime() + HOTEL_TZ_OFFSET_HOURS * 3_600_000
+      );
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
@@ -83,12 +95,15 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           where: { reservationType: "STAY", status: "CHECKED_IN" },
         }),
 
-        // Check-ins programados hoy
+        // Check-ins de hoy que FALTAN por llegar. Solo CONFIRMED: es lo mismo
+        // que enseña la lista al tocar la tarjeta (y el panel del staff). Si
+        // se cuenta también a los que ya entraron, la tarjeta dice "1" y la
+        // lista sale vacía.
         prisma.reservation.count({
           where: {
             reservationType: "STAY",
-            status: { in: ["CONFIRMED", "CHECKED_IN"] },
-            checkIn: { gte: todayStart, lt: todayEnd },
+            status: "CONFIRMED",
+            checkIn: { gte: stayDayStart, lt: stayDayEnd },
           },
         }),
 
@@ -97,7 +112,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           where: {
             reservationType: "STAY",
             status: "CHECKED_IN",
-            checkOut: { gte: todayStart, lt: todayEnd },
+            checkOut: { gte: stayDayStart, lt: stayDayEnd },
           },
         }),
 

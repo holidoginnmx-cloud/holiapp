@@ -14,7 +14,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
@@ -138,8 +138,14 @@ export default function CreatePetScreen() {
     enabled: isEditing,
   });
 
+  // La ficha se vuelca al formulario UNA sola vez. `existingPet` cambia cada
+  // vez que la consulta se refresca (al subir la cartilla, al volver a la app):
+  // si se volcara de nuevo, borraría todo lo tecleado que aún no se guarda.
+  const hydratedRef = useRef(false);
+
   useEffect(() => {
-    if (existingPet) {
+    if (existingPet && !hydratedRef.current) {
+      hydratedRef.current = true;
       setName(existingPet.name);
       setBreed(existingPet.breed || "");
       // size is derived from weight automatically
@@ -166,6 +172,10 @@ export default function CreatePetScreen() {
       setGroomingMinutes(
         (existingPet as any).groomingMinutes?.toString() || "",
       );
+    }
+    // La cartilla sí se sincroniza siempre: se guarda sola al subirla y su
+    // estado lo mueve el servidor (aprobada, rechazada, vencida).
+    if (existingPet) {
       const existingPhotos = (existingPet as any).cartillaPhotos as
         | string[]
         | undefined;
@@ -510,6 +520,8 @@ export default function CreatePetScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+    {/* El layout titula "Nueva mascota"; al editar hay que decirlo. */}
+    <Stack.Screen options={{ title: isEditing ? "Editar mascota" : "Nueva mascota" }} />
     <ScrollView
       ref={scrollRef}
       style={styles.container}
