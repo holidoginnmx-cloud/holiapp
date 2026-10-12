@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { createInternalGuard, logInternal } from "../lib/internalAuth";
 import { purgeFinishedStayVideos } from "../lib/purgeEvidence";
+import { sendPushToUser } from "../lib/push";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  POST /internal/purge-evidence — purga manual de videos de evidencia
@@ -64,6 +65,70 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
         });
       }
       return resumen;
+    }
+  );
+
+  // ───────────────────────────────────────────────────────────────────────────
+  //  POST /internal/push-test — ¿a quién del equipo le llegan los avisos?
+  //
+  //  Manda un push de PRUEBA a los ADMIN activos (o a los roles que se pidan)
+  //  y devuelve, por persona, cuántos teléfonos tiene registrados y si Expo
+  //  aceptó el envío. Sirve para diagnosticar "a mí no me llegó el aviso de
+  //  reserva nueva" sin tener que crear una reserva falsa.
+  //
+  //  Solo push: NO crea fila en la bandeja de notificaciones (sería ruido).
+  //  Se dispara a mano desde GitHub Actions (cron.yml → job push-test).
+  //
+  //    { roles?: ("ADMIN" | "STAFF")[] }   — por omisión, solo ADMIN
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post<{ Body: { roles?: string[] } }>(
+    "/internal/push-test",
+    { preHandler: internalGuard },
+    async (request, reply) => {
+      const pedidos = (request.body?.roles ?? ["ADMIN"]).filter(
+        (r): r is "ADMIN" | "STAFF" => r === "ADMIN" || r === "STAFF"
+      );
+      const roles = pedidos.length > 0 ? pedidos : (["ADMIN"] as const);
+
+      const users = await prisma.user.findMany({
+        where: { role: { in: [...roles] }, isActive: true },
+        select: { id: true, firstName: true, lastName: true, role: true },
+        orderBy: { firstName: "asc" },
+      });
+
+      const resultados = [];
+      for (const u of users) {
+        const tokens = await prisma.pushToken.findMany({
+          where: { userId: u.id },
+          select: { platform: true },
+        });
+        const aceptado =
+          tokens.length > 0 &&
+          (await sendPushToUser(prisma, u.id, {
+            title: "🔔 Prueba de avisos",
+            body: "Si ves esto, te llegan los avisos de reservas nuevas. No hay que hacer nada.",
+            data: { kind: "PUSH_TEST" },
+          }));
+        resultados.push({
+          nombre: `${u.firstName ?? ""} ${u.lastName?.charAt(0) ?? ""}`.trim(),
+          rol: u.role,
+          telefonos: tokens.length,
+          plataformas: tokens.map((t) => t.platform),
+          aceptado,
+        });
+      }
+
+      logInternal(request, "internal.push-test", {
+        roles,
+        total: resultados.length,
+        aceptados: resultados.filter((r) => r.aceptado).length,
+      });
+
+      return reply.send({
+        total: resultados.length,
+        aceptados: resultados.filter((r) => r.aceptado).length,
+        resultados,
+      });
     }
   );
 }

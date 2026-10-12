@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all"
+        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all | push-test (solo a mano, no entra en all)"
         required: false
         default: "all"
 
@@ -98,3 +98,17 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -d '{"limit":200}'
+
+  # Prueba de avisos al equipo: manda un push de prueba a los ADMIN activos y
+  # muestra a quién le llegó. Solo a mano (job=push-test); "all" NO lo incluye
+  # para no mandarle pushes de prueba al equipo cada vez que se corre todo.
+  push-test:
+    if: github.event.inputs.job == 'push-test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/push-test
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/push-test" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "content-type: application/json" \
+            -d '{"roles":["ADMIN"]}'
