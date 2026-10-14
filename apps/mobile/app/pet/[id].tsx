@@ -23,7 +23,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { getPetById, deletePet, updatePet } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
-import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear } from "@/lib/format";
+import { formatName, formatPhoneInput, phoneToTelUri, formatDayLongYear, listaConY } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { pickAndUploadPhoto } from "@/lib/photoPicker";
 import { PetPhotoViewer } from "@/components/PetPhotoViewer";
@@ -623,6 +623,16 @@ export default function PetDetailScreen() {
                 {petAny.emergencyContactRelation && (
                   <Text style={styles.contactRelation}>
                     {petAny.emergencyContactRelation}
+                  </Text>
+                )}
+                {petAny.emergencyContactSharedWith?.length > 0 && (
+                  <Text style={styles.contactRelation}>
+                    También de{" "}
+                    {listaConY(
+                      petAny.emergencyContactSharedWith.map((p: { name: string }) =>
+                        formatName(p.name),
+                      ),
+                    )}
                   </Text>
                 )}
                 {petAny.emergencyContactPhone && (

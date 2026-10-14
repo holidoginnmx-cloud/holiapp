@@ -1,5 +1,5 @@
 import { COLORS } from "@/constants/colors";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import { getPetById, getPetsByOwner, createPet, updatePet } from "@/lib/api";
 import { ImagePickerButton } from "@/components/ImagePickerButton";
 import { ErrorState } from "@/components/ErrorState";
 import { BreedAutocomplete } from "@/components/BreedAutocomplete";
-import { formatName, formatPhoneInput, formatDayLongYear } from "@/lib/format";
+import { formatName, formatPhoneInput, formatDayLongYear, listaConY } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -201,14 +201,30 @@ export default function CreatePetScreen() {
     }
   }, [isEditing, maybeScrollToCartilla]);
 
-  // Mascotas que ese dueño ya tiene registradas. Solo se consulta en el alta
-  // del equipo (paso 2 del selector de dueño), que es donde conocemos el
-  // ownerId antes de que se capture nada.
-  const { data: petsDelDueno } = useQuery({
-    queryKey: ["pets", ownerIdParam],
-    queryFn: () => getPetsByOwner(ownerIdParam!),
-    enabled: isAdminCreate,
+  // Mascotas que el dueño ya tiene registradas, para el alta. Si la hace el
+  // equipo, el dueño es el que eligió en el selector; si no, quien está
+  // dentro. Misma query key que Mis Mascotas, así que casi siempre ya está en
+  // caché. El cliente también recibe las que le comparten (co-dueño): esas no
+  // son de su casa y se descartan.
+  const altaOwnerId = isEditing ? null : (ownerIdParam ?? userId);
+  const { data: petsDelDuenoRaw } = useQuery({
+    queryKey: ["pets", altaOwnerId],
+    queryFn: () => getPetsByOwner(altaOwnerId!),
+    enabled: !!altaOwnerId,
   });
+  const petsDelDueno = useMemo(
+    () => petsDelDuenoRaw?.filter((p) => p.ownerId === altaOwnerId),
+    [petsDelDuenoRaw, altaOwnerId],
+  );
+
+  // El contacto de emergencia es uno por dueño: la base lo copia a todas sus
+  // mascotas al guardar. Se avisa aquí para que nadie lo cambie creyendo que
+  // solo afecta a este perro.
+  const contactoCompartidoCon: string[] = isEditing
+    ? ((existingPet as any)?.emergencyContactSharedWith ?? []).map(
+        (p: { name: string }) => formatName(p.name),
+      )
+    : (petsDelDueno ?? []).map((p) => formatName(p.name));
 
   // Un cliente que llega con varios perros comparte contacto de emergencia,
   // veterinaria y, casi siempre, el alimento: son datos de la casa, no del
@@ -216,7 +232,7 @@ export default function CreatePetScreen() {
   // moverlos de tabla, la segunda mascota en adelante los hereda de la última
   // registrada y quien captura solo corrige lo que cambie.
   useEffect(() => {
-    if (!isAdminCreate || prefillDoneRef.current) return;
+    if (isEditing || prefillDoneRef.current) return;
     if (!petsDelDueno || petsDelDueno.length === 0) return;
 
     // La lista llega ordenada por createdAt desc: la primera es la más
@@ -254,16 +270,16 @@ export default function CreatePetScreen() {
     if (previa.vetEmergency24h) setVetEmergency24h(true);
 
     if (copiado) setPrefillFrom(previa.name ?? null);
-  }, [isAdminCreate, petsDelDueno]);
+  }, [isEditing, petsDelDueno]);
 
   const mutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       isEditing ? updatePet(editId!, data) : createPet(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pets"] });
-      if (isEditing) {
-        queryClient.invalidateQueries({ queryKey: ["pet", editId] });
-      }
+      // Todas las fichas, no solo esta: el contacto de emergencia pudo
+      // cambiar también en las otras mascotas del dueño.
+      queryClient.invalidateQueries({ queryKey: ["pet"] });
       if (isAdminCreate) {
         // La pestaña Mascotas del admin agrupa por dueño con su propia query.
         queryClient.invalidateQueries({ queryKey: ["admin", "pets"] });
@@ -1017,6 +1033,13 @@ export default function CreatePetScreen() {
       {/* Contacto de emergencia */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Contacto de emergencia</Text>
+        {contactoCompartidoCon.length > 0 ? (
+          <Text style={styles.sectionHint}>
+            Se comparte con {listaConY(contactoCompartidoCon)}: si lo cambias
+            aquí, también cambia en{" "}
+            {contactoCompartidoCon.length === 1 ? "su ficha" : "sus fichas"}.
+          </Text>
+        ) : null}
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Nombre completo *</Text>
@@ -1159,6 +1182,12 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_700Bold",
     color: COLORS.textPrimary,
     marginBottom: 2,
+  },
+  sectionHint: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textTertiary,
+    marginTop: -10,
   },
   inputGroup: {
     gap: 6,

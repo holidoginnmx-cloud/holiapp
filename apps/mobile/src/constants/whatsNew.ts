@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-14",
+    title: "Un solo contacto de emergencia por cliente",
+    items: [
+      {
+        icon: "call-outline",
+        title: "El contacto de emergencia se comparte entre sus perros",
+        body:
+          "Si un cliente tiene varios perros, el contacto de emergencia ya es " +
+          "el mismo para todos: cámbialo en la ficha de uno y se actualiza en " +
+          "los demás. Al registrar otro perro del mismo cliente ya viene " +
+          "lleno. En la ficha verás \"También de Luna y Max\" para saber con " +
+          "quién se comparte.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-12-b",
     title: "Los avisos ahora sí le llegan al cliente",
     items: [

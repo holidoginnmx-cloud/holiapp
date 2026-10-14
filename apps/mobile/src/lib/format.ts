@@ -530,3 +530,9 @@ export function daysSinceVisitEnd(r: {
 
 /** Ventana en la que el cliente todavía puede liquidar una visita concluida. */
 export const BALANCE_AFTER_CHECKOUT_MAX_DAYS = 30;
+
+/** ["Luna", "Max", "Coco"] → "Luna, Max y Coco". */
+export function listaConY(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres[0] ?? "";
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+}

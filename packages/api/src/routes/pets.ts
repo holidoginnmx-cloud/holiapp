@@ -168,13 +168,21 @@ export default async function petsRoutes(fastify: FastifyInstance) {
       if (!(await canAccessPet(prisma, pet, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
+      // El contacto de emergencia es uno por dueño: la base lo replica a todas
+      // sus mascotas (trigger trg_pets_emergency_contact_share). La pantalla
+      // avisa con cuáles se comparte antes de que alguien lo cambie.
+      const emergencyContactSharedWith = await prisma.pet.findMany({
+        where: { ownerId: pet.ownerId, isActive: true, id: { not: pet.id } },
+        select: { id: true, name: true },
+        orderBy: { createdAt: "asc" },
+      });
       // El correo del dueño es para el equipo. Un co-dueño ahora puede llegar
       // por una liga reenviada, sin que nadie del hotel lo conozca.
       if (!isStaffOrAdmin(request.userRole) && pet.ownerId !== request.userId) {
         const { id, firstName, lastName } = pet.owner;
-        return { ...pet, owner: { id, firstName, lastName } };
+        return { ...pet, owner: { id, firstName, lastName }, emergencyContactSharedWith };
       }
-      return pet;
+      return { ...pet, emergencyContactSharedWith };
     }
   );
 
