@@ -20,3 +20,4 @@ export * from "./api/change-requests";
 export * from "./api/push";
 export * from "./api/legal";
 export * from "./api/quotes";
+export * from "./api/mensualidad";

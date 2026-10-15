@@ -34,6 +34,12 @@ type Props = {
   open?: boolean;
   /** Requerido cuando se usa `open`: el padre controla el cierre. */
   onClose?: () => void;
+  /**
+   * Solo en modo automático: avisa cuando Novedades ya no va a estorbar (no
+   * había nada sin ver, o se cerró). El dashboard lo usa para no encimar el
+   * recordatorio de pago encima de este Modal.
+   */
+  onAutoDone?: () => void;
 };
 
 /**
@@ -45,7 +51,7 @@ type Props = {
  * salen abiertas, y las anteriores quedan plegadas con su fecha, a un toque de
  * distancia.
  */
-export function WhatsNewModal({ role, open, onClose }: Props) {
+export function WhatsNewModal({ role, open, onClose, onAutoDone }: Props) {
   const router = useRouter();
   const userId = useAuthStore((s) => s.userId);
   const [autoVisible, setAutoVisible] = useState(false);
@@ -83,6 +89,7 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
     // "Novedades" de Ajustes no abriría nada.
     if (!userId) {
       setSeenId(null);
+      if (!controlado) onAutoDone?.();
       return;
     }
     let cancelled = false;
@@ -96,6 +103,8 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
       // ADMIN-only y el id guardado sobrevive al cambio de rol.
       if (!controlado && releases.some((r) => !seen || r.id > seen)) {
         setAutoVisible(true);
+      } else if (!controlado) {
+        onAutoDone?.();
       }
     });
     return () => {
@@ -138,6 +147,7 @@ export function WhatsNewModal({ role, open, onClose }: Props) {
   const dismiss = () => {
     setAutoVisible(false);
     onClose?.();
+    if (!controlado) onAutoDone?.();
     // Se marca con la MÁS reciente: todo lo anterior queda visto de una vez.
     // Nunca se retrocede el puntero: si el guardado ya era mayor (p.ej. venías
     // de ADMIN y ahora eres STAFF, que no ve la última entrega), se conserva.

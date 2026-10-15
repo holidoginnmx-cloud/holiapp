@@ -20,6 +20,7 @@ import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReservationCard } from "@/components/ReservationCard";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { MensualidadModal } from "@/components/MensualidadModal";
 import { PushOffNotice } from "@/components/PushOffNotice";
 import { formatName, formatDateLong, hotelYMD } from "@/lib/format";
 import { useDashboardSeen } from "@/lib/dashboardSeen";
@@ -39,6 +40,8 @@ export default function AdminDashboard() {
     baths: false,
     overdueBaths: false,
   });
+  // Novedades ya no está en pantalla: el recordatorio de pago puede salir.
+  const [novedadesListas, setNovedadesListas] = useState(false);
   const toggleSection = (key: SectionKey) =>
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -185,7 +188,9 @@ export default function AdminDashboard() {
       }
     >
       {/* Novedades del release: Modal nativo, no le afecta estar en el scroll */}
-      <WhatsNewModal role="ADMIN" />
+      <WhatsNewModal role="ADMIN" onAutoDone={() => setNovedadesListas(true)} />
+      {/* Recordatorio de la mensualidad: espera a que Novedades se cierre */}
+      <MensualidadModal enabled={novedadesListas} />
       {/* Greeting */}
       <Text style={styles.greeting}>Hola, {formatName(firstName) || "Admin"}</Text>
       <Text style={styles.date}>{todayStr}</Text>

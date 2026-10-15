@@ -41,6 +41,7 @@ import internalClaimsRoutes from "./routes/internalClaims";
 import internalMaintenanceRoutes from "./routes/internalMaintenance";
 import adminMergeRoutes from "./routes/adminMerge";
 import pricingRoutes from "./routes/pricing";
+import mensualidadRoutes from "./routes/mensualidad";
 
 // trustProxy: 1 → la API vive detrás del proxy de Railway (un salto). Sin
 // esto, `request.ip` es la IP interna del proxy y TODOS los clientes comparten
@@ -205,6 +206,7 @@ app.register(internalClaimsRoutes);
 app.register(internalMaintenanceRoutes);
 app.register(adminMergeRoutes);
 app.register(pricingRoutes);
+app.register(mensualidadRoutes);
 
 const start = async () => {
   try {
