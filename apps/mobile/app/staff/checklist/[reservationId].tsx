@@ -118,16 +118,17 @@ export default function ChecklistForm() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: source === "camera-video" ? ["videos"] : ["images"],
         quality: 0.8,
-        // Video en 720p H.264 y 30 s como tope. Medido el 22-sep-2026 sobre los
-        // videos ya subidos: el iPhone graba a 1080p y 15.5 Mbps, o sea ~2 MB
-        // por segundo, y salían de 40 MB. En 720p son ~0.35 MB/s: el mismo clip
-        // de 20 s pasa de 38 MB a 7 MB. La duración casi no importaba (ya
-        // duraban 20 s en promedio); lo que pesaba era el bitrate.
+        // Video en 640×480 y 30 s como tope. El iPhone graba por omisión a
+        // 1080p y ~15 Mbps: clips de 20 s de 35-55 MB, y cada vez que alguien
+        // los abre Cloudinary cobra esos MB otra vez. Lo que pesa es el
+        // bitrate, no la duración.
         //
-        // videoExportPreset es lo que de verdad comprime. NO usar
-        // UIImagePickerControllerQualityType.IFrame1280x720: ese preset es
-        // formato de edición, ~40 Mbps, y haría los archivos MÁS grandes.
-        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+        // En la CÁMARA lo único que manda es videoQuality: expo-image-picker
+        // copia el .mov tal cual y videoExportPreset se ignora (solo aplica a
+        // la galería). Así estuvo del 22-sep al 15-oct-2026 creyendo que
+        // comprimía a 720p. NO usar IFrame1280x720 ni IFrame960x540: son
+        // formatos de edición de ~40 Mbps y harían los archivos MÁS grandes.
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.VGA640x480,
         videoMaxDuration: 30,
       });
       if (result.canceled) return;
@@ -143,21 +144,24 @@ export default function ChecklistForm() {
       mediaTypes: ["images", "videos"],
       quality: 0.8,
       allowsMultipleSelection: true,
+      // En la galería (PHPicker) el preset SÍ transcodifica: el video sale
+      // como .mp4 H.264 a 540p en vez del .mov original de 1080p.
+      videoExportPreset: ImagePicker.VideoExportPreset.H264_960x540,
     });
     if (result.canceled) return;
 
-    // Un video traído de la galería NO pasa por la compresión del picker: sube
-    // tal cual lo grabó el teléfono (40 MB o más). No lo bloqueamos, porque a
-    // veces el video bueno ya está en el carrete, pero sí avisamos: cada MB se
-    // paga dos veces, al guardarlo y cada vez que alguien lo abre.
+    // Red de seguridad: si aun así llega un video pesado (Android no comprime,
+    // o el preset falló), avisamos. No lo bloqueamos porque a veces el video
+    // bueno ya está en el carrete, pero cada MB se paga dos veces: al
+    // guardarlo y cada vez que alguien lo abre.
     const pesados = result.assets.filter(
       (a) => a.type === "video" && (a.fileSize ?? 0) > 15 * 1024 * 1024,
     );
     if (pesados.length > 0) {
       Alert.alert(
         pesados.length === 1 ? "Ese video pesa mucho" : "Esos videos pesan mucho",
-        "Los videos de la galería se suben sin comprimir. Para que pesen menos, " +
-          "grábalos desde «Grabar video» aquí en la app.",
+        "Se va a subir así de pesado. Para que pese menos, grábalo desde " +
+          "«Grabar video» aquí en la app.",
       );
     }
     setMediaItems((prev) => [...prev, ...result.assets.map(assetToPick)]);

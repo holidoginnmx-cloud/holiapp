@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-15",
+    title: "Videos del reporte más ligeros",
+    items: [
+      {
+        icon: "videocam-outline",
+        title: "Los videos del reporte diario pesan mucho menos",
+        body:
+          "Al grabar con «Grabar video» la app ahora usa una calidad más " +
+          "ligera: los videos se suben más rápido y el cliente los abre al " +
+          "instante, aun con datos. Se ven bien en el teléfono, solo con " +
+          "menos resolución que la cámara normal. Si traes uno de la " +
+          "galería, también se comprime antes de subirlo.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-14",
     title: "Un solo contacto de emergencia por cliente",
     items: [
