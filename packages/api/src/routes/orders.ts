@@ -30,6 +30,8 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Body: {
       email?: string;
+      /** Teléfono de contacto (lo pide la paquetería; por ahí va la guía). */
+      phone?: string;
       fulfillmentType?: string;
       discountCode?: string;
       notes?: string;
@@ -53,6 +55,16 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
       if (!email || !EMAIL_RE.test(email)) {
         return reply.status(400).send({ error: "Email válido requerido" });
       }
+
+      // Teléfono: el sitio lo exige desde 2026-10-20. Aquí se valida si viene y,
+      // si no, se toma el del perfil. NO se exige en el servidor a propósito:
+      // la API (Railway) y el sitio (Vercel) se despliegan por separado, y
+      // exigirlo antes de que el sitio lo mande tumbaría el checkout.
+      const phoneRaw = (body.phone ?? "").trim();
+      if (phoneRaw && phoneRaw.replace(/\D/g, "").length < 10) {
+        return reply.status(400).send({ error: "Escribe un teléfono de 10 dígitos" });
+      }
+      const phone = phoneRaw.slice(0, 30) || request.dbUser?.phone?.trim() || null;
 
       const fulfillmentType: Fulfillment = FULFILLMENTS.includes(
         body.fulfillmentType as Fulfillment
@@ -161,6 +173,7 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
         const created = await tx.order.create({
           data: {
             email,
+            phone,
             userId,
             status: "PENDING",
             fulfillmentType,

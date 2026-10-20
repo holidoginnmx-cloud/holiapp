@@ -1754,6 +1754,10 @@ model Order {
   // Número legible y secuencial para el cliente/admin (ej. #1042).
   orderNumber           Int             @unique @default(autoincrement())
   email                 String?
+  // Teléfono de contacto que captura el checkout del sitio (desde 2026-10-20).
+  // Lo pide la paquetería y es por donde se le manda la guía por WhatsApp.
+  // Texto tal cual lo escribió el cliente; null en pedidos anteriores y de mostrador.
+  phone                 String?
   // De dónde vino la venta. Distingue el pedido de mostrador del de la tienda
   // web sin tener que adivinarlo por `stripePaymentIntentId is null`.
   channel               OrderChannel    @default(ONLINE)

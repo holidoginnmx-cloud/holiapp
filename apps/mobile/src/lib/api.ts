@@ -21,3 +21,4 @@ export * from "./api/push";
 export * from "./api/legal";
 export * from "./api/quotes";
 export * from "./api/mensualidad";
+export * from "./api/storeOrders";

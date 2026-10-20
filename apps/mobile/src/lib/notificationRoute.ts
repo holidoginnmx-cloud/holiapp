@@ -23,6 +23,8 @@ export type NotificationRouteData = {
   action?: string;
   /** `po_...` del depósito de Stripe (kind = STRIPE_PAYOUT). */
   payoutId?: string;
+  /** Pedido de la tienda en línea (kind = STORE_ORDER). */
+  orderId?: string;
 } | null;
 
 /**
@@ -70,6 +72,18 @@ export function notificationRoute(
   // es GENERAL (como cartilla o los depósitos), así que se distingue por kind.
   if (data?.kind === "BALANCE_DUE" && reservationId && isOwner) {
     return `/reservation/detail/${reservationId}`;
+  }
+
+  // --- Pedidos de la tienda en línea (solo admin) -------------------------
+  // La venta nueva abre el pedido para capturar la guía; el recordatorio
+  // diario (puede traer varios) abre la lista de pendientes. Los avisos de
+  // venta de antes del 2026-10-20 traen `orderId` sin `kind`: también abren.
+  if ((data?.kind === "STORE_ORDER" || typeof data?.orderId === "string") && role === "ADMIN") {
+    const orderId = typeof data?.orderId === "string" ? data.orderId : undefined;
+    return orderId ? `/admin/store-order/${orderId}` : "/admin/store-orders";
+  }
+  if (data?.kind === "STORE_ORDERS_PENDING" && role === "ADMIN") {
+    return "/admin/store-orders";
   }
 
   // --- Depósitos de Stripe (solo admin) -----------------------------------

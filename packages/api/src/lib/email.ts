@@ -32,11 +32,13 @@ type SendArgs = {
 // Wrapper tolerante a fallas: si Resend no está configurado o falla, se loguea y
 // se sigue adelante. La comunicación por correo es importante pero nunca debe
 // romper el flujo transaccional (crear reserva, cobrar, reembolsar).
-export async function sendEmail(args: SendArgs): Promise<void> {
+// Devuelve true solo si Resend aceptó el correo (los callers que no lo
+// necesitan lo ignoran).
+export async function sendEmail(args: SendArgs): Promise<boolean> {
   const client = getResend();
   if (!client) {
     console.warn(`[email] RESEND_API_KEY no configurada — se omite envío a ${args.to}`);
-    return;
+    return false;
   }
   try {
     const { error } = await client.emails.send({
@@ -48,9 +50,12 @@ export async function sendEmail(args: SendArgs): Promise<void> {
     });
     if (error) {
       console.error(`[email] Resend error a ${args.to}:`, error);
+      return false;
     }
+    return true;
   } catch (err) {
     console.error(`[email] Excepción enviando a ${args.to}:`, err);
+    return false;
   }
 }
 
@@ -171,6 +176,51 @@ export function orderConfirmedTemplate(d: OrderConfirmedData) {
   const text = `¡Gracias por tu compra! Pedido #${d.orderNumber}.\n${d.items
     .map((it) => `${it.quantity}× ${it.name} — ${mx(it.lineTotal)}`)
     .join("\n")}\nTotal: ${mx(d.total)}\n\n${fulfillmentMsg[d.fulfillment]}\n\n— HolidogInn`;
+  return { subject, html, text };
+}
+
+export type OrderShippedData = {
+  /** Lo que compró ("Pelota de tenis y Collar"): al cliente no se le habla del folio. */
+  orderLabel: string;
+  firstName: string | null;
+  carrier: string;
+  trackingNumber: string;
+  trackingUrl: string | null;
+};
+
+/** El pedido salió: paquetería + guía (lib/storeShipment.ts). */
+export function orderShippedTemplate(d: OrderShippedData) {
+  const subject = "Tu pedido de Holidog Inn ya va en camino 📦";
+  const saludo = d.firstName?.trim() ? `¡Hola, ${escapeHtml(d.firstName.trim())}!` : "¡Hola!";
+  const carrier = escapeHtml(d.carrier.trim());
+  const guia = escapeHtml(d.trackingNumber.trim());
+  const rastreo = d.trackingUrl
+    ? `<p style="margin:20px 0;text-align:center;">
+        <a href="${escapeHtml(d.trackingUrl)}" style="display:inline-block;padding:12px 22px;background:#1f3d4a;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">Rastrear mi pedido</a>
+      </p>`
+    : `<p style="font-size:14px;color:#666;line-height:1.5;">Puedes rastrearlo en la página de ${carrier} con tu número de guía.</p>`;
+  const html = layout(
+    subject,
+    `
+    <h1 style="font-size:20px;margin:0 0 12px;">${saludo} 🐾</h1>
+    <p style="font-size:15px;line-height:1.5;">
+      Tu pedido de <b>${escapeHtml(d.orderLabel)}</b> ya salió de Holidog Inn y va en camino.
+    </p>
+    <table role="presentation" style="width:100%;margin:16px 0;border-collapse:collapse;font-size:14px;">
+      <tr><td style="padding:8px 0;color:#666;">Paquetería</td><td style="padding:8px 0;text-align:right;"><b>${carrier}</b></td></tr>
+      <tr><td style="padding:8px 0;color:#666;">Número de guía</td><td style="padding:8px 0;text-align:right;"><b>${guia}</b></td></tr>
+    </table>
+    ${rastreo}
+    <p style="font-size:14px;color:#666;line-height:1.5;">
+      Cualquier duda, respóndenos por WhatsApp. ¡Gracias por tu compra!
+    </p>
+  `
+  );
+  const text =
+    `${d.firstName?.trim() ? `¡Hola, ${d.firstName.trim()}!` : "¡Hola!"} Tu pedido de ${d.orderLabel} ya va en camino.\n\n` +
+    `Paquetería: ${d.carrier.trim()}\nNúmero de guía: ${d.trackingNumber.trim()}\n` +
+    (d.trackingUrl ? `Rastréalo aquí: ${d.trackingUrl}\n` : "") +
+    `\n— HolidogInn`;
   return { subject, html, text };
 }
 

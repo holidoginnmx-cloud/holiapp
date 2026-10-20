@@ -14,11 +14,11 @@
  *      se repite cada mañana, no.
  *
  * "Sin despachar" = status PAID y, si es envío nacional, sin número de guía. Se
- * apaga capturando la guía en el panel web o pasando el pedido a «Entregado».
+ * apaga capturando la guía (app o panel web) o pasando el pedido a «Entregado».
  * Solo canal ONLINE: las ventas de mostrador se entregan en el acto y se quedan
  * en PAID para siempre.
  */
-import type { PrismaClient } from "@holidoginn/db";
+import type { Prisma, PrismaClient } from "@holidoginn/db";
 import { adminsActivosIds, notifyUsers } from "./notify";
 import { localMinutesOfDay, localYMD } from "./bathAvailability";
 import { formatMoney } from "./notifyTeamPayment";
@@ -27,7 +27,7 @@ export type Fulfillment = "PICKUP" | "LOCAL_DELIVERY" | "NATIONAL_SHIPPING";
 
 const QUE_HACER: Record<Fulfillment, string> = {
   NATIONAL_SHIPPING:
-    "📦 Envío nacional: hay que mandarlo y capturar la guía en el panel web (Tienda → Pedidos).",
+    "📦 Envío nacional: hay que mandarlo y capturar la guía (toca este aviso).",
   LOCAL_DELIVERY: "🛵 Entrega a domicilio en Hermosillo: hay que coordinar con el cliente.",
   PICKUP: "🏪 Lo recoge en el hotel: hay que tenerlo listo.",
 };
@@ -100,6 +100,22 @@ const REMINDER_UNTIL_HOUR = 21;
 
 const PENDING_KIND = "STORE_ORDERS_PENDING";
 
+/**
+ * Pedido en línea pagado que todavía no sale: sin guía si es envío nacional, o
+ * sin marcar «Entregado» si se recoge / se lleva a domicilio. Fuente única: la
+ * usan el recordatorio y la lista de la app (routes/adminStoreOrders.ts).
+ */
+export const PEDIDO_SIN_DESPACHAR = {
+  channel: "ONLINE",
+  status: "PAID",
+  paidAt: { not: null },
+  OR: [
+    { fulfillmentType: { not: "NATIONAL_SHIPPING" } },
+    { trackingNumber: null },
+    { trackingNumber: "" },
+  ],
+} satisfies Prisma.OrderWhereInput;
+
 export type PendingOrder = {
   orderNumber: number;
   fulfillmentType: Fulfillment;
@@ -134,8 +150,8 @@ export function buildPendingOrdersMessage(
     (o) => `#${o.orderNumber} · ${ETIQUETA[o.fulfillmentType]} · ${haceCuanto(o.paidAt, now)}`
   );
   const cierre = hayEnvio
-    ? "Al mandarlo, captura la guía en el panel web (Tienda → Pedidos) y deja de avisar."
-    : "Al entregarlo, márcalo como «Entregado» en el panel web y deja de avisar.";
+    ? "Toca este aviso para capturar la guía; al guardarla se le avisa al cliente y esto se apaga."
+    : "Toca este aviso para marcarlo como «Entregado» y que deje de avisar.";
   return { title, body: `${lineas.join("\n")}\n${cierre}` };
 }
 
@@ -160,16 +176,7 @@ export async function sendPendingStoreOrderReminders(
   if (yaAvisado) return { sent: 0 };
 
   const rows = await prisma.order.findMany({
-    where: {
-      channel: "ONLINE",
-      status: "PAID",
-      paidAt: { not: null },
-      OR: [
-        { fulfillmentType: { not: "NATIONAL_SHIPPING" } },
-        { trackingNumber: null },
-        { trackingNumber: "" },
-      ],
-    },
+    where: PEDIDO_SIN_DESPACHAR,
     select: { orderNumber: true, fulfillmentType: true, paidAt: true },
     orderBy: { paidAt: "asc" },
   });

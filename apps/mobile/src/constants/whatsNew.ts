@@ -34,6 +34,25 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-20",
+    title: "Pedidos de la tienda en la app",
+    items: [
+      {
+        icon: "cube-outline",
+        title: "Captura la guía y el cliente se entera solo",
+        body:
+          "En Ajustes → «Pedidos de la tienda» (o tocando el aviso de la " +
+          "venta) eliges la paquetería y escribes el número de guía. Al " +
+          "guardarla le llega un correo al cliente con su guía, y la app te " +
+          "abre WhatsApp con el mensaje ya escrito: «¡Hola! 🐾 Tu pedido de " +
+          "Holidog Inn ya va en camino: Pelota de tenis…». Solo tocas " +
+          "«Enviar». El teléfono ya viene en el pedido: la tienda lo pide al pagar.",
+        route: "/admin/store-orders",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-10-19",
     title: "Avisos de ventas de la tienda",
     items: [

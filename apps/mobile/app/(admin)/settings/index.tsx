@@ -236,6 +236,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/revenue" as any)}
         />
         <MenuItem
+          icon="bag-handle-outline"
+          iconTint={COLORS.primary}
+          label="Pedidos de la tienda"
+          subtitle="Ventas en línea: capturar la guía y avisarle al cliente"
+          onPress={() => router.push("/admin/store-orders" as any)}
+        />
+        <MenuItem
           icon="business-outline"
           iconTint={COLORS.primary}
           label="Depósitos al banco"

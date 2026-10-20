@@ -59,7 +59,7 @@ describe("buildPendingOrdersMessage", () => {
     );
     expect(msg.title).toBe("📦 Tienes 1 pedido de la tienda sin enviar");
     expect(msg.body).toContain("#8 · envío nacional · pagado hoy");
-    expect(msg.body).toContain("captura la guía");
+    expect(msg.body).toContain("Toca este aviso para capturar la guía");
   });
 
   it("al día siguiente dice ayer, y varios pedidos van en una sola línea cada uno", () => {
