@@ -11,6 +11,7 @@ import { notifyUser, notifyUsers, adminsActivosIds } from "../lib/notify";
 import { formatMoney } from "../lib/notifyTeamPayment";
 import { syncPayout, avisarPayoutSincronizado } from "../lib/payouts";
 import { guardarComisionStripe } from "../lib/stripeFees";
+import { avisarPedidoNuevo } from "../lib/storeOrderAlerts";
 import { Prisma } from "@holidoginn/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -312,7 +313,11 @@ async function handleStoreOrderPaid(
   const orderId = String(pi.metadata.orderId);
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true, discountCode: true },
+    include: {
+      items: true,
+      discountCode: true,
+      user: { select: { firstName: true, lastName: true } },
+    },
   });
 
   if (!order) {
@@ -418,23 +423,19 @@ async function handleStoreOrderPaid(
     await sendEmail({ to: order.email, ...tpl });
   }
 
-  // Notificar a los admins que entró un pedido nuevo.
-  const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", isActive: true },
-    select: { id: true },
+  // Avisar a los admins: qué se vendió y qué hay que hacer (mandarlo, llevarlo
+  // o tenerlo listo). Si no se despacha, lo recuerda cada mañana
+  // (lib/storeOrderAlerts.ts).
+  const cliente = [order.user?.firstName, order.user?.lastName]
+    .filter((s) => s && s.trim())
+    .join(" ");
+  await avisarPedidoNuevo(prisma, order.id, {
+    orderNumber: order.orderNumber,
+    total: Number(order.total),
+    fulfillmentType: order.fulfillmentType,
+    items: order.items.map((it) => ({ name: it.productNameSnapshot, quantity: it.quantity })),
+    customer: cliente || order.email,
   });
-  if (admins.length > 0) {
-    await notifyUsers(
-      prisma,
-      admins.map((a) => a.id),
-      {
-        type: "GENERAL",
-        title: "🛍️ Nuevo pedido en la tienda",
-        body: `Pedido #${order.orderNumber} por $${Number(order.total).toLocaleString("es-MX")}.`,
-        data: { orderId: order.id },
-      }
-    );
-  }
 }
 
 async function handlePaymentIntentFailed(

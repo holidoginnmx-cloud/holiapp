@@ -34,6 +34,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-19",
+    title: "Avisos de ventas de la tienda",
+    items: [
+      {
+        icon: "bag-handle-outline",
+        title: "Cada venta en línea te avisa qué hay que hacer",
+        body:
+          "Cuando alguien compra en la tienda te llega un aviso con lo que " +
+          "compró, el total y el siguiente paso: «📦 Envío nacional: hay que " +
+          "mandarlo». Y mientras un pedido siga sin enviar o sin entregar, te " +
+          "lo recordamos cada mañana a las 9. Se apaga solo al capturar la " +
+          "guía en el panel web (Tienda → Pedidos) o al marcarlo como " +
+          "«Entregado».",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-10-15",
     title: "Videos del reporte más ligeros",
     items: [

@@ -29,6 +29,7 @@ import {
 } from "./bathAvailability";
 import { instanteDeLlegada, rangoDeMananaHotel } from "./stayTimes";
 import { getLodgingPricing } from "./pricing";
+import { sendPendingStoreOrderReminders } from "./storeOrderAlerts";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -510,6 +511,8 @@ export async function runClientReminders(
     ["día anterior", () => sendDayBeforeReminders(prisma, now)],
     ["1.5 h", () => sendNinetyMinuteReminders(prisma, now)],
     ["hora de hospedaje", () => sendStayTimeReminders(prisma, now)],
+    // Este es para el EQUIPO, no para el cliente: aprovecha el mismo ciclo.
+    ["pedidos de tienda sin despachar", () => sendPendingStoreOrderReminders(prisma, now)],
   ];
   for (const [name, job] of jobs) {
     try {
