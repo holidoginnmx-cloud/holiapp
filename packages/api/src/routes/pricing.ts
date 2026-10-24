@@ -20,7 +20,7 @@ export default async function pricingRoutes(fastify: FastifyInstance) {
       pricePerDaySmall: cfg.pricePerDaySmall,
       pricePerDayLarge: cfg.pricePerDayLarge,
       largeWeightKg: cfg.largeWeightKg,
-      medicationSurchargePct: cfg.medicationSurchargePct,
+      medicationFeePerNight: cfg.medicationFeePerNight,
       // Tarifa única por hora de guardería / horas extra. Va con el nombre de
       // la columna (histórico) y con el alias que usa /admin/lodging-pricing.
       daycareExtraHourPrice: cfg.daycareHourPrice,

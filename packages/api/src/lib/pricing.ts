@@ -4,11 +4,11 @@ import {
   DEFAULT_PRICE_PER_DAY_SMALL,
   DEFAULT_PRICE_PER_DAY_LARGE,
   DEFAULT_LARGE_WEIGHT_KG,
-  DEFAULT_MEDICATION_SURCHARGE_PCT,
+  DEFAULT_MEDICATION_FEE_PER_NIGHT,
   type LodgingPricingConfig,
   computeDays,
   pricePerDayForWeight,
-  ceilMoney,
+  medicationFeeFor,
 } from "@holidoginn/shared";
 
 // Re-exporta las funciones/constantes puras de pricing desde el paquete
@@ -24,7 +24,7 @@ export {
   DEFAULT_PRICE_PER_DAY_SMALL,
   DEFAULT_PRICE_PER_DAY_LARGE,
   DEFAULT_LARGE_WEIGHT_KG,
-  DEFAULT_MEDICATION_SURCHARGE_PCT,
+  DEFAULT_MEDICATION_FEE_PER_NIGHT,
   DEFAULT_DAYCARE_HOUR_PRICE,
   DAYCARE_OPEN_HOUR,
   DAYCARE_CLOSE_HOUR,
@@ -41,6 +41,7 @@ export {
   ceilMoney,
   roundMoney,
   computeStayPricing,
+  medicationFeeFor,
   allocateProportional,
 } from "@holidoginn/shared";
 export type {
@@ -66,7 +67,7 @@ export async function getLodgingPricing(
     pricePerDaySmall: Number(row.pricePerDaySmall),
     pricePerDayLarge: Number(row.pricePerDayLarge),
     largeWeightKg: Number(row.largeWeightKg),
-    medicationSurchargePct: Number(row.medicationSurchargePct),
+    medicationFeePerNight: Number(row.medicationFeePerNight),
     // Tarifa única por hora de guardería/horas extra. La columna conserva el
     // nombre histórico daycareExtraHourPrice (migración web 0019).
     daycareHourPrice: Number(row.daycareExtraHourPrice),
@@ -126,9 +127,9 @@ export function computeChangeTotal({
   config = DEFAULT_LODGING_PRICING,
 }: ChangeTotalInput): ChangeTotalResult {
   const pricePerDay = pricePerDayForWeight(petWeightKg, config);
-  // Mismo redondeo que computeStayPricing: hacia arriba a peso entero.
-  const medFor = (lodging: number) =>
-    hasMedication ? ceilMoney(lodging * config.medicationSurchargePct) : 0;
+  // Misma regla que computeStayPricing: tarifa por noche × noches.
+  const medFor = (days: number) =>
+    hasMedication ? medicationFeeFor(days, config) : 0;
 
   const currentDays = computeDays(currentCheckIn, currentCheckOut);
   const currentLodging =
@@ -138,11 +139,11 @@ export function computeChangeTotal({
   const currentMed =
     currentMedicationFee != null && currentMedicationFee > 0
       ? currentMedicationFee
-      : medFor(currentLodging);
+      : medFor(currentDays);
 
   const newTotalDays = computeDays(newCheckIn, newCheckOut);
   const newLodging = pricePerDay * newTotalDays;
-  const newMedicationSurcharge = medFor(newLodging);
+  const newMedicationSurcharge = medFor(newTotalDays);
 
   const delta = Number(
     (newLodging - currentLodging + (newMedicationSurcharge - currentMed)).toFixed(2),
@@ -166,4 +167,4 @@ export const PRICE_PER_DAY_LARGE = DEFAULT_PRICE_PER_DAY_LARGE;
 /** @deprecated Use getLodgingPricing(prisma) for the editable value. */
 export const LARGE_WEIGHT_KG = DEFAULT_LARGE_WEIGHT_KG;
 /** @deprecated Use getLodgingPricing(prisma) for the editable value. */
-export const MEDICATION_SURCHARGE_PCT = DEFAULT_MEDICATION_SURCHARGE_PCT;
+export const MEDICATION_FEE_PER_NIGHT = DEFAULT_MEDICATION_FEE_PER_NIGHT;

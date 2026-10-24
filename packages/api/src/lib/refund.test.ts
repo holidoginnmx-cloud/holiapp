@@ -96,7 +96,7 @@ describe("computeChangeTotal — cambio de fechas por delta", () => {
     pricePerDaySmall: 350,
     pricePerDayLarge: 450,
     largeWeightKg: 20,
-    medicationSurchargePct: 0.1,
+    medicationFeePerNight: 50,
     daycareHourPrice: 25,
   };
   const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
@@ -142,14 +142,14 @@ describe("computeChangeTotal — cambio de fechas por delta", () => {
       newCheckIn: d("2026-09-10"),
       newCheckOut: d("2026-09-12"),
       hasMedication: true,
-      currentTotal: 1350 + 135 + 400, // hospedaje + med + baño
+      currentTotal: 1350 + 150 + 400, // hospedaje + med ($50 × 3) + baño
       currentLodgingAmount: 1350,
-      currentMedicationFee: 135,
+      currentMedicationFee: 150,
       config: cfg,
     });
-    // nuevo hospedaje 900, med ceil(90) = 90 → delta = (900−1350) + (90−135) = −495
-    expect(r.delta).toBe(-495);
-    expect(r.newTotal).toBe(1390);
+    // nuevo hospedaje 900, med $50 × 2 = 100 → delta = (900−1350) + (100−150) = −500
+    expect(r.delta).toBe(-500);
+    expect(r.newTotal).toBe(1400);
   });
 
   it("sin desglose persistido (reserva vieja) deriva el hospedaje actual con la tarifa", () => {

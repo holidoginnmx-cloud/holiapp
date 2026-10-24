@@ -1134,7 +1134,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
     }
 
     // Medicamento: notas obligatorias por mascota; el recargo
-    // (medicationSurchargePct de Config → Tarifas sobre SU hospedaje) lo pone
+    // (medicationFeePerNight de Config → Tarifas × SUS noches) lo pone
     // computeStayPricing.
     const medicationNotesByPet = new Map<string, string>();
     if (medicationByPet && Object.keys(medicationByPet).length > 0) {

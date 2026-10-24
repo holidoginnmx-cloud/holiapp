@@ -22,6 +22,7 @@ import { ErrorState } from "@/components/ErrorState";
 import {
   DEFAULT_PRICE_PER_DAY_SMALL,
   DEFAULT_PRICE_PER_DAY_LARGE,
+  DEFAULT_MEDICATION_FEE_PER_NIGHT,
 } from "@holidoginn/shared/src/pricing";
 
 
@@ -31,7 +32,7 @@ type Field =
   | "pricePerDaySmall"
   | "pricePerDayLarge"
   | "largeWeightKg"
-  | "medicationSurchargePct";
+  | "medicationFeePerNight";
 
 const KEY = ["admin", "lodging-pricing"] as const;
 
@@ -48,7 +49,7 @@ export default function AdminHospedajes() {
     pricePerDaySmall: "",
     pricePerDayLarge: "",
     largeWeightKg: "",
-    medicationSurchargePct: "",
+    medicationFeePerNight: "",
   });
 
   // Cuando llega data inicial (o refetch), sincroniza el formulario.
@@ -58,10 +59,7 @@ export default function AdminHospedajes() {
       pricePerDaySmall: String(data.pricePerDaySmall),
       pricePerDayLarge: String(data.pricePerDayLarge),
       largeWeightKg: String(data.largeWeightKg),
-      // medicationSurchargePct guardado como 0.10 → mostrar "10".
-      medicationSurchargePct: String(
-        Math.round(data.medicationSurchargePct * 1000) / 10
-      ),
+      medicationFeePerNight: String(data.medicationFeePerNight),
     });
   }, [data]);
 
@@ -70,24 +68,22 @@ export default function AdminHospedajes() {
     const small = parseFloat(draft.pricePerDaySmall);
     const large = parseFloat(draft.pricePerDayLarge);
     const weight = parseFloat(draft.largeWeightKg);
-    const pctNum = parseFloat(draft.medicationSurchargePct); // 0–100
+    const medFee = parseFloat(draft.medicationFeePerNight); // pesos por noche
     if (
       !(small > 0) ||
       !(large > 0) ||
       !(weight > 0) ||
-      isNaN(pctNum) ||
-      pctNum < 0 ||
-      pctNum > 100
+      isNaN(medFee) ||
+      medFee < 0
     ) {
       return null;
     }
-    const pct = pctNum / 100;
     const changes: Record<string, number> = {};
     if (small !== data.pricePerDaySmall) changes.pricePerDaySmall = small;
     if (large !== data.pricePerDayLarge) changes.pricePerDayLarge = large;
     if (weight !== data.largeWeightKg) changes.largeWeightKg = weight;
-    if (Math.abs(pct - data.medicationSurchargePct) > 1e-6) {
-      changes.medicationSurchargePct = pct;
+    if (medFee !== data.medicationFeePerNight) {
+      changes.medicationFeePerNight = medFee;
     }
     return Object.keys(changes).length > 0 ? changes : null;
   }, [draft, data]);
@@ -116,11 +112,9 @@ export default function AdminHospedajes() {
   const previewSmall = parseFloat(draft.pricePerDaySmall) || data.pricePerDaySmall;
   const previewLarge = parseFloat(draft.pricePerDayLarge) || data.pricePerDayLarge;
   const previewWeight = parseFloat(draft.largeWeightKg) || data.largeWeightKg;
-  const previewPct = parseFloat(draft.medicationSurchargePct);
-  const previewPctValid = !isNaN(previewPct) && previewPct >= 0 && previewPct <= 100;
-  const surcharge3Days = Math.ceil(
-    previewLarge * 3 * (previewPctValid ? previewPct / 100 : data.medicationSurchargePct)
-  );
+  const previewMed = parseFloat(draft.medicationFeePerNight);
+  const previewMedValid = !isNaN(previewMed) && previewMed >= 0;
+  const surcharge3Days = 3 * (previewMedValid ? previewMed : data.medicationFeePerNight);
 
   return (
     <ScrollView
@@ -219,25 +213,26 @@ export default function AdminHospedajes() {
         Recargo por medicación
       </Text>
       <Text style={styles.sectionSub}>
-        Porcentaje extra cuando la reservación incluye medicación.
+        Monto extra por noche y por mascota cuando hay que darle medicamento.
       </Text>
 
       <View style={styles.fieldGroup}>
         <View style={styles.inputWrap}>
+          <Text style={styles.currency}>$</Text>
           <TextInput
-            style={[styles.input, { paddingLeft: 14 }]}
-            value={draft.medicationSurchargePct}
+            style={styles.input}
+            value={draft.medicationFeePerNight}
             onChangeText={(v) =>
-              setDraft((d) => ({ ...d, medicationSurchargePct: v }))
+              setDraft((d) => ({ ...d, medicationFeePerNight: v }))
             }
             keyboardType="decimal-pad"
-            placeholder="10"
+            placeholder={String(DEFAULT_MEDICATION_FEE_PER_NIGHT)}
             placeholderTextColor={COLORS.textDisabled}
           />
-          <Text style={styles.unit}>%</Text>
+          <Text style={styles.unit}>/ noche</Text>
         </View>
         <Text style={styles.exampleText}>
-          Ej. 3 noches × {formatCurrency(previewLarge)} con medicación
+          Ej. 3 noches con medicación
           ={" "}
           <Text style={styles.exampleStrong}>
             +{formatCurrency(surcharge3Days)}

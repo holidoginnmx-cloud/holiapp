@@ -398,18 +398,23 @@ describe("computeStayPricing", () => {
     expect(neg.total).toBe(0);
   });
 
-  it("medicamento: porcentaje CONFIGURABLE sobre el hospedaje, redondeado hacia arriba", () => {
+  it("medicamento: tarifa CONFIGURABLE por noche, sin importar la tarifa del cuarto", () => {
     const base = computeStayPricing({ petWeightKg: 30, totalDays: 3, hasMedication: true, sameDay: false, config: cfg });
     expect(base.lodging).toBe(1350);
-    expect(base.medicationFee).toBe(135); // 10 % default
-    expect(base.total).toBe(1485);
+    expect(base.medicationFee).toBe(150); // $50 × 3 noches
+    expect(base.total).toBe(1500);
+
+    // El caso que reportó el equipo: perro de $350, 2 noches → $800, no $770.
+    const chico = computeStayPricing({ petWeightKg: 8, totalDays: 2, hasMedication: true, sameDay: false, config: cfg });
+    expect(chico.medicationFee).toBe(100);
+    expect(chico.total).toBe(800);
 
     const custom = computeStayPricing({
       petWeightKg: 30,
       totalDays: 3,
       hasMedication: true,
       sameDay: false,
-      config: { ...cfg, medicationSurchargePct: 0.15 },
+      config: { ...cfg, medicationFeePerNight: 67.5 },
     });
     expect(custom.medicationFee).toBe(203); // ceil(202.5)
 
@@ -418,7 +423,7 @@ describe("computeStayPricing", () => {
       totalDays: 3,
       hasMedication: true,
       sameDay: false,
-      config: { ...cfg, medicationSurchargePct: 0 },
+      config: { ...cfg, medicationFeePerNight: 0 },
     });
     expect(off.medicationFee).toBe(0);
   });
@@ -432,10 +437,10 @@ describe("computeStayPricing", () => {
       addonsAmount: 320,
       config: cfg,
     });
-    // 350 + 35 + 320 = 705 → 20 % = 141
-    expect(r.subtotal).toBe(705);
-    expect(r.sameDayFee).toBe(141);
-    expect(r.total).toBe(846);
+    // 350 + 50 + 320 = 720 → 20 % = 144
+    expect(r.subtotal).toBe(720);
+    expect(r.sameDayFee).toBe(144);
+    expect(r.total).toBe(864);
     expect(SAME_DAY_SURCHARGE_PCT).toBe(0.2);
 
     const conDescuento = computeStayPricing({
@@ -467,14 +472,14 @@ describe("computeStayPricing", () => {
     expect(r.total).toBe(0);
   });
 
-  it("PARIDAD con la fórmula histórica de create-intent (default 10 %, montos enteros)", () => {
-    // Oráculo: lo que /payments/create-intent cobró siempre.
+  it("PARIDAD con la fórmula de create-intent (default $50 por noche, montos enteros)", () => {
+    // Oráculo: tarifa × noches + $50 × noches con medicamento.
     for (const peso of [4, 12, 22, 35]) {
       for (const noches of [1, 3, 7, 13]) {
         for (const med of [false, true]) {
           const ppd = peso >= 20 ? 450 : 350;
           const lodging = ppd * noches;
-          const medFee = med ? Math.ceil(lodging * 0.1) : 0;
+          const medFee = med ? 50 * noches : 0;
           const r = computeStayPricing({ petWeightKg: peso, totalDays: noches, hasMedication: med, sameDay: false, config: cfg });
           expect(r.lodging).toBe(lodging);
           expect(r.medicationFee).toBe(medFee);

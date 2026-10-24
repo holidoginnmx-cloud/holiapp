@@ -293,8 +293,8 @@ export async function createReservationGroup(
     }
   }
 
-  // Medicamento: notas requeridas; el recargo (medicationSurchargePct sobre el
-  // hospedaje de ESA mascota) lo pone computeStayPricing.
+  // Medicamento: notas requeridas; el recargo (medicationFeePerNight × noches
+  // de ESA mascota) lo pone computeStayPricing.
   const medicationNotesByPet = new Map<string, string>();
   if (medicationByPet && Object.keys(medicationByPet).length > 0) {
     for (const [petId, sel] of Object.entries(medicationByPet)) {

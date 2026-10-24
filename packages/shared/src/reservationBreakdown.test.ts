@@ -46,7 +46,7 @@ describe("buildReservationBreakdown", () => {
     });
     expect(b.rows.map((r) => r.label)).toEqual([
       "Hospedaje · $450 × 3 noches",
-      "Administración de medicamento (+10%)",
+      "Administración de medicamento",
       "Reserva el mismo día (+20%)",
     ]);
     expect(b.rows[0].amount).toBe(1350);

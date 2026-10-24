@@ -19,7 +19,7 @@ const CATALOG: QuoteCatalog = {
     priceProbarfSmall: 300,
     priceProbarfLarge: 400,
     largeWeightKg: 20,
-    medicationSurchargePct: 0.1,
+    medicationFeePerNight: 50,
     daycareHourPrice: 25,
   },
   bathVariants: [
@@ -113,11 +113,11 @@ describe("computeQuote · hospedaje", () => {
         CATALOG
       )
     );
-    // 1750 + 10% = 1925 para el primero; el segundo intacto.
-    expect(b.pets[0].subtotal).toBe(1925);
+    // 1750 + $50 × 5 noches = 2000 para el primero; el segundo intacto.
+    expect(b.pets[0].subtotal).toBe(2000);
     expect(b.pets[1].subtotal).toBe(2250);
     expect(b.pets[0].lines[1].kind).toBe("MEDICATION_SURCHARGE");
-    expect(b.pets[0].lines[1].amount).toBe(175);
+    expect(b.pets[0].lines[1].amount).toBe(250);
   });
 
   it("cambia la tarifa por noche con dieta ProBarf", () => {

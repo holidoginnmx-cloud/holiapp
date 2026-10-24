@@ -74,7 +74,7 @@ import {
   pricePerDayForWeight,
   computeDaycareHours,
   computeDays,
-  ceilMoney,
+  medicationFeeFor,
   DAYCARE_OPEN_HOUR,
   DAYCARE_CLOSE_HOUR,
 } from "@holidoginn/shared/src/pricing";
@@ -720,13 +720,13 @@ export default function AdminCreateReservation() {
     if (reservationType === "STAY") {
       if (!stayEstimate) return null;
       const lodging = stayEstimate.total;
-      // El servidor aplica el recargo POR MASCOTA con un redondeo hacia arriba
-      // en cada una (lib/reservationTeamCreate.ts); un solo ceil del grupo se
-      // queda corto hasta N−1 pesos.
-      const pct = lodgingPricing?.medicationSurchargePct ?? 0;
-      const med = medEnabled
-        ? stayEstimate.perPet.reduce((sum, n) => sum + ceilMoney(n * pct), 0)
-        : 0;
+      // Medicamento: tarifa por noche × noches, POR MASCOTA — la misma
+      // función con la que cobra el servidor (lib/reservationTeamCreate.ts).
+      const med =
+        medEnabled && lodgingPricing
+          ? stayEstimate.perPet.length *
+            medicationFeeFor(stayEstimate.days, lodgingPricing)
+          : 0;
       const bath = stayBathEnabled ? stayBathPrice ?? 0 : 0;
       return lodging + med + bath;
     }
@@ -1414,7 +1414,11 @@ export default function AdminCreateReservation() {
             {/* Medicamento */}
             <SwitchRow
               label="Medicamento"
-              hint="Suma 10% al hospedaje"
+              hint={
+                lodgingPricing
+                  ? `Suma $${lodgingPricing.medicationFeePerNight} por noche`
+                  : "Recargo por noche"
+              }
               value={medEnabled}
               onValueChange={setMedEnabled}
             />

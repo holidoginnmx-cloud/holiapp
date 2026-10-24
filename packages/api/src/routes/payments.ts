@@ -301,8 +301,8 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Medicamento: notas obligatorias; el recargo (medicationSurchargePct de
-    // Config → Tarifas sobre el hospedaje de ESA mascota) lo pone computeStayPricing.
+    // Medicamento: notas obligatorias; el recargo (medicationFeePerNight de
+    // Config → Tarifas × las noches de ESA mascota) lo pone computeStayPricing.
     const medicationPetIds = new Set<string>();
     if (medicationByPet && Object.keys(medicationByPet).length > 0) {
       for (const [petId, sel] of Object.entries(medicationByPet)) {

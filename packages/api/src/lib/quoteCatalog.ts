@@ -69,7 +69,7 @@ export async function loadQuoteCatalog(prisma: PrismaClient): Promise<QuoteCatal
       priceProbarfSmall: Number(pricing.priceProbarfSmall),
       priceProbarfLarge: Number(pricing.priceProbarfLarge),
       largeWeightKg: Number(pricing.largeWeightKg),
-      medicationSurchargePct: Number(pricing.medicationSurchargePct),
+      medicationFeePerNight: Number(pricing.medicationFeePerNight),
       // La columna conserva el nombre histórico `daycareExtraHourPrice`, pero es
       // la tarifa ÚNICA por hora (guardería y horas extra). Ver getLodgingPricing.
       daycareHourPrice: Number(pricing.daycareExtraHourPrice),

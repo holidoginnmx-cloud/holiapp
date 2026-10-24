@@ -238,7 +238,9 @@ export function buildReservationBreakdown(
   if (med > 0) {
     rows.push({
       key: "medication",
-      label: "Administración de medicamento (+10%)",
+      // Sin la regla en la etiqueta: las reservas viejas se cobraron con el
+      // 10 % y las nuevas con la tarifa por noche; el monto es el guardado.
+      label: "Administración de medicamento",
       amount: med,
     });
   }

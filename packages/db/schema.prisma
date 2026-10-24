@@ -579,7 +579,7 @@ model Reservation {
   // OJO: totalAmount muta después (add-ons, ediciones de precio, extensiones)
   // — estos campos NO se recalculan: son la foto del cobro original.
   lodgingAmount          Decimal?          @db.Decimal(10, 2) // hospedaje: tarifa/día × noches
-  medicationFee          Decimal?          @db.Decimal(10, 2) // recargo por medicamento (+10% del hospedaje)
+  medicationFee          Decimal?          @db.Decimal(10, 2) // recargo por medicamento (tarifa por noche × noches; antes 10% del hospedaje)
   sameDayFee             Decimal?          @db.Decimal(10, 2) // recargo por reservar <24h antes del check-in (+20%)
   // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
   // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
@@ -1458,7 +1458,11 @@ model LodgingPricing {
   cardFeeAmexPct         Decimal  @default(0.029) @db.Decimal
   cardFeeIvaIncluded     Boolean  @default(true)
   largeWeightKg          Float    @default(20)
-  medicationSurchargePct Float    @default(0.10) // 0.10 = 10%
+  // ⚠️ YA NO SE USA (desde 2026-10-24): el medicamento se cobra por noche
+  // (medicationFeePerNight). Se conserva para no romper binarios viejos.
+  medicationSurchargePct Float    @default(0.10)
+  // Recargo por administrar medicamento: pesos por noche, por mascota.
+  medicationFeePerNight  Decimal  @default(50) @db.Decimal(10, 2)
   updatedAt              DateTime @updatedAt
 
   @@map("lodging_pricing")

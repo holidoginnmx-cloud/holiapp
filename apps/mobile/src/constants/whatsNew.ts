@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-24-b",
+    title: "Medicamento: $50 por noche",
+    items: [
+      {
+        icon: "medkit-outline",
+        title: "El medicamento se cobra por noche, ya no como 10%",
+        body:
+          "Al activar «Medicamento» en una estancia se suman $50 por cada " +
+          "noche y por cada perro que lo toma. Ejemplo: perro de $350 por 2 " +
+          "noches con medicamento = $700 + $100 = $800 (antes salía $770). " +
+          "Las reservaciones que ya existían conservan su precio. El monto por " +
+          "noche se cambia en Ajustes → Servicios y precios → Hospedajes.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-24",
     title: "Calendario más claro",
     items: [

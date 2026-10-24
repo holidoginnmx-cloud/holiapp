@@ -914,7 +914,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         pricePerDaySmall: Number(row.pricePerDaySmall),
         pricePerDayLarge: Number(row.pricePerDayLarge),
         largeWeightKg: Number(row.largeWeightKg),
-        medicationSurchargePct: Number(row.medicationSurchargePct),
+        medicationFeePerNight: Number(row.medicationFeePerNight),
         // Tarifa única por hora de guardería / horas extra (columna
         // daycareExtraHourPrice; nombre histórico de la migración web 0019).
         daycareHourPrice: Number(row.daycareExtraHourPrice),
@@ -1055,7 +1055,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       pricePerDaySmall: number;
       pricePerDayLarge: number;
       largeWeightKg: number;
-      medicationSurchargePct: number;
+      medicationFeePerNight: number;
       daycareHourPrice: number;
     }>;
   }>(
@@ -1083,13 +1083,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         }
         data.largeWeightKg = body.largeWeightKg;
       }
-      if (body.medicationSurchargePct != null) {
-        if (body.medicationSurchargePct < 0 || body.medicationSurchargePct > 1) {
+      // Pesos por noche y por mascota. 0 apaga el recargo.
+      if (body.medicationFeePerNight != null) {
+        if (!(body.medicationFeePerNight >= 0)) {
           return reply
             .status(400)
-            .send({ error: "medicationSurchargePct debe estar entre 0 y 1" });
+            .send({ error: "medicationFeePerNight no puede ser negativo" });
         }
-        data.medicationSurchargePct = body.medicationSurchargePct;
+        data.medicationFeePerNight = body.medicationFeePerNight;
       }
       if (body.daycareHourPrice != null) {
         if (!(body.daycareHourPrice > 0)) {
@@ -1111,7 +1112,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         pricePerDaySmall: Number(row.pricePerDaySmall),
         pricePerDayLarge: Number(row.pricePerDayLarge),
         largeWeightKg: Number(row.largeWeightKg),
-        medicationSurchargePct: Number(row.medicationSurchargePct),
+        medicationFeePerNight: Number(row.medicationFeePerNight),
         daycareHourPrice: Number(row.daycareExtraHourPrice),
         updatedAt: row.updatedAt,
       };

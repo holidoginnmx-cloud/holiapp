@@ -191,14 +191,18 @@ function parseYMD(ymd: string): number | null {
 export const DEFAULT_PRICE_PER_DAY_SMALL = 350;
 export const DEFAULT_PRICE_PER_DAY_LARGE = 450;
 export const DEFAULT_LARGE_WEIGHT_KG = 20;
-export const DEFAULT_MEDICATION_SURCHARGE_PCT = 0.1;
+// Medicamento: monto FIJO por noche y por mascota. Antes era 10 % del
+// hospedaje, pero el hotel cobra $50 la noche (2 noches de $350 → $800, no
+// $770); el porcentaje solo cuadraba con un perro de $500 la noche.
+export const DEFAULT_MEDICATION_FEE_PER_NIGHT = 50;
 export const DEFAULT_DAYCARE_HOUR_PRICE = 25;
 
 export interface LodgingPricingConfig {
   pricePerDaySmall: number;
   pricePerDayLarge: number;
   largeWeightKg: number;
-  medicationSurchargePct: number;
+  /** Recargo por administrar medicamento: pesos por noche, por mascota. */
+  medicationFeePerNight: number;
   // Tarifa ÚNICA por hora de guardería (y de horas extra al exceder check-out).
   daycareHourPrice: number;
 }
@@ -207,14 +211,14 @@ export const DEFAULT_LODGING_PRICING: LodgingPricingConfig = {
   pricePerDaySmall: DEFAULT_PRICE_PER_DAY_SMALL,
   pricePerDayLarge: DEFAULT_PRICE_PER_DAY_LARGE,
   largeWeightKg: DEFAULT_LARGE_WEIGHT_KG,
-  medicationSurchargePct: DEFAULT_MEDICATION_SURCHARGE_PCT,
+  medicationFeePerNight: DEFAULT_MEDICATION_FEE_PER_NIGHT,
   daycareHourPrice: DEFAULT_DAYCARE_HOUR_PRICE,
 };
 
 /** Lo que necesita el cálculo de hospedaje (subconjunto de LodgingPricingConfig). */
 export type StayPricingConfig = Pick<
   LodgingPricingConfig,
-  "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg" | "medicationSurchargePct"
+  "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg" | "medicationFeePerNight"
 >;
 
 /** Precio por noche según peso (umbral de "grande" configurable). */
@@ -352,9 +356,8 @@ export function stayDayAnchor(
 // ============================================================
 // Hospedaje (STAY) — UNA sola fórmula de precio por mascota.
 //
-// Antes el recargo por medicamento estaba quemado como 0.1 en cinco rutas
-// (aunque LodgingPricing.medicationSurchargePct es editable en Config →
-// Tarifas), cada una redondeaba distinto (Math.ceil / toFixed(2) / nada) y las
+// Antes el recargo por medicamento estaba quemado en cinco rutas (aunque es
+// editable en Config → Tarifas), cada una redondeaba distinto (Math.ceil / toFixed(2) / nada) y las
 // noches se contaban con Math.ceil(ms/86_400_000) en unas y computeDays en
 // otras. Todo lo que cobra o persiste un hospedaje pasa por aquí:
 // /payments/create-intent (lo que Stripe cobra), /reservations/multi (lo que
@@ -413,7 +416,7 @@ export interface StayPricing {
   pricePerDay: number;
   /** pricePerDay × totalDays. */
   lodging: number;
-  /** ceil(lodging × medicationSurchargePct), 0 sin medicamento. */
+  /** ceil(medicationFeePerNight × totalDays), 0 sin medicamento. */
   medicationFee: number;
   addonsAmount: number;
   discount: number;
@@ -433,7 +436,7 @@ export interface StayPricing {
  *
  * Redondeo (ver ceilMoney): medicationFee y sameDayFee suben a peso entero,
  * cada uno por su lado; lodging/subtotal/total solo se normalizan a centavos.
- * Con la config por defecto (350/450 por noche, 10 %) todos los montos son
+ * Con la config por defecto (350/450 por noche, $50 de medicamento) todos los montos son
  * enteros y el ceil no cambia nada; con tarifas con centavos o descuentos
  * raros, la diferencia contra el cálculo viejo es de a lo más un peso por
  * concepto y por mascota.
@@ -441,6 +444,16 @@ export interface StayPricing {
  * `totalDays` nunca es negativo; el caller debe rechazar 0 (una estancia es
  * de al menos una noche).
  */
+/** Recargo de medicamento de UNA mascota: tarifa por noche × noches, a peso entero. */
+export function medicationFeeFor(
+  totalDays: number,
+  config: Pick<LodgingPricingConfig, "medicationFeePerNight">
+): number {
+  return config.medicationFeePerNight > 0
+    ? ceilMoney(Math.max(0, totalDays) * config.medicationFeePerNight)
+    : 0;
+}
+
 export function computeStayPricing(input: StayPricingInput): StayPricing {
   const { config } = input;
   const days =
@@ -450,9 +463,7 @@ export function computeStayPricing(input: StayPricingInput): StayPricing {
   const pricePerDay = pricePerDayForWeight(input.petWeightKg, config);
   const lodging = roundMoney(pricePerDay * totalDays);
   const medicationFee =
-    input.hasMedication && config.medicationSurchargePct > 0
-      ? ceilMoney(lodging * config.medicationSurchargePct)
-      : 0;
+    input.hasMedication ? medicationFeeFor(totalDays, config) : 0;
   const addonsAmount = roundMoney(input.addonsAmount ?? 0);
   const discount = roundMoney(input.discount ?? 0);
   const subtotal = roundMoney(

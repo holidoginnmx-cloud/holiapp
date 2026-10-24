@@ -31,7 +31,7 @@ const CATALOG: QuoteCatalog = {
     priceProbarfSmall: 300,
     priceProbarfLarge: 400,
     largeWeightKg: 20,
-    medicationSurchargePct: 0.1,
+    medicationFeePerNight: 50,
     daycareHourPrice: 25,
   },
   bathVariants: [
@@ -102,10 +102,10 @@ describe("paridad STAY · reservations.ts:894-940", () => {
         it(`coincide sin baño — ${etiqueta}`, () => {
           // ORÁCULO — copia literal de reservations.ts:
           //   const lodging = pricePerDayForWeight(p.weight, cfg) * totalDays
-          //   const medicationSurcharge = medication ? lodging * 0.1 : 0
+          //   const medicationSurcharge = medication ? 50 * totalDays : 0
           //   amount = lodging + medicationSurcharge + bathPrice
           const lodging = pricePerDayForWeight(peso, CATALOG.lodging) * noches;
-          const esperado = lodging + (medicamento ? lodging * 0.1 : 0);
+          const esperado = lodging + (medicamento ? 50 * noches : 0);
 
           const obtenido = total(
             computeQuote(
@@ -123,7 +123,7 @@ describe("paridad STAY · reservations.ts:894-940", () => {
         it(`coincide con baño deslanado+corte — ${etiqueta}`, () => {
           const lodging = pricePerDayForWeight(peso, CATALOG.lodging) * noches;
           const esperado =
-            lodging + (medicamento ? lodging * 0.1 : 0) + precioBano(peso, true, true);
+            lodging + (medicamento ? 50 * noches : 0) + precioBano(peso, true, true);
 
           const obtenido = total(
             computeQuote(

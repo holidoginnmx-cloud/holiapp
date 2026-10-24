@@ -20,6 +20,7 @@ import {
   bathSizeKey,
   computeDaycareHours,
   dewormSizeFromWeight,
+  medicationFeeFor,
   nightsBetweenYMD,
   pricePerDayForWeight,
   sizeFromWeight,
@@ -81,7 +82,7 @@ export interface QuotePetInput {
   size?: PetSizeKey | null;
   /** ¿`size` la declaró una persona viendo al perro, o la rellenó el API? */
   sizeDeclared?: boolean | null;
-  /** Recargo de medicamento: +medicationSurchargePct sobre SU hospedaje. */
+  /** Recargo de medicamento: medicationFeePerNight × noches de SU hospedaje. */
   hasMedication?: boolean;
 }
 
@@ -443,17 +444,17 @@ export function computeQuote(
         })
       );
 
-      // Recargo por medicamento: porcentaje sobre el hospedaje de ESTE perro.
-      // La ruta de reservas lo escribe con `.toFixed(2)`; aquí el round2 hace
-      // lo mismo. Es por-perro, no por cotización.
-      if (pet.hasMedication && cfg.medicationSurchargePct > 0) {
-        const fee = round2(lodging * cfg.medicationSurchargePct);
+      // Recargo por medicamento: tarifa por noche × noches de ESTE perro, con
+      // la misma función que la reserva (medicationFeeFor) para que la
+      // cotización y la reserva convertida den lo mismo. Es por-perro.
+      const fee = pet.hasMedication ? medicationFeeFor(totalDays, cfg) : 0;
+      if (fee > 0) {
         lines.push(
           line({
             kind: "MEDICATION_SURCHARGE",
             petKey: pet.key,
             label: "Administración de medicamento",
-            detail: `${Math.round(cfg.medicationSurchargePct * 100)}% sobre el hospedaje`,
+            detail: `${money(cfg.medicationFeePerNight)} por noche`,
             quantity: 1,
             unitPrice: fee,
             listPrice: fee,

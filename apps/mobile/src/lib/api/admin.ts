@@ -443,7 +443,8 @@ export interface AdminLodgingPricing {
   pricePerDaySmall: number;
   pricePerDayLarge: number;
   largeWeightKg: number;
-  medicationSurchargePct: number;
+  /** Recargo por medicamento: pesos por noche, por mascota. */
+  medicationFeePerNight: number;
   // Tarifa única por hora de guardería (y horas extra al exceder check-out).
   daycareHourPrice: number;
   updatedAt: string;

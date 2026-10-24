@@ -85,7 +85,7 @@ const prismaFake = (
         pricePerDaySmall: 350,
         pricePerDayLarge: 450,
         largeWeightKg: 20,
-        medicationSurchargePct: 10,
+        medicationFeePerNight: 50,
         daycareExtraHourPrice: opciones.hourPrice ?? 25,
       }),
     },

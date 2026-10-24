@@ -67,6 +67,7 @@ import {
   hoursUntilHotelDay,
   allocateProportional,
   ceilMoney,
+  medicationFeeFor,
   SAME_DAY_SURCHARGE_PCT,
   DEFAULT_LODGING_PRICING,
 } from "@holidoginn/shared/src/pricing";
@@ -318,7 +319,12 @@ function CreateReservationScreenContent() {
     queryFn: getPublicLodgingPricing,
     staleTime: 5 * 60 * 1000,
   });
-  const pricingConfig = lodgingPricing ?? DEFAULT_LODGING_PRICING;
+  // Defaults debajo: un servidor sin desplegar todavía no manda
+  // `medicationFeePerNight`, y sin él el recargo salía NaN.
+  const pricingConfig = useMemo(
+    () => ({ ...DEFAULT_LODGING_PRICING, ...lodgingPricing }),
+    [lodgingPricing]
+  );
 
   const priceBreakdown = useMemo(
     () =>
@@ -381,17 +387,17 @@ function CreateReservationScreenContent() {
 
   const bathTotal = Object.values(bathPriceByPet).reduce((s, n) => s + n, 0);
 
-  // Recargo por medicamento sobre el hospedaje de cada mascota (porcentaje de
-  // la config; mismo redondeo hacia arriba que el servidor).
+  // Recargo por medicamento de cada mascota: tarifa por noche de la config ×
+  // noches, con la misma función que cobra el servidor (medicationFeeFor).
   const medicationSurchargeByPet = useMemo(() => {
     const out: Record<string, number> = {};
     for (const row of priceBreakdown) {
       if (medicationByPet[row.pet.id]?.enabled) {
-        out[row.pet.id] = Math.ceil(row.subtotal * pricingConfig.medicationSurchargePct);
+        out[row.pet.id] = medicationFeeFor(totalDays, pricingConfig);
       }
     }
     return out;
-  }, [priceBreakdown, medicationByPet, pricingConfig]);
+  }, [priceBreakdown, medicationByPet, pricingConfig, totalDays]);
   const medicationTotal = Object.values(medicationSurchargeByPet).reduce(
     (s, n) => s + n,
     0
@@ -1181,12 +1187,12 @@ function CreateReservationScreenContent() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>¿Alguna mascota toma medicamento?</Text>
           <Text style={styles.hint}>
-            Opcional. Incluye un cargo extra del{" "}
-            {Math.round(pricingConfig.medicationSurchargePct * 100)}% por mascota.
+            Opcional. Incluye un cargo extra de{" "}
+            {formatCurrency(pricingConfig.medicationFeePerNight)} por noche por mascota.
           </Text>
           {selectedPets.map((pet) => {
             const state = medicationByPet[pet.id] ?? { enabled: false, notes: "" };
-            // Mismo número que el resumen: sale de la config, no de un 10% fijo.
+            // Mismo número que el resumen: sale de la config, no de un monto fijo.
             const surcharge = medicationSurchargeByPet[pet.id] ?? 0;
             const notesEmpty = state.enabled && state.notes.trim().length === 0;
             return (
@@ -1375,7 +1381,7 @@ function CreateReservationScreenContent() {
             return (
               <View key={`med-${petId}`} style={styles.priceRow}>
                 <Text style={styles.priceLabel}>
-                  Medicamento {pet?.name ?? ""} (+10%)
+                  Medicamento {pet?.name ?? ""}
                 </Text>
                 <Text style={styles.priceValue}>
                   {formatCurrency(surcharge)}
