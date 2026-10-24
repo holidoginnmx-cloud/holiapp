@@ -408,6 +408,40 @@ export async function createTeamReservation(
     if (!room) return fail(404, "Cuarto no encontrado", "ROOM_NOT_FOUND");
     if (!room.isActive) return fail(400, `El cuarto ${room.name} no está activo`, "ROOM_INACTIVE");
   }
+  // Un perro no puede tener dos estancias que se crucen. El cupo del cuarto no
+  // lo atrapa: el 08 es para 4, y Tyson quedó capturado dos veces en el mismo
+  // cuarto y las mismas fechas (2026-10-23, once minutos de diferencia) — el
+  // equipo veía la tarjeta repetida en el calendario y no sabía cuál era la buena.
+  // Mismo criterio que el cupo: una estancia ya concluida no estorba.
+  const overlapping = await prisma.reservation.findMany({
+    where: {
+      petId: { in: petIdList },
+      reservationType: "STAY",
+      status: { notIn: ["CANCELLED", "CHECKED_OUT"] },
+      AND: [{ checkIn: { lt: checkOut } }, { checkOut: { gt: checkIn } }],
+    },
+    select: { id: true, petId: true, checkIn: true, checkOut: true, status: true },
+  });
+  if (overlapping.length > 0) {
+    const names = Array.from(
+      new Set(overlapping.map((r) => groupPets.find((p) => p.id === r.petId)?.name ?? "La mascota"))
+    ).join(", ");
+    return fail(
+      409,
+      `${names} ya tiene una estancia en esas fechas. Edita esa reservación en lugar de crear otra.`,
+      "RESERVATION_OVERLAP",
+      {
+        conflicts: overlapping.map((r) => ({
+          reservationId: r.id,
+          petId: r.petId,
+          checkIn: r.checkIn,
+          checkOut: r.checkOut,
+          status: r.status,
+        })),
+      }
+    );
+  }
+
   // Cupo por cuarto ANTES de escribir (mensaje claro); se re-verifica con lock
   // dentro de la transacción.
   for (const id of uniqueRoomIds) {

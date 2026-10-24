@@ -34,6 +34,33 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-24",
+    title: "Calendario más claro",
+    items: [
+      {
+        icon: "water-outline",
+        title: "El baño que ya terminaste cambia de color en el calendario",
+        body:
+          "Al marcar un baño como completado, si todavía falta cobrarlo, su " +
+          "tarjeta en Reservaciones se pone ámbar y dice «Baño listo · por " +
+          "cobrar», igual que en la pestaña Baños. Se pone gris («Concluida») " +
+          "cuando se registra el pago. Antes se quedaba en «Confirmada» y " +
+          "parecía que no se había guardado.",
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "copy-outline",
+        title: "Ya no se puede capturar dos veces la misma estancia",
+        body:
+          "Si un perro ya tiene un hospedaje en esas fechas, la app te avisa " +
+          "«Tyson ya tiene una estancia en esas fechas» en lugar de crear otra " +
+          "tarjeta repetida en el calendario. Para cambiar algo, abre la que ya " +
+          "existe y edítala.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-20",
     title: "Pedidos de la tienda en la app",
     items: [

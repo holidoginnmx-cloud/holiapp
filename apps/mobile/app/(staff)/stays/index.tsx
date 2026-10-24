@@ -23,6 +23,7 @@ import {
 import { ErrorState } from "@/components/ErrorState";
 import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import { LIVE_OPS } from "@/lib/queryOptions";
+import { isBathReadyToCollect } from "@/lib/bathStatus";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
@@ -44,6 +45,7 @@ function bathToCalendarReservation(b: StaffBath): CalendarReservation {
     hasBalance: false,
     hasDeslanado: bathAddon?.variant?.deslanado ?? false,
     hasCorte: bathAddon?.variant?.corte ?? false,
+    bathReady: isBathReadyToCollect(b),
     pet: {
       id: b.pet?.id ?? "",
       name: b.pet?.name ?? "—",

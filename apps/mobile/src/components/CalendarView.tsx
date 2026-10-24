@@ -49,6 +49,12 @@ export interface CalendarReservation {
   hasCorte?: boolean;
   /** Hospedaje que incluye un baño (servicio en el checkout). */
   hasBath?: boolean;
+  /**
+   * Baño suelto ya hecho al que le falta el cobro (`isBathReadyToCollect`). Se
+   * queda en CONFIRMED a propósito, así que sin esto el calendario lo pintaba
+   * igual que uno sin empezar: el equipo lo marcaba completado y "no cambiaba".
+   */
+  bathReady?: boolean;
   pet: { id: string; name: string; breed?: string | null; photoUrl?: string | null };
   room: { id: string; name: string } | null;
   owner?: { id: string; firstName: string; lastName: string };
@@ -216,6 +222,7 @@ export function CalendarView({
       checkInTime={r.checkInTime}
       checkOutTime={r.checkOutTime}
       hasBath={r.hasBath}
+      bathReady={r.bathReady}
       totalAmount={Number(r.totalAmount)}
       paymentType={r.paymentType}
       hasBalance={r.hasBalance}

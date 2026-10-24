@@ -22,6 +22,7 @@ import {
 } from "@/components/CalendarView";
 import { ErrorState } from "@/components/ErrorState";
 import { LIVE_OPS } from "@/lib/queryOptions";
+import { isBathReadyToCollect } from "@/lib/bathStatus";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
@@ -66,6 +67,8 @@ export default function AdminReservations() {
   const calendarReservations: CalendarReservation[] = filtered.map((r) => ({
     ...(r as unknown as CalendarReservation),
     hasBath: r.hasBath ?? (r.hasDeslanado || r.hasCorte),
+    // Solo citas sueltas: el baño de un hospedaje no cambia el estado de la estancia.
+    bathReady: r.reservationType === "BATH" && isBathReadyToCollect(r),
   }));
 
   if (isError) {
