@@ -329,6 +329,7 @@ export default function AdminDashboard() {
                 <View style={styles.horizontalCard}>
                   <ReservationCard
                     petName={item.pet?.name ?? "—"}
+                    petPhotoUrl={item.pet?.photoUrl ?? null}
                     roomName={item.room?.name ?? null}
                     status={item.status}
                     checkIn={item.checkIn}
@@ -384,6 +385,7 @@ export default function AdminDashboard() {
             <ReservationCard
               key={item.id}
               petName={item.pet?.name ?? "—"}
+              petPhotoUrl={item.pet?.photoUrl ?? null}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}
@@ -436,6 +438,7 @@ export default function AdminDashboard() {
             <ReservationCard
               key={item.id}
               petName={item.pet?.name ?? "—"}
+              petPhotoUrl={item.pet?.photoUrl ?? null}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}
@@ -488,6 +491,7 @@ export default function AdminDashboard() {
             <ReservationCard
               key={item.id}
               petName={item.pet?.name ?? "—"}
+              petPhotoUrl={item.pet?.photoUrl ?? null}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}

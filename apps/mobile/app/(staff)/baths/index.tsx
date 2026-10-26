@@ -371,6 +371,7 @@ export default function StaffBaths() {
         )}
         <ReservationCard
           petName={item.pet?.name ?? "—"}
+          petPhotoUrl={item.pet?.photoUrl ?? null}
           roomName={null}
           status={item.status}
           checkIn={item.checkIn}

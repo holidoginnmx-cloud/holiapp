@@ -105,6 +105,7 @@ export default function StaffDaycares() {
       <View style={styles.block}>
         <ReservationCard
           petName={d.pet?.name ?? "—"}
+          petPhotoUrl={d.pet?.photoUrl ?? null}
           roomName={null}
           status={d.status}
           reservationType="DAYCARE"

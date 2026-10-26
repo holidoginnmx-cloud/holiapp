@@ -108,6 +108,7 @@ export default function AdminHospedados() {
           renderItem={({ item }) => (
             <ReservationCard
               petName={item.pet?.name ?? "—"}
+              petPhotoUrl={item.pet?.photoUrl ?? null}
               roomName={item.room?.name ?? null}
               status={item.status}
               checkIn={item.checkIn}

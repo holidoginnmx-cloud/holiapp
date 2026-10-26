@@ -539,6 +539,7 @@ export default function HomeScreen() {
                 <ReservationCard
                   key={res.id}
                   petName={res.pet?.name ?? "—"}
+                  petPhotoUrl={res.pet?.photoUrl ?? null}
                   roomName={res.room?.name ?? null}
                   status={res.status}
                   checkIn={res.checkIn}
@@ -574,6 +575,7 @@ export default function HomeScreen() {
                 <ReservationCard
                   key={res.id}
                   petName={res.pet?.name ?? "—"}
+                  petPhotoUrl={res.pet?.photoUrl ?? null}
                   roomName={res.room?.name ?? null}
                   status={res.status}
                   checkIn={res.checkIn}

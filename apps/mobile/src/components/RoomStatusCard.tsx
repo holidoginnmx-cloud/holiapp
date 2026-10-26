@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { RoomWithStatus } from "@/lib/api";
 import { formatName, formatStayDay } from "@/lib/format";
+import { PetAvatar } from "./PetAvatar";
 
 interface RoomStatusCardProps {
   room: RoomWithStatus;
@@ -79,7 +80,7 @@ export function RoomStatusCard({ room, onPress }: RoomStatusCardProps) {
         {occupants.length > 0 &&
           occupants.map((occupant) => (
             <View key={occupant.reservationId} style={styles.occupantRow}>
-              <Ionicons name="paw" size={14} color={COLORS.errorText} />
+              <PetAvatar photoUrl={occupant.pet?.photoUrl} size={24} />
               <Text style={styles.occupantText} numberOfLines={1}>
                 {formatName(occupant.pet?.name ?? "—")} —{" "}
                 {formatName(occupant.owner?.name ?? "—")}

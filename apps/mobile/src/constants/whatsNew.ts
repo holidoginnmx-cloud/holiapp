@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-26",
+    title: "La foto de cada perro en las tarjetas",
+    items: [
+      {
+        icon: "image-outline",
+        title: "Reconoce al perro de un vistazo",
+        body:
+          "Las tarjetas de hospedajes, baños y guardería ahora muestran la " +
+          "foto del perro en el circulito junto a su nombre. También sale en " +
+          "Reportes de hoy y en Cuartos. Si el perro no tiene foto, se queda " +
+          "la patita: súbela desde su ficha. En reservas de varios perros " +
+          "también se queda la patita.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-24-b",
     title: "Medicamento: $50 por noche",
     items: [

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getReservations, getAdminStats } from "@/lib/api";
 import { formatName } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { PetAvatar } from "@/components/PetAvatar";
 
 export default function AdminReportesHoy() {
   const router = useRouter();
@@ -107,9 +108,7 @@ export default function AdminReportesHoy() {
                 onPress={() => router.push(`/admin/reservation/${item.id}` as any)}
                 activeOpacity={0.85}
               >
-                <View style={styles.avatar}>
-                  <Ionicons name="paw" size={18} color={COLORS.primary} />
-                </View>
+                <PetAvatar photoUrl={item.pet?.photoUrl} size={36} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.petName}>{formatName(item.pet?.name ?? "—")}</Text>
                   <Text style={styles.metaText}>
@@ -190,14 +189,6 @@ const styles = StyleSheet.create({
   rowMissing: {
     borderWidth: 1,
     borderColor: COLORS.errorBorder,
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
   },
   petName: {
     fontSize: 15,

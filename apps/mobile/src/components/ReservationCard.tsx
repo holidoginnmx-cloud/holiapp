@@ -13,9 +13,12 @@ import {
   BALANCE_AFTER_CHECKOUT_MAX_DAYS,
 } from "@/lib/format";
 import { PawRating } from "./PawRating";
+import { PetAvatar } from "./PetAvatar";
 
 interface ReservationCardProps {
   petName: string;
+  /** Foto del perro; en reservas de varios perros se ignora (queda la patita). */
+  petPhotoUrl?: string | null;
   roomName: string | null;
   status: string;
   checkIn?: string | Date | null;
@@ -149,6 +152,7 @@ function ReservationCardBase({
   hasCorte,
   bathReady,
   incompleteRecord,
+  petPhotoUrl,
   onPress,
 }: ReservationCardProps) {
   const isBath = reservationType === "BATH";
@@ -230,9 +234,7 @@ function ReservationCardBase({
       <View style={styles.body}>
         <View style={styles.header}>
           <View style={styles.titleWrap}>
-            <View style={styles.petIconWrap}>
-              <Ionicons name="paw" size={14} color={COLORS.primary} />
-            </View>
+            <PetAvatar photoUrl={showPetCount ? null : petPhotoUrl} size={40} />
             <Text style={styles.petName} numberOfLines={1}>
               {formatName(petName)}
             </Text>
@@ -558,17 +560,9 @@ const styles = StyleSheet.create({
   titleWrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     flex: 1,
     minWidth: 0,
-  },
-  petIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
   },
   petName: {
     fontSize: 18,

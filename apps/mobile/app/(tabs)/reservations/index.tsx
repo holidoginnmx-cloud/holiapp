@@ -28,6 +28,8 @@ type GroupedReservation = {
   id: string;
   groupId: string | null;
   petNames: string;
+  /** Foto del primer perro; la card la oculta si el grupo es de varios. */
+  petPhotoUrl: string | null;
   roomNames: string | null;
   status: string;
   reservationType?: "STAY" | "BATH" | "DAYCARE";
@@ -83,6 +85,7 @@ function groupReservations(
       id: items[0].id,
       groupId,
       petNames: items.map((i) => i.pet?.name ?? "—").join(", "),
+      petPhotoUrl: items[0].pet?.photoUrl ?? null,
       roomNames:
         [...new Set(items.map((i) => i.room?.name).filter(Boolean))].join(", ") || null,
       status: items[0].status,
@@ -121,6 +124,7 @@ function groupReservations(
       id: r.id,
       groupId: null,
       petNames: r.pet?.name ?? "—",
+      petPhotoUrl: r.pet?.photoUrl ?? null,
       roomNames: r.room?.name ?? null,
       status: r.status,
       reservationType: r.reservationType,
@@ -236,6 +240,7 @@ const ReservationRow = memo(function ReservationRow({
   return (
     <ReservationCard
       petName={item.petNames}
+      petPhotoUrl={item.petPhotoUrl}
       roomName={item.roomNames}
       status={item.status}
       checkIn={item.checkIn}

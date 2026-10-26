@@ -213,6 +213,7 @@ export function CalendarView({
     <ReservationCard
       key={r.id}
       petName={r.pet?.name ?? "—"}
+      petPhotoUrl={r.pet?.photoUrl ?? null}
       roomName={r.room?.name ?? null}
       status={r.status}
       checkIn={r.checkIn}
