@@ -12,6 +12,7 @@ import { canAccessReservation, sharedPetIds } from "../lib/petAccess";
 import { LEGAL_DOC_VERSIONS, REQUIRED_FOR_BOOKING } from "../lib/legal";
 import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from "../lib/manualPayment";
 import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
+import { maybeConcludeStandaloneBath } from "./baths";
 import {
   getLodgingPricing,
   billableBathSize,
@@ -617,6 +618,11 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       },
     });
 
+    // Si liquida un baño suelto ya terminado, lo cierra (ver /admin/payments/manual).
+    if (reservation.reservationType === "BATH") {
+      await maybeConcludeStandaloneBath(prisma, reservationId);
+    }
+
     // Email "pago recibido" — lookups en paralelo (antes 2 seriales).
     const [owner, pet] = await Promise.all([
       prisma.user.findUnique({
@@ -734,6 +740,13 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
           notes: notes || `Pago manual registrado por admin (${methodTag(method, cardBrand)})`,
         },
       });
+
+      // Un baño suelto ya terminado se queda en CONFIRMED hasta liquidarse; si
+      // este pago lo liquida hay que cerrarlo aquí, o se queda para siempre en
+      // «Baño listo · por cobrar» aunque ya esté pagado. No-op si no aplica.
+      if (reservation.reservationType === "BATH") {
+        await maybeConcludeStandaloneBath(prisma, reservationId);
+      }
 
       return reply.status(201).send(payment);
     }

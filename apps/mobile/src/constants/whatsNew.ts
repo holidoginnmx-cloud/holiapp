@@ -34,6 +34,22 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-27",
+    title: "El baño pagado ya se cierra solo",
+    items: [
+      {
+        icon: "checkmark-circle-outline",
+        title: "Cobras el baño y pasa a Concluida",
+        body:
+          "Si el baño ya estaba terminado y registras el pago con «Registrar " +
+          "pago manual», ahora pasa solo a «Concluida» (verde). Antes se " +
+          "quedaba en ámbar «Baño listo · por cobrar» aunque ya estuviera " +
+          "pagado completo. Lo mismo cuando el cliente liquida desde su app.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-26",
     title: "La foto de cada perro en las tarjetas",
     items: [

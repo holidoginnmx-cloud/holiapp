@@ -17,6 +17,7 @@ import {
   type ChangeTotalResult,
 } from "./pricing";
 import { planRefund, processRefund } from "./refund";
+import { maybeConcludeStandaloneBath } from "../routes/baths";
 
 /**
  * Operaciones de administración de una reservación, extraídas de los handlers
@@ -1296,6 +1297,12 @@ export async function registerManualPayment(
   });
 
   const balance = Number((total - pagado - amount).toFixed(2));
+
+  // Un baño suelto ya terminado se queda en CONFIRMED hasta liquidarse; si este
+  // pago lo liquida hay que cerrarlo aquí. No-op si no es baño o aún debe.
+  if (reservation.reservationType === "BATH") {
+    await maybeConcludeStandaloneBath(prisma, reservation.id);
+  }
 
   // Saldo del grupo completo (lo que el cliente ve como "lo que debo").
   let groupBalance = balance;

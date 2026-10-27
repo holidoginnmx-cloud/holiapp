@@ -14,6 +14,10 @@ vi.mock("./notify", () => ({
   notifyPetAudience: vi.fn(async () => 0),
   notifyTeamReservationUpdated: vi.fn(async () => undefined),
 }));
+// El cierre del baño suelto lee el ledger completo; aquí solo importa que se pida.
+vi.mock("../routes/baths", () => ({
+  maybeConcludeStandaloneBath: vi.fn(async () => false),
+}));
 vi.mock("./petAccess", () => ({
   petAudienceIds: vi.fn(async (_p: unknown, _petId: string, ownerId?: string) =>
     ownerId ? [ownerId] : []
@@ -21,6 +25,7 @@ vi.mock("./petAccess", () => ({
 }));
 
 import { processRefund } from "./refund";
+import { maybeConcludeStandaloneBath } from "../routes/baths";
 import { notifyPetAudience, notifyUsers, notifyTeamReservationUpdated } from "./notify";
 import {
   planGroupCancellation,
@@ -584,6 +589,59 @@ describe("registerManualPayment", () => {
     expect(creado!.cardBrand).toBeNull();
     expect(creado!.cardFeeAmount).toBeNull();
     expect(res.data.overpaid).toBe(100);
+  });
+
+  it("en un baño intenta cerrarlo (si ya terminó y quedó liquidado pasa a CHECKED_OUT)", async () => {
+    const prisma = {
+      reservation: {
+        findUnique: async () => ({
+          id: "res_bath",
+          status: "CONFIRMED",
+          reservationType: "BATH",
+          totalAmount: 530,
+          ownerId: "usr_owner",
+          petId: "pet_1",
+          groupId: null,
+          pet: { name: "Sisy" },
+          payments: [],
+        }),
+      },
+      payment: { create: async () => ({ id: "pay_1" }) },
+    };
+    vi.mocked(maybeConcludeStandaloneBath).mockClear();
+    const res = await registerManualPayment(prisma as unknown as Db, {
+      reservationId: "res_bath",
+      input: { amount: 530, method: "CARD", cardBrand: "DEBIT" },
+      actor,
+    });
+    expect(res.ok).toBe(true);
+    expect(vi.mocked(maybeConcludeStandaloneBath)).toHaveBeenCalledWith(prisma, "res_bath");
+  });
+
+  it("en una estancia no toca el cierre de baños", async () => {
+    const prisma = {
+      reservation: {
+        findUnique: async () => ({
+          id: "res_stay",
+          status: "CONFIRMED",
+          reservationType: "STAY",
+          totalAmount: 1000,
+          ownerId: "usr_owner",
+          petId: "pet_1",
+          groupId: null,
+          pet: { name: "Molly" },
+          payments: [],
+        }),
+      },
+      payment: { create: async () => ({ id: "pay_1" }) },
+    };
+    vi.mocked(maybeConcludeStandaloneBath).mockClear();
+    await registerManualPayment(prisma as unknown as Db, {
+      reservationId: "res_stay",
+      input: { amount: 1000, method: "CASH" },
+      actor,
+    });
+    expect(vi.mocked(maybeConcludeStandaloneBath)).not.toHaveBeenCalled();
   });
 });
 
