@@ -174,12 +174,22 @@ export async function maybeConcludeStandaloneBath(
   if (extrasPending) return false;
 
   // Si la variante incluye extras pero aún no se han cotizado, falta cobrar.
-  const extrasNotPriced = reservation.addons.some(
-    (a) =>
-      a.variant?.serviceType?.code === "BATH" &&
-      (a.variant.deslanado || a.variant.corte) &&
-      a.extraPrice === null,
-  );
+  // Salvo que el equipo ya los metió en el total pactado al crear el baño: el
+  // catálogo cobra lo mismo con o sin corte, así que un total por encima de
+  // los add-ons + domicilio es justo ese precio (p.ej. $350 + $170 de corte).
+  // Sin esto el baño se quedaba en «por cobrar» ya pagado completo.
+  const basePrice =
+    reservation.addons.reduce((sum, a) => sum + Number(a.unitPrice), 0) +
+    Number(reservation.homeDeliveryFee ?? 0);
+  const extrasInTotal = Number(reservation.totalAmount) > basePrice + 0.01;
+  const extrasNotPriced =
+    !extrasInTotal &&
+    reservation.addons.some(
+      (a) =>
+        a.variant?.serviceType?.code === "BATH" &&
+        (a.variant.deslanado || a.variant.corte) &&
+        a.extraPrice === null,
+    );
   if (extrasNotPriced) return false;
 
   // Deposit balance: suma de payments PAID debe cubrir totalAmount.

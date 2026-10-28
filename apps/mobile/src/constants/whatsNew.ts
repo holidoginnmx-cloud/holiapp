@@ -34,6 +34,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-27-b",
+    title: "Baños con corte o deslanado: también se cierran solos",
+    items: [
+      {
+        icon: "cut-outline",
+        title: "El corte que ya cobraste en el total cuenta",
+        body:
+          "Si al crear el baño prendes «Corte» o «Deslanado» y escribes el " +
+          "total pactado (por ejemplo «$520» = baño $350 + corte $170), al " +
+          "terminarlo y pagarlo completo pasa solo a «Concluida». Antes se " +
+          "quedaba en ámbar «Baño listo · por cobrar», esperando que se " +
+          "cotizara el corte aparte. Si el total es el del catálogo, el corte " +
+          "se sigue cotizando aparte como siempre.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-27",
     title: "El baño pagado ya se cierra solo",
     items: [
