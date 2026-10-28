@@ -118,7 +118,16 @@ export const updateUser = (id: string, data: Partial<User>) =>
     body: JSON.stringify(data),
   });
 
-export const updateMyRole = (role: User["role"]) =>
+/** El equipo le pone a la ficha (sin app) el correo que le pasó el cliente.
+ * Al registrarse en la app con ese correo, la ficha se le vincula sola.
+ * 409 `TIENE_APP` / `CORREO_OCUPADO` traen el motivo en el mensaje. */
+export const setUserEmail = (id: string, email: string) =>
+  apiFetch<User>(`${ENDPOINTS.users}/${id}/email`, {
+    method: "PATCH",
+    body: JSON.stringify({ email }),
+  });
+
+export const updateMyRole =(role: User["role"]) =>
   apiFetch<User>(`${ENDPOINTS.users}/me/role`, {
     method: "PATCH",
     body: JSON.stringify({ role }),

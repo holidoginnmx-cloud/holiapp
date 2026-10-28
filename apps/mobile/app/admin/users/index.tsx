@@ -19,6 +19,7 @@ import { useOptimisticMutation } from "@/hooks/useOptimisticMutation";
 import type { User } from "@holidoginn/shared";
 import { formatName, displayEmail, NO_EMAIL_LABEL } from "@/lib/format";
 import { ErrorState } from "@/components/ErrorState";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 type RoleFilter = "OWNER" | "STAFF" | "ADMIN";
 
@@ -80,14 +81,10 @@ export default function AdminUsers() {
 
   const filtered = useMemo(() => {
     const byRole = (data ?? []).filter((u) => u.role === filter);
-    const q = search.trim().toLowerCase();
-    if (!q) return byRole;
-    return byRole.filter((u) => {
-      const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
-      const email = (u.email ?? "").toLowerCase();
-      const phone = (u.phone ?? "").toLowerCase();
-      return name.includes(q) || email.includes(q) || phone.includes(q);
-    });
+    return filtrarPorBusqueda(byRole, search, (u) => ({
+      textos: [u.firstName, u.lastName, u.email],
+      telefonos: [u.phone],
+    }));
   }, [data, filter, search]);
 
   // Optimista: el badge/toggle cambia en el mismo frame del tap; si el server

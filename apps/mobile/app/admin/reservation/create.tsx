@@ -88,6 +88,7 @@ import { BathConflictNotice } from "@/components/BathConflictNotice";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
+import { coincideBusqueda, filtrarPorBusqueda } from "@/lib/search";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -352,20 +353,17 @@ export default function AdminCreateReservation() {
     const list = Array.from(map.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-    const norm = (s: string) =>
-      s
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-    const q = norm(clientSearch.trim());
-    if (!q) {
+    if (!clientSearch.trim()) {
       return list.map((o) => ({ ...o, matchedPet: null as OwnerEntry["pets"][number] | null }));
     }
-    return list.flatMap((o) => {
-      const matchedPet = o.pets.find((p) => norm(p.name).includes(q)) ?? null;
-      if (!norm(o.name).includes(q) && !matchedPet) return [];
-      return [{ ...o, matchedPet }];
-    });
+    // Cada palabra en el nombre del dueño o de sus mascotas ("luz ruiz",
+    // "rocky luz"). El perro se preselecciona solo si la búsqueda era su nombre.
+    return filtrarPorBusqueda(list, clientSearch, (o) => ({
+      textos: [o.name, ...o.pets.map((p) => p.name)],
+    })).map((o) => ({
+      ...o,
+      matchedPet: o.pets.find((p) => coincideBusqueda(clientSearch, { textos: [p.name] })) ?? null,
+    }));
   }, [pets, clientSearch]);
 
   const ownerPets = useMemo(

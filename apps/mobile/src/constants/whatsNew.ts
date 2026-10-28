@@ -34,6 +34,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-28",
+    title: "Correo del cliente y búsqueda por palabras",
+    items: [
+      {
+        icon: "mail-outline",
+        title: "Asígnale el correo que te pasó el cliente",
+        body:
+          "En Clientes, abre la tarjeta del cliente y toca «Asignar correo». " +
+          "Cuando se registre en la app con ESE mismo correo, verá a sus " +
+          "mascotas y su historial sin hacer nada más. Solo sale en clientes " +
+          "que todavía no usan la app. Si el correo ya tiene cuenta en la " +
+          "app, te lleva a «Juntar fichas».",
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "search-outline",
+        title: "Busca con cualquier parte del nombre",
+        body:
+          "«luz ruiz» ya encuentra a «Luz Armenta Ruiz»: cada palabra se busca " +
+          "por separado, sin importar acentos ni el orden. Si escribiste algo " +
+          "con una letra de más o de menos («luiz»), también lo encuentra. " +
+          "Funciona en Clientes, nueva reserva, cotizaciones, hospedados y " +
+          "los demás buscadores de clientes.",
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-10-27-b",
     title: "Baños con corte o deslanado: también se cierran solos",
     items: [

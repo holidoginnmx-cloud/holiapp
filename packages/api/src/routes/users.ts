@@ -38,6 +38,7 @@ import {
   findLegacyCandidates as buscarFichasLegacy,
 } from "../lib/claimRequests";
 import { PetMergeError, type PetMergePair } from "../lib/petMerge";
+import { decidirCorreoFicha, parseCorreoFicha } from "../lib/ownerEmail";
 
 // Correos de walk-in que crea el equipo (no son un buzón real).
 const WALKIN_EMAIL_RE = /@holidoginn\.local$/i;
@@ -1376,6 +1377,49 @@ export default async function usersRoutes(fastify: FastifyInstance) {
               .status(409)
               .send({ error: "Ya existe un usuario con ese email" });
           }
+        }
+        throw err;
+      }
+    }
+  );
+
+  // PATCH /users/:id/email — el equipo le pone a la ficha el correo que el
+  // cliente le pasó (solo admin). Con eso, al registrarse en la app con ese
+  // correo, la ficha se le vincula sola: ver lib/ownerEmail.ts.
+  fastify.patch<{ Params: { id: string }; Body: { email?: unknown } }>(
+    "/users/:id/email",
+    { preHandler: adminAuth },
+    async (request, reply) => {
+      const email = parseCorreoFicha(request.body?.email);
+      const [ficha, ocupante] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: request.params.id },
+          select: { id: true, role: true, clerkId: true, email: true },
+        }),
+        email
+          ? prisma.user.findFirst({
+              where: { email: { equals: email, mode: "insensitive" }, id: { not: request.params.id } },
+              select: { id: true, firstName: true, lastName: true, clerkId: true, isActive: true },
+            })
+          : null,
+      ]);
+      const decision = decidirCorreoFicha(ficha, email, ocupante);
+      if (!decision.ok) {
+        const { status, ok: _ok, ...body } = decision;
+        return reply.status(status).send(body);
+      }
+      if (decision.sinCambio && ficha!.email === decision.email) {
+        return prisma.user.findUnique({ where: { id: ficha!.id } });
+      }
+      try {
+        return await prisma.user.update({
+          where: { id: ficha!.id },
+          data: { email: decision.email },
+        });
+      } catch (err) {
+        // Otro registro tomó el correo entre la consulta y el update.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          return reply.status(409).send({ error: "Ese correo ya lo tiene otro registro.", code: "CORREO_OCUPADO" });
         }
         throw err;
       }

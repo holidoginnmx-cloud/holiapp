@@ -25,6 +25,7 @@ import { useResponsive, WIDE_MAX_WIDTH } from "@/lib/responsive";
 import { LIVE_OPS } from "@/lib/queryOptions";
 import { isBathReadyToCollect } from "@/lib/bathStatus";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 // Los baños no se asignan a un staff específico — cualquiera puede verlos.
 // Solo mapeamos los `BATH` puros: los baños dentro de hospedaje ya vienen
@@ -162,16 +163,9 @@ export default function StaffStays() {
     return [...stayList, ...bathList, ...daycareList];
   }, [stays, bathsData, daycaresData]);
 
-  const filtered = combined.filter((r) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      r.pet?.name?.toLowerCase().includes(q) ||
-      r.owner?.firstName?.toLowerCase().includes(q) ||
-      r.owner?.lastName?.toLowerCase().includes(q) ||
-      r.room?.name?.toLowerCase().includes(q)
-    );
-  });
+  const filtered = filtrarPorBusqueda(combined, search, (r) => ({
+    textos: [r.pet?.name, r.owner?.firstName, r.owner?.lastName, r.room?.name],
+  }));
 
   if (isError || isErrorBaths || isErrorDaycares) {
     return (

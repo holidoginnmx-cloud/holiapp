@@ -21,6 +21,7 @@ import type { PetWithOwner } from "@/lib/api";
 import { formatName, formatPhoneInput, displayEmail, NO_EMAIL_LABEL, formatCurrency } from "@/lib/format";
 import { cloudinaryResized } from "@/lib/cloudinary";
 import { useAuthStore } from "@/store/authStore";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 type OwnerGroup = {
   id: string;
@@ -71,31 +72,32 @@ export default function AdminClients() {
     return Array.from(map.values());
   }, [pets]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return owners;
-    const q = search.toLowerCase();
-    return owners.filter(
-      (o) =>
-        o.firstName?.toLowerCase().includes(q) ||
-        o.lastName?.toLowerCase().includes(q) ||
-        o.email?.toLowerCase().includes(q) ||
-        o.pets.some(
-          (p) =>
-            p.name?.toLowerCase().includes(q) ||
-            (p.breed && p.breed.toLowerCase().includes(q))
-        )
-    );
-  }, [owners, search]);
-
   // Get credit info from users data
   const userMap = useMemo(() => {
-    if (!users) return new Map<string, { creditBalance: number; phone?: string }>();
-    const m = new Map<string, { creditBalance: number; phone?: string }>();
-    for (const u of users) {
-      m.set(u.id, { creditBalance: Number(u.creditBalance ?? 0), phone: u.phone ?? undefined });
+    const m = new Map<string, { creditBalance: number; phone?: string; hasApp: boolean }>();
+    for (const u of users ?? []) {
+      m.set(u.id, {
+        creditBalance: Number(u.creditBalance ?? 0),
+        phone: u.phone ?? undefined,
+        hasApp: u.hasApp,
+      });
     }
     return m;
   }, [users]);
+
+  const filtered = useMemo(
+    () =>
+      filtrarPorBusqueda(owners, search, (o) => ({
+        textos: [
+          o.firstName,
+          o.lastName,
+          displayEmail(o.email),
+          ...o.pets.flatMap((p) => [p.name, p.breed]),
+        ],
+        telefonos: [userMap.get(o.id)?.phone],
+      })),
+    [owners, search, userMap],
+  );
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggleExpanded = (ownerId: string) =>
@@ -280,6 +282,24 @@ export default function AdminClients() {
                   </TouchableOpacity>
                 );
               })}
+              {/* El cliente le pasa su correo al equipo por WhatsApp: con él en
+                  la ficha, al registrarse en la app se le vincula sola. Quien
+                  ya usa la app entra con el suyo y ése no se toca aquí. */}
+              {role === "ADMIN" && userInfo && !userInfo.hasApp && (
+                <TouchableOpacity
+                  style={styles.mergeRow}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    router.push(`/admin/users/email?userId=${item.id}` as any)
+                  }
+                  testID={`client-email-${item.id}`}
+                >
+                  <Ionicons name="mail-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.mergeText}>
+                    {email ? "Cambiar correo" : "Asignar correo"}
+                  </Text>
+                </TouchableOpacity>
+              )}
               {/* El mismo cliente dado de alta dos veces (Francisco Acosta,
                   sep-2026): se juntan las fichas. Solo admin. */}
               {role === "ADMIN" && (
@@ -308,7 +328,7 @@ export default function AdminClients() {
         <Ionicons name="search" size={18} color={COLORS.textDisabled} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar por nombre, mascota o email..."
+          placeholder="Buscar por nombre, mascota, correo o teléfono..."
           placeholderTextColor={COLORS.textDisabled}
           value={search}
           onChangeText={setSearch}

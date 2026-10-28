@@ -16,6 +16,7 @@ import { getReservations } from "@/lib/api";
 import { ReservationCard } from "@/components/ReservationCard";
 import { ErrorState } from "@/components/ErrorState";
 import { formatName } from "@/lib/format";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 export default function AdminHospedados() {
   const router = useRouter();
@@ -36,20 +37,9 @@ export default function AdminHospedados() {
 
   const filtered = useMemo(() => {
     const safe = stays.filter((r) => r.pet);
-    const q = search.trim().toLowerCase();
-    if (!q) return safe;
-    return safe.filter((r) => {
-      const petName = r.pet?.name?.toLowerCase() ?? "";
-      const roomName = (r.room?.name ?? "").toLowerCase();
-      const ownerFirst = (r.owner?.firstName ?? "").toLowerCase();
-      const ownerLast = (r.owner?.lastName ?? "").toLowerCase();
-      return (
-        petName.includes(q) ||
-        roomName.includes(q) ||
-        ownerFirst.includes(q) ||
-        ownerLast.includes(q)
-      );
-    });
+    return filtrarPorBusqueda(safe, search, (r) => ({
+      textos: [r.pet?.name, r.room?.name, r.owner?.firstName, r.owner?.lastName],
+    }));
   }, [stays, search]);
 
   if (isError) {

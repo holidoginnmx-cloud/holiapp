@@ -32,6 +32,7 @@ import {
 } from "@/lib/format";
 
 import { alertaDeError } from "@/lib/errorAlert";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -96,18 +97,10 @@ export default function AdminPetCoOwnersScreen() {
     const base = (users ?? []).filter(
       (u) => u.role === "OWNER" && u.isActive !== false && !linkedIds.has(u.id),
     );
-    const q = search.trim().toLowerCase();
-    if (!q) return base;
-    const digits = q.replace(/\D/g, "");
-    return base.filter((u) => {
-      const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
-      const phoneDigits = (u.phone ?? "").replace(/\D/g, "");
-      return (
-        name.includes(q) ||
-        (u.email ?? "").toLowerCase().includes(q) ||
-        (digits.length > 0 && phoneDigits.includes(digits))
-      );
-    });
+    return filtrarPorBusqueda(base, search, (u) => ({
+      textos: [u.firstName, u.lastName, u.email],
+      telefonos: [u.phone],
+    }));
   }, [users, linkedIds, search]);
 
   const invalidate = () => {

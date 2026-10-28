@@ -24,6 +24,7 @@ import {
 } from "@/lib/format";
 import { alertaDeError } from "@/lib/errorAlert";
 import { ErrorState } from "@/components/ErrorState";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -117,15 +118,10 @@ export default function MergeOwnerScreen() {
       const mio = normal(`${este.firstName ?? ""} ${este.lastName ?? ""}`);
       return otros.filter((u) => normal(`${u.firstName ?? ""} ${u.lastName ?? ""}`) === mio).slice(0, 10);
     }
-    const digitos = q.replace(/\D/g, "");
-    return otros
-      .filter(
-        (u) =>
-          normal(`${u.firstName ?? ""} ${u.lastName ?? ""}`).includes(normal(q)) ||
-          (u.email ?? "").toLowerCase().includes(q) ||
-          (digitos.length >= 4 && (u.phone ?? "").replace(/\D/g, "").includes(digitos)),
-      )
-      .slice(0, 20);
+    return filtrarPorBusqueda(otros, q, (u) => ({
+      textos: [u.firstName, u.lastName, u.email],
+      telefonos: [u.phone],
+    })).slice(0, 20);
   }, [clientes, este, busqueda]);
 
   const otro = clientes.find((u) => u.id === otroId) ?? null;

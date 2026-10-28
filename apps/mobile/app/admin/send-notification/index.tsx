@@ -22,6 +22,7 @@ import { formatName } from "@/lib/format";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 type AudienceRole = "OWNER" | "STAFF" | "ADMIN";
 const ROLE_OPTIONS: { key: AudienceRole; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -51,11 +52,9 @@ export default function SendNotificationScreen() {
 
   const owners = users?.filter((u) => u.role === "OWNER" && u.isActive) ?? [];
   const visibleOwners = (() => {
-    const q = clientSearch.trim().toLowerCase();
-    if (!q) return owners;
-    return owners.filter((u) =>
-      `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase().includes(q),
-    );
+    return filtrarPorBusqueda(owners, clientSearch, (u) => ({
+      textos: [u.firstName, u.lastName],
+    }));
   })();
 
   const mutation = useMutation({

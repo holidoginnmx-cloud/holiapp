@@ -22,6 +22,7 @@ import {
   displayEmail,
   NO_EMAIL_LABEL,
 } from "@/lib/format";
+import { filtrarPorBusqueda } from "@/lib/search";
 
 export { ScreenErrorBoundary as ErrorBoundary } from "@/components/ScreenErrorBoundary";
 
@@ -58,18 +59,10 @@ export default function AdminPetOwnerScreen() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return clients;
-    const digits = q.replace(/\D/g, "");
-    return clients.filter((u) => {
-      const name = `${u.firstName ?? ""} ${u.lastName ?? ""}`.toLowerCase();
-      const phoneDigits = (u.phone ?? "").replace(/\D/g, "");
-      return (
-        name.includes(q) ||
-        (u.email ?? "").toLowerCase().includes(q) ||
-        (digits.length > 0 && phoneDigits.includes(digits))
-      );
-    });
+    return filtrarPorBusqueda(clients, search, (u) => ({
+      textos: [u.firstName, u.lastName, u.email],
+      telefonos: [u.phone],
+    }));
   }, [clients, search]);
 
   const goToPetForm = (user: AdminUserListItem) => {
