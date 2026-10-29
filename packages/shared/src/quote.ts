@@ -516,14 +516,14 @@ export function computeQuote(
 
     // Desparasitante ───────────────────────────────────────────────────────
     // Escala de peso PROPIA (dewormSizeFromWeight): sus tramos no coinciden con
-    // los del baño. Fuera de 3.6–60 kg no hay tarifa y no se puede cotizar.
+    // los del baño. Fuera de 2–60 kg no hay tarifa y no se puede cotizar.
     if (input.deworming) {
       const dewormSize = dewormSizeFromWeight(pet.weightKg);
       if (!dewormSize) {
         return {
           ok: false,
           code: "DEWORM_OUT_OF_RANGE",
-          message: `El peso de ${pet.name} no está en el rango del desparasitante (3.6 a 60 kg)`,
+          message: `El peso de ${pet.name} no está en el rango del desparasitante (2 a 60 kg)`,
           petKey: pet.key,
         };
       }

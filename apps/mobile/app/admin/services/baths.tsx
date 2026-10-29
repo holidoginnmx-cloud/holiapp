@@ -28,10 +28,12 @@ import { alertaDeError } from "@/lib/errorAlert";
 import {
   dewormSizeRangeLabel,
   sizeRangeLabel,
+  type DewormSizeKey,
   type SizeKey,
 } from "@holidoginn/shared/src/pricing";
 
 const SIZE_LABELS: Record<string, string> = {
+  XS: "Mini",
   S: "Chico",
   M: "Mediano",
   L: "Grande",
@@ -48,7 +50,7 @@ function sizeHeading(serviceCode: string, size: string): string {
   const label = SIZE_LABELS[size] ?? size;
   const range =
     serviceCode === "DEWORMING"
-      ? dewormSizeRangeLabel(size as SizeKey)
+      ? dewormSizeRangeLabel(size as DewormSizeKey)
       : sizeRangeLabel(size as SizeKey);
   return range ? `${label} (${range})` : label;
 }
@@ -142,7 +144,7 @@ export default function AdminBaths() {
             />
           </View>
 
-          {["S", "M", "L", "XL"].map((size) => {
+          {["XS", "S", "M", "L", "XL"].map((size) => {
             const sizeVariants = service.variants.filter((v) => v.petSize === size);
             if (sizeVariants.length === 0) return null;
 

@@ -31,6 +31,7 @@ const CATALOG: QuoteCatalog = {
     { id: "b-xl", petSize: "XL", deslanado: false, corte: false, price: 520 },
   ],
   dewormVariants: [
+    { id: "d-xs", petSize: "XS", price: 80 },
     { id: "d-s", petSize: "S", price: 90 },
     { id: "d-m", petSize: "M", price: 140 },
     { id: "d-l", petSize: "L", price: 190 },
@@ -349,8 +350,14 @@ describe("computeQuote · desparasitante", () => {
     expect(b.total).toBe(2250 + 520 + 190);
   });
 
-  it("no cotiza fuera del rango cubierto (3.6–60 kg)", () => {
-    const chiquito = { key: "p", name: "Pulga", weightKg: 3 };
+  it("cotiza el tramo mini (2–3.5 kg) con la variante XS", () => {
+    const mini = { key: "p", name: "Pulga", weightKg: 3 };
+    const b = ok(computeQuote(stay({ pets: [mini], deworming: true }), CATALOG));
+    expect(b.pets[0].lines.find((l) => l.kind === "DEWORMING")?.serviceVariantId).toBe("d-xs");
+  });
+
+  it("no cotiza fuera del rango cubierto (2–60 kg)", () => {
+    const chiquito = { key: "p", name: "Migaja", weightKg: 1.5 };
     const r = computeQuote(stay({ pets: [chiquito], deworming: true }), CATALOG);
     expect(r).toMatchObject({ ok: false, code: "DEWORM_OUT_OF_RANGE" });
 

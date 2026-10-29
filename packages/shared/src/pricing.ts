@@ -90,15 +90,22 @@ export function billableBathSize(pet: {
 /**
  * Tramos de peso del DESPARASITANTE: escala PROPIA, sus cortes NO coinciden con
  * `SIZE_RANGES_KG` (baño/talla general) — no unificar. A diferencia de aquella,
- * ésta tiene piso y techo explícitos y deja huecos a propósito (< 3.6 kg,
+ * ésta tiene piso y techo explícitos y deja huecos a propósito (< 2 kg,
  * > 60 kg y los decimales entre tramos no tienen tarifa). Mismos tramos que
  * `dewormSizeKey` del admin web (lib/desparasitante.ts, repo aparte).
+ *
+ * El tramo de 2–3.5 kg (NexGard Spectra chico) usa la talla XS: el enum
+ * PetSize ya la tiene y aquí no choca con nada, porque la escala del
+ * desparasitante no comparte llaves con la del baño.
  */
+export type DewormSizeKey = "XS" | SizeKey;
+
 export const DEWORM_RANGES_KG: ReadonlyArray<{
-  size: SizeKey;
+  size: DewormSizeKey;
   minKg: number;
   maxKg: number;
 }> = [
+  { size: "XS", minKg: 2, maxKg: 3.5 },
   { size: "S", minKg: 3.6, maxKg: 7.5 },
   { size: "M", minKg: 7.6, maxKg: 15 },
   { size: "L", minKg: 15.1, maxKg: 30 },
@@ -106,7 +113,7 @@ export const DEWORM_RANGES_KG: ReadonlyArray<{
 ];
 
 /** Etiqueta legible del tramo de desparasitante ("3.6–7.5 kg"). */
-export function dewormSizeRangeLabel(size: SizeKey): string {
+export function dewormSizeRangeLabel(size: DewormSizeKey): string {
   const range = DEWORM_RANGES_KG.find((r) => r.size === size);
   if (!range) return "";
   return `${range.minKg}–${range.maxKg} kg`;
@@ -119,7 +126,7 @@ export function dewormSizeRangeLabel(size: SizeKey): string {
  */
 export function dewormSizeFromWeight(
   kg: number | null | undefined
-): SizeKey | null {
+): DewormSizeKey | null {
   if (kg == null || Number.isNaN(kg)) return null;
   for (const range of DEWORM_RANGES_KG) {
     if (kg >= range.minKg && kg <= range.maxKg) return range.size;

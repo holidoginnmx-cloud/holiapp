@@ -81,7 +81,7 @@ async function seedServices() {
   // Desparasitante (DEWORMING). Add-on con precio por PESO. Se modela con
   // `petSize` como llave (S/M/L/XL), pero los rangos de peso son propios y NO
   // coinciden con los del baño (viven en el admin: lib/desparasitante.ts):
-  //   S = 3.6–7.5 kg · M = 7.6–15 kg · L = 15.1–30 kg · XL = 30.1–60 kg.
+  //   XS = 2–3.5 kg · S = 3.6–7.5 kg · M = 7.6–15 kg · L = 15.1–30 kg · XL = 30.1–60 kg.
   // corte/deslanado no aplican (siempre false).
   // ----------------------------------------------------------------------------
   const dewormService = await prisma.serviceType.upsert({
@@ -90,7 +90,8 @@ async function seedServices() {
     create: { code: "DEWORMING", name: "Desparasitante", isActive: true },
   });
 
-  const DEWORM_PRICE: Record<"S" | "M" | "L" | "XL", number> = {
+  const DEWORM_PRICE: Record<"XS" | "S" | "M" | "L" | "XL", number> = {
+    XS: 310,
     S: 330,
     M: 350,
     L: 370,
@@ -99,7 +100,7 @@ async function seedServices() {
 
   let dewormCreated = 0;
   for (const [size, price] of Object.entries(DEWORM_PRICE) as Array<
-    ["S" | "M" | "L" | "XL", number]
+    ["XS" | "S" | "M" | "L" | "XL", number]
   >) {
     await prisma.serviceVariant.upsert({
       where: {

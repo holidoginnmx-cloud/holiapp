@@ -289,6 +289,7 @@ describe("SIZE_RANGES_KG", () => {
 
 describe("DEWORM_RANGES_KG", () => {
   it("etiqueta cada tramo con su peso", () => {
+    expect(dewormSizeRangeLabel("XS")).toBe("2–3.5 kg");
     expect(dewormSizeRangeLabel("S")).toBe("3.6–7.5 kg");
     expect(dewormSizeRangeLabel("M")).toBe("7.6–15 kg");
     expect(dewormSizeRangeLabel("L")).toBe("15.1–30 kg");
@@ -303,7 +304,8 @@ describe("DEWORM_RANGES_KG", () => {
   });
 
   it("deja fuera lo que no tiene tarifa", () => {
-    expect(dewormSizeFromWeight(3.5)).toBeNull();
+    expect(dewormSizeFromWeight(1.9)).toBeNull();
+    expect(dewormSizeFromWeight(3.55)).toBeNull(); // hueco entre XS y S
     expect(dewormSizeFromWeight(7.55)).toBeNull(); // hueco entre S y M
     expect(dewormSizeFromWeight(60.1)).toBeNull();
     expect(dewormSizeFromWeight(null)).toBeNull();
