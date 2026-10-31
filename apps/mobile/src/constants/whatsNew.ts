@@ -34,6 +34,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-10-31",
+    title: "Corrige el nombre de un cliente",
+    items: [
+      {
+        icon: "create-outline",
+        title: "«Editar nombre» en la tarjeta del cliente",
+        body:
+          "En Clientes, abre la tarjeta y toca «Editar nombre». Sirve sobre " +
+          "todo para quien se registró solo en la página web y quedó con el " +
+          "nombre de su correo (por ejemplo «albert_azuar» → «Alberto " +
+          "Azuara»). Su correo y su acceso a la app no cambian.",
+        route: "/(admin)/clients",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-10-28",
     title: "Correo del cliente y búsqueda por palabras",
     items: [

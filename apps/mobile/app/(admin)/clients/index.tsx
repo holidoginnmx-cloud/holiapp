@@ -282,6 +282,22 @@ export default function AdminClients() {
                   </TouchableOpacity>
                 );
               })}
+              {/* Quien se registra solo en el sitio queda con el nombre que
+                  sale de su correo («albert_azuar»). Solo admin: el API
+                  (PATCH /users/:id) no deja a STAFF. */}
+              {role === "ADMIN" && (
+                <TouchableOpacity
+                  style={styles.mergeRow}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    router.push(`/admin/users/name?userId=${item.id}` as any)
+                  }
+                  testID={`client-name-${item.id}`}
+                >
+                  <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.mergeText}>Editar nombre</Text>
+                </TouchableOpacity>
+              )}
               {/* El cliente le pasa su correo al equipo por WhatsApp: con él en
                   la ficha, al registrarse en la app se le vincula sola. Quien
                   ya usa la app entra con el suyo y ése no se toca aquí. */}
