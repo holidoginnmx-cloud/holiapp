@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { stayPackingNote } from "@holidoginn/shared";
 
 const apiKey = process.env.RESEND_API_KEY;
 const fromAddress = process.env.EMAIL_FROM || "HolidogInn <hola@holidoginn.com>";
@@ -62,16 +63,20 @@ export async function sendEmail(args: SendArgs): Promise<boolean> {
 const mx = (n: number) =>
   `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
+// checkIn/checkOut se guardan como el DÍA a las 00:00 UTC: formatear en la
+// zona del servidor los corre un día atrás en cualquier máquina que no esté en
+// UTC (Railway sí lo está, pero no hay que depender de eso).
 const esDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("es-MX", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
 
 const layout = (title: string, bodyHtml: string): string => `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>${title}</title></head>
+<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f6f6f6;color:#222;">
   <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
     <div style="background:#fff;border-radius:12px;padding:32px 24px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
@@ -102,6 +107,17 @@ export type ReservationConfirmedData = {
 
 export function reservationConfirmedTemplate(d: ReservationConfirmedData) {
   const pets = d.petNames.length === 1 ? d.petNames[0] : d.petNames.join(", ");
+  // El nombre lo escribe el cliente: escapado antes de entrar al HTML.
+  const petsHtml = escapeHtml(pets);
+  const packing = stayPackingNote(d.petNames);
+  const packingHtml = `<div style="margin:16px 0;padding:14px 16px;background:#eef6f4;border-radius:10px;font-size:14px;line-height:1.5;">
+      <p style="margin:0 0 8px;font-weight:700;">${escapeHtml(packing.headline)}</p>
+      <p style="margin:0 0 4px;">${escapeHtml(packing.providesLabel)}</p>
+      <ul style="margin:0;padding-left:20px;">
+        ${packing.items.map((it) => `<li>${escapeHtml(it)}</li>`).join("")}
+      </ul>
+    </div>`;
+  const packingText = `${packing.headline}\n${packing.providesLabel}\n${packing.items.map((it) => `- ${it}`).join("\n")}`;
   const subject =
     d.petNames.length === 1
       ? `Reservación confirmada para ${pets} 🐕`
@@ -116,16 +132,17 @@ export function reservationConfirmedTemplate(d: ReservationConfirmedData) {
   const html = layout(
     subject,
     `
-    <h1 style="font-size:20px;margin:0 0 12px;">¡Listo, ${d.ownerFirstName}!</h1>
+    <h1 style="font-size:20px;margin:0 0 12px;">¡Listo, ${escapeHtml(d.ownerFirstName)}!</h1>
     <p style="font-size:15px;line-height:1.5;">
-      La estancia de <b>${pets}</b> está confirmada. Nuestro equipo se prepara para recibir a tu familia peluda.
+      La estancia de <b>${petsHtml}</b> está confirmada. Nuestro equipo se prepara para recibir a tu familia peluda.
     </p>
     <table role="presentation" style="width:100%;margin:16px 0;border-collapse:collapse;font-size:14px;">
       <tr><td style="padding:8px 0;color:#666;">Check-in</td><td style="padding:8px 0;text-align:right;"><b>${esDate(d.checkIn)}</b></td></tr>
       <tr><td style="padding:8px 0;color:#666;">Check-out</td><td style="padding:8px 0;text-align:right;"><b>${esDate(d.checkOut)}</b></td></tr>
-      ${d.roomName ? `<tr><td style="padding:8px 0;color:#666;">Cuarto</td><td style="padding:8px 0;text-align:right;"><b>${d.roomName}</b></td></tr>` : ""}
+      ${d.roomName ? `<tr><td style="padding:8px 0;color:#666;">Cuarto</td><td style="padding:8px 0;text-align:right;"><b>${escapeHtml(d.roomName)}</b></td></tr>` : ""}
       <tr><td style="padding:8px 0;color:#666;">Total</td><td style="padding:8px 0;text-align:right;"><b>${mx(d.totalAmount)}</b></td></tr>
     </table>
+    ${packingHtml}
     ${deposit}
     <p style="font-size:14px;color:#666;line-height:1.5;">
       Durante la estancia vas a recibir fotos, videos y un reporte diario del equipo HDI.
@@ -133,7 +150,7 @@ export function reservationConfirmedTemplate(d: ReservationConfirmedData) {
     </p>
   `
   );
-  const text = `¡Listo, ${d.ownerFirstName}! La reservación para ${pets} está confirmada.\n\nCheck-in: ${esDate(d.checkIn)}\nCheck-out: ${esDate(d.checkOut)}\nTotal: ${mx(d.totalAmount)}${d.paymentType === "DEPOSIT" ? `\nSaldo pendiente: ${mx(d.remainingAmount)}` : ""}\n\n— HolidogInn`;
+  const text = `¡Listo, ${d.ownerFirstName}! La reservación para ${pets} está confirmada.\n\nCheck-in: ${esDate(d.checkIn)}\nCheck-out: ${esDate(d.checkOut)}\nTotal: ${mx(d.totalAmount)}${d.paymentType === "DEPOSIT" ? `\nSaldo pendiente: ${mx(d.remainingAmount)}` : ""}\n\n${packingText}\n\n— HolidogInn`;
   return { subject, html, text };
 }
 

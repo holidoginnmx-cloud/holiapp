@@ -284,5 +284,15 @@ describe("buildClientConfirmationMessage — confirmación al cliente", () => {
     expect(m.body).toContain("Wero y Federico");
     expect(m.body).toContain("20 nov");
     expect(m.body).toContain("23 nov");
+    expect(m.body).toContain("Recuerda llevar su alimento");
+  });
+
+  it("baño: no pide llevar alimento (solo hospedaje)", () => {
+    const m = buildClientConfirmationMessage({
+      reservations: [
+        { id: "b", reservationType: "BATH", appointmentAt: new Date("2026-10-16T16:00:00Z"), pet: { name: "Wero" } },
+      ],
+    });
+    expect(m.body).not.toContain("alimento");
   });
 });

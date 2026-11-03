@@ -295,7 +295,7 @@ export async function sendDayBeforeReminders(
       first,
       {
         title: `Mañana llega ${who} al hotel 🏨`,
-        body: `Te esperamos mañana a las ${hora}. Si cambian tus planes, avísanos.`,
+        body: `Te esperamos mañana a las ${hora}. No olvides llevar su alimento 🍖. Si cambian tus planes, avísanos.`,
         data: { reservationId: first.id, kind: "STAY_CHECKIN_REMINDER" },
       },
       {

@@ -426,6 +426,6 @@ export function buildClientConfirmationMessage(params: {
   const sale = first?.checkOut ? ` al ${utcDayLabel(first.checkOut)}` : "";
   return {
     title: "Reservación confirmada 🏨",
-    body: `La estancia de ${who}${entra}${sale} quedó registrada.${recordatorio}`,
+    body: `La estancia de ${who}${entra}${sale} quedó registrada. Recuerda llevar su alimento 🍖.${recordatorio}`,
   };
 }

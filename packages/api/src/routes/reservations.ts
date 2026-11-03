@@ -753,12 +753,14 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       // las existentes en lugar de crear duplicados.
       const existingPayment = await prisma.payment.findFirst({
         where: { stripePaymentIntentId },
-        include: { reservation: true },
+        include: { reservation: { include: { pet: true, room: true } } },
       });
       if (existingPayment?.reservation) {
         const groupId = existingPayment.reservation.groupId;
+        // Mismo `include` que el camino normal: la pantalla de éxito (app y
+        // sitio) saca de aquí el nombre de la mascota.
         const reservations = groupId
-          ? await prisma.reservation.findMany({ where: { groupId } })
+          ? await prisma.reservation.findMany({ where: { groupId }, include: { pet: true, room: true } })
           : [existingPayment.reservation];
         const grandTotal = reservations.reduce((s, r) => s + Number(r.totalAmount), 0);
         return reply.status(200).send({

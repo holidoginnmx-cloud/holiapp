@@ -591,10 +591,17 @@ function CreateReservationScreenContent() {
     queryClient.invalidateQueries({ queryKey: ["reservations"] });
 
     const firstReservationId = result?.reservations?.[0]?.id;
+    // Para el «La reserva de Polo está lista…» de la pantalla de éxito. Sale
+    // de la respuesta (no del estado de la pantalla) porque el reintento de
+    // una confirmación pendiente no tiene ese estado.
+    const petNames = [
+      ...new Set((result?.reservations ?? []).map((r) => r.pet?.name).filter(Boolean)),
+    ].join("|");
     router.replace({
       pathname: "/reservation/success" as any,
       params: {
         reservationId: firstReservationId ?? "",
+        petNames,
         paymentType: params.paymentType,
         amount: params.amount,
         paidWith: params.paidWith,

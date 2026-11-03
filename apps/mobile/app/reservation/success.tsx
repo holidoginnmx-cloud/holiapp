@@ -1,19 +1,22 @@
 import { COLORS } from "@/constants/colors";
 import { useRef, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { formatCurrency } from "@/lib/format";
+import { stayPackingNote } from "@holidoginn/shared";
 
 const { width } = Dimensions.get("window");
 
-type Variant = "hotel" | "bath" | "balance";
+type Variant = "hotel" | "bath" | "daycare" | "balance";
 
 export default function ReservationSuccess() {
   const router = useRouter();
-  const { reservationId, paymentType, amount, variant, paidWith } = useLocalSearchParams<{
+  const { reservationId, paymentType, amount, variant, paidWith, petNames } = useLocalSearchParams<{
     reservationId?: string;
+    /** Nombres de las mascotas separados por "|" (solo hospedaje). */
+    petNames?: string;
     paymentType?: "FULL" | "DEPOSIT";
     amount?: string;
     variant?: Variant;
@@ -29,6 +32,7 @@ export default function ReservationSuccess() {
   const v: Variant = variant ?? "hotel";
   const isDeposit = paymentType === "DEPOSIT";
   const depositAmount = Number(amount ?? 0);
+  const packing = stayPackingNote((petNames ?? "").split("|"));
 
   const copy = {
     hotel: {
@@ -45,6 +49,13 @@ export default function ReservationSuccess() {
       primaryLabel: "Ir a mis reservaciones",
       primaryIcon: "calendar-outline" as const,
     },
+    daycare: {
+      title: "¡Guardería agendada!",
+      subtitle:
+        "Tu perro tiene su lugar en la guardería. Te avisaremos antes de la fecha.",
+      primaryLabel: "Ir a mis reservaciones",
+      primaryIcon: "calendar-outline" as const,
+    },
     balance: {
       title: "¡Saldo liquidado!",
       subtitle:
@@ -52,7 +63,13 @@ export default function ReservationSuccess() {
       primaryLabel: "Ver mis reservaciones",
       primaryIcon: "calendar-outline" as const,
     },
-  }[v];
+  }[v] ?? {
+    // Una variante desconocida no debe tumbar la pantalla de éxito.
+    title: "¡Listo!",
+    subtitle: "Tu reservación quedó confirmada.",
+    primaryLabel: "Ir a mis reservaciones",
+    primaryIcon: "calendar-outline" as const,
+  };
 
   const handlePrimary = () => {
     if (v === "hotel" && reservationId) {
@@ -69,7 +86,7 @@ export default function ReservationSuccess() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.container}>
+      <View style={styles.screen}>
         <ConfettiCannon
           ref={confettiRef}
           count={180}
@@ -80,6 +97,10 @@ export default function ReservationSuccess() {
           explosionSpeed={450}
           colors={[COLORS.primary, "#F7B84B", "#7AB5A8", "#E35F27", "#3a7cab"]}
         />
+        <ScrollView
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+        >
 
         <View style={styles.iconWrap}>
           <View style={styles.iconCircle}>
@@ -89,6 +110,22 @@ export default function ReservationSuccess() {
 
         <Text style={styles.title}>{copy.title}</Text>
         <Text style={styles.subtitle}>{copy.subtitle}</Text>
+
+        {v === "hotel" && (
+          <View style={styles.packingCard}>
+            <Ionicons name="bag-handle-outline" size={20} color={COLORS.primary} />
+            <View style={styles.packingBody}>
+              <Text style={styles.packingHeadline}>{packing.headline}</Text>
+              <Text style={styles.packingText}>{packing.providesLabel}</Text>
+              {packing.items.map((item) => (
+                <Text key={item} style={styles.packingText}>
+                  {"•  "}
+                  {item}
+                </Text>
+              ))}
+            </View>
+          </View>
+        )}
 
         {v === "hotel" && isDeposit && depositAmount > 0 && (
           <View style={styles.depositCard}>
@@ -124,18 +161,55 @@ export default function ReservationSuccess() {
             </TouchableOpacity>
           )}
         </View>
+        </ScrollView>
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: COLORS.bgPage,
+  },
+  // Con la tarjeta de «qué llevar» y la del anticipo la pantalla ya no cabe en
+  // un iPhone chico: centrada cuando sobra espacio, con scroll cuando no.
+  container: {
+    flexGrow: 1,
     padding: 24,
+    paddingVertical: 48,
     justifyContent: "center",
     alignItems: "center",
+  },
+  packingCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    maxWidth: 360,
+    width: "100%",
+  },
+  packingBody: {
+    flex: 1,
+    gap: 2,
+  },
+  packingHeadline: {
+    fontSize: 14,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  packingText: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textSecondary,
+    lineHeight: 19,
   },
   iconWrap: {
     marginBottom: 20,

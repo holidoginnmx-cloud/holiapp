@@ -358,12 +358,14 @@ export default async function guestReservationsRoutes(fastify: FastifyInstance) 
       // Idempotencia: si este PI ya generó reservación(es), devolverlas.
       const existingPayment = await prisma.payment.findFirst({
         where: { stripePaymentIntentId: paymentIntentId },
-        include: { reservation: true },
+        include: { reservation: { include: { pet: true } } },
       });
       if (existingPayment?.reservation) {
         const groupId = existingPayment.reservation.groupId;
+        // Con `pet`, como el camino normal: la página de éxito del sitio pinta
+        // «La reserva de Polo está lista…» también al recargar.
         const reservations = groupId
-          ? await prisma.reservation.findMany({ where: { groupId } })
+          ? await prisma.reservation.findMany({ where: { groupId }, include: { pet: true } })
           : [existingPayment.reservation];
         const grandTotal = reservations.reduce((s, r) => s + Number(r.totalAmount), 0);
         return reply

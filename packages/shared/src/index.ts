@@ -1529,3 +1529,7 @@ export * from "./quoteHtml";
 // Desglose de una reserva YA creada (lo que ./quote hace para una cotización).
 // Mismo criterio: módulo puro, sin zod.
 export * from "./reservationBreakdown";
+
+// Mensaje de «qué llevar» al reservar hospedaje (app, correo y sitio).
+// Mismo criterio: módulo puro, sin zod.
+export * from "./stayPackingNote";
