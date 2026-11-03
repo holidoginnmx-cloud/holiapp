@@ -30,6 +30,7 @@ import {
 import { instanteDeLlegada, rangoDeMananaHotel } from "./stayTimes";
 import { getLodgingPricing } from "./pricing";
 import { sendPendingStoreOrderReminders } from "./storeOrderAlerts";
+import { sendTeamSoonReminders, sendTeamTomorrowSummary } from "./teamAgenda";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -129,7 +130,6 @@ function dayLabel(d: Date, utc: boolean): string {
     .replace(",", "");
 }
 
-/** "09:00" → "9:00 am". */
 /**
  * Push de un día antes del check-in. Exportado para la prueba de
  * /internal/push-test (que el equipo vea el texto real sin una reserva falsa).
@@ -141,6 +141,7 @@ export function stayDayBeforePush(who: string, hora: string): { title: string; b
   };
 }
 
+/** "09:00" → "9:00 am". */
 function hhmmLegible(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
@@ -521,8 +522,10 @@ export async function runClientReminders(
     ["día anterior", () => sendDayBeforeReminders(prisma, now)],
     ["1.5 h", () => sendNinetyMinuteReminders(prisma, now)],
     ["hora de hospedaje", () => sendStayTimeReminders(prisma, now)],
-    // Este es para el EQUIPO, no para el cliente: aprovecha el mismo ciclo.
+    // Estos son para el EQUIPO, no para el cliente: aprovechan el mismo ciclo.
     ["pedidos de tienda sin despachar", () => sendPendingStoreOrderReminders(prisma, now)],
+    ["agenda del equipo: resumen de mañana", () => sendTeamTomorrowSummary(prisma, now)],
+    ["agenda del equipo: 30 min antes", () => sendTeamSoonReminders(prisma, now)],
   ];
   for (const [name, job] of jobs) {
     try {

@@ -41,6 +41,34 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-03",
+    title: "Quién llega y quién se va",
+    items: [
+      {
+        icon: "calendar-outline",
+        title: "Resumen de mañana, a las 6 pm",
+        body: "Llegadas, salidas, baños y guardería del día siguiente.",
+        preview: {
+          label: "📋 MAÑANA: 2 LLEGAN · 1 SE VA · 1 BAÑO",
+          value: "Molly · 10:00 am",
+          caption: "Ejemplo · con 🚐 si hay que ir a domicilio",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "alarm-outline",
+        title: "Aviso 30 min antes",
+        body: "De cada check-in, check-out, baño y guardería con hora.",
+        preview: {
+          label: "⏰ CHECK-OUT",
+          value: "Tate · 6:00 pm",
+          caption: "Toca el aviso y abre la reserva",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-02",
     title: "Comisiones de baño",
     items: [

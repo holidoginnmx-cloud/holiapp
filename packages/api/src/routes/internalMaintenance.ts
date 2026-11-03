@@ -4,6 +4,45 @@ import { purgeFinishedStayVideos } from "../lib/purgeEvidence";
 import { sendPushToUser } from "../lib/push";
 import { buildClientConfirmationMessage } from "../lib/notifyNewReservation";
 import { stayDayBeforePush } from "../lib/clientReminders";
+import type { PrismaClient } from "@holidoginn/db";
+import {
+  buildSoonMessage,
+  buildTomorrowSummary,
+  loadAgendaEvents,
+  rangosDeManana,
+  type AgendaEvent,
+} from "../lib/teamAgenda";
+
+/**
+ * `sample: "AGENDA"`: el resumen de MAÑANA con los datos reales y un aviso de
+ * 30 min de ejemplo (el primer evento con hora, o Molly si no hay ninguno).
+ */
+async function agendaTestMessages(prisma: PrismaClient): Promise<{ title: string; body: string }[]> {
+  const now = new Date();
+  const { dayRange, instantRange } = rangosDeManana(now);
+  const events = await loadAgendaEvents(prisma, dayRange, instantRange);
+  const resumen = buildTomorrowSummary(events) ?? {
+    title: "📋 Mañana no hay llegadas, salidas ni baños",
+    body: "(En la vida real este aviso no se manda cuando mañana no hay nada.)",
+  };
+  const conHora = events.find((e): e is AgendaEvent & { at: Date } => e.at !== null);
+  const ejemplo =
+    conHora ??
+    ({
+      tipo: "LLEGA",
+      petNames: ["Molly"],
+      at: new Date(now.getTime() + 30 * 60_000),
+      domicilio: null,
+      reservationId: "push-test",
+      reservationType: "STAY",
+      visitKey: "push-test",
+    } as AgendaEvent & { at: Date });
+  const pronto = buildSoonMessage(ejemplo, new Date(ejemplo.at.getTime() - 30 * 60_000));
+  return [
+    { title: `Prueba · ${resumen.title}`, body: resumen.body },
+    { title: `Prueba · ${pronto.title}`, body: pronto.body },
+  ];
+}
 
 /**
  * Qué mandar en la prueba. Por omisión, el aviso genérico. Con
@@ -113,6 +152,7 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
   //
   //    { roles?: ("ADMIN" | "STAFF")[] }   — por omisión, solo ADMIN
   //    { sample?: "STAY" }                  — los push reales de hospedaje
+  //    { sample?: "AGENDA" }                — resumen de mañana (datos reales) + aviso de 30 min
   // ───────────────────────────────────────────────────────────────────────────
   fastify.post<{ Body: { roles?: string[]; sample?: string } }>(
     "/internal/push-test",
@@ -122,7 +162,10 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
         (r): r is "ADMIN" | "STAFF" => r === "ADMIN" || r === "STAFF"
       );
       const roles = pedidos.length > 0 ? pedidos : (["ADMIN"] as const);
-      const mensajes = pushTestMessages(request.body?.sample);
+      const mensajes =
+        request.body?.sample === "AGENDA"
+          ? await agendaTestMessages(prisma)
+          : pushTestMessages(request.body?.sample);
 
       const users = await prisma.user.findMany({
         where: { role: { in: [...roles] }, isActive: true },

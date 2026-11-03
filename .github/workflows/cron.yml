@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all | push-test | push-test-stay (solo a mano, no entran en all)"
+        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all | push-test | push-test-stay | push-test-agenda (solo a mano, no entran en all)"
         required: false
         default: "all"
 
@@ -125,3 +125,16 @@ jobs:
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "content-type: application/json" \
             -d '{"roles":["ADMIN"],"sample":"STAY"}'
+
+  # La agenda del equipo: el resumen de MAÑANA con los datos reales y un aviso
+  # de 30 min de ejemplo. Solo a los ADMIN, con «Prueba ·» en el título.
+  push-test-agenda:
+    if: github.event.inputs.job == 'push-test-agenda'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/push-test (sample AGENDA)
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/push-test" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "content-type: application/json" \
+            -d '{"roles":["ADMIN"],"sample":"AGENDA"}'
