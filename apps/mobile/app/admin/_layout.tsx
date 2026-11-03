@@ -44,6 +44,7 @@ export default function AdminRootLayout() {
         options={{ title: "Por método de pago" }}
       />
       <Stack.Screen name="payouts" options={{ title: "Depósitos al banco" }} />
+      <Stack.Screen name="bath-commissions" options={{ title: "Comisiones de baño" }} />
       <Stack.Screen name="store-orders" options={{ title: "Pedidos de la tienda" }} />
       <Stack.Screen
         name="bath-config"

@@ -44,6 +44,7 @@ import {
 } from "../lib/bathAvailability";
 import {
   ensureConfig,
+  publicBathConfig,
   toScheduleCfg,
   loadScheduleCfg,
   resolveBathDuration,
@@ -283,7 +284,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
         where: { id: BATH_CONFIG_ID },
         data: parsed.data,
       });
-      return updated;
+      // La pantalla de agenda la trata igual que /baths/config: sin comisión
+      // (ésa se lee en el reporte de comisiones).
+      return publicBathConfig(updated);
     }
   );
 

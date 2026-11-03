@@ -1283,6 +1283,9 @@ export const UpdateBathConfigSchema = z.object({
       message: "Para cerrar toda la semana usa el interruptor de agenda activa",
     })
     .optional(),
+  // Comisión de la estilista como fracción (0.30 = 30%). Ver BathConfig.
+  groomerCommissionPct: z.number().min(0).max(1).optional(),
+  groomerExtrasCommissionPct: z.number().min(0).max(1).optional(),
 });
 export type UpdateBathConfig = z.infer<typeof UpdateBathConfigSchema>;
 

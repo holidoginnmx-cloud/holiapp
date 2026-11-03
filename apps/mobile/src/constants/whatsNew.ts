@@ -13,6 +13,9 @@ import { Ionicons } from "@expo/vector-icons";
 // (src/lib/whatsNewSeen.ts) y al cerrar se marca con el MÁS reciente.
 //
 // Nada se borra de este arreglo: es el historial que ve el equipo.
+//
+// MENOS TEXTO: al equipo le da flojera leer párrafos. El `body` es UNA frase
+// corta; el resto se enseña con `steps` (dónde está) y `preview` (cómo se ve).
 
 export type TeamRole = "ADMIN" | "STAFF";
 
@@ -23,6 +26,10 @@ export type WhatsNewItem = {
   /** Pantalla a la que lleva el botón "Probarlo". */
   route?: string;
   roles: TeamRole[];
+  /** Dónde está, como migas: ["Ajustes", "Comisiones de baño"]. */
+  steps?: string[];
+  /** Mini tarjeta de ejemplo de lo que se va a ver (datos de ejemplo). */
+  preview?: { label: string; value: string; caption?: string };
 };
 
 export type WhatsNewRelease = {
@@ -33,6 +40,25 @@ export type WhatsNewRelease = {
 };
 
 export const WHATS_NEW: WhatsNewRelease[] = [
+  {
+    id: "2026-11-02",
+    title: "Comisiones de baño",
+    items: [
+      {
+        icon: "water-outline",
+        title: "La comisión de Nancy, ya calculada",
+        body: "15% de baño + corte + deslanado, cada semana.",
+        steps: ["Ajustes", "Comisiones de baño"],
+        preview: {
+          label: "LUN – DOM · SE PAGA EL DOMINGO",
+          value: "$1,245",
+          caption: "Ejemplo · 18 baños",
+        },
+        route: "/admin/bath-commissions",
+        roles: ["ADMIN"],
+      },
+    ],
+  },
   {
     id: "2026-10-31",
     title: "Corrige el nombre de un cliente",

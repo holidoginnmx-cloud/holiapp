@@ -236,6 +236,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/revenue" as any)}
         />
         <MenuItem
+          icon="water-outline"
+          iconTint={COLORS.successText}
+          label="Comisiones de baño"
+          subtitle="Lo que le toca a la estilista cada semana"
+          onPress={() => router.push("/admin/bath-commissions" as any)}
+        />
+        <MenuItem
           icon="bag-handle-outline"
           iconTint={COLORS.primary}
           label="Pedidos de la tienda"

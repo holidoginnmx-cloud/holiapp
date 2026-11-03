@@ -1078,6 +1078,7 @@ model ReservationAddon {
   @@index([reservationId]) // include de add-ons en cada reserva (FK sin índice; el cascade también lo usa)
   @@index([variantId]) // add-ons por variante (ingresos por servicio, FK sin índice)
   @@index([paymentId]) // add-ons pagados con un pago (FK sin índice)
+  @@index([completedAt]) // reporte semanal de comisiones de baño
   @@map("reservation_addons")
 }
 
@@ -1426,6 +1427,13 @@ model BathConfig {
   // isActive: esto cierra el lunes, aquello apaga la agenda completa.
   // El día se resuelve en hora del HOTEL (UTC-7), nunca en la del servidor.
   closedWeekdays             Int[]    @default([])
+  // Comisión de la estilista, como FRACCIÓN (0.15 = 15%), igual que
+  // cardFee*Pct en lodging_pricing. Una sobre el precio NORMAL del baño (sin
+  // domicilio, aunque se haya cobrado con descuento o de cortesía) y otra sobre
+  // corte/deslanado. Hoy las dos en 15% (la migración las deja así). Interna:
+  // ensureConfig la quita de lo que ve el cliente.
+  groomerCommissionPct       Decimal  @default(0) @db.Decimal
+  groomerExtrasCommissionPct Decimal  @default(0) @db.Decimal
   updatedAt                  DateTime @updatedAt
 
   @@map("bath_config")

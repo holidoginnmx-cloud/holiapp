@@ -50,6 +50,7 @@ import {
   avisarPayoutSincronizado,
 } from "../lib/payouts";
 import { syncPendingStripeFees } from "../lib/stripeFees";
+import { loadBathCommissionReport } from "../lib/bathCommissions";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -274,6 +275,29 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           currentReservation: currentReservations[0] ?? null,
         };
       });
+    }
+  );
+
+  // GET /admin/commissions/baths?weekStart=YYYY-MM-DD — comisión semanal de
+  // la estilista. Semana lunes–domingo en hora del hotel; sin weekStart, la
+  // semana en curso. Cualquier día sirve: se lleva al lunes de su semana.
+  fastify.get<{ Querystring: { weekStart?: string } }>(
+    "/admin/commissions/baths",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const { weekStart } = request.query;
+      if (weekStart !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        return reply.status(400).send({ error: "weekStart debe ser YYYY-MM-DD" });
+      }
+      if (weekStart && Number.isNaN(new Date(`${weekStart}T00:00:00Z`).getTime())) {
+        return reply.status(400).send({ error: "Fecha no válida" });
+      }
+      const report = await loadBathCommissionReport(prisma, weekStart);
+      return {
+        ...report,
+        from: report.from.toISOString(),
+        to: report.to.toISOString(),
+      };
     }
   );
 

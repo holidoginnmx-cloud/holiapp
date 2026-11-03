@@ -97,6 +97,64 @@ export const getAdminRevenueBreakdown = (month?: string) => {
   return apiFetch<AdminRevenueBreakdown>(`/admin/revenue/breakdown${qs}`);
 };
 
+// ─── Comisiones de baño ─────────────────────────────────
+// 15% del precio normal del baño + corte + deslanado (regla de José). Semana
+// lunes–domingo en hora del hotel; un baño cuenta en la semana en que se hizo.
+// Ver packages/api/src/lib/bathCommissions.ts.
+
+export type CommissionFlag =
+  | "EXTRAS_SIN_PRECIO"
+  | "EXTRAS_EN_TOTAL"
+  | "CORTESIA"
+  | "DESCUENTO"
+  | "POR_COBRAR";
+
+export interface CommissionBathRow {
+  addonId: string;
+  reservationId: string;
+  reservationType: "STAY" | "BATH" | "DAYCARE" | "DELIVERY";
+  completedAt: string;
+  petName: string;
+  ownerName: string;
+  base: number;
+  corte: number;
+  deslanado: number;
+  /** Corte/deslanado que venía dentro del precio del baño. */
+  extrasIncluded: number;
+  commission: number;
+  flags: CommissionFlag[];
+}
+
+export interface BathCommissionReport {
+  weekStart: string;
+  weekEnd: string;
+  from: string;
+  to: string;
+  /** Fracciones (0.15 = 15%). */
+  rates: { basePct: number; extrasPct: number };
+  baths: CommissionBathRow[];
+  count: number;
+  baseTotal: number;
+  extrasTotal: number;
+  commission: number;
+  pending: { reservationId: string; petName: string; scheduledAt: string }[];
+}
+
+export const getBathCommissions = (weekStart?: string) =>
+  apiFetch<BathCommissionReport>(
+    `/admin/commissions/baths${weekStart ? `?weekStart=${weekStart}` : ""}`,
+  );
+
+/** Los % se mandan como fracción; viven en la config de baños. */
+export const updateBathCommissionRates = (rates: {
+  groomerCommissionPct?: number;
+  groomerExtrasCommissionPct?: number;
+}) =>
+  apiFetch<unknown>("/admin/baths/config", {
+    method: "PATCH",
+    body: JSON.stringify(rates),
+  });
+
 // ─── Depósitos de Stripe (SPEI) ─────────────────────────
 // Stripe junta varios cobros en un solo depósito al banco, y el SPEI llega sin
 // referencia. Esto reconstruye de qué reservas venía cada transferencia.

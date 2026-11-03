@@ -45,10 +45,22 @@ export type BathConfigRow = {
   updatedAt: Date;
 };
 
+/**
+ * La fila sin la comisión de la estilista. Esta config viaja al CLIENTE
+ * (GET /baths/config, /baths/slots), y el % de comisión es dato interno del
+ * negocio: se lee solo en el reporte de admin (lib/bathCommissions.ts).
+ */
+export function publicBathConfig<T extends BathConfigRow>(
+  row: T & { groomerCommissionPct?: unknown; groomerExtrasCommissionPct?: unknown },
+): BathConfigRow {
+  const { groomerCommissionPct: _a, groomerExtrasCommissionPct: _b, ...rest } = row;
+  return rest;
+}
+
 export async function ensureConfig(prisma: Db): Promise<BathConfigRow> {
   const existing = await prisma.bathConfig.findUnique({ where: { id: BATH_CONFIG_ID } });
-  if (existing) return existing;
-  return prisma.bathConfig.create({
+  if (existing) return publicBathConfig(existing);
+  const created = await prisma.bathConfig.create({
     data: {
       id: BATH_CONFIG_ID,
       openHour: 9,
@@ -61,6 +73,7 @@ export async function ensureConfig(prisma: Db): Promise<BathConfigRow> {
       bufferMinutes: 0,
     },
   });
+  return publicBathConfig(created);
 }
 
 /** Fila de configuración → la vista que consume el motor. */

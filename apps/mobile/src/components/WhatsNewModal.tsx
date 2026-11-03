@@ -292,6 +292,29 @@ function ReleaseSection({
               <View style={styles.itemBody}>
                 <Text style={styles.itemTitle}>{item.title}</Text>
                 <Text style={styles.itemText}>{item.body}</Text>
+                {item.steps && item.steps.length > 0 && (
+                  <View style={styles.steps}>
+                    {item.steps.map((step, i) => (
+                      <View key={step} style={styles.stepRow}>
+                        {i > 0 && (
+                          <Ionicons name="chevron-forward" size={12} color={COLORS.textTertiary} />
+                        )}
+                        <View style={styles.stepChip}>
+                          <Text style={styles.stepText}>{step}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {item.preview && (
+                  <View style={styles.preview}>
+                    <Text style={styles.previewLabel}>{item.preview.label}</Text>
+                    <Text style={styles.previewValue}>{item.preview.value}</Text>
+                    {item.preview.caption && (
+                      <Text style={styles.previewCaption}>{item.preview.caption}</Text>
+                    )}
+                  </View>
+                )}
                 {item.route && (
                   <TouchableOpacity
                     onPress={() => onTry(item)}
@@ -398,6 +421,31 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     lineHeight: 19,
   },
+  steps: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 },
+  stepRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  stepChip: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  stepText: { fontSize: 12, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
+  preview: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  previewLabel: {
+    fontSize: 10,
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.textTertiary,
+    letterSpacing: 0.5,
+  },
+  previewValue: { fontSize: 24, fontFamily: "Outfit_600SemiBold", color: COLORS.primary, marginTop: 2 },
+  previewCaption: { fontSize: 11, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textTertiary },
   itemTryLink: {
     fontSize: 13,
     fontFamily: "PlusJakartaSans_700Bold",
