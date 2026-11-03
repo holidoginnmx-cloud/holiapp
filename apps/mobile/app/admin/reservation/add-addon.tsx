@@ -77,6 +77,9 @@ export default function AdminAddAddonScreen() {
   // En guardería las horas extra NO se agregan a mano: el check-out las
   // calcula solo contra la hora de salida (ver routes/daycare.ts); ofrecer el
   // chip aquí las cobraría doble.
+  // En una cita de baño el baño ES la reserva: sumar otro choca con el candado
+  // de "ya tiene un baño contratado" (409), y deslanado/corte se definen como
+  // extras del baño, no como servicio aparte.
   const activeServices = useMemo(
     () =>
       (services ?? []).filter(
@@ -85,7 +88,8 @@ export default function AdminAddAddonScreen() {
           !(
             s.code === "EXTRA_HOURS" &&
             reservation?.reservationType === "DAYCARE"
-          ),
+          ) &&
+          !(s.code === "BATH" && reservation?.reservationType === "BATH"),
       ),
     [services, reservation?.reservationType],
   );

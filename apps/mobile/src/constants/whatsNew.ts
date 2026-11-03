@@ -41,6 +41,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-03-b",
+    title: "Servicios en los baños",
+    items: [
+      {
+        icon: "add-circle-outline",
+        title: "Agrega servicios a una cita de baño",
+        body: "Igual que en hospedaje: desparasitante u otro servicio, y se suma al total.",
+        steps: ["Reserva de baño", "Servicios contratados", "Agregar"],
+        preview: {
+          label: "SERVICIOS CONTRATADOS",
+          value: "Desparasitante · $350",
+          caption: "Ejemplo",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-03",
     title: "Quién llega y quién se va",
     items: [

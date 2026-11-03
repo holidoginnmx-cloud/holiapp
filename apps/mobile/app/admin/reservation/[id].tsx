@@ -1461,9 +1461,14 @@ export default function AdminReservationDetail() {
           );
         })()}
 
-      {/* Servicios contratados — sólo hospedajes (en baños el servicio es la
-          reserva misma y ya aparece en el hero). */}
-      {!isBath && (
+      {/* Servicios contratados. En baños el baño principal ya está en el hero
+          (y sus extras de deslanado/corte en Pagos), así que aquí sólo van los
+          servicios que se sumaron a la cita: desparasitante, horas extra… */}
+      {(() => {
+        const listedAddons = (reservation.addons ?? []).filter(
+          (a) => !(isBath && a.id === bathAddon?.id),
+        );
+        return (
         <View style={styles.sectionCard}>
           <View style={styles.sectionCardHeader}>
             <Text style={styles.sectionCardTitle}>Servicios contratados</Text>
@@ -1479,13 +1484,14 @@ export default function AdminReservationDetail() {
               <Ionicons name="add-circle" size={16} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
-          {(reservation.addons ?? []).length === 0 && (
+          {listedAddons.length === 0 && (
             <Text style={styles.addonEmpty}>
-              Sin servicios adicionales. Usa "Agregar" para sumar un baño
-              (también de cortesía) o un desparasitante.
+              {isBath
+                ? 'Sin servicios adicionales. Usa "Agregar" para sumar un desparasitante u otro servicio a la cita.'
+                : 'Sin servicios adicionales. Usa "Agregar" para sumar un baño (también de cortesía) o un desparasitante.'}
             </Text>
           )}
-          {(reservation.addons ?? []).map((addon, idx) => {
+          {listedAddons.map((addon, idx) => {
             const extras: string[] = [];
             if (addon.variant?.deslanado) extras.push("Deslanado");
             if (addon.variant?.corte) extras.push("Corte");
@@ -1497,7 +1503,7 @@ export default function AdminReservationDetail() {
             const icon: keyof typeof Ionicons.glyphMap =
               code === "BATH" ? "water" : "sparkles";
             const isInBooking = addon.paidWith === "BOOKING";
-            const isLastAddon = idx === (reservation.addons?.length ?? 0) - 1;
+            const isLastAddon = idx === listedAddons.length - 1;
             return (
               <TouchableOpacity
                 key={addon.id}
@@ -1566,7 +1572,8 @@ export default function AdminReservationDetail() {
             );
           })}
         </View>
-      )}
+        );
+      })()}
 
       {/* Payments */}
       <View style={styles.sectionCard}>
