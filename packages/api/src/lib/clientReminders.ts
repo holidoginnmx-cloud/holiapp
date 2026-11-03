@@ -130,6 +130,17 @@ function dayLabel(d: Date, utc: boolean): string {
 }
 
 /** "09:00" → "9:00 am". */
+/**
+ * Push de un día antes del check-in. Exportado para la prueba de
+ * /internal/push-test (que el equipo vea el texto real sin una reserva falsa).
+ */
+export function stayDayBeforePush(who: string, hora: string): { title: string; body: string } {
+  return {
+    title: `Mañana llega ${who} al hotel 🏨`,
+    body: `Te esperamos mañana a las ${hora}. No olvides llevar su alimento 🍖. Si cambian tus planes, avísanos.`,
+  };
+}
+
 function hhmmLegible(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
@@ -294,8 +305,7 @@ export async function sendDayBeforeReminders(
       prisma,
       first,
       {
-        title: `Mañana llega ${who} al hotel 🏨`,
-        body: `Te esperamos mañana a las ${hora}. No olvides llevar su alimento 🍖. Si cambian tus planes, avísanos.`,
+        ...stayDayBeforePush(who, hora),
         data: { reservationId: first.id, kind: "STAY_CHECKIN_REMINDER" },
       },
       {

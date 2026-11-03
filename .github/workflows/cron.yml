@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all | push-test (solo a mano, no entra en all)"
+        description: "Cuál disparar a mano: expire-credits | bath-reminders | reminders-90min | stay-time-reminders | payouts-sync | stripe-fees-sync | all | push-test | push-test-stay (solo a mano, no entran en all)"
         required: false
         default: "all"
 
@@ -112,3 +112,16 @@ jobs:
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "content-type: application/json" \
             -d '{"roles":["ADMIN"]}'
+
+  # Igual que push-test, pero con los DOS push reales de hospedaje (confirmación
+  # y un día antes), con «Polo» de ejemplo: para que el equipo vea el texto.
+  push-test-stay:
+    if: github.event.inputs.job == 'push-test-stay'
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /internal/push-test (sample STAY)
+        run: |
+          curl -fsS --max-time 60 -X POST "$API_URL/internal/push-test" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "content-type: application/json" \
+            -d '{"roles":["ADMIN"],"sample":"STAY"}'

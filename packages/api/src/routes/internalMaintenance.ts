@@ -2,6 +2,38 @@ import { FastifyInstance } from "fastify";
 import { createInternalGuard, logInternal } from "../lib/internalAuth";
 import { purgeFinishedStayVideos } from "../lib/purgeEvidence";
 import { sendPushToUser } from "../lib/push";
+import { buildClientConfirmationMessage } from "../lib/notifyNewReservation";
+import { stayDayBeforePush } from "../lib/clientReminders";
+
+/**
+ * Qué mandar en la prueba. Por omisión, el aviso genérico. Con
+ * `sample: "STAY"` manda los DOS push que recibe un cliente de hospedaje
+ * (confirmación y un día antes), armados con las mismas funciones que los
+ * reales y con «Polo» de ejemplo, para que el equipo vea cómo se ven.
+ */
+function pushTestMessages(sample: string | undefined): { title: string; body: string }[] {
+  if (sample === "STAY") {
+    // Fechas guardadas como el DÍA a las 00:00 UTC, igual que checkIn/checkOut.
+    const hoy = new Date();
+    const dia = (n: number) =>
+      new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() + n));
+    const confirmacion = buildClientConfirmationMessage({
+      reservations: [
+        { id: "push-test", reservationType: "STAY", checkIn: dia(7), checkOut: dia(10), pet: { name: "Polo" } },
+      ],
+    });
+    return [
+      { title: `Prueba · ${confirmacion.title}`, body: confirmacion.body },
+      (({ title, body }) => ({ title: `Prueba · ${title}`, body }))(stayDayBeforePush("Polo", "10:00 am")),
+    ];
+  }
+  return [
+    {
+      title: "🔔 Prueba de avisos",
+      body: "Si ves esto, te llegan los avisos de reservas nuevas. No hay que hacer nada.",
+    },
+  ];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  POST /internal/purge-evidence — purga manual de videos de evidencia
@@ -80,8 +112,9 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
   //  Se dispara a mano desde GitHub Actions (cron.yml → job push-test).
   //
   //    { roles?: ("ADMIN" | "STAFF")[] }   — por omisión, solo ADMIN
+  //    { sample?: "STAY" }                  — los push reales de hospedaje
   // ───────────────────────────────────────────────────────────────────────────
-  fastify.post<{ Body: { roles?: string[] } }>(
+  fastify.post<{ Body: { roles?: string[]; sample?: string } }>(
     "/internal/push-test",
     { preHandler: internalGuard },
     async (request, reply) => {
@@ -89,6 +122,7 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
         (r): r is "ADMIN" | "STAFF" => r === "ADMIN" || r === "STAFF"
       );
       const roles = pedidos.length > 0 ? pedidos : (["ADMIN"] as const);
+      const mensajes = pushTestMessages(request.body?.sample);
 
       const users = await prisma.user.findMany({
         where: { role: { in: [...roles] }, isActive: true },
@@ -102,13 +136,12 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
           where: { userId: u.id },
           select: { platform: true },
         });
-        const aceptado =
-          tokens.length > 0 &&
-          (await sendPushToUser(prisma, u.id, {
-            title: "🔔 Prueba de avisos",
-            body: "Si ves esto, te llegan los avisos de reservas nuevas. No hay que hacer nada.",
-            data: { kind: "PUSH_TEST" },
-          }));
+        let aceptado = tokens.length > 0;
+        for (const m of aceptado ? mensajes : []) {
+          // kind PUSH_TEST: al tocarla no navega a una reserva que no existe.
+          const ok = await sendPushToUser(prisma, u.id, { ...m, data: { kind: "PUSH_TEST" } });
+          aceptado = aceptado && ok;
+        }
         resultados.push({
           nombre: `${u.firstName ?? ""} ${u.lastName?.charAt(0) ?? ""}`.trim(),
           rol: u.role,
@@ -120,6 +153,7 @@ export default async function internalMaintenanceRoutes(fastify: FastifyInstance
 
       logInternal(request, "internal.push-test", {
         roles,
+        sample: request.body?.sample ?? null,
         total: resultados.length,
         aceptados: resultados.filter((r) => r.aceptado).length,
       });
