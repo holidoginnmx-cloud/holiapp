@@ -27,7 +27,7 @@ import {
   type BathSelectionsByPet,
   type MedicationByPet,
 } from "@/lib/api";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { DateRangeField } from "@/components/DateTimeField";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { AnimatedPayButton } from "@/components/AnimatedPayButton";
 import {
@@ -111,8 +111,6 @@ function CreateReservationScreenContent() {
   // Form state
   const [checkIn, setCheckIn] = useState<Date | null>(null);
   const [checkOut, setCheckOut] = useState<Date | null>(null);
-  const [showCheckInPicker, setShowCheckInPicker] = useState(false);
-  const [showCheckOutPicker, setShowCheckOutPicker] = useState(false);
   const [roomPreference, setRoomPreference] = useState<"shared" | "separate">("shared");
   const [paymentType, setPaymentType] = useState<"FULL" | "DEPOSIT">("FULL");
   const [notes, setNotes] = useState("");
@@ -744,23 +742,6 @@ function CreateReservationScreenContent() {
     return d;
   }, []);
 
-  const tomorrow = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
-  const minCheckOut = useMemo(() => {
-    if (!checkIn) return tomorrow;
-    const d = new Date(checkIn.getTime() + 86_400_000);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, [checkIn, tomorrow]);
-
-  const checkInValue =
-    checkIn && checkIn >= today ? checkIn : tomorrow;
-
   // Avisos de saldo pendiente — una tarjeta por mascota con anticipo sin pagar
   const pendingBalanceAlerts = pets
     .map((p) => {
@@ -827,46 +808,22 @@ function CreateReservationScreenContent() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Fechas</Text>
 
-        <View style={styles.dateRow}>
-          <View style={styles.dateCol}>
-            <Text style={styles.label}>Check-in</Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowCheckInPicker(true)}
-              testID="reservation-create-checkin-button"
-            >
-              <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
-              <Text style={[styles.dateText, !checkIn && { color: COLORS.textDisabled }]}>
-                {checkIn
-                  ? formatDayShort(checkIn)
-                  : "Seleccionar"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Ionicons
-            name="arrow-forward"
-            size={20}
-            color={COLORS.textDisabled}
-            style={{ marginTop: 28 }}
-          />
-
-          <View style={styles.dateCol}>
-            <Text style={styles.label}>Check-out</Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowCheckOutPicker(true)}
-              testID="reservation-create-checkout-button"
-            >
-              <Ionicons name="calendar-outline" size={18} color={COLORS.textTertiary} />
-              <Text style={[styles.dateText, !checkOut && { color: COLORS.textDisabled }]}>
-                {checkOut
-                  ? formatDayShort(checkOut)
-                  : "Seleccionar"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Entrada y salida en UN calendario: se toca la entrada, luego la
+            salida, y los días de en medio quedan resaltados. */}
+        <DateRangeField
+          start={checkIn}
+          end={checkOut}
+          format={(d) => (d ? formatDayShort(d) : "Seleccionar")}
+          defaultDate={today}
+          minimumDate={today}
+          startLabel="Check-in"
+          endLabel="Check-out"
+          onChange={(start, end) => {
+            setCheckIn(start);
+            setCheckOut(end);
+          }}
+          testID="reservation-create-dates"
+        />
 
         {totalDays > 0 && (
           <Text style={styles.nightsText}>
@@ -880,40 +837,6 @@ function CreateReservationScreenContent() {
             <Text style={styles.surchargeWarningText}>
               Reservar con menos de 24 horas de anticipación tiene un cargo extra del 20%.
             </Text>
-          </View>
-        )}
-
-        {(showCheckInPicker || showCheckOutPicker) && (
-          <View style={styles.datePickersRow}>
-            {showCheckInPicker && (
-              <DateTimePicker
-                value={checkInValue}
-                mode="date"
-                minimumDate={today}
-                themeVariant="light"
-                textColor={COLORS.textPrimary}
-                onChange={(_, date) => {
-                  setShowCheckInPicker(Platform.OS === "ios");
-                  if (date) {
-                    setCheckIn(date);
-                    if (checkOut && date >= checkOut) setCheckOut(null);
-                  }
-                }}
-              />
-            )}
-            {showCheckOutPicker && (
-              <DateTimePicker
-                value={checkOut && checkOut >= minCheckOut ? checkOut : minCheckOut}
-                mode="date"
-                minimumDate={minCheckOut}
-                themeVariant="light"
-                textColor={COLORS.textPrimary}
-                onChange={(_, date) => {
-                  setShowCheckOutPicker(Platform.OS === "ios");
-                  if (date) setCheckOut(date);
-                }}
-              />
-            )}
           </View>
         )}
       </View>
