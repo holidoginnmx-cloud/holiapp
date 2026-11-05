@@ -85,8 +85,10 @@ export const wizardStyles = StyleSheet.create({
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primaryLight,
   },
-  toggleTitle: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
-  toggleSub: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 2 },
+  // lineHeight explícito: sin él, en iOS la Plus Jakarta deja el subtítulo
+  // montado sobre el título ("Vamos por ella…" encima de "Servicio a domicilio").
+  toggleTitle: { fontSize: 15, lineHeight: 20, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  toggleSub: { fontSize: 12, lineHeight: 16, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary, marginTop: 4 },
 
   // ── Servicio a domicilio ──
   deliveryFeeText: { fontSize: 15, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.primary },
