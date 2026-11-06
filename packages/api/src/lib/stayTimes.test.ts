@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { instanteDeLlegada, applyReservationTimesUpdate, rangoDeMananaHotel } from "./stayTimes";
+import { instanteDeLlegada, applyReservationTimesUpdate, rangoDeMananaHotel, buildStayTimesMessage } from "./stayTimes";
 
 vi.mock("./notify", () => ({
   equipoActivoIds: vi.fn(async () => ["usr_nancy", "usr_javier"]),
@@ -264,5 +264,46 @@ describe("applyReservationTimesUpdate", () => {
     expect(vi.mocked(notifyUsers).mock.calls[0]?.[2].body).toBe(
       "Molly sin hora de llegada y sale a las 6:00 pm.",
     );
+  });
+});
+
+describe("buildStayTimesMessage — aviso al equipo", () => {
+  const base = {
+    petName: "Bruno",
+    checkIn: new Date("2026-11-06T00:00:00Z"),
+    checkOut: new Date("2026-11-09T00:00:00Z"),
+  };
+
+  it("cuando lo programa el cliente dice quién y con el día", () => {
+    const m = buildStayTimesMessage({
+      ...base,
+      ownerName: "Adriana Rios",
+      checkInTime: "16:00",
+      byClient: true,
+    });
+    expect(m.title).toBe("🕒 Horario programado: Bruno");
+    expect(m.body).toBe("Adriana Rios programó en la app: Bruno llega el vie 6 nov a las 4:00 pm.");
+  });
+
+  it("llegada y salida juntas", () => {
+    const m = buildStayTimesMessage({
+      ...base,
+      ownerName: "Adriana Rios",
+      checkInTime: "09:30",
+      checkOutTime: "18:00",
+      byClient: true,
+    });
+    expect(m.body).toContain("llega el vie 6 nov a las 9:30 am y sale el lun 9 nov a las 6:00 pm");
+  });
+
+  it("sin nombre del dueño no deja un hueco", () => {
+    const m = buildStayTimesMessage({ ...base, ownerName: "", checkOutTime: "12:00", byClient: true });
+    expect(m.body).toBe("El cliente programó en la app: Bruno sale el lun 9 nov a las 12:00 pm.");
+  });
+
+  it("cuando lo cambia el equipo conserva el texto de siempre", () => {
+    const m = buildStayTimesMessage({ ...base, checkInTime: null, byClient: false });
+    expect(m.title).toBe("Horario actualizado: Bruno");
+    expect(m.body).toBe("Bruno sin hora de llegada.");
   });
 });

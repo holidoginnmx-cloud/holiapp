@@ -20,6 +20,7 @@ import {
 } from "./notify";
 import { formatMoney } from "./notifyTeamPayment";
 import { TZ_HOTEL, localYMD } from "./bathAvailability";
+import { hhmmLegible } from "./stayTimes";
 
 /** De dónde vino la reserva. Viaja en el `data` del push para diagnóstico. */
 export type NewReservationSource = "APP_CLIENTE" | "APP_ADMIN" | "SITIO_WEB";
@@ -252,11 +253,18 @@ export function buildNewReservationMessage(params: {
   const fecha = eventDate ? utcDayLabel(eventDate) : "sin fecha";
   const entrada = urgent ? `Entra ${relDay} ${fecha}` : `Entra ${fecha}${nochesLabel}`;
   const cuarto = urgent && roomName ? ` · ${roomName}` : "";
+  // Las horas que el cliente eligió al reservar. Sin ellas el equipo le
+  // preguntaba por WhatsApp a qué hora llegaba, aunque ya lo había puesto.
+  const horas = [
+    first?.checkInTime ? `llega ${hhmmLegible(first.checkInTime)}` : null,
+    first?.checkOutTime ? `sale ${hhmmLegible(first.checkOutTime)}` : null,
+  ].filter(Boolean);
+  const horario = horas.length > 0 ? ` · ${horas.join(", ")}` : "";
   return {
     title: urgent
       ? `🚨 ¡Llegada ${relDay}! Nueva reservación`
       : "🐾 Nueva reservación",
-    body: `${petNames} — ${entrada}${cuarto}${clientSuffix}`,
+    body: `${petNames} — ${entrada}${horario}${cuarto}${clientSuffix}`,
     urgent,
     relDay,
   };

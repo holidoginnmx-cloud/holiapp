@@ -61,31 +61,86 @@ export type StayTimesInput = {
   checkOutTime?: string | null;
   /** Quién hace el cambio (para no auto-notificarse). */
   actorUserId?: string | null;
-  /** true cuando lo cambia admin/staff: entonces se avisa al resto del equipo. */
+  /** Si se avisa al resto del equipo (hoy: siempre que la hora la fije una persona). */
   notifyTeam: boolean;
+  /**
+   * true cuando la hora la fija el CLIENTE desde su app. Cambia el texto del
+   * aviso: el equipo necesita saber que es la hora que el cliente programó (y
+   * de quién), no un ajuste de un compañero.
+   */
+  byClient?: boolean;
 };
 
+/** "2026-11-07T00:00:00Z" → "vie 7 nov" (el día se guarda a 00:00 UTC). */
+function diaCorto(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  // Por partes y no `format()`: según la versión de ICU sale "9 de nov".
+  const parts = new Intl.DateTimeFormat("es-MX", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).formatToParts(d);
+  const get = (t: string) =>
+    (parts.find((p) => p.type === t)?.value ?? "").replace(/\./g, "");
+  return `${get("weekday")} ${get("day")} ${get("month")}`;
+}
+
+/**
+ * Texto del aviso al equipo cuando cambia el horario. Puro para poder probarlo.
+ *
+ * Con el día pegado a cada hora: "llega a las 4:00 pm" sin fecha obliga a abrir
+ * la reserva para saber si es hoy o la semana que entra.
+ */
+export function buildStayTimesMessage(params: {
+  petName: string | null | undefined;
+  ownerName?: string | null;
+  checkIn?: Date | null;
+  checkOut?: Date | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  byClient: boolean;
+}): { title: string; body: string } {
+  const nombre = params.petName ?? "El perro";
+  const partes: string[] = [];
+  if (params.checkInTime !== undefined) {
+    const dia = diaCorto(params.checkIn);
+    partes.push(
+      params.checkInTime
+        ? `llega${dia ? ` el ${dia}` : ""} a las ${hhmmLegible(params.checkInTime)}`
+        : "sin hora de llegada"
+    );
+  }
+  if (params.checkOutTime !== undefined) {
+    const dia = diaCorto(params.checkOut);
+    partes.push(
+      params.checkOutTime
+        ? `sale${dia ? ` el ${dia}` : ""} a las ${hhmmLegible(params.checkOutTime)}`
+        : "sin hora de salida"
+    );
+  }
+  const cambio = partes.join(" y ");
+  if (params.byClient) {
+    const quien = params.ownerName?.trim() || "El cliente";
+    return {
+      title: `🕒 Horario programado: ${nombre}`,
+      body: `${quien} programó en la app: ${nombre} ${cambio}.`,
+    };
+  }
+  return {
+    title: `Horario actualizado: ${nombre}`,
+    body: `${nombre} ${cambio}.`,
+  };
+}
+
 /** "09:00" → "9:00 am", para el cuerpo del aviso que lee el equipo. */
-function hhmmLegible(hhmm: string): string {
+export function hhmmLegible(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
   const suffix = h < 12 ? "am" : "pm";
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
-function describeCambio(
-  checkInTime: string | null | undefined,
-  checkOutTime: string | null | undefined
-): string {
-  const partes: string[] = [];
-  if (checkInTime !== undefined) {
-    partes.push(checkInTime ? `llega a las ${hhmmLegible(checkInTime)}` : "sin hora de llegada");
-  }
-  if (checkOutTime !== undefined) {
-    partes.push(checkOutTime ? `sale a las ${hhmmLegible(checkOutTime)}` : "sin hora de salida");
-  }
-  return partes.join(" y ");
-}
 
 /**
  * Aplica las horas al grupo completo (las mascotas de una multireserva entran y
@@ -97,7 +152,8 @@ export async function applyReservationTimesUpdate(
   prisma: PrismaClient,
   input: StayTimesInput
 ): Promise<Reservation | null> {
-  const { reservation, checkInTime, checkOutTime, actorUserId, notifyTeam } = input;
+  const { reservation, checkInTime, checkOutTime, actorUserId, notifyTeam, byClient } =
+    input;
 
   const data = {
     ...(checkInTime !== undefined ? { checkInTime } : {}),
@@ -154,7 +210,10 @@ export async function applyReservationTimesUpdate(
 
   const updated = await prisma.reservation.findUnique({
     where: { id: reservation.id },
-    include: { pet: { select: { name: true } } },
+    include: {
+      pet: { select: { name: true } },
+      owner: { select: { firstName: true, lastName: true } },
+    },
   });
 
   // Aviso al equipo: es el punto del pedido. Quien cambia la hora en su
@@ -165,13 +224,25 @@ export async function applyReservationTimesUpdate(
   // responsable de la estancia (la asignación es accountability, no reparto de
   // turnos) y es justo quien necesita saber a qué hora esperarlo.
   if (notifyTeam && updated) {
-    const nombre = updated.pet?.name ?? "El perro";
+    const msg = buildStayTimesMessage({
+      petName: updated.pet?.name,
+      ownerName: [updated.owner?.firstName, updated.owner?.lastName]
+        .filter(Boolean)
+        .join(" "),
+      checkIn: updated.checkIn,
+      checkOut: updated.checkOut,
+      checkInTime,
+      checkOutTime,
+      byClient: byClient ?? false,
+    });
+    // Se excluye a quien hizo el cambio; si fue el cliente no es del equipo y
+    // la exclusión no quita a nadie.
     const targets = await equipoActivoIds(prisma, actorUserId);
     if (targets.length > 0) {
       await notifyUsers(prisma, targets, {
         type: "GENERAL",
-        title: `Horario actualizado: ${nombre}`,
-        body: `${nombre} ${describeCambio(checkInTime, checkOutTime)}.`,
+        title: msg.title,
+        body: msg.body,
         // `RESERVATION_UPDATED` es lo que el móvil escucha para refrescar el
         // caché solo (ver notificationInvalidate.ts).
         data: { reservationId: updated.id, kind: "RESERVATION_UPDATED" },

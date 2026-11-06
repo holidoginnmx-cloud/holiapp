@@ -296,3 +296,25 @@ describe("buildClientConfirmationMessage — confirmación al cliente", () => {
     expect(m.body).not.toContain("alimento");
   });
 });
+
+describe("buildNewReservationMessage — horas de hospedaje", () => {
+  it("incluye la hora de llegada y salida que eligió el cliente", () => {
+    const msg = buildNewReservationMessage({
+      reservations: [
+        {
+          id: "s",
+          reservationType: "STAY",
+          checkIn: new Date("2026-11-20T00:00:00Z"),
+          checkOut: new Date("2026-11-23T00:00:00Z"),
+          checkInTime: "16:00",
+          checkOutTime: "11:00",
+          totalDays: 3,
+          pet: { name: "Bruno" },
+        },
+      ],
+      owner: {},
+      now: new Date("2026-11-06T18:00:00Z"),
+    });
+    expect(msg.body).toContain("llega 4:00 pm, sale 11:00 am");
+  });
+});

@@ -41,6 +41,23 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-06",
+    title: "Aviso de horario del cliente",
+    items: [
+      {
+        icon: "time-outline",
+        title: "Te avisamos cuando el cliente programa su hora",
+        body: "Si el cliente pone en la app su hora de llegada o salida, te llega una notificación.",
+        preview: {
+          label: "NOTIFICACIÓN",
+          value: "🕒 Horario programado: Bruno",
+          caption: "Adriana programó en la app: Bruno llega el vie 6 nov a las 4:00 pm.",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-03-b",
     title: "Servicios en los baños",
     items: [

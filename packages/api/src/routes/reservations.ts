@@ -491,7 +491,11 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         checkInTime,
         checkOutTime,
         actorUserId: request.userId ?? null,
-        notifyTeam: isStaffOrAdmin,
+        // Antes solo avisaba cuando lo cambiaba el equipo, y la hora que el
+        // cliente programaba en su app no le llegaba a nadie: el equipo
+        // terminaba preguntándole por WhatsApp algo que ya había capturado.
+        notifyTeam: true,
+        byClient: !isStaffOrAdmin,
       });
     }
   );
