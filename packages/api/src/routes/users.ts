@@ -60,8 +60,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
   const adminMiddleware = createAdminMiddleware();
   const adminAuth = [authMiddleware, adminMiddleware];
   // El equipo de piso da de alta al cliente que llega sin cita. Es lo único
-  // que se abre a STAFF aquí: listar, editar y desactivar clientes siguen
-  // siendo de admin.
+  // que se abre a STAFF aquí (más corregir el contacto de una ficha sin app,
+  // ver PATCH /users/:id): listar todo, cambiar rol y desactivar clientes
+  // siguen siendo de admin.
   const staffAuth = [authMiddleware, createStaffMiddleware()];
 
   // GET /users — listar (admin: todos; staff: solo clientes activos).
@@ -1346,17 +1347,63 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(user);
   });
 
-  // PATCH /users/:id — actualizar (solo admin).
+  // PATCH /users/:id — actualizar (admin).
   // Sin checks previos de existencia/email: el update es la única query y los
   // errores de Prisma se mapean a los mismos status (P2025→404, P2002→409).
   // Antes eran 2-3 findUnique seriales extra por cada cambio de rol.
+  //
+  // STAFF entra SOLO para corregir los datos de contacto (nombre, teléfono,
+  // correo) de una ficha de cliente SIN app: es el «regresar al paso 1» del
+  // alta cliente → mascota, donde el que se equivocó de teléfono es quien
+  // acaba de crear la ficha. Rol, isActive y cuentas con app siguen siendo
+  // de admin.
+  const STAFF_EDITABLE = new Set(["firstName", "lastName", "phone", "email"]);
   fastify.patch<{ Params: { id: string } }>(
     "/users/:id",
-    { preHandler: adminAuth },
+    { preHandler: staffAuth },
     async (request, reply) => {
       const parsed = UpdateUserSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      if (request.userRole !== "ADMIN") {
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const target = await prisma.user.findUnique({
+          where: { id: request.params.id },
+          select: { role: true, clerkId: true },
+        });
+        if (
+          !Object.keys(body).every((k) => STAFF_EDITABLE.has(k)) ||
+          !target ||
+          target.role !== "OWNER" ||
+          target.clerkId
+        ) {
+          return reply.status(403).send({
+            error: "Solo un administrador puede hacer ese cambio.",
+          });
+        }
+      }
+
+      // Mismo candado que el alta: un teléfono que ya es de OTRO cliente
+      // duplicaría la ficha (y el claim por teléfono ya no sabría de quién es).
+      const phone = normalizePhone(parsed.data.phone);
+      if (phone) {
+        const [dup] = await prisma.$queryRaw<
+          { firstName: string; lastName: string }[]
+        >`
+          SELECT "firstName", "lastName" FROM users
+          WHERE "isActive" = true
+            AND id <> ${request.params.id}
+            AND right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) = ${phone}
+          LIMIT 1
+        `;
+        if (dup) {
+          const dupName = `${dup.firstName} ${dup.lastName}`.trim();
+          return reply.status(409).send({
+            error: `Ese teléfono ya pertenece a ${dupName}. Búscalo en la lista para no duplicarlo.`,
+          });
+        }
       }
 
       try {
