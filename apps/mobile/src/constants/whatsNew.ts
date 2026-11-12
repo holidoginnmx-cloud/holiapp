@@ -41,6 +41,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-11",
+    title: "Corregir al dueño en el alta",
+    items: [
+      {
+        icon: "arrow-back-circle-outline",
+        title: "Regresa a los datos del dueño",
+        body: "¿Teléfono mal? Desde los datos de la mascota, toca la flecha ←, corrige y continúa.",
+        steps: ["Mascotas", "+", "Cliente nuevo", "←"],
+        preview: {
+          label: "BOTÓN",
+          value: "Guardar y continuar",
+          caption: "Se guarda en la misma ficha, no crea otra",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-06",
     title: "Aviso de horario del cliente",
     items: [

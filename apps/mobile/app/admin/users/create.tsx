@@ -15,7 +15,8 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { createUser } from "@/lib/api";
+import { createUser, updateUser } from "@/lib/api";
+import type { User } from "@holidoginn/shared";
 import { formatFullName, formatPhoneInput, phoneNationalDigits } from "@/lib/format";
 
 
@@ -51,27 +52,48 @@ export default function AdminCreateClient() {
   const canSubmit =
     firstName.trim().length > 0 && phoneLooksValid && emailLooksValid;
 
+  // Cliente ya creado en este alta (paso 1 → mascota). Si el equipo regresa
+  // con la flecha para corregir algo, el botón guarda SOBRE esa ficha en vez
+  // de crear otra (el POST la rebotaría por teléfono duplicado… contra sí misma).
+  const [created, setCreated] = useState<User | null>(null);
+  // Lo que se mandó la última vez, para no pegarle al API si nada cambió.
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+
+  const payload = {
+    firstName: firstName.trim(),
+    // El schema exige lastName no vacío; "—" es el mismo fallback que
+    // usa el admin web para clientes sin apellido capturado.
+    lastName: lastName.trim() || "—",
+    phone: phone.trim() || null,
+    ...(emailTrimmed ? { email: emailTrimmed.toLowerCase() } : {}),
+  };
+  const snapshot = JSON.stringify(payload);
+
+  const goToPet = (user: User) => {
+    // Paso 2: los datos del perro, ya ligado a este dueño. `push` (no
+    // `replace`) para que la flecha regrese aquí a corregir al dueño.
+    const ownerName = formatFullName(user.firstName, user.lastName);
+    router.push(
+      `/pet/create?ownerId=${user.id}&ownerName=${encodeURIComponent(
+        ownerName,
+      )}` as any,
+    );
+  };
+
   const mutation = useMutation({
-    mutationFn: () =>
-      createUser({
-        firstName: firstName.trim(),
-        // El schema exige lastName no vacío; "—" es el mismo fallback que
-        // usa el admin web para clientes sin apellido capturado.
-        lastName: lastName.trim() || "—",
-        phone: phone.trim() || null,
-        ...(emailTrimmed ? { email: emailTrimmed.toLowerCase() } : {}),
-      }),
+    mutationFn: async (): Promise<User> => {
+      if (!created) return createUser(payload);
+      if (snapshot === savedSnapshot) return created;
+      // Borrar el correo no se manda: el PATCH no sabe regresar al placeholder
+      // y un correo vacío no pasa el schema. Se queda el que tenía.
+      return updateUser(created.id, payload as Partial<User>);
+    },
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       if (chainToPet) {
-        // Paso 2: los datos del perro, ya ligado a este dueño. `replace` para
-        // que el back del formulario no regrese a un alta de cliente ya hecha.
-        const ownerName = formatFullName(user.firstName, user.lastName);
-        router.replace(
-          `/pet/create?ownerId=${user.id}&ownerName=${encodeURIComponent(
-            ownerName,
-          )}` as any,
-        );
+        setCreated(user);
+        setSavedSnapshot(snapshot);
+        goToPet(user);
         return;
       }
       Alert.alert(
@@ -80,7 +102,10 @@ export default function AdminCreateClient() {
         [{ text: "OK", onPress: () => router.back() }],
       );
     },
-    onError: (e: Error) => alertaDeError(e, { titulo: "No se pudo crear" }),
+    onError: (e: Error) =>
+      alertaDeError(e, {
+        titulo: created ? "No se pudo guardar" : "No se pudo crear",
+      }),
   });
 
   return (
@@ -95,7 +120,9 @@ export default function AdminCreateClient() {
         <View style={styles.introCard}>
           <Ionicons name="person-add" size={20} color={COLORS.primary} />
           <Text style={styles.introText}>
-            {chainToPet
+            {created
+              ? `${created.firstName} ya quedó registrado. Corrige lo que haga falta y continúa: se guarda sobre la misma ficha.`
+              : chainToPet
               ? "Paso 1 de 2: los datos del dueño. Al continuar capturas los datos de su mascota."
               : "Da de alta a un cliente que llega sin la app. Con su teléfono, cuando la descargue podrá vincular su cuenta y ver a sus mascotas."}
           </Text>
@@ -179,7 +206,13 @@ export default function AdminCreateClient() {
                 color={COLORS.white}
               />
               <Text style={styles.submitBtnText}>
-                {chainToPet ? "Continuar con la mascota" : "Crear cliente"}
+                {created
+                  ? snapshot === savedSnapshot
+                    ? "Continuar con la mascota"
+                    : "Guardar y continuar"
+                  : chainToPet
+                  ? "Continuar con la mascota"
+                  : "Crear cliente"}
               </Text>
             </>
           )}
