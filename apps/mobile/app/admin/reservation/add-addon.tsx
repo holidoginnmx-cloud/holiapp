@@ -24,7 +24,13 @@ import { ErrorState } from "@/components/ErrorState";
 import { SwitchRow } from "@/components/SwitchRow";
 import { SelectField } from "@/components/SelectField";
 import { invalidateReservationScope } from "@/lib/invalidateReservations";
-import { bathSizeKey, billableBathSize } from "@holidoginn/shared/src/pricing";
+import {
+  bathSizeKey,
+  billableBathSize,
+  dewormSizeFromWeight,
+  dewormSizeRangeLabel,
+  type DewormSizeKey,
+} from "@holidoginn/shared/src/pricing";
 import { useAuthStore } from "@/store/authStore";
 
 import { mensajeDeError } from "@/lib/errorMessages";
@@ -73,6 +79,10 @@ export default function AdminAddAddonScreen() {
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [courtesyReason, setCourtesyReason] = useState("");
   const [internalNote, setInternalNote] = useState("");
+  // El admin puede abrir todas las tallas del desparasitante (por si el peso
+  // de la ficha está viejo); el staff solo ve la que le toca por peso — el
+  // servidor rechaza otra (DEWORM_SIZE_MISMATCH).
+  const [verTodasDeworm, setVerTodasDeworm] = useState(false);
 
   // En guardería las horas extra NO se agregan a mano: el check-out las
   // calcula solo contra la hora de salida (ver routes/daycare.ts); ofrecer el
@@ -95,6 +105,11 @@ export default function AdminAddAddonScreen() {
   );
   const selectedService = activeServices.find((s) => s.code === serviceCode);
   const isExtraHours = selectedService?.code === "EXTRA_HOURS";
+  // En una cita de baño las horas extra son la guardería mientras lo recogen:
+  // mismo cargo (horas × tarifa), pero así lo llama el equipo.
+  const esCitaBano = reservation?.reservationType === "BATH";
+  const serviceName = (s: { code: string; name: string }) =>
+    s.code === "EXTRA_HOURS" && esCitaBano ? "Guardería (horas)" : s.name;
 
   // Tarifa por hora extra (Config → Tarifas): el catálogo de EXTRA_HOURS es un
   // ancla a $0, así que el precio se arma aquí como horas × tarifa — el mismo
@@ -120,18 +135,41 @@ export default function AdminAddAddonScreen() {
       ? bathSizeKey(billableBathSize(reservation.pet))
       : null;
 
+  // Desparasitante: su PROPIA escala de peso (DEWORM_RANGES_KG), no la del
+  // baño. Con peso, la app ya sabe cuál le toca; sin peso, se elige a mano
+  // viendo los rangos en kg.
+  const petWeight =
+    reservation?.pet?.weight != null ? Number(reservation.pet.weight) : null;
+  const dewormKey: DewormSizeKey | null = dewormSizeFromWeight(petWeight);
+  const dewormMatch = (svc: typeof selectedService) =>
+    dewormKey
+      ? (svc?.variants ?? []).find((v) => v.isActive && v.petSize === dewormKey)
+      : undefined;
+  const isDeworm = selectedService?.code === "DEWORMING";
+  const dewormAuto = isDeworm ? dewormMatch(selectedService) : undefined;
+
   const variants = useMemo(() => {
     const all = (selectedService?.variants ?? []).filter((v) => v.isActive);
+    if (selectedService?.code === "DEWORMING") {
+      const match = dewormKey ? all.find((v) => v.petSize === dewormKey) : undefined;
+      return match && !verTodasDeworm ? [match] : all;
+    }
     if (selectedService?.code !== "BATH" || !petSizeKey) return all;
     // En baño se acotan a la talla del perro; si no hay ninguna, se muestran
     // todas para no dejar la pantalla vacía.
     const porTalla = all.filter((v) => v.petSize === petSizeKey);
     return porTalla.length > 0 ? porTalla : all;
-  }, [selectedService, petSizeKey]);
+  }, [selectedService, petSizeKey, dewormKey, verTodasDeworm]);
 
   const selectedVariant = variants.find((v) => v.id === variantId);
 
   function variantLabel(v: { petSize: string; deslanado: boolean; corte: boolean; price: number }) {
+    // En el desparasitante la talla no dice nada ("XS" ahí no es el XS del
+    // baño): se muestra el rango de peso.
+    if (selectedService?.code === "DEWORMING") {
+      const rango = dewormSizeRangeLabel(v.petSize as DewormSizeKey);
+      return `${rango || v.petSize} — ${formatCurrency(v.price)}`;
+    }
     const extras: string[] = [];
     if (v.deslanado) extras.push("Deslanado");
     if (v.corte) extras.push("Corte");
@@ -212,13 +250,17 @@ export default function AdminAddAddonScreen() {
               ]}
               onPress={() => {
                 setServiceCode(s.code);
+                setVerTodasDeworm(false);
                 // Horas extra tiene UNA variante ancla ($0): se elige sola y
-                // en su lugar la pantalla pide el número de horas.
-                const ancla =
+                // en su lugar la pantalla pide el número de horas. El
+                // desparasitante se elige solo por el peso del perro.
+                const auto =
                   s.code === "EXTRA_HOURS"
                     ? (s.variants ?? []).find((v) => v.isActive)
-                    : null;
-                setVariantId(ancla?.id ?? null);
+                    : s.code === "DEWORMING"
+                      ? dewormMatch(s)
+                      : null;
+                setVariantId(auto?.id ?? null);
               }}
             >
               <Text
@@ -227,7 +269,7 @@ export default function AdminAddAddonScreen() {
                   serviceCode === s.code && { color: COLORS.white },
                 ]}
               >
-                {s.name}
+                {serviceName(s)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -253,12 +295,31 @@ export default function AdminAddAddonScreen() {
               Filtrado por la talla del perro ({petSizeKey}).
             </Text>
           ) : null}
+          {isDeworm ? (
+            <Text style={styles.hint}>
+              {dewormAuto && petWeight != null
+                ? `${formatName(reservation.pet?.name ?? "")} pesa ${petWeight} kg → le toca el de ${dewormSizeRangeLabel(dewormKey!)}.`
+                : petWeight != null
+                  ? `Pesa ${petWeight} kg y no hay desparasitante para ese peso: elige uno.`
+                  : "Sin peso registrado: elige según lo que pese."}
+            </Text>
+          ) : null}
+          {isDeworm && esAdmin && dewormAuto && !verTodasDeworm ? (
+            <TouchableOpacity
+              onPress={() => setVerTodasDeworm(true)}
+              testID="admin-add-addon-deworm-all"
+            >
+              <Text style={styles.link}>Elegir otra talla</Text>
+            </TouchableOpacity>
+          ) : null}
         </>
       )}
 
       {isExtraHours && (
         <>
-          <Text style={styles.label}>¿Cuántas horas extra?</Text>
+          <Text style={styles.label}>
+            {esCitaBano ? "¿Cuántas horas de guardería?" : "¿Cuántas horas extra?"}
+          </Text>
           <TextInput
             style={styles.input}
             keyboardType="number-pad"
@@ -371,6 +432,12 @@ const styles = StyleSheet.create({
     fontFamily: "PlusJakartaSans_400Regular",
     color: COLORS.textTertiary,
     marginTop: 4,
+  },
+  link: {
+    fontSize: 13,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.primary,
+    marginTop: 6,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {

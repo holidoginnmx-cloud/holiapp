@@ -16,8 +16,15 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { createUser, updateUser } from "@/lib/api";
+import type { AdminUserListItem } from "@/lib/api";
+import { coincideBusqueda, palabrasBusqueda } from "@/lib/search";
 import type { User } from "@holidoginn/shared";
-import { formatFullName, formatPhoneInput, phoneNationalDigits } from "@/lib/format";
+import {
+  formatFullName,
+  formatName,
+  formatPhoneInput,
+  phoneNationalDigits,
+} from "@/lib/format";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -108,6 +115,59 @@ export default function AdminCreateClient() {
       }),
   });
 
+  // Antes de crear: ¿ya hay un cliente con ese nombre? Así nacen las fichas
+  // repetidas (dos «Andrea Noriega», nov-2026). Se busca en la lista que ya
+  // está en caché (viene del paso anterior); cada palabra del nombre tecleado
+  // tiene que estar en el existente. Con una sola palabra no se pregunta:
+  // «Andrea» a secas son docenas.
+  const onSubmit = () => {
+    if (created) {
+      mutation.mutate();
+      return;
+    }
+    const tecleado = `${firstName} ${lastName}`.trim();
+    const lista =
+      queryClient.getQueryData<AdminUserListItem[]>(["admin", "users"]) ?? [];
+    const parecidos =
+      palabrasBusqueda(tecleado).length >= 2
+        ? lista
+            .filter((u) => u.role === "OWNER" && u.isActive !== false)
+            .filter((u) =>
+              coincideBusqueda(tecleado, { textos: [u.firstName, u.lastName] }),
+            )
+            .slice(0, 3)
+        : [];
+    if (parecidos.length === 0) {
+      mutation.mutate();
+      return;
+    }
+    const describir = (u: AdminUserListItem) =>
+      [
+        formatFullName(u.firstName, u.lastName),
+        u.phone ? formatPhoneInput(u.phone) : null,
+        u.petNames?.length ? u.petNames.map((n) => formatName(n)).join(", ") : "sin mascotas",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    Alert.alert(
+      "¿Ya está registrado?",
+      `Ya existe:\n${parecidos.map((u) => `• ${describir(u)}`).join("\n")}`,
+      [
+        // En el alta de mascota se puede seguir con la ficha que ya existe.
+        ...(chainToPet
+          ? parecidos.map((u) => ({
+              text: `Usar a ${formatFullName(u.firstName, u.lastName)}${
+                u.phone ? ` (${phoneNationalDigits(u.phone).slice(-4)})` : ""
+              }`,
+              onPress: () => goToPet(u),
+            }))
+          : []),
+        { text: "Es otro cliente", onPress: () => mutation.mutate() },
+        { text: "Cancelar", style: "cancel" as const },
+      ],
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -191,7 +251,7 @@ export default function AdminCreateClient() {
 
         <TouchableOpacity
           style={[styles.submitBtn, (!canSubmit || mutation.isPending) && styles.submitBtnDisabled]}
-          onPress={() => mutation.mutate()}
+          onPress={onSubmit}
           disabled={!canSubmit || mutation.isPending}
           activeOpacity={0.8}
           testID="create-client-submit"

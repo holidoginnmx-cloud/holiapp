@@ -6,7 +6,12 @@ import { apiFetch } from "./client";
 
 /** Usuario en la lista admin + `hasApp` computado por el backend
  * (clerkId vinculado o push token registrado = descargó la app). */
-export type AdminUserListItem = User & { hasApp: boolean };
+export type AdminUserListItem = User & {
+  hasApp: boolean;
+  /** Nombres de sus perros activos (propios y compartidos). Opcional: un API
+   * anterior no lo manda. */
+  petNames?: string[];
+};
 
 export const getUsers = () =>
   apiFetch<AdminUserListItem[]>(ENDPOINTS.users);

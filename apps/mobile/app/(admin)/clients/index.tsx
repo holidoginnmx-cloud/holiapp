@@ -282,38 +282,20 @@ export default function AdminClients() {
                   </TouchableOpacity>
                 );
               })}
-              {/* Quien se registra solo en el sitio queda con el nombre que
-                  sale de su correo («albert_azuar»). Solo admin: el API
-                  (PATCH /users/:id) no deja a STAFF. */}
+              {/* Nombre, teléfono y correo en una sola pantalla. El teléfono
+                  es el que más se equivoca: quien escribe por WhatsApp muchas
+                  veces no es el dueño. Solo admin (la pestaña es de admin). */}
               {role === "ADMIN" && (
                 <TouchableOpacity
                   style={styles.mergeRow}
                   activeOpacity={0.7}
                   onPress={() =>
-                    router.push(`/admin/users/name?userId=${item.id}` as any)
+                    router.push(`/admin/users/edit?userId=${item.id}` as any)
                   }
-                  testID={`client-name-${item.id}`}
+                  testID={`client-edit-${item.id}`}
                 >
                   <Ionicons name="create-outline" size={16} color={COLORS.primary} />
-                  <Text style={styles.mergeText}>Editar nombre</Text>
-                </TouchableOpacity>
-              )}
-              {/* El cliente le pasa su correo al equipo por WhatsApp: con él en
-                  la ficha, al registrarse en la app se le vincula sola. Quien
-                  ya usa la app entra con el suyo y ése no se toca aquí. */}
-              {role === "ADMIN" && userInfo && !userInfo.hasApp && (
-                <TouchableOpacity
-                  style={styles.mergeRow}
-                  activeOpacity={0.7}
-                  onPress={() =>
-                    router.push(`/admin/users/email?userId=${item.id}` as any)
-                  }
-                  testID={`client-email-${item.id}`}
-                >
-                  <Ionicons name="mail-outline" size={16} color={COLORS.primary} />
-                  <Text style={styles.mergeText}>
-                    {email ? "Cambiar correo" : "Asignar correo"}
-                  </Text>
+                  <Text style={styles.mergeText}>Editar cliente</Text>
                 </TouchableOpacity>
               )}
               {/* El mismo cliente dado de alta dos veces (Francisco Acosta,

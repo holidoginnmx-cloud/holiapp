@@ -41,6 +41,60 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-13",
+    title: "Menos capturas repetidas",
+    items: [
+      {
+        icon: "medkit-outline",
+        title: "El desparasitante sale solo por su peso",
+        body: "Al agregarlo, la app ya elige el que le toca.",
+        steps: ["Reserva", "Agregar servicio", "Desparasitante"],
+        preview: {
+          label: "DESPARASITANTE",
+          value: "15.1–30 kg — $370",
+          caption: "Mia pesa 27.6 kg → le toca el de 15.1–30 kg",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "add-circle-outline",
+        title: "Agrega servicios desde la cita de baño",
+        body: "Desparasitante o guardería mientras lo recogen.",
+        steps: ["Cita de baño", "Agregar servicio"],
+        preview: {
+          label: "SERVICIO",
+          value: "Guardería (horas)",
+          caption: "Se suma al total de la cita",
+        },
+        roles: ["STAFF"],
+      },
+      {
+        icon: "paw-outline",
+        title: "Ves sus perros antes de capturar",
+        body: "En Nueva mascota cada cliente muestra sus perros, y puedes buscar por el nombre del perro.",
+        steps: ["Nueva mascota", "Elegir cliente"],
+        preview: {
+          label: "ANDREA YA TIENE REGISTRADO",
+          value: "Mia · Doberman",
+          caption: "Si es este, ábrelo en vez de capturarlo otra vez",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "create-outline",
+        title: "Editar cliente",
+        body: "Nombre, teléfono y correo en un solo lugar.",
+        steps: ["Mascotas", "Tarjeta del cliente", "Editar cliente"],
+        preview: {
+          label: "TELÉFONO DEL DUEÑO",
+          value: "+52 (662) 199 8554",
+          caption: "El del dueño, aunque te escriba otra persona",
+        },
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-11-11",
     title: "Corregir al dueño en el alta",
     items: [

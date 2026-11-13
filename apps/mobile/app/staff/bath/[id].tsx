@@ -327,6 +327,14 @@ export default function StaffBathDetail() {
   const hasOutstanding = !isStayBath && balance.total > 0.01;
   const variantLine = describeVariant(bath);
   const bathAddon = getBathAddon(bath);
+  // Servicios sumados a la cita además del baño (desparasitante, guardería).
+  const extraServices = (bath.addons ?? [])
+    .filter((a) => a.variant?.serviceType?.code !== "BATH")
+    .map((a) =>
+      a.variant?.serviceType?.code === "EXTRA_HOURS"
+        ? `Guardería ${a.quantity ?? 1} h`
+        : a.variant?.serviceType?.name ?? "Servicio",
+    );
   const ownerPhone = bath.owner?.phone;
   const ownerEmail = bath.owner?.email;
 
@@ -555,6 +563,34 @@ export default function StaffBathDetail() {
           );
         })()}
       </View>
+
+      {/* Agregar servicio — lo que se pide en el mostrador además del baño:
+          desparasitante o guardería mientras lo recogen. Misma pantalla que
+          la estancia; solo en citas sueltas (el baño de un hospedaje se
+          gestiona desde la estancia) y mientras la cita siga abierta. */}
+      {!isStayBath && !concluded && bath.status !== "CANCELLED" && (
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() =>
+            router.push(`/admin/reservation/add-addon?id=${bath.id}` as any)
+          }
+          activeOpacity={0.85}
+          testID="staff-bath-add-addon"
+        >
+          <View style={styles.row}>
+            <Ionicons name="add-circle" size={22} color={COLORS.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowText}>Agregar servicio</Text>
+              <Text style={styles.summaryColSub}>
+                {extraServices.length > 0
+                  ? `Ya tiene: ${extraServices.join(" · ")}`
+                  : "Desparasitante o guardería mientras lo recogen"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Foto del baño (tap → fullscreen). Botón para agregar más fotos
           una vez que ya existe al menos una (i.e. el baño está físicamente listo). */}

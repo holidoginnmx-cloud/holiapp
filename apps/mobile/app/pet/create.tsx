@@ -24,6 +24,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { BreedAutocomplete } from "@/components/BreedAutocomplete";
 import { formatName, formatPhoneInput, formatDayLongYear, listaConY } from "@/lib/format";
 import { sizeFromWeight } from "@holidoginn/shared/src/pricing";
+import { findSimilarPetByName } from "@holidoginn/shared/src/petName";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 
@@ -217,6 +218,21 @@ export default function CreatePetScreen() {
     [petsDelDuenoRaw, altaOwnerId],
   );
 
+  // Aviso en cuanto se escribe el nombre (alta desde el equipo): si el dueño
+  // ya tiene ese perro, que se vea ANTES de capturar todo — el 409 del
+  // servidor llega hasta el final y el equipo terminaba capturando dos veces
+  // (Mia Noriega, nov-2026). Misma comparación que el candado de POST /pets
+  // (nombre exacto o parecido), pero solo contra sus perros PROPIOS: para el
+  // equipo GET /pets?ownerId no trae los compartidos, y ésos los sigue
+  // atrapando el 409 del servidor. No bloquea.
+  const perroYaRegistrado = useMemo(
+    () =>
+      isAdminCreate && name.trim().length >= 3
+        ? findSimilarPetByName(petsDelDuenoRaw ?? [], name)?.pet
+        : undefined,
+    [isAdminCreate, name, petsDelDuenoRaw],
+  );
+
   // El contacto de emergencia es uno por dueño: la base lo copia a todas sus
   // mascotas al guardar. Se avisa aquí para que nadie lo cambie creyendo que
   // solo afecta a este perro.
@@ -359,10 +375,12 @@ export default function CreatePetScreen() {
         // El mensaje del servidor le habla al dueño ("Ya tienes registrado
         // a X"), así que en el alta desde admin lo reescribimos en tercera
         // persona: quien está capturando no es el dueño.
+        // «Ver perfil» deja lo capturado aquí: que se sepa antes de tocarlo.
         const duplicateMsg = isAdminCreate
-          ? err.body.petName
-            ? `${ownerName ?? "Ese cliente"} ya tiene a ${err.body.petName}. ¿Es el mismo perro?`
-            : `${ownerName ?? "Ese cliente"} ya tiene una mascota registrada con ese nombre.`
+          ? (err.body.petName
+              ? `${ownerName ?? "Ese cliente"} ya tiene a ${err.body.petName}. ¿Es el mismo perro?`
+              : `${ownerName ?? "Ese cliente"} ya tiene una mascota registrada con ese nombre.`) +
+            "\n\nSi es el mismo, lo que capturaste aquí no se guarda: agrega lo que le falte en su perfil."
           : err.body.message ?? "Ya tienes una mascota registrada con ese nombre.";
         Alert.alert(
           "Mascota ya registrada",
@@ -588,6 +606,25 @@ export default function CreatePetScreen() {
             placeholder="Nombre de tu mascota"
             placeholderTextColor={COLORS.textDisabled}
           />
+          {perroYaRegistrado ? (
+            <TouchableOpacity
+              style={styles.duplicateCard}
+              activeOpacity={0.8}
+              onPress={() => router.replace(`/pet/${perroYaRegistrado.id}` as any)}
+              testID="pet-create-duplicate-hint"
+            >
+              <Ionicons name="alert-circle" size={18} color={COLORS.warningText} />
+              <Text style={styles.duplicateText}>
+                {ownerName ?? "Este cliente"} ya tiene a{" "}
+                <Text style={styles.duplicateStrong}>
+                  {formatName(perroYaRegistrado.name)}
+                </Text>
+                {perroYaRegistrado.breed ? ` (${formatName(perroYaRegistrado.breed)})` : ""}.
+                ¿Es el mismo perro?{" "}
+                <Text style={styles.duplicateLink}>Ver su perfil</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.inputGroup}>
@@ -1144,6 +1181,29 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginTop: -14,
     marginBottom: 20,
+  },
+  duplicateCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: COLORS.warningBg,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+  },
+  duplicateText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "PlusJakartaSans_400Regular",
+    color: COLORS.textPrimary,
+  },
+  duplicateStrong: {
+    fontFamily: "PlusJakartaSans_700Bold",
+  },
+  duplicateLink: {
+    fontFamily: "PlusJakartaSans_700Bold",
+    color: COLORS.primary,
   },
   prefillCard: {
     flexDirection: "row",
