@@ -1533,3 +1533,7 @@ export * from "./reservationBreakdown";
 // Mensaje de «qué llevar» al reservar hospedaje (app, correo y sitio).
 // Mismo criterio: módulo puro, sin zod.
 export * from "./stayPackingNote";
+
+// Comparación de nombres de mascota (candado anti-duplicado del API y aviso
+// temprano en la app del equipo). Mismo criterio: módulo puro, sin zod.
+export * from "./petName";

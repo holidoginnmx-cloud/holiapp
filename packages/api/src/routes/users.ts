@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/fastify";
 import { Prisma } from "@prisma/client";
 import { CreateUserSchema, UpdateUserSchema } from "@holidoginn/shared";
+import { pickSentKeys } from "../lib/patchFields";
 import {
   createAuthMiddleware,
   createAdminMiddleware,
@@ -74,14 +75,33 @@ export default async function usersRoutes(fastify: FastifyInstance) {
     const users = await prisma.user.findMany({
       where: soloClientes ? { role: "OWNER", isActive: true } : undefined,
       orderBy: { createdAt: "desc" },
-      include: { _count: { select: { pushTokens: true } } },
+      include: {
+        _count: { select: { pushTokens: true } },
+        // Nombres de sus perros (propios y compartidos): al dar de alta una
+        // mascota el equipo elige al dueño de esta lista, y dos «Andrea
+        // Noriega» solo se distinguen por sus perros (nov-2026). También deja
+        // buscar al dueño por el nombre del perro.
+        pets: {
+          where: { isActive: true },
+          select: { name: true },
+          orderBy: { createdAt: "asc" },
+        },
+        petCoOwnerships: {
+          where: { pet: { isActive: true } },
+          select: { pet: { select: { name: true } } },
+        },
+      },
     });
     // `hasApp` se computa en el servidor (no se confía en el cliente):
     // tiene cuenta vinculada (clerkId) o al menos un push token registrado
     // = el cliente descargó e inició sesión en la app.
-    return users.map(({ _count, ...u }) => ({
+    return users.map(({ _count, pets, petCoOwnerships, ...u }) => ({
       ...u,
       hasApp: !!u.clerkId || _count.pushTokens > 0,
+      petNames: [
+        ...pets.map((p) => p.name),
+        ...petCoOwnerships.map((c) => c.pet.name),
+      ],
     }));
   });
 
@@ -1366,6 +1386,9 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
+      // Solo lo que vino: los defaults del schema de alta (role OWNER,
+      // isActive true) no se cuelan en un PATCH. Ver lib/patchFields.ts.
+      const data = pickSentKeys(parsed.data, request.body);
 
       if (request.userRole !== "ADMIN") {
         const body = (request.body ?? {}) as Record<string, unknown>;
@@ -1387,7 +1410,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
 
       // Mismo candado que el alta: un teléfono que ya es de OTRO cliente
       // duplicaría la ficha (y el claim por teléfono ya no sabría de quién es).
-      const phone = normalizePhone(parsed.data.phone);
+      const phone = normalizePhone(data.phone);
       if (phone) {
         const [dup] = await prisma.$queryRaw<
           { firstName: string; lastName: string }[]
@@ -1409,7 +1432,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       try {
         const updated = await prisma.user.update({
           where: { id: request.params.id },
-          data: parsed.data,
+          data,
         });
         // Cambios de rol/isActive deben aplicar de inmediato en el middleware.
         invalidateAuthCache(updated.clerkId);

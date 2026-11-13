@@ -8,6 +8,7 @@ import {
   notifyTeamReservationUpdated,
 } from "./notify";
 import { petAudienceIds } from "./petAccess";
+import { dewormVariantMismatch } from "./addonRules";
 import {
   getLodgingPricing,
   computeChangeTotal,
@@ -665,6 +666,31 @@ export async function addReservationAddon(
     include: { serviceType: true },
   });
   if (!variant) return fail(404, "Variante no encontrada", "VARIANT_NOT_FOUND");
+  if (!variant.isActive || !variant.serviceType.isActive) {
+    return fail(400, "Ese servicio ya no está disponible", "VARIANT_UNAVAILABLE");
+  }
+
+  // Para el staff: ¿la talla que le toca por peso está disponible? Si la
+  // desactivaron en el catálogo, no se le exige (no tendría ninguna opción).
+  let dewormExpectedAvailable = true;
+  if (variant.serviceType.code === "DEWORMING" && !actor.isAdmin) {
+    const esperada = dewormSizeFromWeight(reservation.pet.weight);
+    if (esperada && esperada !== variant.petSize) {
+      dewormExpectedAvailable = !!(await prisma.serviceVariant.findFirst({
+        where: { serviceTypeId: variant.serviceTypeId, petSize: esperada, isActive: true },
+        select: { id: true },
+      }));
+    }
+  }
+  const dewormError = dewormVariantMismatch({
+    expectedAvailable: dewormExpectedAvailable,
+    serviceCode: variant.serviceType.code,
+    variantPetSize: variant.petSize,
+    weightKg: reservation.pet.weight,
+    isAdmin: actor.isAdmin,
+    petName: reservation.pet.name,
+  });
+  if (dewormError) return fail(400, dewormError, "DEWORM_SIZE_MISMATCH");
 
   // Un segundo baño COBRADO casi siempre es un doble clic; uno de cortesía
   // sobre uno pagado es un caso real (el baño salió mal, se repone gratis).
