@@ -19,6 +19,7 @@ import {
   Image,
   Dimensions,
   RefreshControl,
+  Switch,
 } from "react-native";
 
 const ROOM_LIST_MAX_HEIGHT = Dimensions.get("window").height * 0.45;
@@ -41,6 +42,7 @@ import {
   adminUpdateReservation,
   adminUpdateReservationAddon,
   updateReservationDelivery,
+  adminSetReservationProbarf,
 } from "@/lib/api";
 import {
   useRoomOccupancy,
@@ -466,6 +468,39 @@ export default function AdminReservationDetail() {
     }),
   });
 
+  // Tarifa ProBarf: es dinero, igual que el total → servidor como autoridad.
+  const probarfMutation = useMutation({
+    mutationFn: (payload: { probarf: boolean; scope: "single" | "group" }) =>
+      adminSetReservationProbarf(id!, payload),
+    onSuccess: (res) => {
+      invalidateAfterStatusChange();
+      const cambio = res.perReservation.reduce((s, r) => s + r.delta, 0);
+      const partes: string[] = [
+        res.probarf ? "Tarifa ProBarf aplicada" : "Tarifa ProBarf quitada",
+      ];
+      if (Math.abs(cambio) > 0.01) {
+        partes.push(
+          cambio < 0
+            ? `el total bajó ${formatCurrency(-cambio)}`
+            : `el total subió ${formatCurrency(cambio)}`,
+        );
+      }
+      if (res.perReservation.length > 1) {
+        partes.push(res.perReservation.map((r) => r.petName).join(" y "));
+      }
+      if (cambio < -0.01) partes.push("se avisó al dueño");
+      if (res.overpaid > 0) {
+        partes.push(
+          `hay ${formatCurrency(res.overpaid)} a favor por reembolsar o dejar de saldo`,
+        );
+      }
+      showSuccess(`${partes.join(" · ")}.`);
+    },
+    onError: (e: Error) => alertaDeError(e, {
+      titulo: "No se pudo cambiar la tarifa ProBarf",
+    }),
+  });
+
   // Notas: texto, reversible y sin dinero de por medio → sí van optimistas.
   const internalNoteMutation = useOptimisticMutation({
     mutationFn: (value: string | null) =>
@@ -717,6 +752,41 @@ export default function AdminReservationDetail() {
     reservation.status === "CONFIRMED" || reservation.status === "CHECKED_IN";
   // Decimal serializado: llega como string desde la API.
   const deliveryFee = Number(reservation.homeDeliveryFee ?? 0);
+  // ProBarf: tarifa preferencial por noche. Solo hospedajes, y es dinero →
+  // solo admin. Se permite tras la salida (se nota al cobrar).
+  const isStay = reservation.reservationType === "STAY";
+  const canEditProbarf =
+    isStay && isAdminRole && reservation.status !== "CANCELLED";
+  const toggleProbarf = (next: boolean) => {
+    if (probarfMutation.isPending) return;
+    const titulo = next ? "Aplicar tarifa ProBarf" : "Quitar tarifa ProBarf";
+    const cuerpo = next
+      ? "El hospedaje se recalcula con la tarifa preferencial por noche (Config → Tarifas)."
+      : "El hospedaje vuelve a la tarifa normal por noche.";
+    // Multi-mascota: los hermanos suelen comer lo mismo, así que se ofrece
+    // aplicarlo a todo el grupo de un jalón.
+    if (reservation.groupId) {
+      Alert.alert(titulo, `${cuerpo}\n\n¿Solo a ${formatName(reservation.pet?.name ?? "esta mascota")} o a todas las mascotas de esta reserva?`, [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: `Solo ${formatName(reservation.pet?.name ?? "esta")}`,
+          onPress: () => probarfMutation.mutate({ probarf: next, scope: "single" }),
+        },
+        {
+          text: "Todas",
+          onPress: () => probarfMutation.mutate({ probarf: next, scope: "group" }),
+        },
+      ]);
+      return;
+    }
+    Alert.alert(titulo, cuerpo, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: next ? "Aplicar" : "Quitar",
+        onPress: () => probarfMutation.mutate({ probarf: next, scope: "single" }),
+      },
+    ]);
+  };
   const bathAddon = reservation.addons?.find(
     (a) => a.variant?.serviceType?.code === "BATH",
   );
@@ -1279,6 +1349,37 @@ export default function AdminReservationDetail() {
               />
             )}
           </TouchableOpacity>
+        )}
+
+        {/* Dieta ProBarf — los perros que comen ProBarf pagan una tarifa
+            preferencial por noche y no había dónde marcarlo. */}
+        {isStay && (canEditProbarf || reservation.probarf) && (
+          <View style={styles.deliveryRow} testID="admin-reservation-probarf">
+            <View style={styles.metaIconWrap}>
+              <Ionicons name="nutrition-outline" size={16} color={COLORS.primary} />
+            </View>
+            <View style={styles.deliveryTexts}>
+              <Text style={styles.deliveryLabel}>Dieta ProBarf</Text>
+              <Text
+                style={reservation.probarf ? styles.deliveryValue : styles.deliveryEmpty}
+              >
+                {reservation.probarf
+                  ? "Tarifa preferencial aplicada"
+                  : "Aplicar tarifa preferencial"}
+              </Text>
+            </View>
+            {probarfMutation.isPending ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Switch
+                value={!!reservation.probarf}
+                onValueChange={toggleProbarf}
+                disabled={!canEditProbarf}
+                trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+                thumbColor={reservation.probarf ? COLORS.primary : COLORS.textDisabled}
+              />
+            )}
+          </View>
         )}
 
         {/* Desglose del cobro: hospedaje × noches, medicamento, servicios,
@@ -1900,6 +2001,55 @@ export default function AdminReservationDetail() {
               </View>
             );
           });
+        })()}
+        {(() => {
+          // Resultado neto de la reserva cuando hubo reembolso: lo que entró
+          // al negocio (cobros menos comisiones de Stripe/terminal) menos lo
+          // devuelto. Stripe NO regresa su comisión al reembolsar, así que un
+          // cobro de $1,400 reembolsado completo deja −$61.94, no $0. Misma
+          // cuenta que el dashboard web e Ingresos del mes.
+          const refunds = reservation.payments.filter((p) => p.status === "REFUNDED");
+          if (refunds.length === 0) return null;
+          let comisiones = 0;
+          let cobrado = 0;
+          for (const p of reservation.payments) {
+            if (p.status !== "PAID" && p.status !== "PARTIAL") continue;
+            cobrado += Number(p.amount);
+            comisiones +=
+              Number(p.stripeFeeAmount ?? 0) + Number(p.cardFeeAmount ?? 0);
+          }
+          const reembolsado = refunds.reduce((s, p) => s + Number(p.amount), 0);
+          const neto = Math.round((cobrado - comisiones - reembolsado) * 100) / 100;
+          const negativo = neto < -0.005;
+          return (
+            <View style={styles.breakdownBox} testID="admin-reservation-net-result">
+              <View style={styles.breakdownRow}>
+                <Text style={[styles.breakdownLabel, { fontFamily: "PlusJakartaSans_700Bold" }]}>
+                  Resultado neto
+                </Text>
+                <Text
+                  style={[
+                    styles.breakdownValue,
+                    { fontFamily: "PlusJakartaSans_700Bold" },
+                    negativo && { color: COLORS.dangerText },
+                  ]}
+                >
+                  {negativo ? "−" : ""}
+                  {formatCurrency(Math.abs(neto))}
+                </Text>
+              </View>
+              <Text style={styles.paymentMeta}>
+                Cobrado {formatCurrency(cobrado)}
+                {comisiones > 0 ? ` · Comisiones −${formatCurrency(comisiones)}` : ""}
+                {` · Reembolsado −${formatCurrency(reembolsado)}`}
+              </Text>
+              {negativo && comisiones > 0 && (
+                <Text style={styles.paymentMeta}>
+                  La comisión de Stripe no se recupera al reembolsar: la absorbe el negocio.
+                </Text>
+              )}
+            </View>
+          );
         })()}
         {reservation.status !== "CANCELLED" &&
           reservation.status !== "CHECKED_OUT" && (

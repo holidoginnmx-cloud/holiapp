@@ -212,6 +212,13 @@ export interface LodgingPricingConfig {
   medicationFeePerNight: number;
   // Tarifa ÚNICA por hora de guardería (y de horas extra al exceder check-out).
   daycareHourPrice: number;
+  /**
+   * Tarifa preferencial por noche para perros que comen ProBarf (chico/grande,
+   * mismo umbral de peso). Opcionales: sin ellas, una reserva marcada ProBarf
+   * cae a la tarifa normal en vez de cobrar $0.
+   */
+  priceProbarfSmall?: number;
+  priceProbarfLarge?: number;
 }
 
 export const DEFAULT_LODGING_PRICING: LodgingPricingConfig = {
@@ -225,20 +232,37 @@ export const DEFAULT_LODGING_PRICING: LodgingPricingConfig = {
 /** Lo que necesita el cálculo de hospedaje (subconjunto de LodgingPricingConfig). */
 export type StayPricingConfig = Pick<
   LodgingPricingConfig,
-  "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg" | "medicationFeePerNight"
+  | "pricePerDaySmall"
+  | "pricePerDayLarge"
+  | "largeWeightKg"
+  | "medicationFeePerNight"
+  | "priceProbarfSmall"
+  | "priceProbarfLarge"
 >;
 
-/** Precio por noche según peso (umbral de "grande" configurable). */
+/**
+ * Precio por noche según peso (umbral de "grande" configurable). Con
+ * `probarf`, la tarifa preferencial ProBarf de la misma talla (si la config la
+ * trae; si no, la normal).
+ */
 export function pricePerDayForWeight(
   weightKg: number | null | undefined,
   config: Pick<
     LodgingPricingConfig,
-    "pricePerDaySmall" | "pricePerDayLarge" | "largeWeightKg"
-  > = DEFAULT_LODGING_PRICING
+    | "pricePerDaySmall"
+    | "pricePerDayLarge"
+    | "largeWeightKg"
+    | "priceProbarfSmall"
+    | "priceProbarfLarge"
+  > = DEFAULT_LODGING_PRICING,
+  probarf = false
 ): number {
-  return weightKg && weightKg >= config.largeWeightKg
-    ? config.pricePerDayLarge
-    : config.pricePerDaySmall;
+  const large = !!weightKg && weightKg >= config.largeWeightKg;
+  if (probarf) {
+    const p = large ? config.priceProbarfLarge : config.priceProbarfSmall;
+    if (p != null && p > 0) return p;
+  }
+  return large ? config.pricePerDayLarge : config.pricePerDaySmall;
 }
 
 // ============================================================
@@ -415,6 +439,8 @@ export interface StayPricingInput {
   addonsAmount?: number;
   /** Descuento ya repartido a ESTA mascota (ver allocateProportional). Se resta antes del mismo día. */
   discount?: number;
+  /** Dieta ProBarf: tarifa preferencial por noche (ver pricePerDayForWeight). */
+  probarf?: boolean;
   config: StayPricingConfig;
 }
 
@@ -467,7 +493,7 @@ export function computeStayPricing(input: StayPricingInput): StayPricing {
     input.totalDays ??
     (input.checkIn && input.checkOut ? computeDays(input.checkIn, input.checkOut) : 0);
   const totalDays = Math.max(0, days);
-  const pricePerDay = pricePerDayForWeight(input.petWeightKg, config);
+  const pricePerDay = pricePerDayForWeight(input.petWeightKg, config, !!input.probarf);
   const lodging = roundMoney(pricePerDay * totalDays);
   const medicationFee =
     input.hasMedication ? medicationFeeFor(totalDays, config) : 0;

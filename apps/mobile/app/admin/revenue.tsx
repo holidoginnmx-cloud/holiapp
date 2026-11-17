@@ -120,6 +120,7 @@ export default function AdminRevenue() {
   const total = data?.total ?? 0;
   const gross = data?.gross ?? 0;
   const refunded = data?.refunded ?? 0;
+  const fees = data?.fees ?? 0;
   const hotelTotal = data?.byCategory?.hotel ?? 0;
   const bathTotal = data?.byCategory?.bath ?? 0;
   // Ventas de la tienda (mostrador y en línea): no cuelgan de una reservación,
@@ -156,25 +157,43 @@ export default function AdminRevenue() {
 
       {/* Total cobrado */}
       <View style={styles.totalCard}>
-        <Text style={styles.totalLabel}>TOTAL COBRADO</Text>
+        {/* Neto real: lo que de verdad le quedó al negocio, igual que el
+            dashboard web. Las comisiones de Stripe/terminal no se recuperan
+            ni cuando se reembolsa. */}
+        <Text style={styles.totalLabel}>INGRESO NETO</Text>
         <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
-        {refunded > 0 ? (
-          <View style={styles.totalSplitRow}>
+        {refunded > 0 || fees > 0 ? (
+          <View style={[styles.totalSplitRow, { flexWrap: "wrap" }]}>
             <Text style={styles.totalSplitItem}>
               Cobrado{" "}
               <Text style={styles.totalSplitStrong}>
                 {formatCurrency(gross)}
               </Text>
             </Text>
-            <Text style={styles.totalSplitDot}>·</Text>
-            <Text style={[styles.totalSplitItem, { color: COLORS.dangerText }]}>
-              Reembolsado{" "}
-              <Text
-                style={[styles.totalSplitStrong, { color: COLORS.dangerText }]}
-              >
-                −{formatCurrency(refunded)}
-              </Text>
-            </Text>
+            {fees > 0 ? (
+              <>
+                <Text style={styles.totalSplitDot}>·</Text>
+                <Text style={styles.totalSplitItem}>
+                  Comisiones{" "}
+                  <Text style={styles.totalSplitStrong}>
+                    −{formatCurrency(fees)}
+                  </Text>
+                </Text>
+              </>
+            ) : null}
+            {refunded > 0 ? (
+              <>
+                <Text style={styles.totalSplitDot}>·</Text>
+                <Text style={[styles.totalSplitItem, { color: COLORS.dangerText }]}>
+                  Reembolsado{" "}
+                  <Text
+                    style={[styles.totalSplitStrong, { color: COLORS.dangerText }]}
+                  >
+                    −{formatCurrency(refunded)}
+                  </Text>
+                </Text>
+              </>
+            ) : null}
           </View>
         ) : null}
         <Text style={styles.totalMeta}>

@@ -75,6 +75,8 @@ export type BreakdownInput = {
   totalAmount?: Money;
   totalDays?: number | null;
   lodgingAmount?: Money;
+  /** Hospedaje a tarifa preferencial ProBarf: solo cambia la etiqueta. */
+  probarf?: boolean | null;
   medicationFee?: Money;
   sameDayFee?: Money;
   discountTotal?: Money;
@@ -214,7 +216,7 @@ export function buildReservationBreakdown(
       key: "lodging",
       label:
         noches > 0
-          ? `Hospedaje · ${money(explicitBase / noches)} × ${noches} ${
+          ? `Hospedaje${r.probarf ? " ProBarf" : ""} · ${money(explicitBase / noches)} × ${noches} ${
               noches === 1 ? "noche" : "noches"
             }`
           : "Hospedaje",

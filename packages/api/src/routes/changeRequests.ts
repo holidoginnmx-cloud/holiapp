@@ -72,6 +72,7 @@ export default async function changeRequestsRoutes(fastify: FastifyInstance) {
         reservation.lodgingAmount != null ? Number(reservation.lodgingAmount) : null,
       currentMedicationFee:
         reservation.medicationFee != null ? Number(reservation.medicationFee) : null,
+      probarf: reservation.probarf,
       config: pricingConfig,
     });
     const lastPaid = reservation.payments

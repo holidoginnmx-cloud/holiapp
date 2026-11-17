@@ -15,6 +15,9 @@ import {
   billableBathSize,
   dewormSizeFromWeight,
   allocateProportional,
+  computeDays,
+  pricePerDayForWeight,
+  roundMoney,
   type ChangeTotalResult,
 } from "./pricing";
 import { planRefund, processRefund } from "./refund";
@@ -274,6 +277,7 @@ export async function previewDatesChange(
       currentTotal: Number(row.totalAmount),
       currentLodgingAmount: row.lodgingAmount != null ? Number(row.lodgingAmount) : null,
       currentMedicationFee: row.medicationFee != null ? Number(row.medicationFee) : null,
+      probarf: row.probarf,
       config,
     }),
   }));
@@ -403,6 +407,206 @@ export async function applyDatesChange(
   });
 
   return ok({ success: true as const, ...preview });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Tarifa ProBarf (dieta) — por DELTA de hospedaje, igual que el cambio de fechas
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type ProbarfChange = {
+  reservationId: string;
+  petName: string;
+  previousTotal: number;
+  newTotal: number;
+  delta: number;
+  pricePerDay: number;
+};
+
+/**
+ * Hospedaje de una fila a la tarifa normal o ProBarf, y cuánto mueve el total.
+ *
+ * "Lo que ya paga" es el desglose persistido (`lodgingAmount`) cuando existe:
+ * así un cambio de tarifas en Config no se cuela en el delta. Sin desglose
+ * (reservas viejas o con total manual) se calcula con la tarifa vigente de lo
+ * que la fila tiene hoy. Solo cambia el hospedaje: domicilio, medicamento,
+ * add-ons y descuentos dentro de `totalAmount` se quedan igual.
+ *
+ * Pura y exportada para probarla sin base.
+ */
+export function planProbarfChange(
+  row: {
+    totalAmount: number;
+    lodgingAmount: number | null;
+    totalDays: number;
+    petWeightKg: number | null;
+    probarf: boolean;
+  },
+  probarf: boolean,
+  config: Parameters<typeof pricePerDayForWeight>[1]
+): { newLodging: number; newTotal: number; delta: number; pricePerDay: number } {
+  const currentLodging =
+    row.lodgingAmount != null && row.lodgingAmount > 0
+      ? row.lodgingAmount
+      : roundMoney(pricePerDayForWeight(row.petWeightKg, config, row.probarf) * row.totalDays);
+  const pricePerDay = pricePerDayForWeight(row.petWeightKg, config, probarf);
+  const newLodging = roundMoney(pricePerDay * row.totalDays);
+  const newTotal = Math.max(0, roundMoney(row.totalAmount + newLodging - currentLodging));
+  return {
+    newLodging,
+    newTotal,
+    delta: roundMoney(newTotal - row.totalAmount),
+    pricePerDay,
+  };
+}
+
+/**
+ * Activa o quita la tarifa ProBarf de un hospedaje ya creado. Con scope
+ * "group" se aplica a todas las mascotas del mismo grupo que sigan vigentes
+ * (los hermanos de una misma familia suelen comer lo mismo).
+ *
+ * Se permite en CHECKED_OUT (como corregir el total): el equipo suele darse
+ * cuenta al cobrar la salida.
+ */
+export async function setReservationProbarf(
+  prisma: PrismaClient,
+  params: {
+    reservationId: string;
+    probarf: boolean;
+    scope: DatesScope;
+    actor: OpActor;
+  }
+): Promise<
+  OpResult<{
+    success: true;
+    probarf: boolean;
+    newTotal: number;
+    delta: number;
+    overpaid: number;
+    perReservation: ProbarfChange[];
+  }>
+> {
+  const reservation = await prisma.reservation.findUnique({
+    where: { id: params.reservationId },
+    include: { pet: true },
+  });
+  if (!reservation) return fail(404, "Reservación no encontrada", "NOT_FOUND");
+  if (reservation.reservationType !== "STAY") {
+    return fail(400, "La tarifa ProBarf solo aplica a hospedajes", "NOT_A_STAY");
+  }
+  if (reservation.status === "CANCELLED") {
+    return fail(400, "No se puede editar una reserva cancelada", "CANCELLED");
+  }
+
+  const rows =
+    params.scope === "group" && reservation.groupId
+      ? (
+          await prisma.reservation.findMany({
+            where: { groupId: reservation.groupId, ownerId: reservation.ownerId },
+            include: { pet: true },
+            orderBy: { createdAt: "asc" },
+          })
+        ).filter((r) => r.reservationType === "STAY" && r.status !== "CANCELLED")
+      : [reservation];
+
+  // Mismo candado que al corregir el total: la solicitud de cambio del cliente
+  // trae sus propios montos y pisarlos descuadra.
+  const pendingCR = await prisma.reservationChangeRequest.findFirst({
+    where: { reservationId: { in: rows.map((r) => r.id) }, status: "PENDING" },
+  });
+  if (pendingCR) {
+    return fail(
+      409,
+      "El cliente tiene una solicitud de cambio pendiente. Apruébala o recházala antes de cambiar la tarifa.",
+      "PENDING_CHANGE_REQUEST"
+    );
+  }
+
+  const config = await getLodgingPricing(prisma);
+  const changes: ProbarfChange[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      if (row.probarf === params.probarf) continue;
+      const totalDays =
+        row.totalDays ??
+        (row.checkIn && row.checkOut ? computeDays(row.checkIn, row.checkOut) : 0);
+      const plan = planProbarfChange(
+        {
+          totalAmount: Number(row.totalAmount),
+          lodgingAmount: row.lodgingAmount != null ? Number(row.lodgingAmount) : null,
+          totalDays,
+          petWeightKg: row.pet.weight,
+          probarf: row.probarf,
+        },
+        params.probarf,
+        config
+      );
+      await tx.reservation.update({
+        where: { id: row.id },
+        data: {
+          probarf: params.probarf,
+          lodgingAmount: new Prisma.Decimal(plan.newLodging),
+          totalAmount: new Prisma.Decimal(plan.newTotal),
+        },
+      });
+      changes.push({
+        reservationId: row.id,
+        petName: row.pet.name,
+        previousTotal: Number(row.totalAmount),
+        newTotal: plan.newTotal,
+        delta: plan.delta,
+        pricePerDay: plan.pricePerDay,
+      });
+    }
+  });
+
+  // La respuesta habla de la reserva que se abrió (la que pinta el detalle).
+  const mine = changes.find((c) => c.reservationId === reservation.id);
+  const newTotal = mine?.newTotal ?? Number(reservation.totalAmount);
+  const paid = await prisma.payment.findMany({
+    where: { reservationId: reservation.id, status: { in: ["PAID", "PARTIAL"] } },
+    select: { amount: true },
+  });
+  const totalPaid = paid.reduce((s, p) => s + Number(p.amount), 0);
+  const overpaid = Math.max(0, roundMoney(totalPaid - newTotal));
+
+  if (changes.length > 0) {
+    const names = joinNames(changes.map((c) => c.petName));
+    const delta = roundMoney(changes.reduce((s, c) => s + c.delta, 0));
+    const accion = params.probarf ? "Se aplicó tarifa ProBarf" : "Se quitó la tarifa ProBarf";
+    const signo = delta > 0 ? "subió" : "bajó";
+    await notifyTeamReservationUpdated(prisma, {
+      reservationId: reservation.id,
+      petName: names,
+      body:
+        Math.abs(delta) > 0.01
+          ? `${accion}: el total ${signo} $${money(Math.abs(delta))}.`
+          : `${accion}.`,
+      actorUserId: params.actor.userId,
+      assignedStaffId: reservation.staffId,
+    });
+    // Al dueño solo cuando le baja (mismo criterio que corregir el total).
+    if (delta < -0.01) {
+      await notifyPetAudience(
+        prisma,
+        { petId: reservation.petId, ownerId: reservation.ownerId },
+        {
+          type: "GENERAL",
+          title: "Aplicamos tu tarifa ProBarf 💛",
+          body: `El hospedaje de ${names} quedó con tarifa preferencial ProBarf: $${money(Math.abs(delta))} menos.`,
+          data: { reservationId: reservation.id },
+        }
+      );
+    }
+  }
+
+  return ok({
+    success: true as const,
+    probarf: params.probarf,
+    newTotal,
+    delta: mine?.delta ?? 0,
+    overpaid,
+    perReservation: changes,
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

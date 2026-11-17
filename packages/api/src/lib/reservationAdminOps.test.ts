@@ -40,6 +40,7 @@ import {
   updatePayment,
   updateReservationAddon,
   changeReservationPet,
+  planProbarfChange,
   type CancelRowInput,
 } from "./reservationAdminOps";
 
@@ -1392,5 +1393,60 @@ describe("changeReservationPet — corregir la mascota de una reserva", () => {
     if (res.ok) return;
     expect(res.status).toBe(404);
     expect(res.code).toBe("PET_NOT_FOUND");
+  });
+});
+
+describe("planProbarfChange — tarifa ProBarf por delta de hospedaje", () => {
+  const config = {
+    pricePerDaySmall: 350,
+    pricePerDayLarge: 450,
+    largeWeightKg: 20,
+    priceProbarfSmall: 300,
+    priceProbarfLarge: 400,
+  };
+
+  it("perro grande, 3 noches: $1,350 → $1,200", () => {
+    const plan = planProbarfChange(
+      { totalAmount: 1350, lodgingAmount: 1350, totalDays: 3, petWeightKg: 30, probarf: false },
+      true,
+      config
+    );
+    expect(plan).toEqual({ newLodging: 1200, newTotal: 1200, delta: -150, pricePerDay: 400 });
+  });
+
+  it("respeta domicilio y add-ons que ya están dentro del total", () => {
+    const plan = planProbarfChange(
+      { totalAmount: 1610, lodgingAmount: 1350, totalDays: 3, petWeightKg: 30, probarf: false },
+      true,
+      config
+    );
+    expect(plan.newTotal).toBe(1460);
+  });
+
+  it("quitarla regresa a la tarifa normal", () => {
+    const plan = planProbarfChange(
+      { totalAmount: 600, lodgingAmount: 600, totalDays: 2, petWeightKg: 8, probarf: true },
+      false,
+      config
+    );
+    expect(plan).toEqual({ newLodging: 700, newTotal: 700, delta: 100, pricePerDay: 350 });
+  });
+
+  it("sin desglose guardado, calcula lo actual con la tarifa vigente", () => {
+    const plan = planProbarfChange(
+      { totalAmount: 900, lodgingAmount: null, totalDays: 2, petWeightKg: 30, probarf: false },
+      true,
+      config
+    );
+    expect(plan.newTotal).toBe(800);
+  });
+
+  it("sin tarifa ProBarf configurada no cambia nada", () => {
+    const plan = planProbarfChange(
+      { totalAmount: 1350, lodgingAmount: 1350, totalDays: 3, petWeightKg: 30, probarf: false },
+      true,
+      { pricePerDaySmall: 350, pricePerDayLarge: 450, largeWeightKg: 20 }
+    );
+    expect(plan.delta).toBe(0);
   });
 });

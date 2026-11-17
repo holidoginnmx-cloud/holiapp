@@ -11,6 +11,7 @@ import {
   UpdateVaccineSchema,
   CreateChangeRequestSchema,
   AdminUpdateReservationSchema,
+  AdminSetProbarfSchema,
   AdminCreateAddonSchema,
   AdminUpdateAddonSchema,
   HOTEL_TZ_OFFSET_HOURS,
@@ -32,6 +33,7 @@ import {
   previewDatesChange,
   applyDatesChange,
   updateReservationBasics,
+  setReservationProbarf,
   addReservationAddon,
   updateReservationAddon,
   cancelReservations,
@@ -421,9 +423,20 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       // reservation type and the addons paid through it. Refunds inherit the
       // category of their reservation but are marked as kind="REFUND" so the
       // UI can show them in red and we can subtract them from totals.
+      //
+      // NETO REAL, igual que las vistas del dashboard web
+      // (migrations/20260904000001_dashboard_views): a cada cobro se le resta
+      // la comisión que absorbe el negocio (Stripe y terminal Getnet). Un
+      // reembolso resta su monto COMPLETO porque Stripe no devuelve la
+      // comisión: cobrar $1,400 y reembolsarlos deja −$61.94, no $0.
       const enriched = payments.map((p) => {
         const amount = Number(p.amount);
         const isRefund = p.status === "REFUNDED";
+        const fee = isRefund
+          ? 0
+          : Number(p.stripeFeeAmount ?? 0) + Number(p.cardFeeAmount ?? 0);
+        // Las bandas hotel/baño se reparten en neto, en la misma proporción.
+        const netRatio = amount > 0 ? (amount - fee) / amount : 1;
         const bathAddonsSum = (p.addons ?? [])
           .filter((a) => a.variant.serviceType.code === "BATH")
           .reduce((sum, a) => sum + Number(a.unitPrice), 0);
@@ -461,24 +474,26 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           ...p,
           kind: isRefund ? ("REFUND" as const) : ("PAYMENT" as const),
           category,
-          hotelAmount,
-          bathAmount,
+          hotelAmount: hotelAmount * netRatio,
+          bathAmount: bathAmount * netRatio,
+          fee,
+          net: amount - fee,
         };
       });
 
-      const gross = enriched.reduce(
-        (acc, p) => (p.kind === "PAYMENT" ? acc + Number(p.amount) : acc),
-        0
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const gross = round2(
+        enriched.reduce((acc, p) => (p.kind === "PAYMENT" ? acc + Number(p.amount) : acc), 0)
       );
-      const refunded = enriched.reduce(
-        (acc, p) => (p.kind === "REFUND" ? acc + Number(p.amount) : acc),
-        0
+      const fees = round2(enriched.reduce((acc, p) => acc + p.fee, 0));
+      const refunded = round2(
+        enriched.reduce((acc, p) => (p.kind === "REFUND" ? acc + Number(p.amount) : acc), 0)
       );
-      const total = gross - refunded;
+      const total = round2(gross - fees - refunded);
 
       const byMethod = enriched.reduce<Record<string, number>>((acc, p) => {
-        const sign = p.kind === "REFUND" ? -1 : 1;
-        acc[p.method] = (acc[p.method] ?? 0) + sign * Number(p.amount);
+        const signed = p.kind === "REFUND" ? -Number(p.amount) : p.net;
+        acc[p.method] = round2((acc[p.method] ?? 0) + signed);
         return acc;
       }, {});
       const byCategory = enriched.reduce(
@@ -488,17 +503,23 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           acc.bath += sign * p.bathAmount;
           // Las ventas de tienda no reparten entre hotel/estética: el monto
           // entero es su propia banda (hotelAmount y bathAmount quedan en 0).
-          if (p.category === "STORE") acc.store += sign * Number(p.amount);
+          if (p.category === "STORE") {
+            acc.store += p.kind === "REFUND" ? -Number(p.amount) : p.net;
+          }
           return acc;
         },
         { hotel: 0, bath: 0, store: 0 }
       );
+      byCategory.hotel = round2(byCategory.hotel);
+      byCategory.bath = round2(byCategory.bath);
+      byCategory.store = round2(byCategory.store);
 
       return reply.send({
         monthStart: monthStart.toISOString(),
         monthEnd: monthEnd.toISOString(),
         total,
         gross,
+        fees,
         refunded,
         byMethod,
         byCategory,
@@ -942,6 +963,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // Tarifa única por hora de guardería / horas extra (columna
         // daycareExtraHourPrice; nombre histórico de la migración web 0019).
         daycareHourPrice: Number(row.daycareExtraHourPrice),
+        priceProbarfSmall: Number(row.priceProbarfSmall),
+        priceProbarfLarge: Number(row.priceProbarfLarge),
         updatedAt: row.updatedAt,
       };
     }
@@ -1138,6 +1161,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         largeWeightKg: Number(row.largeWeightKg),
         medicationFeePerNight: Number(row.medicationFeePerNight),
         daycareHourPrice: Number(row.daycareExtraHourPrice),
+        priceProbarfSmall: Number(row.priceProbarfSmall),
+        priceProbarfLarge: Number(row.priceProbarfLarge),
         updatedAt: row.updatedAt,
       };
     }
@@ -1371,6 +1396,29 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       const res = await updateReservationBasics(prisma, {
         reservationId: request.params.id,
         input: parsed.data,
+        actor: actorOf(request),
+      });
+      if (!res.ok) return sendOpError(reply, res);
+      return reply.send(res.data);
+    }
+  );
+
+  // ─── PATCH /admin/reservations/:id/probarf — tarifa ProBarf ─────
+  // Perros que comen ProBarf pagan una tarifa preferencial por noche
+  // (Config → Tarifas). Recalcula el hospedaje por delta; con scope "group"
+  // aplica a todas las mascotas del grupo. Es dinero: solo admin.
+  fastify.patch<{ Params: { id: string } }>(
+    "/admin/reservations/:id/probarf",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const parsed = AdminSetProbarfSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+      const res = await setReservationProbarf(prisma, {
+        reservationId: request.params.id,
+        probarf: parsed.data.probarf,
+        scope: parsed.data.scope,
         actor: actorOf(request),
       });
       if (!res.ok) return sendOpError(reply, res);

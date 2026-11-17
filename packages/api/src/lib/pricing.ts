@@ -71,6 +71,8 @@ export async function getLodgingPricing(
     // Tarifa única por hora de guardería/horas extra. La columna conserva el
     // nombre histórico daycareExtraHourPrice (migración web 0019).
     daycareHourPrice: Number(row.daycareExtraHourPrice),
+    priceProbarfSmall: Number(row.priceProbarfSmall),
+    priceProbarfLarge: Number(row.priceProbarfLarge),
   };
 }
 
@@ -91,6 +93,8 @@ interface ChangeTotalInput {
    */
   currentLodgingAmount?: number | null;
   currentMedicationFee?: number | null;
+  /** Reserva con tarifa ProBarf: las noches nuevas se cobran a esa tarifa. */
+  probarf?: boolean;
   config?: LodgingPricingConfig;
 }
 
@@ -124,9 +128,10 @@ export function computeChangeTotal({
   currentTotal,
   currentLodgingAmount,
   currentMedicationFee,
+  probarf = false,
   config = DEFAULT_LODGING_PRICING,
 }: ChangeTotalInput): ChangeTotalResult {
-  const pricePerDay = pricePerDayForWeight(petWeightKg, config);
+  const pricePerDay = pricePerDayForWeight(petWeightKg, config, probarf);
   // Misma regla que computeStayPricing: tarifa por noche × noches.
   const medFor = (days: number) =>
     hasMedication ? medicationFeeFor(days, config) : 0;

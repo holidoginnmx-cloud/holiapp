@@ -197,6 +197,8 @@ export default function AdminCreateReservation() {
   // Medicamento (STAY)
   const [medEnabled, setMedEnabled] = useState(false);
   const [medNotes, setMedNotes] = useState("");
+  // Dieta ProBarf (STAY): tarifa preferencial por noche para todo el grupo.
+  const [probarf, setProbarf] = useState(false);
 
   // Asignar staff
   const [staffId, setStaffId] = useState<string | null>(null);
@@ -650,14 +652,14 @@ export default function AdminCreateReservation() {
     // Suma por mascota: la tarifa por noche depende del peso de cada una y del
     // umbral configurado (pricePerDayForWeight con la config del servidor).
     const perPet = selectedPets.map(
-      (p) => pricePerDayForWeight(p.weight, lodgingPricing) * days,
+      (p) => pricePerDayForWeight(p.weight, lodgingPricing, probarf) * days,
     );
     const total = perPet.reduce(
       (sum, n) => sum + n,
       0,
     );
     return { days, total, perPet };
-  }, [reservationType, checkIn, checkOut, selectedPets, lodgingPricing]);
+  }, [reservationType, checkIn, checkOut, selectedPets, lodgingPricing, probarf]);
 
   // Ya hay con qué estimar una estancia pero las tarifas todavía no llegan:
   // se muestra "Calculando…" sin bloquear el botón de crear.
@@ -913,6 +915,7 @@ export default function AdminCreateReservation() {
         // Con una mascota se manda roomId (forma clásica); con varias, roomIds.
         ...(roomIds.length === 1 ? { roomId: roomIds[0] } : { roomIds }),
         ...(medEnabled ? { medicationNotes: medNotes.trim() } : {}),
+        ...(probarf ? { probarf: true } : {}),
         ...(stayBathEnabled
           ? { bath: { deslanado: stayDeslanado, corte: stayCorte } }
           : {}),
@@ -1408,6 +1411,18 @@ export default function AdminCreateReservation() {
                 ) : null}
               </>
             )}
+
+            {/* Dieta ProBarf: tarifa preferencial por noche. */}
+            <SwitchRow
+              label="Dieta ProBarf"
+              hint={
+                lodgingPricing?.priceProbarfSmall && lodgingPricing?.priceProbarfLarge
+                  ? `Tarifa preferencial: $${lodgingPricing.priceProbarfSmall} chico · $${lodgingPricing.priceProbarfLarge} grande por noche`
+                  : "Tarifa preferencial por noche"
+              }
+              value={probarf}
+              onValueChange={setProbarf}
+            />
 
             {/* Medicamento */}
             <SwitchRow

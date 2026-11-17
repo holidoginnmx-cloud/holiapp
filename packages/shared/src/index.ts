@@ -464,6 +464,8 @@ export const ReservationSchema = z.object({
   lodgingAmount: z.union([z.string(), z.number()]).nullable().optional(),
   medicationFee: z.union([z.string(), z.number()]).nullable().optional(),
   sameDayFee: z.union([z.string(), z.number()]).nullable().optional(),
+  // Hospedaje con tarifa preferencial ProBarf (lo marca el equipo).
+  probarf: z.boolean().optional(),
   // Descuento aplicado al reservar (código compartido con la tienda).
   discountTotal: z.union([z.string(), z.number()]).nullable().optional(),
   ownerId: z.string(),
@@ -565,6 +567,9 @@ export const CreateReservationSchema = z.object({
   // Con varias mascotas es el total del GRUPO: se reparte entre las filas.
   // El fee de domicilio siempre se suma aparte server-side.
   totalAmountOverride: z.number().nonnegative().optional(),
+  // STAY: dieta ProBarf → tarifa preferencial por noche (solo STAFF/ADMIN;
+  // la ruta de alta ya es solo del equipo). Aplica a todas las mascotas.
+  probarf: z.boolean().optional(),
   // "Agendar de todos modos" (solo STAFF/ADMIN, solo BATH): guarda la cita
   // aunque se encime o termine después de que sale la estilista. Queda marcada
   // en la reserva para poder distinguirla en la agenda.
@@ -696,6 +701,14 @@ export const AdminUpdateAddonSchema = z
       d.scheduledAt !== undefined,
     { message: "Indica al menos un campo a actualizar" }
   );
+
+// Activar/quitar la tarifa ProBarf de un hospedaje ya creado (ADMIN).
+// `scope: "group"` aplica a todas las mascotas activas del mismo grupo.
+export const AdminSetProbarfSchema = z.object({
+  probarf: z.boolean(),
+  scope: z.enum(["single", "group"]).default("single"),
+});
+export type AdminSetProbarf = z.infer<typeof AdminSetProbarfSchema>;
 
 export type AdminUpdateReservation = z.infer<typeof AdminUpdateReservationSchema>;
 export type AdminCreateAddon = z.infer<typeof AdminCreateAddonSchema>;
@@ -889,6 +902,9 @@ export const PaymentSchema = z.object({
   // Comisión que Stripe descuenta (solo pagos STRIPE). `amount` SIEMPRE es
   // bruto: el neto que entra al negocio es amount − stripeFeeAmount.
   stripeFeeAmount: z.coerce.number().nullable().optional(),
+  // Recargo de la terminal física (Getnet) que absorbe el negocio. Mismo
+  // criterio: `amount` es bruto y el neto es amount − cardFeeAmount.
+  cardFeeAmount: z.coerce.number().nullable().optional(),
   // Cuándo Stripe libera el dinero para el depósito automático (≈ cuándo cae
   // al banco). Si el depósito real ya se concilió, manda payoutLines.
   stripeAvailableOn: z.coerce.date().nullable().optional(),
@@ -920,6 +936,7 @@ export const CreatePaymentSchema = PaymentSchema.omit({
   // Solo lectura: los escribe el webhook de Stripe / la conciliación de
   // depósitos, nunca el que registra un pago.
   stripeFeeAmount: true,
+  cardFeeAmount: true,
   stripeAvailableOn: true,
   payoutLines: true,
 })

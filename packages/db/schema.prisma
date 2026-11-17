@@ -581,6 +581,10 @@ model Reservation {
   lodgingAmount          Decimal?          @db.Decimal(10, 2) // hospedaje: tarifa/día × noches
   medicationFee          Decimal?          @db.Decimal(10, 2) // recargo por medicamento (tarifa por noche × noches; antes 10% del hospedaje)
   sameDayFee             Decimal?          @db.Decimal(10, 2) // recargo por reservar <24h antes del check-in (+20%)
+  // Dieta ProBarf: el hospedaje se cobra con la tarifa preferencial
+  // (lodging_pricing.priceProbarfSmall/Large). Lo marca el equipo; los cambios
+  // de fechas respetan esta tarifa al recalcular las noches.
+  probarf                Boolean           @default(false)
   // Anticipo acordado/esperado (← `anticipo_acordado` de la web). El acto de
   // pagarlo se registra como un Payment con kind=ANTICIPO. Flexible / opcional.
   depositAgreed          Decimal?          @db.Decimal(10, 2)

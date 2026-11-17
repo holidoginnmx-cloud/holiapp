@@ -60,8 +60,11 @@ export const getAdminRoomStatus = () =>
 export type AdminRevenueBreakdown = {
   monthStart: string;
   monthEnd: string;
+  /** Neto real: cobrado − comisiones (Stripe/terminal) − reembolsado. */
   total: number;
   gross: number;
+  /** Comisiones que absorbió el negocio. Opcional: una API vieja no lo manda. */
+  fees?: number;
   refunded: number;
   byMethod: Record<string, number>;
   byCategory: { hotel: number; bath: number; store: number };
@@ -425,6 +428,36 @@ export const adminUpdateReservation = (
     body: JSON.stringify(data),
   });
 
+export type AdminSetProbarfResult = {
+  success: boolean;
+  probarf: boolean;
+  /** Total de la reserva abierta, ya con la tarifa nueva. */
+  newTotal: number;
+  delta: number;
+  overpaid: number;
+  perReservation: {
+    reservationId: string;
+    petName: string;
+    previousTotal: number;
+    newTotal: number;
+    delta: number;
+    pricePerDay: number;
+  }[];
+};
+
+/**
+ * Activa o quita la tarifa ProBarf de un hospedaje. El servidor recalcula el
+ * hospedaje por delta; `scope: "group"` aplica a todas las mascotas del grupo.
+ */
+export const adminSetReservationProbarf = (
+  reservationId: string,
+  data: { probarf: boolean; scope: "single" | "group" },
+) =>
+  apiFetch<AdminSetProbarfResult>(`/admin/reservations/${reservationId}/probarf`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
 export type AdminAddonResult = {
   success: boolean;
   addon: ReservationAddonWithVariant;
@@ -505,6 +538,9 @@ export interface AdminLodgingPricing {
   medicationFeePerNight: number;
   // Tarifa única por hora de guardería (y horas extra al exceder check-out).
   daycareHourPrice: number;
+  /** Tarifa preferencial por noche para perros que comen ProBarf. */
+  priceProbarfSmall?: number;
+  priceProbarfLarge?: number;
   updatedAt: string;
 }
 

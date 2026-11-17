@@ -115,6 +115,7 @@ export async function createTeamReservation(
     totalAmountOverride,
     scheduleOverride,
     quoteId,
+    probarf,
   } = params.input;
 
   if (!legalAccepted) {
@@ -506,6 +507,7 @@ export async function createTeamReservation(
       hasMedication: Boolean(trimmedMedication),
       sameDay: false,
       addonsAmount: stayBathVariants?.[i]?.price ?? 0,
+      probarf: !!probarf,
       config: pricingConfig,
     })
   );
@@ -535,6 +537,7 @@ export async function createTeamReservation(
             checkInTime: checkInTime ?? null,
             checkOutTime: checkOutTime ?? null,
             totalDays,
+            probarf: !!probarf,
             totalAmount: new Prisma.Decimal(amounts[i]).add(isFirst ? deliveryFee : 0),
             // Desglose del cobro original (solo con cálculo automático).
             // Desglose desde el MISMO objeto que fijó el precio.
