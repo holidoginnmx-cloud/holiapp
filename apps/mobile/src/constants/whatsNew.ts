@@ -41,6 +41,38 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-18-b",
+    title: "Citas que se agendan solas",
+    items: [
+      {
+        icon: "repeat-outline",
+        title: "Citas recurrentes",
+        body: "Para clientes con cita fija: la app agenda cada visita sola, una semana antes.",
+        route: "/admin/recurring",
+        steps: ["Ajustes", "Citas recurrentes", "Nueva"],
+        preview: {
+          label: "BAÑO CADA 2 SEMANAS · VIERNES",
+          value: "Polly, Luna y Bongo · 10:00 am",
+          caption: "Si una semana cambia, mueve o cancela esa cita como siempre",
+        },
+        roles: ["ADMIN"],
+      },
+      {
+        icon: "repeat-outline",
+        title: "Citas recurrentes",
+        body: "Para clientes con cita fija: la app agenda cada visita sola, una semana antes.",
+        route: "/admin/recurring",
+        steps: ["Más", "Citas recurrentes", "Nueva"],
+        preview: {
+          label: "BAÑO CADA 2 SEMANAS · VIERNES",
+          value: "Polly, Luna y Bongo · 10:00 am",
+          caption: "Si una semana cambia, mueve o cancela esa cita como siempre",
+        },
+        roles: ["STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-18-a",
     title: "Baños de perros hospedados",
     items: [

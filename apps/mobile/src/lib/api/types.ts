@@ -111,6 +111,8 @@ export type ReservationDetail = Reservation & {
   staff: { id: string; firstName: string; lastName: string; avatarUrl: string | null } | null;
   review?: Review | null;
   addons?: ReservationAddonWithVariant[];
+  /** La agendó sola una cita recurrente (ver app/admin/recurring). */
+  recurringBookingId?: string | null;
 };
 
 export type BathSelectionsByPet = Record<string, { deslanado: boolean; corte: boolean }>;

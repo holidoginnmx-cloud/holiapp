@@ -304,6 +304,18 @@ export async function claimPetsIntoAccount(
       data: { revokedById: primaryId },
     });
 
+    // Citas recurrentes: de la cuenta nueva pasan a la que sobrevive. Sin esto
+    // el delete de abajo truena por la FK (ON DELETE RESTRICT) y la
+    // vinculación entera falla con un 500.
+    await tx.recurringBooking.updateMany({
+      where: { ownerId: fresh.id },
+      data: { ownerId: primaryId },
+    });
+    await tx.recurringBooking.updateMany({
+      where: { createdById: fresh.id },
+      data: { createdById: primaryId },
+    });
+
     const clerkId = fresh.clerkId;
     const realEmail = fresh.email;
     await tx.user.delete({ where: { id: fresh.id } });

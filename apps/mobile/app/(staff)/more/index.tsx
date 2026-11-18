@@ -193,6 +193,12 @@ export default function StaffMore() {
           label="Baño de invitado"
           subtitle="El perro ya está aquí y no sabemos de quién es"
           onPress={() => router.push("/admin/reservation/guest-bath" as any)}
+        />
+        <MenuItem
+          icon="repeat-outline"
+          label="Citas recurrentes"
+          subtitle="Clientes con cita fija: la app las agenda sola"
+          onPress={() => router.push("/admin/recurring" as any)}
           isLast
         />
       </View>

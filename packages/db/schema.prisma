@@ -284,6 +284,10 @@ model User {
   quotesConverted Quote[] @relation("QuoteConverter")
   quotesRevised   Quote[] @relation("QuoteReviser")
 
+  // Citas recurrentes: las series de ESTE cliente y las que dio de alta como equipo.
+  recurringBookingsOwned   RecurringBooking[] @relation("RecurringOwner")
+  recurringBookingsCreated RecurringBooking[] @relation("RecurringCreator")
+
   @@index([expressIntakeAt]) // walk-ins por completar
   @@map("users")
 }
@@ -637,6 +641,13 @@ model Reservation {
   // `notifications` porque el barrido de mantenimiento la consulta en bucle.
   // Ver packages/api/src/lib/balanceReminder.ts.
   balanceReminderAt      DateTime? // cuándo se le avisó del saldo al dueño
+  // Cita recurrente: de qué serie salió y a qué FECHA de la serie corresponde
+  // ("YYYY-MM-DD", día del hotel). `recurrenceDate` NO cambia si el equipo
+  // mueve la cita a otro día: es la marca de "esta fecha ya se generó", y el
+  // único de abajo impide que el generador la vuelva a crear (aunque se haya
+  // movido o cancelado). Ver packages/api/src/lib/recurringBookings.ts.
+  recurringBookingId     String?
+  recurrenceDate         String?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
@@ -670,6 +681,12 @@ model Reservation {
   changeRequests  ReservationChangeRequest[]
   terminalCharges TerminalCharge[]
 
+  recurringBooking RecurringBooking? @relation(fields: [recurringBookingId], references: [id], onDelete: SetNull)
+
+  // Una fila por (serie, fecha, mascota): el generador puede correr dos veces
+  // (o en dos réplicas) sin duplicar citas. Postgres no compara NULLs, así que
+  // las reservas normales (sin serie) no chocan entre sí.
+  @@unique([recurringBookingId, recurrenceDate, petId])
   // Índices para evitar full table scans en las consultas más frecuentes.
   @@index([ownerId, status]) // GET /reservations (inicio, tab reservas)
   @@index([status, checkOut]) // autoCheckoutOverdueStays + checkouts del día
@@ -686,6 +703,69 @@ model Reservation {
   // solo toca la página pedida.
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("reservations")
+}
+
+// =============================================================
+//  RECURRING BOOKING — Citas que se repiten solas (baño / guardería)
+// =============================================================
+//
+// Clientes fijos con cita pactada ("los Gurrola, un viernes sí y uno no").
+// El generador (packages/api/src/lib/recurringBookings.ts) crea cada cita
+// `leadDays` antes con `createTeamReservation`, igual que si el equipo la
+// capturara. Las fechas son SIEMPRE días del hotel ("YYYY-MM-DD"), nunca
+// instantes: la conversión a UTC se hace al crear cada cita.
+model RecurringBooking {
+  id              String          @id @default(cuid())
+  reservationType ReservationType // BATH o DAYCARE
+  petIds          String[] // un grupo multi-perro, en el orden en que se atienden
+  intervalWeeks   Int             @default(1) // cada cuántas semanas (1–4)
+  weekdays        Int[] // 0 = domingo … 6 = sábado
+  anchorDate      String // primera fecha; fija la paridad de "cada 2 semanas"
+  endDate         String? // última fecha posible (incluida); null = sin fin
+
+  // BATH: hora del primer perro ("HH:mm"); los demás se encadenan.
+  startTime    String?
+  deslanado    Boolean @default(false)
+  corte        Boolean @default(false)
+  // DAYCARE: entrada / salida estimadas ("HH:mm").
+  checkInTime  String?
+  checkOutTime String?
+
+  // Domicilio: la serie guarda su propia dirección (el cliente puede no tener
+  // una en su perfil). Sin `chargeDelivery` el viaje es de cortesía ($0).
+  homeDelivery        Boolean      @default(false)
+  homeDeliveryAddress String?
+  homeDeliveryLat     Float?
+  homeDeliveryLng     Float?
+  homeDeliveryPlaceId String?
+  homeDeliveryTrip    DeliveryTrip @default(PICKUP)
+  chargeDelivery      Boolean      @default(false)
+
+  totalAmountOverride Decimal? @db.Decimal(10, 2) // precio pactado por visita (todo el grupo); solo ADMIN
+  internalNotes       String?
+  staffId             String?
+
+  leadDays         Int      @default(7) // con cuántos días de anticipación se crea cada cita
+  skipDates        String[] @default([]) // fechas que el equipo saltó antes de que se crearan
+  generatedThrough String? // última fecha ya revisada por el generador
+
+  active       Boolean   @default(true) // false = en pausa
+  pausedReason String? // por qué se pausó sola (p.ej. "sin mascotas activas")
+  deletedAt    DateTime? // terminada: ya no se lista ni genera; las citas creadas se quedan
+
+  ownerId     String
+  owner       User    @relation("RecurringOwner", fields: [ownerId], references: [id])
+  createdById String?
+  createdBy   User?   @relation("RecurringCreator", fields: [createdById], references: [id])
+
+  reservations Reservation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, deletedAt]) // barrido del generador
+  @@index([ownerId])
+  @@map("recurring_bookings")
 }
 
 // =============================================================

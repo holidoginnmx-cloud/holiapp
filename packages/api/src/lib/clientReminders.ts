@@ -519,6 +519,21 @@ export async function runClientReminders(
   now: Date = new Date()
 ): Promise<void> {
   const jobs: [string, () => Promise<{ sent: number }>][] = [
+    // PRIMERO: crea las citas recurrentes que ya entraron en su ventana, para
+    // que los recordatorios de abajo ya las vean en esta misma vuelta.
+    // Solo de 9:00 a 20:00 del hotel: cada cita le manda al cliente su push
+    // de "cita confirmada" y no debe llegarle a las 3 de la mañana.
+    // Import diferido: el generador arrastra createTeamReservation (cotizaciones,
+    // Stripe…) y este módulo lo cargan también tests y scripts ligeros.
+    [
+      "citas recurrentes",
+      async () => {
+        const rb = await import("./recurringBookings");
+        return rb.isRecurringGenerationHour(now)
+          ? rb.generateRecurringOccurrences(prisma, now)
+          : { sent: 0 };
+      },
+    ],
     ["día anterior", () => sendDayBeforeReminders(prisma, now)],
     ["1.5 h", () => sendNinetyMinuteReminders(prisma, now)],
     ["hora de hospedaje", () => sendStayTimeReminders(prisma, now)],

@@ -318,3 +318,17 @@ describe("buildNewReservationMessage — horas de hospedaje", () => {
     expect(msg.body).toContain("llega 4:00 pm, sale 11:00 am");
   });
 });
+
+describe("buildClientConfirmationMessage — grupo y puntuación", () => {
+  it("varios perros: «tienen», y sin doble punto tras a.m.", () => {
+    const m = buildClientConfirmationMessage({
+      reservations: [
+        { id: "a", reservationType: "BATH", appointmentAt: new Date("2026-11-20T17:00:00Z"), pet: { name: "Polly" } },
+        { id: "b", reservationType: "BATH", appointmentAt: new Date("2026-11-20T19:00:00Z"), pet: { name: "Luna" } },
+        { id: "c", reservationType: "BATH", appointmentAt: new Date("2026-11-20T21:00:00Z"), pet: { name: "Bongo" } },
+      ],
+    });
+    expect(m.body).toMatch(/^Polly, Luna y Bongo tienen baño el /);
+    expect(m.body).not.toContain("..");
+  });
+});

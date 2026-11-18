@@ -2,6 +2,19 @@ import { StyleSheet } from "react-native";
 import { COLORS } from "@/constants/colors";
 
 export const styles = StyleSheet.create({
+  // Chip "Cita recurrente" → la serie que la agendó.
+  recurringChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  recurringChipText: { fontSize: 13, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.primary },
   toastOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",

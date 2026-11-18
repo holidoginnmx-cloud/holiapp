@@ -64,6 +64,10 @@ export async function mergeOwnerInto(
       await tx.reservation.updateMany(porDueno);
       await tx.review.updateMany(porDueno);
       await tx.quote.updateMany(porDueno);
+      // Las citas recurrentes siguen a sus perros: si se quedaran en la ficha
+      // dada de baja, cada visita fallaría con PET_NOT_OWNED.
+      await tx.recurringBooking.updateMany(porDueno);
+      await tx.recurringBooking.updateMany({ where: { createdById: fromId }, data: { createdById: intoId } });
       await tx.payment.updateMany(porUsuario);
       await tx.notification.updateMany(porUsuario);
       await tx.pushToken.updateMany(porUsuario);

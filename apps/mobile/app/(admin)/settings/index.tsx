@@ -196,6 +196,13 @@ export default function AdminSettings() {
           onPress={() => router.push("/admin/bath-config" as any)}
         />
         <MenuItem
+          icon="repeat-outline"
+          iconTint={COLORS.primary}
+          label="Citas recurrentes"
+          subtitle="Clientes con cita fija: la app las agenda sola"
+          onPress={() => router.push("/admin/recurring" as any)}
+        />
+        <MenuItem
           icon="car-outline"
           iconTint={COLORS.primary}
           label="Servicio a domicilio"

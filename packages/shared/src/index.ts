@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { stayDayAnchor } from "./pricing";
+import { isYMD, recurringBookingIssues } from "./recurrence";
 
 /**
  * Fecha de estadía (checkIn/checkOut) que entra al API: se ancla a las 00:00
@@ -1515,6 +1516,62 @@ export type UpdateQuote = z.infer<typeof UpdateQuoteSchema>;
 // Vive en un archivo aparte para que la app móvil pueda importar estas
 // funciones sin arrastrar zod al bundle. FUENTE ÚNICA: no redefinir en
 // rutas ni pantallas.
+// ─────────────────────────────────────────────────────────────────────────────
+//  Citas recurrentes — validación (API ↔ app). Calendario en ./recurrence.
+//
+//  ⚠️ Sin `.default()` a propósito: el PATCH usa `.partial()` y un default ahí
+//  rellenaría los campos que NO se mandaron y pisaría la serie (ya pasó con
+//  PATCH /users/:id, que reseteaba role/isActive).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RecurringYmdSchema = z.string().refine(isYMD, "Fecha inválida (YYYY-MM-DD)");
+
+export const RecurringDeliverySchema = z.object({
+  address: z.string().trim().min(1),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  placeId: z.string().optional(),
+  trip: z.enum(["PICKUP", "DROPOFF", "ROUND_TRIP"]).optional(),
+});
+
+export const RecurringBookingFieldsSchema = z.object({
+  reservationType: z.enum(["BATH", "DAYCARE"]),
+  ownerId: z.string().min(1),
+  petIds: z.array(z.string().min(1)).min(1).max(10),
+  intervalWeeks: z.number().int().min(1).max(4),
+  weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+  anchorDate: RecurringYmdSchema,
+  endDate: RecurringYmdSchema.nullable().optional(),
+  startTime: TimeHHmmSchema.nullable().optional(),
+  deslanado: z.boolean().optional(),
+  corte: z.boolean().optional(),
+  checkInTime: TimeHHmmSchema.nullable().optional(),
+  checkOutTime: TimeHHmmSchema.nullable().optional(),
+  homeDelivery: RecurringDeliverySchema.nullable().optional(),
+  chargeDelivery: z.boolean().optional(),
+  totalAmountOverride: z.number().nonnegative().nullable().optional(),
+  internalNotes: z.string().max(2000).nullable().optional(),
+  staffId: z.string().nullable().optional(),
+  leadDays: z.number().int().min(1).max(30).optional(),
+});
+export type RecurringBookingFields = z.infer<typeof RecurringBookingFieldsSchema>;
+
+export const CreateRecurringBookingSchema = RecurringBookingFieldsSchema.superRefine((v, ctx) => {
+  for (const message of recurringBookingIssues(v)) ctx.addIssue({ code: "custom", message });
+});
+export type CreateRecurringBooking = z.infer<typeof CreateRecurringBookingSchema>;
+
+export const UpdateRecurringBookingSchema = RecurringBookingFieldsSchema.omit({ ownerId: true })
+  .partial()
+  .extend({ active: z.boolean().optional() });
+export type UpdateRecurringBooking = z.infer<typeof UpdateRecurringBookingSchema>;
+
+export const SkipRecurringDateSchema = z.object({
+  date: RecurringYmdSchema,
+  /** false = des-saltar (volver a incluir la fecha). */
+  skip: z.boolean().optional(),
+});
+
 // ========================
 export * from "./pricing";
 
@@ -1537,3 +1594,7 @@ export * from "./stayPackingNote";
 // Comparación de nombres de mascota (candado anti-duplicado del API y aviso
 // temprano en la app del equipo). Mismo criterio: módulo puro, sin zod.
 export * from "./petName";
+
+// Citas recurrentes — calendario de una serie (días del hotel). Mismo
+// criterio: módulo puro, sin zod. Los schemas están arriba, en este archivo.
+export * from "./recurrence";

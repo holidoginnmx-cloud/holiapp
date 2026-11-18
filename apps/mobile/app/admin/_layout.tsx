@@ -69,6 +69,7 @@ export default function AdminRootLayout() {
         options={{ headerShown: false }}
       />
       <Stack.Screen name="reservation" options={{ headerShown: false }} />
+      <Stack.Screen name="recurring" options={{ headerShown: false }} />
       <Stack.Screen name="room" options={{ headerShown: false }} />
       <Stack.Screen name="payout" options={{ headerShown: false }} />
       <Stack.Screen name="store-order" options={{ headerShown: false }} />

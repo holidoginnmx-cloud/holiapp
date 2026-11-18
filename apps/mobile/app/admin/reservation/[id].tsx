@@ -893,6 +893,20 @@ export default function AdminReservationDetail() {
         </View>
       </View>
 
+      {/* La agendó sola una serie recurrente: lleva a la serie (saltar fechas,
+          pausar, editar). Cambiar ESTA cita no afecta a las demás. */}
+      {reservation.recurringBookingId ? (
+        <TouchableOpacity
+          style={styles.recurringChip}
+          activeOpacity={0.7}
+          onPress={() => router.push(`/admin/recurring/${reservation.recurringBookingId}` as any)}
+        >
+          <Ionicons name="repeat" size={14} color={COLORS.primary} />
+          <Text style={styles.recurringChipText}>Cita recurrente · ver la serie</Text>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+        </TouchableOpacity>
+      ) : null}
+
       {/* Info */}
       <View style={styles.card}>
         {/* Bath hero — cita + variante + datos relevantes para el baño */}

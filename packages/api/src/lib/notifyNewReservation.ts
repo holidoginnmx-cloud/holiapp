@@ -23,7 +23,7 @@ import { TZ_HOTEL, localYMD } from "./bathAvailability";
 import { hhmmLegible } from "./stayTimes";
 
 /** De dónde vino la reserva. Viaja en el `data` del push para diagnóstico. */
-export type NewReservationSource = "APP_CLIENTE" | "APP_ADMIN" | "SITIO_WEB";
+export type NewReservationSource = "APP_CLIENTE" | "APP_ADMIN" | "SITIO_WEB" | "RECURRING";
 
 /**
  * Forma mínima de una reserva recién creada. Es un subconjunto de lo que
@@ -289,6 +289,9 @@ export async function notifyNewReservation(
     if (targets.length === 0) return;
 
     const msg = buildNewReservationMessage(params);
+    // La creó el generador de citas recurrentes, no una persona: que el
+    // equipo no se pregunte quién la capturó.
+    if (source === "RECURRING") msg.title = `🔁 ${msg.title} (recurrente)`;
     const data = {
       reservationId: first.id,
       reservationType: first.reservationType,
@@ -408,6 +411,10 @@ export function buildClientConfirmationMessage(params: {
         ? names[0]
         : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
   const recordatorio = " Te mandaremos un recordatorio un día antes.";
+  // "Polly, Luna y Bongo tienen…": el grupo multi-perro llega en un solo push.
+  const tiene = names.length > 1 ? "tienen" : "tiene";
+  // La hora sale como "10:00 a.m." y el punto final la duplicaba ("a.m..").
+  const fin = (s: string) => (s.endsWith(".") ? s : `${s}.`);
 
   if (type === "BATH") {
     const at = first?.appointmentAt ?? null;
@@ -415,7 +422,7 @@ export function buildClientConfirmationMessage(params: {
     const servicio = bathLabel ? ` (${bathLabel})` : "";
     return {
       title: "Cita de baño confirmada 🛁",
-      body: `${who} tiene baño${servicio}${when}.${recordatorio}`,
+      body: `${fin(`${who} ${tiene} baño${servicio}${when}`)}${recordatorio}`,
     };
   }
 
@@ -426,7 +433,7 @@ export function buildClientConfirmationMessage(params: {
     const horario = inT && outT ? `, de ${inT} a ${outT}` : "";
     return {
       title: "Guardería confirmada 🐾",
-      body: `${who} tiene guardería${at ? ` el ${utcDayLabel(at)}` : ""}${horario}.${recordatorio}`,
+      body: `${fin(`${who} ${tiene} guardería${at ? ` el ${utcDayLabel(at)}` : ""}${horario}`)}${recordatorio}`,
     };
   }
 

@@ -16,6 +16,7 @@ import {
 import { chainStarts, evaluateStart, localYMD } from "./bathAvailability";
 import { loadScheduleCfg, loadBusyIntervals, resolveBathDuration } from "./bathAvailabilityDb";
 import { lockRoomsAndVerifyCapacity, RoomTakenError } from "./reservationCreate";
+import { countDaycareOccupancy } from "./daycareCreate";
 import { splitGroupTotal, splitProportional, type OpResult } from "./reservationAdminOps";
 
 /**
@@ -55,7 +56,21 @@ export type TeamCreateParams = {
   input: CreateReservation;
   /** Quién captura (se le excluye del aviso de reserva nueva). */
   actorUserId: string | null;
-  source?: "APP_ADMIN" | "SITIO_WEB";
+  source?: "APP_ADMIN" | "SITIO_WEB" | "RECURRING";
+  /**
+   * Domicilio de CORTESÍA: el viaje se registra (dirección, distancia, ida/
+   * vuelta) para que el equipo sepa que hay que ir por el perro, pero con
+   * tarifa $0 y sin sumarlo al total. Lo usan las citas recurrentes con el
+   * traslado incluido en lo pactado. Mismo criterio que `isCourtesy` en
+   * lib/deliveryUpdate.ts.
+   */
+  deliveryCourtesy?: boolean;
+  /**
+   * Cita generada por una serie recurrente (lib/recurringBookings.ts). Se
+   * escribe en CADA fila; el único (serie, fecha, mascota) de `reservations`
+   * hace que una segunda corrida del generador truene en vez de duplicar.
+   */
+  recurrence?: { id: string; date: string };
 };
 
 export type TeamCreateData = {
@@ -77,6 +92,13 @@ export function teamCreatePayload(rows: CreatedReservation[]) {
         })),
       }
     : rows[0];
+}
+
+/** Conflicto de agenda detectado DENTRO del lock: aborta la transacción. */
+class AgendaConflictError extends Error {
+  constructor() {
+    super("AGENDA_CONFLICT");
+  }
 }
 
 const fail = (
@@ -163,7 +185,13 @@ export async function createTeamReservation(
       homeDelivery.lng,
       homeDelivery.trip ?? "PICKUP"
     );
-    if (quote.active) {
+    if (params.deliveryCourtesy) {
+      // De cortesía el viaje se registra aunque el servicio esté apagado en
+      // Config: es un acuerdo con ESE cliente, no una venta al público.
+      deliveryFee = 0;
+      deliveryDistanceKm = quote.distanceKm;
+      deliveryAddress = homeDelivery.address;
+    } else if (quote.active) {
       deliveryFee = quote.fee;
       deliveryDistanceKm = quote.distanceKm;
       deliveryAddress = homeDelivery.address;
@@ -185,6 +213,12 @@ export async function createTeamReservation(
   const sharedData = {
     ...(staffId ? { staffId } : {}),
     ...(trimmedMedication ? { medicationNotes: trimmedMedication } : {}),
+    ...(params.recurrence
+      ? {
+          recurringBookingId: params.recurrence.id,
+          recurrenceDate: params.recurrence.date,
+        }
+      : {}),
   };
   const splitDeposit = (rowTotals: number[]): number[] | null =>
     depositAgreed != null && depositAgreed > 0 ? splitProportional(depositAgreed, rowTotals) : null;
@@ -286,44 +320,73 @@ export async function createTeamReservation(
         : bathVariants.map((v) => v.price);
     const deposits = splitDeposit(amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)));
 
-    const reservations = await prisma.$transaction(async (tx) => {
-      const created: CreatedReservation[] = [];
-      for (let i = 0; i < groupPets.length; i++) {
-        const isFirst = i === 0;
-        const res = await tx.reservation.create({
-          data: {
-            reservationType: "BATH",
-            appointmentAt: bathStarts[i],
-            durationMinutes: bathDurations[i],
-            ...(agendaWarnings.length > 0
-              ? { scheduleOverridden: true, scheduleOverrideReason: agendaWarnings.join(" ") }
-              : {}),
-            totalAmount: new Prisma.Decimal(amounts[i]).add(isFirst ? deliveryFee : 0),
-            notes,
-            internalNotes: internalNotes ?? null,
-            legalAccepted,
-            status: "CONFIRMED",
-            groupId,
-            ownerId,
-            petId: groupPets[i].id,
-            ...rowExtraData(isFirst, deposits?.[i]),
-          },
-          include: { pet: true, room: true },
-        });
-        // Addon para rastrear la variante contratada (conserva el precio de
-        // lista aunque el total sea manual).
-        await tx.reservationAddon.create({
-          data: {
-            reservationId: res.id,
-            variantId: bathVariants[i].id,
-            unitPrice: new Prisma.Decimal(bathVariants[i].price),
-            paidWith: "BOOKING",
-          },
-        });
-        created.push(res);
+    let reservations: CreatedReservation[];
+    try {
+      reservations = await prisma.$transaction(async (tx) => {
+        // Lock por DÍA de la agenda de estética (namespace 42), el mismo que
+        // toman la confirmación del cliente y el reagendado (routes/baths.ts).
+        // Sin él, dos altas simultáneas —p. ej. el generador de citas
+        // recurrentes y alguien en mostrador— veían la agenda libre a la vez.
+        // Dentro del lock se vuelve a mirar la agenda: lo que se vio arriba
+        // pudo cambiar mientras se esperaba el lock.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(42, hashtext(${dateYMD}))`;
+        const busyNow = await loadBusyIntervals(tx, dateYMD, schedule);
+        for (let i = 0; i < bathStarts.length; i++) {
+          const verdict = evaluateStart(bathStarts[i], bathDurations[i], schedule, busyNow);
+          const msg = verdict.ok ? null : `${groupPets[i].name}: ${verdict.message}`;
+          if (msg && !agendaWarnings.includes(msg)) agendaWarnings.push(msg);
+          busyNow.push({
+            startMs: bathStarts[i].getTime(),
+            endMs: bathStarts[i].getTime() + bathDurations[i] * 60_000,
+            id: `pending-${i}`,
+            label: groupPets[i].name,
+          });
+        }
+        if (agendaWarnings.length > 0 && !scheduleOverride) throw new AgendaConflictError();
+
+        const created: CreatedReservation[] = [];
+        for (let i = 0; i < groupPets.length; i++) {
+          const isFirst = i === 0;
+          const res = await tx.reservation.create({
+            data: {
+              reservationType: "BATH",
+              appointmentAt: bathStarts[i],
+              durationMinutes: bathDurations[i],
+              ...(agendaWarnings.length > 0
+                ? { scheduleOverridden: true, scheduleOverrideReason: agendaWarnings.join(" ") }
+                : {}),
+              totalAmount: new Prisma.Decimal(amounts[i]).add(isFirst ? deliveryFee : 0),
+              notes,
+              internalNotes: internalNotes ?? null,
+              legalAccepted,
+              status: "CONFIRMED",
+              groupId,
+              ownerId,
+              petId: groupPets[i].id,
+              ...rowExtraData(isFirst, deposits?.[i]),
+            },
+            include: { pet: true, room: true },
+          });
+          // Addon para rastrear la variante contratada (conserva el precio de
+          // lista aunque el total sea manual).
+          await tx.reservationAddon.create({
+            data: {
+              reservationId: res.id,
+              variantId: bathVariants[i].id,
+              unitPrice: new Prisma.Decimal(bathVariants[i].price),
+              paidWith: "BOOKING",
+            },
+          });
+          created.push(res);
+        }
+        return created;
+      });
+    } catch (err) {
+      if (err instanceof AgendaConflictError) {
+        return fail(409, agendaWarnings.join(" "), "AGENDA_CONFLICT", { warnings: agendaWarnings });
       }
-      return created;
-    });
+      throw err;
+    }
     return finish(reservations, agendaWarnings);
   }
 
@@ -352,7 +415,20 @@ export async function createTeamReservation(
         : groupPets.map(() => hours * pricingConfig.daycareHourPrice);
     const deposits = splitDeposit(amounts.map((a, i) => a + (i === 0 ? deliveryFee : 0)));
 
+    const dayYMD = dayAnchor.toISOString().slice(0, 10);
+    const capacityWarnings: string[] = [];
     const reservations = await prisma.$transaction(async (tx) => {
+      // Mismo lock por día que la guardería del cliente (lib/daycareCreate.ts,
+      // namespace 43). El equipo SÍ puede pasarse del cupo (lo decide en
+      // mostrador), así que aquí solo se avisa; pero contar dentro del lock
+      // evita que el cliente vea un lugar que el equipo acaba de tomar.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(43, hashtext(${dayYMD}))`;
+      const { occupied, maxCapacity } = await countDaycareOccupancy(tx, dayYMD);
+      if (maxCapacity > 0 && occupied + groupPets.length > maxCapacity) {
+        capacityWarnings.push(
+          `Cupo del hotel: ya hay ${occupied} de ${maxCapacity} lugares ocupados ese día.`
+        );
+      }
       const created: CreatedReservation[] = [];
       for (let i = 0; i < groupPets.length; i++) {
         const isFirst = i === 0;
@@ -378,7 +454,7 @@ export async function createTeamReservation(
       }
       return created;
     });
-    return finish(reservations);
+    return finish(reservations, capacityWarnings);
   }
 
   // ── STAY (default): rango de fechas y cuarto por mascota.

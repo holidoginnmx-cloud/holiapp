@@ -39,6 +39,7 @@ function makePrisma(usuarios: Record<string, U>, opts: { coDeFrom?: string[]; co
     reservation: { updateMany: updateMany() },
     review: { updateMany: updateMany() },
     quote: { updateMany: updateMany() },
+    recurringBooking: { updateMany: updateMany() },
     payment: { updateMany: updateMany() },
     notification: { updateMany: updateMany() },
     pushToken: { updateMany: updateMany() },
@@ -75,6 +76,8 @@ describe("mergeOwnerInto", () => {
     expect(tx.pet.updateMany).toHaveBeenCalledWith({ where: { ownerId: "f_nala" }, data: { ownerId: "f_luna" } });
     expect(tx.reservation.updateMany).toHaveBeenCalledWith({ where: { ownerId: "f_nala" }, data: { ownerId: "f_luna" } });
     expect(tx.quote.updateMany).toHaveBeenCalledWith({ where: { ownerId: "f_nala" }, data: { ownerId: "f_luna" } });
+    // Las citas recurrentes siguen a sus perros (si no, cada visita fallaría con PET_NOT_OWNED).
+    expect(tx.recurringBooking.updateMany).toHaveBeenCalledWith({ where: { ownerId: "f_nala" }, data: { ownerId: "f_luna" } });
     for (const m of [tx.payment, tx.notification, tx.pushToken, tx.terminalCharge, tx.cart, tx.order, tx.productReview, tx.creditLedger]) {
       expect(m.updateMany).toHaveBeenCalledWith({ where: { userId: "f_nala" }, data: { userId: "f_luna" } });
     }
