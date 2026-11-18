@@ -27,6 +27,7 @@ import { useAuthStore } from "@/store/authStore";
 import {
   getBathVariants,
   getBathSlots,
+  getPetStaysForBath,
   createBathIntent,
   confirmBath,
   BATH_DEPOSIT_AMOUNT,
@@ -43,6 +44,8 @@ import { wizardStyles } from "@/styles/wizardStyles";
 
 import { formatCurrency, formatTime, formatDateLong } from "@/lib/format";
 import { alertaDeError } from "@/lib/errorAlert";
+import { ApiError } from "@/lib/api/client";
+import { PetStayBathNotice } from "@/components/PetStayBathNotice";
 import { billableBathSize, bathSizeKey } from "@holidoginn/shared/src/pricing";
 
 function formatDurationMin(min: number): string {
@@ -136,6 +139,16 @@ function CreateBathScreenContent() {
       }),
   });
 
+  // ¿El perro está hospedado ese día? Entonces el baño va DENTRO de su
+  // estancia: no se deja pagar una cita suelta (se reembolsaría perdiendo la
+  // comisión de Stripe). El servidor lo frena igual en /baths/create-intent.
+  const { data: petStaysData, refetch: refetchPetStays } = useQuery({
+    queryKey: ["bath-pet-stays", dateYMD, selectedPetId],
+    queryFn: () => getPetStaysForBath(dateYMD, [selectedPetId!]),
+    enabled: !!selectedPetId,
+  });
+  const petStay = petStaysData?.stays.find((st) => st.petId === selectedPetId) ?? null;
+
   const variant = useMemo(() => {
     if (!selectedPet || !variants) return null;
     const petSize = bathSizeKey(billableBathSize(selectedPet));
@@ -153,6 +166,7 @@ function CreateBathScreenContent() {
     !!selectedPet &&
     !!variant &&
     !!selectedSlotIso &&
+    !petStay &&
     !deliveryIncomplete &&
     !submitting;
 
@@ -240,6 +254,12 @@ function CreateBathScreenContent() {
     } catch (err) {
       // Ya se cobró y el aviso con "Reintentar" está en pantalla.
       if (err instanceof PendingConfirmationError) return;
+      // La estancia apareció entre que se cargó la pantalla y el pago (nunca
+      // se cobró: el servidor frena ANTES del PaymentIntent). Se pinta el aviso.
+      if (err instanceof ApiError && err.code === "PET_HAS_STAY") {
+        setSelectedSlotIso(null);
+        void refetchPetStays();
+      }
       alertaDeError(err, { respaldo: "No se pudo reservar el baño" });
     } finally {
       setSubmitting(false);
@@ -526,6 +546,16 @@ function CreateBathScreenContent() {
         {selectedPet && variant && (
           <>
             <Text style={wizardStyles.sectionTitle}>4. Horario</Text>
+            {petStay ? (
+              <PetStayBathNotice
+                stay={petStay}
+                mode="client"
+                onOpenStay={() =>
+                  router.push(`/reservation/detail/${petStay.reservationId}` as any)
+                }
+              />
+            ) : (
+            <>
             {slotsData?.durationMinutes != null && (
               <Text style={styles.slotDurationText}>
                 Este servicio toma unas {formatDurationMin(slotsData.durationMinutes)}.
@@ -568,11 +598,13 @@ function CreateBathScreenContent() {
                 })}
               </View>
             )}
+            </>
+            )}
           </>
         )}
 
         {/* Botón pagar */}
-        {selectedPet && variant && selectedSlotIso && (
+        {selectedPet && variant && selectedSlotIso && !petStay && (
           <TouchableOpacity
             style={[
               wizardStyles.payButton,

@@ -16,6 +16,7 @@ import {
   notifyTeamReservationUpdated,
 } from "../lib/notify";
 import { canAccessPet, isCoOwner } from "../lib/petAccess";
+import { findPetStayOnDay, petHasStayMessage, type PetStayOnDay } from "../lib/petStayOnDay";
 import {
   notifyNewReservation,
   type NewReservationSource,
@@ -330,6 +331,38 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
   );
 
   // ────────────────────────────────────────────────────────────
+  //  GET /baths/pet-stays?date=YYYY-MM-DD&petIds=a,b
+  //
+  //  ¿Alguno de estos perros está hospedado ese día? Un perro hospedado se
+  //  baña DENTRO de su estancia (addon), no con una cita suelta. La app del
+  //  cliente lo usa para bloquear antes de cobrar; la del equipo, para avisar.
+  //  Responde solo los perros que el actor puede ver.
+  // ────────────────────────────────────────────────────────────
+  fastify.get<{ Querystring: { date?: string; petIds?: string } }>(
+    "/baths/pet-stays",
+    { preHandler: [authMiddleware] },
+    async (request, reply) => {
+      const { date, petIds } = request.query;
+      if (!date || !isValidDateYMD(date)) {
+        return reply.status(400).send({ error: "Parámetro date=YYYY-MM-DD requerido" });
+      }
+      const ids = [...new Set((petIds ?? "").split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 10);
+      if (ids.length === 0) return { stays: [] };
+      const pets = await prisma.pet.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, ownerId: true },
+      });
+      const stays: PetStayOnDay[] = [];
+      for (const pet of pets) {
+        if (!(await canAccessPet(prisma, pet, request))) continue;
+        const stay = await findPetStayOnDay(prisma, pet.id, date);
+        if (stay) stays.push(stay);
+      }
+      return { stays };
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
   //  POST /baths/create-intent — crea PaymentIntent para una cita
   //  Valida: slot válido, capacidad, misma mascota mismo día.
   // ────────────────────────────────────────────────────────────
@@ -397,8 +430,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const { start: dayStart, end: dayEnd } = dayRangeUtc(dateYMD);
       const petSize = bathSizeKey(billableBathSize(pet));
 
-      // Ocupación del día + regla misma-mascota + variante + dueño, en paralelo.
-      const [busy, sameDay, variant, owner] = await Promise.all([
+      // Ocupación del día + regla misma-mascota + estancia + variante + dueño,
+      // en paralelo.
+      const [busy, sameDay, stayThatDay, variant, owner] = await Promise.all([
         loadBusyIntervals(prisma, dateYMD, schedule),
         prisma.reservation.findFirst({
           where: {
@@ -409,6 +443,9 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           },
           select: { id: true },
         }),
+        // El equipo puede agendar la cita suelta (su app solo avisa); el
+        // cliente no: un perro hospedado se baña dentro de su estancia.
+        isStaffOrAdmin ? null : findPetStayOnDay(prisma, petId, dateYMD),
         prisma.serviceVariant.findUnique({
           where: {
             serviceTypeId_petSize_deslanado_corte: {
@@ -424,6 +461,17 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
           select: { creditBalance: true },
         }),
       ]);
+
+      // Antes que todo lo demás: es el error que el cliente tiene que ver.
+      // Va ANTES del PaymentIntent — origen: un baño suelto pagado y luego
+      // cancelado para un perro hospedado dejó al hotel con la comisión.
+      if (stayThatDay) {
+        return reply.status(409).send({
+          error: petHasStayMessage(stayThatDay),
+          code: "PET_HAS_STAY",
+          stay: stayThatDay,
+        });
+      }
 
       if (!variant || !variant.isActive) {
         return reply.status(404).send({ error: "Variante de baño no encontrada" });
@@ -1410,6 +1458,21 @@ export default async function bathsRoutes(fastify: FastifyInstance) {
       const appointmentAt = new Date(appointmentAtIso);
       if (Number.isNaN(appointmentAt.getTime())) {
         return reply.status(400).send({ error: "appointmentAt inválido" });
+      }
+
+      // Pago 100% con saldo (sin PaymentIntent): esta ruta no pasa forzosamente
+      // por create-intent, así que se repite el candado de «perro hospedado».
+      // Con PaymentIntent NO se revisa: ya se cobró y frenar aquí dejaría el
+      // cargo sin cita.
+      if (!paymentIntentId) {
+        const stayThatDay = await findPetStayOnDay(prisma, petId, localYMD(appointmentAt));
+        if (stayThatDay) {
+          return reply.status(409).send({
+            error: petHasStayMessage(stayThatDay),
+            code: "PET_HAS_STAY",
+            stay: stayThatDay,
+          });
+        }
       }
 
       // Revalidar capacidad dentro de transacción para evitar race condition.

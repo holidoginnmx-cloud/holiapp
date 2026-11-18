@@ -11,6 +11,7 @@ import {
 import { notifyUsers } from "../lib/notify";
 import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import { maybeConcludeStandaloneBath } from "./baths";
+import { canAccessReservation } from "../lib/petAccess";
 import { billableBathSize, bathSizeKey } from "../lib/pricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -101,9 +102,10 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       if (!reservation) {
         return reply.status(404).send({ error: "Reservación no encontrada" });
       }
-      const isStaffOrAdmin =
-        request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      // Co-dueño incluido: si la estancia la reservó el otro, quien comparte
+      // el perro también puede agregarle el baño (la app de baños sueltos lo
+      // manda aquí cuando el perro está hospedado).
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (reservation.petId !== petId) {
@@ -210,7 +212,10 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
       }
       const isStaffOrAdmin =
         request.userRole === "ADMIN" || request.userRole === "STAFF";
-      if (!isStaffOrAdmin && reservation.ownerId !== request.userId) {
+      // Co-dueño incluido: si la estancia la reservó el otro, quien comparte
+      // el perro también puede agregarle el baño (la app de baños sueltos lo
+      // manda aquí cuando el perro está hospedado).
+      if (!(await canAccessReservation(prisma, reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       const alreadyBath = reservation.addons.some(
@@ -235,7 +240,9 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
             paidAt: new Date(),
             notes: "Baño (addon)",
             reservationId: reservation.id,
-            userId: reservation.ownerId,
+            // Regla del pagador: el pago es de quien pagó con SU tarjeta (el
+            // co-dueño, si fue él). El equipo cobra a nombre del titular.
+            userId: isStaffOrAdmin ? reservation.ownerId : request.userId!,
           },
         });
         const add = await tx.reservationAddon.create({
@@ -287,12 +294,13 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const addon = await prisma.reservationAddon.findUnique({
         where: { id: request.params.addonId },
-        include: { reservation: { select: { id: true, ownerId: true } } },
+        include: { reservation: { select: { id: true, ownerId: true, petId: true } } },
       });
       if (!addon || addon.reservation.id !== request.params.id) {
         return reply.status(404).send({ error: "Addon no encontrado" });
       }
-      if (addon.reservation.ownerId !== request.userId) {
+      // Co-dueño incluido (mismo criterio que contratar el baño).
+      if (!(await canAccessReservation(prisma, addon.reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (!addon.extraPrice || addon.extraPaymentStatus !== "PENDING_PAYMENT") {
@@ -344,12 +352,13 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
 
       const addon = await prisma.reservationAddon.findUnique({
         where: { id: request.params.addonId },
-        include: { reservation: { select: { id: true, ownerId: true } } },
+        include: { reservation: { select: { id: true, ownerId: true, petId: true } } },
       });
       if (!addon || addon.reservation.id !== request.params.id) {
         return reply.status(404).send({ error: "Addon no encontrado" });
       }
-      if (addon.reservation.ownerId !== request.userId) {
+      // Co-dueño incluido (mismo criterio que contratar el baño).
+      if (!(await canAccessReservation(prisma, addon.reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (addon.extraPaymentStatus === "PAID") {
@@ -366,7 +375,8 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
             paidAt: new Date(),
             notes: `Extras de baño: ${addon.extraDescription ?? ""}`.trim(),
             reservationId: addon.reservation.id,
-            userId: addon.reservation.ownerId,
+            // Regla del pagador: el pago es de quien pagó con su tarjeta.
+            userId: request.userId!,
           },
         });
         const upd = await tx.reservationAddon.update({
@@ -407,14 +417,15 @@ export default async function servicesRoutes(fastify: FastifyInstance) {
         where: { id: request.params.addonId },
         include: {
           reservation: {
-            select: { id: true, ownerId: true, pet: { select: { name: true } } },
+            select: { id: true, ownerId: true, petId: true, pet: { select: { name: true } } },
           },
         },
       });
       if (!addon || addon.reservation.id !== request.params.id) {
         return reply.status(404).send({ error: "Addon no encontrado" });
       }
-      if (addon.reservation.ownerId !== request.userId) {
+      // Co-dueño incluido (mismo criterio que contratar el baño).
+      if (!(await canAccessReservation(prisma, addon.reservation, request))) {
         return reply.status(403).send({ error: "No autorizado" });
       }
       if (addon.extraPaymentStatus !== "PENDING_PAYMENT") {

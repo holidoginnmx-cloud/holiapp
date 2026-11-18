@@ -205,6 +205,10 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       const remaining = Number(r.totalAmount) - totalPaid;
       const hasDeslanado = addons.some((a) => a.variant?.deslanado === true);
       const hasCorte = addons.some((a) => a.variant?.corte === true);
+      // Cualquier addon de estética, con o sin extras. Antes la lista del
+      // equipo lo aproximaba con hasDeslanado || hasCorte y un baño simple
+      // dentro de una estancia no pintaba la etiqueta «Baño».
+      const hasBath = addons.some((a) => a.variant?.serviceType?.code === "BATH");
       return {
         ...r,
         hasBalance: remaining > 0.01,
@@ -214,6 +218,7 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         reviewRating: review?.rating ?? null,
         hasDeslanado,
         hasCorte,
+        hasBath,
         // Slim: la UI deriva de aquí el estado "baño listo · por cobrar".
         addons,
       };

@@ -41,6 +41,36 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-18-a",
+    title: "Baños de perros hospedados",
+    items: [
+      {
+        icon: "bed-outline",
+        title: "Aviso si el perro está hospedado",
+        body: "Al agendarle un baño suelto, la app te dice que ya tiene estancia y te lleva a ella.",
+        steps: ["Nueva reservación", "Baño", "Elige perro y día"],
+        preview: {
+          label: "ESTÁ HOSPEDADO",
+          value: "Koa · del 14 nov al 17 nov (Cuarto 10)",
+          caption: "Su estancia ya incluye baño · Ir a su estancia",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+      {
+        icon: "water-outline",
+        title: "La etiqueta «Baño» sale en todas",
+        body: "Antes solo salía si el baño traía corte o deslanado.",
+        steps: ["Reservaciones", "Lista"],
+        preview: {
+          label: "KOA · HOSPEDADO",
+          value: "💧 Baño",
+          caption: "Baño simple dentro de la estancia",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-13",
     title: "Menos capturas repetidas",
     items: [

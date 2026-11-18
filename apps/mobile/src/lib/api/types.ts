@@ -38,8 +38,8 @@ export type ReservationListItem = Reservation & {
   reviewRating: number | null;
   hasDeslanado: boolean;
   hasCorte: boolean;
-  /** Hospedaje que incluye un baño (addon BATH). Lo envía el backend; si aún
-   * no llega, el frontend cae a hasDeslanado/hasCorte como aproximación. */
+  /** Hospedaje que incluye un baño (addon BATH, con o sin extras). Lo envía
+   * el backend; si una API vieja no lo manda, se deriva de `addons`. */
   hasBath?: boolean;
   /** Slim: solo lo necesario para derivar "baño listo · por cobrar". */
   addons?: {

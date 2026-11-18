@@ -88,6 +88,29 @@ export type BathSlotsResponse = {
   slots: BathSlot[];
 };
 
+/**
+ * Estancia (hospedaje) del perro que cubre el día consultado. Un perro
+ * hospedado se baña DENTRO de su estancia, no con una cita suelta.
+ */
+export type PetStayOnDay = {
+  petId: string;
+  petName: string;
+  reservationId: string;
+  status: string;
+  /** Día de estadía: 00:00Z (formatear con `formatStayDay`). */
+  checkIn: string;
+  checkOut: string;
+  roomName: string | null;
+  /** El baño que la estancia YA trae, si lo trae. */
+  bath: { label: string; scheduledAt: string | null } | null;
+};
+
+/** ¿Alguno de estos perros está hospedado ese día? Solo regresa los que sí. */
+export const getPetStaysForBath = (date: string, petIds: string[]) => {
+  const params = new URLSearchParams({ date, petIds: petIds.join(",") });
+  return apiFetch<{ stays: PetStayOnDay[] }>(`${ENDPOINTS.baths}/pet-stays?${params}`);
+};
+
 export const getBathConfig = () =>
   apiFetch<BathConfig>(`${ENDPOINTS.baths}/config`);
 

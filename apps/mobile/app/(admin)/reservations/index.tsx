@@ -61,12 +61,15 @@ export default function AdminReservations() {
     );
   });
 
-  // El list item admin no trae `addons`. Usamos el flag `hasBath` del backend
-  // cuando exista; si no, aproximamos con hasDeslanado/hasCorte (no detecta
-  // baños sin extras — para eso el backend debe enviar `hasBath`).
+  // `hasBath` lo calcula el backend; si una API vieja no lo manda, se deriva
+  // de los addons (cualquier variante BATH, con o sin corte/deslanado). Antes
+  // se aproximaba con hasDeslanado || hasCorte y un baño simple dentro de
+  // una estancia no pintaba la etiqueta.
   const calendarReservations: CalendarReservation[] = filtered.map((r) => ({
     ...(r as unknown as CalendarReservation),
-    hasBath: r.hasBath ?? (r.hasDeslanado || r.hasCorte),
+    hasBath:
+      r.hasBath ??
+      (r.addons ?? []).some((a) => a.variant?.serviceType?.code === "BATH"),
     // Solo citas sueltas: el baño de un hospedaje no cambia el estado de la estancia.
     bathReady: r.reservationType === "BATH" && isBathReadyToCollect(r),
   }));

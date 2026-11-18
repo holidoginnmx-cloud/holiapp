@@ -29,6 +29,8 @@ import {
   loadBusyIntervals,
   buildSlotsPayload,
 } from "../lib/bathAvailabilityDb";
+import { findPetStayOnDay, petHasStayMessage } from "../lib/petStayOnDay";
+import { normalizePetName } from "../lib/petName";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -203,6 +205,32 @@ export default async function guestBathsRoutes(fastify: FastifyInstance) {
       // antes de que salga la estilista.
       const schedule = toScheduleCfg(cfg);
       const dateYMD = localYMD(appointmentDate);
+
+      // Un perro hospedado ese día se baña DENTRO de su estancia: se frena
+      // antes del PaymentIntent para no cobrar (y luego reembolsar perdiendo
+      // la comisión de Stripe). Se revisan TODAS las fichas del dueño con ese
+      // nombre, no solo la resuelta: `resolveOrCreateGuestPet` reutiliza solo
+      // con el peso exacto, y un peso distinto crea una ficha nueva (sin
+      // estancia) del mismo perro.
+      const wanted = normalizePetName(pet.name);
+      const sameNamePets = (
+        await prisma.pet.findMany({
+          where: { ownerId: owner.id, isActive: true },
+          select: { id: true, name: true },
+        })
+      ).filter((p) => normalizePetName(p.name) === wanted);
+      const petIdsToCheck = [...new Set([pet.id, ...sameNamePets.map((p) => p.id)])];
+      for (const id of petIdsToCheck) {
+        const stayThatDay = await findPetStayOnDay(prisma, id, dateYMD);
+        if (stayThatDay) {
+          return reply.status(409).send({
+            error: petHasStayMessage(stayThatDay),
+            code: "PET_HAS_STAY",
+            stay: stayThatDay,
+          });
+        }
+      }
+
       const durationMinutes =
         variant.durationMinutes ?? schedule.defaultBathDurationMinutes;
       const busy = await loadBusyIntervals(prisma, dateYMD, schedule);

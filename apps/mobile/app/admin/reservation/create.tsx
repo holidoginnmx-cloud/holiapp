@@ -56,6 +56,7 @@ import {
   type DeliveryTrip,
   getAdminLodgingPricing,
   getBathSlots,
+  getPetStaysForBath,
   getQuote,
   type PetWithOwner,
 } from "@/lib/api";
@@ -85,6 +86,7 @@ import {
   formatDurationMin,
 } from "@/hooks/useBathConflict";
 import { BathConflictNotice } from "@/components/BathConflictNotice";
+import { PetStayBathNotice } from "@/components/PetStayBathNotice";
 
 
 import { alertaDeError } from "@/lib/errorAlert";
@@ -581,6 +583,20 @@ export default function AdminCreateReservation() {
 
   const bathConflict = useBathConflict(bathSlots, appointmentAt);
 
+  // ¿Alguno de los perros está hospedado ese día? Lo normal es agregar el
+  // baño DENTRO de su estancia; aquí solo se avisa y se deja seguir con
+  // «Agendar de todos modos» (al cliente sí se le bloquea).
+  const { data: petStaysData } = useQuery({
+    queryKey: ["admin", "bath-pet-stays", bathDateYMD, petIds.join(",")],
+    queryFn: () => getPetStaysForBath(bathDateYMD!, petIds),
+    enabled: reservationType === "BATH" && !!bathDateYMD && petIds.length > 0,
+  });
+  const petStaysOnBathDay = reservationType === "BATH" ? (petStaysData?.stays ?? []) : [];
+  const [forceStayBath, setForceStayBath] = useState(false);
+  useEffect(() => {
+    setForceStayBath(false);
+  }, [bathDateYMD, petIds.join(",")]);
+
   // Tarifas vigentes (Config → Tarifas): precio por noche chico/grande, umbral
   // de peso, recargo por medicamento y hora de guardería. Aquí NO hay ningún
   // número quemado: si el admin cambia una tarifa, el estimado cambia con
@@ -946,6 +962,14 @@ export default function AdminCreateReservation() {
         Alert.alert(
           "Servicio no disponible",
           "No hay una variante de baño configurada para esta combinación.",
+        );
+        return;
+      }
+      if (petStaysOnBathDay.length > 0 && !forceStayBath) {
+        const names = petStaysOnBathDay.map((st) => st.petName).join(" y ");
+        Alert.alert(
+          "Está hospedado ese día",
+          `${names} tiene estancia ese día. Agrega el baño desde su estancia, o activa «Agendar de todos modos».`,
         );
         return;
       }
@@ -1560,6 +1584,20 @@ export default function AdminCreateReservation() {
                 queryKey={["admin", "bath-slots", petIds[0], tallaDelPrimero, deslanado, corte]}
               />
             )}
+
+            {petStaysOnBathDay.map((st, i) => (
+              <PetStayBathNotice
+                key={st.reservationId}
+                stay={st}
+                mode="team"
+                onOpenStay={() => router.push(`/admin/reservation/${st.reservationId}` as any)}
+                force={forceStayBath}
+                // Un solo interruptor para todos los perros, al final.
+                onForceChange={
+                  i === petStaysOnBathDay.length - 1 ? setForceStayBath : undefined
+                }
+              />
+            ))}
 
             {bathEstimate != null ? (
               <Text style={styles.estimate}>Precio: ${bathEstimate}</Text>
