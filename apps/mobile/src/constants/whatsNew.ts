@@ -41,6 +41,24 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-18-d",
+    title: "Productos en la cuenta",
+    items: [
+      {
+        icon: "bag-handle-outline",
+        title: "¿Se lleva una correa? Agrégala a la reserva",
+        body: "Se cobra con «Registrar pago manual» de esa misma reserva; el inventario baja al agregarla.",
+        steps: ["Reserva", "Productos en la cuenta", "Agregar"],
+        preview: {
+          label: "PRODUCTOS EN LA CUENTA",
+          value: "Correa azul · $180",
+          caption: "$180 por cobrar · se cobra con el siguiente pago manual",
+        },
+        roles: ["ADMIN", "STAFF"],
+      },
+    ],
+  },
+  {
     id: "2026-11-18-c",
     title: "Anticipos sin reserva",
     items: [

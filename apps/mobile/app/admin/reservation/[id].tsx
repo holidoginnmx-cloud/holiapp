@@ -41,6 +41,7 @@ import {
   adminUpdateReservation,
   adminUpdateReservationAddon,
   updateReservationDelivery,
+  removeAccountProduct,
 } from "@/lib/api";
 import {
   useRoomOccupancy,
@@ -398,6 +399,16 @@ export default function AdminReservationDetail() {
     onError: (e: Error) => alertaDeError(e),
   });
 
+  // Quitar un producto de la cuenta (regresa al inventario).
+  const removeProductMutation = useMutation({
+    mutationFn: (itemId: string) => removeAccountProduct(id!, itemId),
+    onSuccess: () => {
+      invalidateAfterStatusChange();
+      showSuccess("Producto quitado de la cuenta");
+    },
+    onError: (e: Error) => alertaDeError(e),
+  });
+
   const paymentMutation = useMutation({
     mutationFn: (values: ManualPaymentValues) =>
       registerManualPayment({
@@ -410,7 +421,15 @@ export default function AdminReservationDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservation", id] });
       setPaymentModalVisible(false);
-      showSuccess("Pago registrado y notificado al dueño");
+      // Si había productos en la cuenta, ese cobro los pagó primero.
+      const productos = (reservation?.accountOrders ?? [])
+        .filter((o) => o.status === "PENDING")
+        .reduce((s, o) => s + o.total, 0);
+      showSuccess(
+        productos > 0
+          ? `Pago registrado · incluye ${formatCurrency(productos)} de productos`
+          : "Pago registrado y notificado al dueño",
+      );
     },
     onError: (e: Error) => alertaDeError(e),
   });
@@ -1586,6 +1605,90 @@ export default function AdminReservationDetail() {
             );
           })}
         </View>
+        );
+      })()}
+
+      {/* Productos de la tienda en la cuenta (correa, croquetas…). Los
+          pendientes se cobran con el siguiente "Registrar pago manual": el
+          servidor paga primero el producto (cuenta como Tienda) y el resto va
+          a la reserva. */}
+      {(() => {
+        const orders = reservation.accountOrders ?? [];
+        const pendientes = orders.filter((o) => o.status === "PENDING");
+        const porCobrar = pendientes.reduce((s, o) => s + o.total, 0);
+        return (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <Text style={styles.sectionCardTitle}>Productos en la cuenta</Text>
+              {reservation.status !== "CANCELLED" && (
+                <TouchableOpacity
+                  style={styles.metaValueRow}
+                  onPress={() =>
+                    router.push(`/admin/reservation/add-product?id=${id}` as any)
+                  }
+                  activeOpacity={0.7}
+                  testID="admin-reservation-add-product"
+                >
+                  <Text style={styles.addAddonText}>Agregar</Text>
+                  <Ionicons name="add-circle" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {orders.length === 0 ? (
+              <Text style={styles.addonEmpty}>
+                ¿Se lleva algo de la tienda? Agrégalo aquí y se cobra junto con la reserva.
+              </Text>
+            ) : (
+              <>
+                {orders.flatMap((o) =>
+                  o.items.map((it) => (
+                    <View key={it.id} style={styles.accountRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.accountName}>
+                          {it.quantity > 1 ? `${it.quantity} × ` : ""}
+                          {it.name}
+                        </Text>
+                        <Text style={styles.accountSub}>
+                          {[
+                            it.variant,
+                            o.status === "PENDING"
+                              ? "Por cobrar"
+                              : `Cobrado · pedido #${o.orderNumber}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      </View>
+                      <Text style={styles.accountPrice}>{formatCurrency(it.lineTotal)}</Text>
+                      {o.status === "PENDING" && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            Alert.alert("Quitar de la cuenta", `${it.name} regresa al inventario.`, [
+                              { text: "Cancelar", style: "cancel" },
+                              {
+                                text: "Quitar",
+                                style: "destructive",
+                                onPress: () => removeProductMutation.mutate(it.id),
+                              },
+                            ])
+                          }
+                          hitSlop={8}
+                          disabled={removeProductMutation.isPending}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )),
+                )}
+                {porCobrar > 0 && (
+                  <Text style={styles.accountHint}>
+                    {formatCurrency(porCobrar)} por cobrar · se cobra con el siguiente pago manual
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
         );
       })()}
 

@@ -37,6 +37,7 @@ import { applyStatusTransition } from "../lib/reservationStatus";
 import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeamCreate";
 import { applyReservationTimesUpdate } from "../lib/stayTimes";
 import { registerUnassignedDeposit, assignDepositToReservation } from "../lib/unassignedDeposits";
+import { addProductToAccount, removeProductFromAccount } from "../lib/reservationAccount";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  /internal/reservations/* — administración de reservas para el ADMIN WEB
@@ -132,6 +133,14 @@ const PaymentSchema = z.object({
   reference: z.string().max(120).nullable().optional(),
   paidAt: z.coerce.date().nullable().optional(),
   kind: z.enum(["ANTICIPO", "ABONO", "RESTANTE", "FULL"]).nullable().optional(),
+  // false = cobrar solo la reserva, sin los productos de la cuenta.
+  includeAccountProducts: z.boolean().nullable().optional(),
+});
+
+/** Producto de la tienda a la cuenta de una reserva (lib/reservationAccount.ts). */
+const AccountProductSchema = z.object({
+  variantId: z.string().min(1),
+  quantity: z.number().int().min(1).max(99).default(1),
 });
 
 /** Anticipo sin reserva (ver lib/unassignedDeposits.ts). */
@@ -716,6 +725,49 @@ export default async function internalReservationsRoutes(fastify: FastifyInstanc
         amount: Number(res.data.payment.amount),
         method: res.data.payment.method,
         balance: res.data.balance,
+      });
+      return reply.send(res.data);
+    }
+  );
+
+  // ── POST /internal/reservations/:id/products — producto a la cuenta ──────
+  //  La correa que se lleva el cliente al recoger: se carga a la cuenta de la
+  //  reserva (stock descontado ya) y se cobra junto con ella.
+  fastify.post<{ Params: { id: string } }>(
+    "/internal/reservations/:id/products",
+    opts,
+    async (request, reply) => {
+      const parsed = AccountProductSchema.safeParse(request.body);
+      if (!parsed.success) return sendInvalid(reply, parsed.error);
+      const res = await addProductToAccount(prisma, {
+        reservationId: request.params.id,
+        variantId: parsed.data.variantId,
+        quantity: parsed.data.quantity,
+      });
+      if (!res.ok) return sendError(reply, res);
+      logInternal(request, "internal-account-product-add", {
+        reservationId: request.params.id,
+        orderId: res.data.orderId,
+        variantId: parsed.data.variantId,
+        quantity: parsed.data.quantity,
+      });
+      return reply.status(201).send(res.data);
+    }
+  );
+
+  // ── DELETE /internal/reservations/:id/products/:itemId ──────────────────
+  fastify.delete<{ Params: { id: string; itemId: string } }>(
+    "/internal/reservations/:id/products/:itemId",
+    opts,
+    async (request, reply) => {
+      const res = await removeProductFromAccount(prisma, {
+        reservationId: request.params.id,
+        itemId: request.params.itemId,
+      });
+      if (!res.ok) return sendError(reply, res);
+      logInternal(request, "internal-account-product-remove", {
+        reservationId: request.params.id,
+        itemId: request.params.itemId,
       });
       return reply.send(res.data);
     }

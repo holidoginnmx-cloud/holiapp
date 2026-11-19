@@ -221,13 +221,18 @@ export async function autoCompleteOverdueAppointments(
         where: { status: { in: ["PAID", "PARTIAL"] } },
         select: { amount: true },
       },
+      // Productos de la tienda cargados a la cuenta y sin cobrar
+      // (lib/reservationAccount.ts): también son dinero que se debe.
+      accountOrders: { where: { status: "PENDING" }, select: { total: true } },
     },
   });
 
-  // Mismo criterio de saldo que usa GET /reservations para `hasBalance`.
+  // Mismo criterio de saldo que usa GET /reservations para `hasBalance`, más
+  // los productos pendientes de la cuenta.
   const liquidadas = candidates.filter((r) => {
     const pagado = r.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    return Number(r.totalAmount) - pagado <= 0.01;
+    const productos = r.accountOrders.reduce((sum, o) => sum + Number(o.total), 0);
+    return Number(r.totalAmount) + productos - pagado <= 0.01;
   });
   if (liquidadas.length === 0) return 0;
 

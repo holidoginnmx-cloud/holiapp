@@ -19,6 +19,15 @@ import {
 } from "./pricing";
 import { planRefund, processRefund } from "./refund";
 import { maybeConcludeStandaloneBath } from "../routes/baths";
+import {
+  pendingAccountOrders,
+  planAccountCharge,
+  settleAccountOrders,
+  msgCobroNoAlcanza,
+  AccountConflictError,
+  countPendingAccountOrders,
+  releasePendingAccountOrders,
+} from "./reservationAccount";
 
 /**
  * Operaciones de administración de una reservación, extraídas de los handlers
@@ -1171,6 +1180,10 @@ export async function cancelReservations(
       data: { status: "CANCELLED", rejectionReason: "Reservación cancelada" },
     });
   });
+  // Productos de la tienda que seguían sin cobrar en la cuenta: el pedido se
+  // cancela y el stock regresa (si el cliente sí se llevó algo, se registra
+  // como venta de mostrador).
+  await releasePendingAccountOrders(prisma, ids);
 
   // 3) Avisos al cliente. Con ASK_CLIENT cada fila con dinero lleva su propio
   //    "elige cómo recibir tu reembolso" (la elección en la app es por
@@ -1257,6 +1270,12 @@ export type RegisterPaymentInput = {
   paidAt?: Date | null;
   /** Si no viene, se infiere: RESTANTE si liquida, ANTICIPO si es el primero, ABONO si no. */
   kind?: ManualPaymentKind | null;
+  /**
+   * Productos de la tienda en la cuenta de la reserva (lib/reservationAccount):
+   * por default el cobro los paga PRIMERO y completos, y el resto va a la
+   * reserva. `false` cobra solo la reserva y los deja pendientes.
+   */
+  includeAccountProducts?: boolean | null;
 };
 
 /** Misma regla que `/admin/payments/manual` y que `inferirTipoPago` del admin web. */
@@ -1301,28 +1320,76 @@ export async function registerManualPayment(
   const total = Number(reservation.totalAmount);
   const pagado = reservation.payments.reduce((s, p) => s + Number(p.amount), 0);
   const amount = Number(input.amount.toFixed(2));
-  const kind = input.kind ?? inferPaymentKind(total, pagado, amount);
   const esTarjeta = input.method === "CARD";
+  const paidAt = input.paidAt ?? new Date();
 
-  const payment = await prisma.payment.create({
-    data: {
-      amount: new Prisma.Decimal(amount),
-      method: input.method,
-      status: "PAID",
-      kind,
-      paidAt: input.paidAt ?? new Date(),
-      reservationId: reservation.id,
-      userId: reservation.ownerId,
-      reference: input.reference?.trim() || null,
-      notes: input.notes?.trim() || `Pago manual (${input.method}) registrado por el equipo`,
-      cardBrand: esTarjeta ? input.cardBrand ?? null : null,
-      cardFeePct: esTarjeta && input.cardFeePct != null ? new Prisma.Decimal(input.cardFeePct) : null,
-      cardFeeAmount:
-        esTarjeta && input.cardFeeAmount != null ? new Prisma.Decimal(input.cardFeeAmount) : null,
-    },
+  // Productos en la cuenta: se pagan primero y completos; el resto es de la
+  // reserva. El recargo de tarjeta (snapshot del cobro completo) se prorratea.
+  const pendientes =
+    input.includeAccountProducts === false
+      ? []
+      : await pendingAccountOrders(prisma, reservation.id);
+  const plan = planAccountCharge(
+    amount,
+    pendientes,
+    esTarjeta && input.cardFeeAmount != null ? input.cardFeeAmount : null
+  );
+  if (!plan.ok) {
+    return fail(400, msgCobroNoAlcanza(amount, plan.productsTotal), "ACCOUNT_PRODUCTS_UNPAID", {
+      productsTotal: plan.productsTotal,
+    });
+  }
+  const reservaAmount = plan.remainder;
+  const kind = input.kind ?? inferPaymentKind(total, pagado, reservaAmount);
+  const tarjeta = (fee: number | null) => ({
+    cardBrand: esTarjeta ? input.cardBrand ?? null : null,
+    cardFeePct: esTarjeta && input.cardFeePct != null ? new Prisma.Decimal(input.cardFeePct) : null,
+    cardFeeAmount: esTarjeta && fee != null ? new Prisma.Decimal(fee) : null,
   });
 
-  const balance = Number((total - pagado - amount).toFixed(2));
+  let payment: Awaited<ReturnType<typeof prisma.payment.create>>;
+  let productPayments: Awaited<ReturnType<typeof settleAccountOrders>>;
+  try {
+    ({ payment, productPayments } = await prisma.$transaction(async (tx) => {
+      const productPayments = await settleAccountOrders(tx, {
+        ownerId: reservation.ownerId,
+        pieces: plan.products.map((p) => ({ orderId: p.orderId, amount: p.amount, card: tarjeta(p.fee) })),
+        method: input.method,
+        paidAt,
+        reference: input.reference,
+      });
+      // Todo el cobro fue de productos: la reserva no recibe renglón en $0.
+      const payment =
+        reservaAmount > 0.005
+          ? await tx.payment.create({
+              data: {
+                amount: new Prisma.Decimal(reservaAmount),
+                method: input.method,
+                status: "PAID",
+                kind,
+                paidAt,
+                reservationId: reservation.id,
+                userId: reservation.ownerId,
+                reference: input.reference?.trim() || null,
+                notes: input.notes?.trim() || `Pago manual (${input.method}) registrado por el equipo`,
+                ...tarjeta(
+                  esTarjeta && input.cardFeeAmount != null
+                    ? plan.products.length > 0
+                      ? plan.remainderFee
+                      : input.cardFeeAmount
+                    : null
+                ),
+              },
+            })
+          : productPayments[0]!;
+      return { payment, productPayments };
+    }));
+  } catch (e) {
+    if (e instanceof AccountConflictError) return fail(409, e.message, "ACCOUNT_CONFLICT");
+    throw e;
+  }
+
+  const balance = Number((total - pagado - reservaAmount).toFixed(2));
 
   // Un baño suelto ya terminado se queda en CONFIRMED hasta liquidarse; si este
   // pago lo liquida hay que cerrarlo aquí. No-op si no es baño o aún debe.
@@ -1350,13 +1417,15 @@ export async function registerManualPayment(
       : reservation.reservationType === "DAYCARE"
         ? "la guardería"
         : "la estancia";
+  // El aviso habla de la reserva: lo de los productos no es "de la estancia".
+  if (reservaAmount > 0.005)
   await notifyPetAudience(
     prisma,
     { petId: reservation.petId, ownerId: reservation.ownerId },
     {
       type: "PAYMENT_RECEIVED",
       title: "Pago recibido",
-      body: `Recibimos $${money(amount)} de ${servicio} de ${reservation.pet.name}. ¡Gracias!`,
+      body: `Recibimos $${money(reservaAmount)} de ${servicio} de ${reservation.pet.name}. ¡Gracias!`,
       data: { reservationId: reservation.id, kind: "STAY_PAID" },
     }
   );
@@ -1368,6 +1437,10 @@ export async function registerManualPayment(
     balance: Math.max(0, balance),
     groupBalance: Math.max(0, groupBalance),
     overpaid: Math.max(0, -balance),
+    // Cuánto del cobro se fue a los productos de la cuenta (TIENDA).
+    productsCharged: Number(
+      productPayments.reduce((s, p) => s + Number(p.amount), 0).toFixed(2)
+    ),
   });
 }
 
@@ -1413,6 +1486,16 @@ export async function deleteReservation(
     }
   }
   const ids = rows.map((r) => r.id);
+
+  // Productos de la tienda sin cobrar en la cuenta: borrar la reserva dejaría
+  // el stock descontado y la venta huérfana.
+  if ((await countPendingAccountOrders(prisma, ids)) > 0) {
+    return fail(
+      409,
+      "Esta reserva tiene productos de la tienda en su cuenta sin cobrar. Quítalos o cóbralos antes de eliminarla.",
+      "HAS_ACCOUNT_PRODUCTS"
+    );
+  }
 
   const [stripeCount, terminalCount] = await Promise.all([
     prisma.payment.count({

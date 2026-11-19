@@ -673,6 +673,8 @@ model Reservation {
   staff   User?   @relation("StaffAssignments", fields: [staffId], references: [id])
 
   payments        Payment[]
+  // Productos de la tienda cargados a la cuenta de esta reserva (Order.reservationId).
+  accountOrders   Order[]
   updates         StayUpdate[]
   checklists      DailyChecklist[]
   alerts          StaffAlert[]
@@ -1880,6 +1882,16 @@ model Order {
   discountCodeId String?
   discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id])
 
+  // Cuenta de una reserva (Javier, 18-nov-2026): el cliente se lleva una correa
+  // y se cobra junto con su estancia/baño. El pedido nace COUNTER + PENDING
+  // ligado a la reserva (stock ya descontado) y pasa a PAID cuando se cobra la
+  // cuenta: su Payment cuelga del pedido (orderId), así ese dinero cuenta como
+  // TIENDA y no infla el hospedaje. Ver packages/api/src/lib/reservationAccount.ts.
+  // SetNull: borrar una reserva no se lleva la venta (deleteReservation exige
+  // quitar antes los productos pendientes).
+  reservationId String?
+  reservation   Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
   items OrderItem[]
 
   // Un pedido pagado genera exactamente un Payment PAID (lo crea el webhook de
@@ -1894,6 +1906,7 @@ model Order {
 
   @@index([userId])
   @@index([status])
+  @@index([reservationId])
   @@map("orders")
 }
 

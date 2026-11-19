@@ -14,6 +14,13 @@ import { parseManualMethod, methodTag, cardFeeSnapshot, type CardBrand } from ".
 import { notifyPaymentToAdmins } from "../lib/notifyTeamPayment";
 import { maybeConcludeStandaloneBath } from "./baths";
 import {
+  pendingAccountOrders,
+  planAccountCharge,
+  settleAccountOrders,
+  msgCobroNoAlcanza,
+  AccountConflictError,
+} from "../lib/reservationAccount";
+import {
   getLodgingPricing,
   billableBathSize,
   bathSizeKey,
@@ -688,6 +695,8 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       method: "CASH" | "TRANSFER" | "CARD";
       cardBrand?: CardBrand;
       notes?: string;
+      /** false = cobrar solo la reserva y dejar pendientes los productos de la cuenta. */
+      includeAccountProducts?: boolean;
     };
   }>(
     "/admin/payments/manual",
@@ -721,25 +730,79 @@ export default async function paymentsRoutes(fastify: FastifyInstance) {
       // ANTICIPO si es el primer pago parcial, ABONO en los demás casos. Sin
       // esto todo pago manual nacía FULL (el default de Prisma) y el admin web
       // lo etiquetaba mal aunque solo cubriera una parte.
+      // Productos de la tienda en la cuenta (lib/reservationAccount.ts): se
+      // pagan primero y completos, el resto es de la reserva.
+      const pendientes =
+        request.body.includeAccountProducts === false
+          ? []
+          : await pendingAccountOrders(prisma, reservationId);
+      const plan = planAccountCharge(amount, pendientes);
+      if (!plan.ok) {
+        return reply.status(400).send({
+          error: msgCobroNoAlcanza(amount, plan.productsTotal),
+          code: "ACCOUNT_PRODUCTS_UNPAID",
+        });
+      }
+      const reservaAmount = plan.remainder;
+
       const total = Number(reservation.totalAmount);
-      const pagado = reservation.payments.reduce((acc, p) => acc + Number(p.amount), 0);
+      // Solo lo COBRADO cuenta (un REFUNDED es fila hermana positiva).
+      const pagado = reservation.payments
+        .filter((p) => p.status === "PAID" || p.status === "PARTIAL")
+        .reduce((acc, p) => acc + Number(p.amount), 0);
       const saldo = Math.round((total - pagado) * 100) / 100;
       const kind =
-        total <= 0 ? "ABONO" : amount >= saldo ? "RESTANTE" : pagado === 0 ? "ANTICIPO" : "ABONO";
+        total <= 0
+          ? "ABONO"
+          : reservaAmount >= saldo
+            ? "RESTANTE"
+            : pagado === 0
+              ? "ANTICIPO"
+              : "ABONO";
 
-      const payment = await prisma.payment.create({
-        data: {
-          amount,
-          method,
-          ...(await cardFeeSnapshot(prisma, method, cardBrand, amount)),
-          status: "PAID",
-          kind,
-          paidAt: new Date(),
-          reservationId,
-          userId: reservation.ownerId,
-          notes: notes || `Pago manual registrado por admin (${methodTag(method, cardBrand)})`,
-        },
-      });
+      // La comisión de la terminal se calcula por pedazo: cada uno es su
+      // propio renglón de ingreso (TIENDA o la reserva).
+      const pieces = await Promise.all(
+        plan.products.map(async (p) => ({
+          orderId: p.orderId,
+          amount: p.amount,
+          card: await cardFeeSnapshot(prisma, method, cardBrand, p.amount),
+        }))
+      );
+      const cardReserva =
+        reservaAmount > 0.005 ? await cardFeeSnapshot(prisma, method, cardBrand, reservaAmount) : null;
+      const paidAt = new Date();
+
+      let payment;
+      try {
+        payment = await prisma.$transaction(async (tx) => {
+          const productPayments = await settleAccountOrders(tx, {
+            ownerId: reservation.ownerId,
+            pieces,
+            method,
+            paidAt,
+          });
+          if (!cardReserva) return productPayments[0]!;
+          return tx.payment.create({
+            data: {
+              amount: reservaAmount,
+              method,
+              ...cardReserva,
+              status: "PAID",
+              kind,
+              paidAt,
+              reservationId,
+              userId: reservation.ownerId,
+              notes: notes || `Pago manual registrado por admin (${methodTag(method, cardBrand)})`,
+            },
+          });
+        });
+      } catch (e) {
+        if (e instanceof AccountConflictError) {
+          return reply.status(409).send({ error: e.message, code: "ACCOUNT_CONFLICT" });
+        }
+        throw e;
+      }
 
       // Un baño suelto ya terminado se queda en CONFIRMED hasta liquidarse; si
       // este pago lo liquida hay que cerrarlo aquí, o se queda para siempre en

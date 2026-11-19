@@ -220,6 +220,8 @@ function prismaCancelFake(rows: Fila[]) {
       },
     },
     reservationChangeRequest: { updateMany: async () => ({ count: 0 }) },
+    // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+    order: { findMany: async () => [], count: async () => 0 },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(fake),
   };
   return fake;
@@ -520,6 +522,11 @@ describe("registerManualPayment", () => {
   it("guarda el BRUTO en amount, el recargo de tarjeta aparte, infiere el tipo y avisa PAYMENT_RECEIVED", async () => {
     let creado: Record<string, unknown> | null = null;
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: {
         findUnique: async () => ({
           id: "res_1",
@@ -559,6 +566,11 @@ describe("registerManualPayment", () => {
   it("efectivo no arrastra datos de tarjeta aunque vengan", async () => {
     let creado: Record<string, unknown> | null = null;
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: {
         findUnique: async () => ({
           id: "res_1",
@@ -593,6 +605,11 @@ describe("registerManualPayment", () => {
 
   it("en un baño intenta cerrarlo (si ya terminó y quedó liquidado pasa a CHECKED_OUT)", async () => {
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: {
         findUnique: async () => ({
           id: "res_bath",
@@ -620,6 +637,11 @@ describe("registerManualPayment", () => {
 
   it("en una estancia no toca el cierre de baños", async () => {
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: {
         findUnique: async () => ({
           id: "res_stay",
@@ -703,6 +725,11 @@ describe("borrado con los candados del admin web (cobros-protegidos)", () => {
 
   it("no borra una reserva con dinero de Stripe o terminal", async () => {
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: {
         findUnique: async () => ({ id: "res_1", groupId: null, ownerId: "u", staffId: null, pet: { name: "Molly" } }),
         findMany: async () => [],
@@ -723,6 +750,11 @@ describe("borrado con los candados del admin web (cobros-protegidos)", () => {
       { id: "res_2", groupId: "g1", ownerId: "u", staffId: null, pet: { name: "Bailey" } },
     ];
     const prisma = {
+      // Cuenta de la reserva (lib/reservationAccount.ts): sin productos.
+      order: { findMany: async () => [], count: async () => 0 },
+      async $transaction(fn: (tx: unknown) => unknown) {
+        return fn(this);
+      },
       reservation: { findUnique: async () => grupo[0], findMany: async () => grupo },
       payment: { count: async () => 0 },
       terminalCharge: { count: async () => 0 },

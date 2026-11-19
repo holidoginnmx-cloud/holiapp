@@ -2,6 +2,7 @@ import type { PrismaClient, ReservationStatus } from "@holidoginn/db";
 import { notifyPetAudience } from "./notify";
 import { requestReview } from "./reviewRequest";
 import { notifyBalanceDue } from "./balanceReminder";
+import { releasePendingAccountOrders } from "./reservationAccount";
 
 // ── Máquina de estados de una reservación ────────────────────────────────────
 // El enum real es CONFIRMED → CHECKED_IN → CHECKED_OUT (+ CANCELLED): no hay
@@ -244,6 +245,8 @@ export async function applyStatusTransition(
           data: { status: "CANCELLED", rejectionReason: "Reservación cancelada" },
         });
       });
+      // Productos de la tienda que seguían sin cobrar en la cuenta: regresan.
+      await releasePendingAccountOrders(prisma, [r.id]);
       if (notify)
         await notifyPetAudience(
           prisma,

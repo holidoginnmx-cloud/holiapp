@@ -113,6 +113,27 @@ export type ReservationDetail = Reservation & {
   addons?: ReservationAddonWithVariant[];
   /** La agendó sola una cita recurrente (ver app/admin/recurring). */
   recurringBookingId?: string | null;
+  /**
+   * Productos de la tienda cargados a la cuenta (solo llega al equipo). Los
+   * PENDING se cobran con el siguiente pago manual: primero el producto y el
+   * resto a la reserva (lib/reservationAccount.ts del API).
+   */
+  accountOrders?: AccountOrder[];
+};
+
+export type AccountOrder = {
+  id: string;
+  orderNumber: number;
+  status: "PENDING" | "PAID" | "FULFILLED";
+  total: number;
+  items: {
+    id: string;
+    name: string;
+    variant: string | null;
+    unitPrice: number;
+    quantity: number;
+    lineTotal: number;
+  }[];
 };
 
 export type BathSelectionsByPet = Record<string, { deslanado: boolean; corte: boolean }>;

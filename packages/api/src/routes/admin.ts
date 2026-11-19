@@ -51,6 +51,11 @@ import {
 } from "../lib/payouts";
 import { syncPendingStripeFees } from "../lib/stripeFees";
 import { loadBathCommissionReport } from "../lib/bathCommissions";
+import {
+  addProductToAccount,
+  removeProductFromAccount,
+  variantLabel,
+} from "../lib/reservationAccount";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -1404,6 +1409,67 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         reservationId: request.params.id,
         input: parsed.data,
         actor: actorOf(request),
+      });
+      if (!res.ok) return sendOpError(reply, res);
+      return reply.send(res.data);
+    }
+  );
+
+  // ─── Productos de la tienda en la cuenta de la reserva ──────────
+  // (lib/reservationAccount.ts). Abierto al equipo, como los add-ons: agregar
+  // un producto no toca dinero cobrado; el cobro sigue su flujo normal.
+  fastify.get(
+    "/admin/store/variants",
+    { preHandler: [authMiddleware, staffMiddleware] },
+    async (_request, reply) => {
+      const variants = await prisma.productVariant.findMany({
+        where: { isActive: true, product: { isActive: true } },
+        select: {
+          id: true,
+          title: true,
+          price: true,
+          product: { select: { name: true } },
+          inventory: { select: { quantity: true, trackInventory: true } },
+        },
+      });
+      return reply.send(
+        variants
+          .map((v) => ({
+            variantId: v.id,
+            product: v.product.name,
+            variant: variantLabel(v.title) ?? "",
+            price: Number(v.price),
+            // null = sin control de inventario.
+            stock: v.inventory?.trackInventory ? v.inventory.quantity : null,
+          }))
+          .sort((a, b) => a.product.localeCompare(b.product) || a.variant.localeCompare(b.variant))
+      );
+    }
+  );
+
+  fastify.post<{ Params: { id: string }; Body: { variantId?: string; quantity?: number } }>(
+    "/admin/reservations/:id/products",
+    { preHandler: [authMiddleware, staffMiddleware] },
+    async (request, reply) => {
+      const variantId = request.body?.variantId;
+      if (!variantId) return reply.status(400).send({ error: "Elige un producto" });
+      const res = await addProductToAccount(prisma, {
+        reservationId: request.params.id,
+        variantId,
+        quantity: request.body?.quantity ?? 1,
+      });
+      if (!res.ok) return sendOpError(reply, res);
+      return reply.status(201).send(res.data);
+    }
+  );
+
+  fastify.delete<{ Params: { id: string; itemId: string } }>(
+    "/admin/reservations/:id/products/:itemId",
+    { preHandler: [authMiddleware, staffMiddleware] },
+    async (request, reply) => {
+      const res = await removeProductFromAccount(prisma, {
+        reservationId: request.params.id,
+        itemId: request.params.itemId,
       });
       if (!res.ok) return sendOpError(reply, res);
       return reply.send(res.data);

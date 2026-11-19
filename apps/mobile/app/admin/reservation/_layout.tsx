@@ -28,6 +28,7 @@ export default function AdminReservationLayout() {
       <Stack.Screen name="edit-daycare-schedule" options={{ title: "Editar horario", headerLeft: backButton }} />
       <Stack.Screen name="edit-times" options={{ title: "Horario", headerLeft: backButton }} />
       <Stack.Screen name="add-addon" options={{ title: "Agregar servicio", headerLeft: backButton }} />
+      <Stack.Screen name="add-product" options={{ title: "Agregar producto", headerLeft: backButton }} />
     </Stack>
   );
 }

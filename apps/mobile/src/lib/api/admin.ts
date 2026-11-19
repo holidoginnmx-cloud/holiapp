@@ -596,3 +596,30 @@ export const adminCancelReservation = (reservationId: string) =>
   }>(`/admin/reservations/${reservationId}/cancel`, {
     method: "POST",
   });
+
+// ─── Productos de la tienda en la cuenta de una reserva ─────────────────────
+
+export type StoreVariantOption = {
+  variantId: string;
+  product: string;
+  variant: string;
+  price: number;
+  /** null = sin control de inventario. */
+  stock: number | null;
+};
+
+export const getStoreVariants = () => apiFetch<StoreVariantOption[]>("/admin/store/variants");
+
+export const addAccountProduct = (
+  reservationId: string,
+  data: { variantId: string; quantity: number },
+) =>
+  apiFetch<{ success: true; orderId: string; itemId: string; agotado: boolean; productName: string; lineTotal: number }>(
+    `/admin/reservations/${reservationId}/products`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+
+export const removeAccountProduct = (reservationId: string, itemId: string) =>
+  apiFetch<{ success: true }>(`/admin/reservations/${reservationId}/products/${itemId}`, {
+    method: "DELETE",
+  });

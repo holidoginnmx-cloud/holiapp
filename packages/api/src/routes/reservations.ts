@@ -55,6 +55,7 @@ import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeam
 import { createWalkInBath } from "../lib/walkInBath";
 import { statusTransitionVerdict } from "../lib/reservationStatus";
 import { parsePageRequest, prismaPageArgs, buildPage } from "../lib/pagination";
+import { accountOrders, releasePendingAccountOrders, variantLabel } from "../lib/reservationAccount";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2025-03-31.basil",
@@ -284,7 +285,30 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
       }
       // El `include` (no `select`) devuelve la fila completa: sin este filtro la
       // nota interna del equipo y el motivo de las cortesías viajan al dueño.
-      return stripInternalFields(reservation, isStaffOrAdmin);
+      const body = stripInternalFields(reservation, isStaffOrAdmin);
+      // Productos de la tienda en la cuenta (lib/reservationAccount.ts): solo
+      // para el equipo, que es quien los cobra en el mostrador.
+      if (isStaffOrAdmin) {
+        const orders = await accountOrders(prisma, reservation.id);
+        return {
+          ...body,
+          accountOrders: orders.map((o) => ({
+            id: o.id,
+            orderNumber: o.orderNumber,
+            status: o.status,
+            total: Number(o.total),
+            items: o.items.map((i) => ({
+              id: i.id,
+              name: i.productNameSnapshot,
+              variant: variantLabel(i.variantTitleSnapshot),
+              unitPrice: Number(i.unitPrice),
+              quantity: i.quantity,
+              lineTotal: Number(i.lineTotal),
+            })),
+          })),
+        };
+      }
+      return body;
     }
   );
 
@@ -1703,6 +1727,8 @@ export default async function reservationsRoutes(fastify: FastifyInstance) {
         where: { id: reservation.id },
         data: { status: "CANCELLED" },
       });
+      // Productos de la tienda que seguían sin cobrar en la cuenta: regresan.
+      await releasePendingAccountOrders(prisma, [reservation.id]);
       return reply.send({ success: true, ...result });
     }
   );

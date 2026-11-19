@@ -2,6 +2,24 @@ import { StyleSheet } from "react-native";
 import { COLORS } from "@/constants/colors";
 
 export const styles = StyleSheet.create({
+  // Productos de la tienda en la cuenta de la reserva.
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.borderLight,
+  },
+  accountName: { fontSize: 14, fontFamily: "PlusJakartaSans_600SemiBold", color: COLORS.textPrimary },
+  accountSub: { fontSize: 12, fontFamily: "PlusJakartaSans_400Regular", color: COLORS.textTertiary },
+  accountPrice: { fontSize: 14, fontFamily: "PlusJakartaSans_700Bold", color: COLORS.textPrimary },
+  accountHint: {
+    marginTop: 8,
+    fontSize: 12,
+    fontFamily: "PlusJakartaSans_600SemiBold",
+    color: COLORS.warningText,
+  },
   // Chip "Cita recurrente" → la serie que la agendó.
   recurringChip: {
     flexDirection: "row",

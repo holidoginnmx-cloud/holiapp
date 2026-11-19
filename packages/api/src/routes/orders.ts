@@ -284,7 +284,10 @@ export default async function ordersRoutes(fastify: FastifyInstance) {
   // Historial de pedidos del usuario logueado.
   fastify.get("/store/orders", { preHandler: [authMiddleware] }, async (request) => {
     const orders = await prisma.order.findMany({
-      where: { userId: request.userId },
+      // Fuera los productos cargados a la cuenta de una reserva que aún no se
+      // cobran: son una cuenta abierta del mostrador, no un pedido "pendiente
+      // de pago" del cliente (lib/reservationAccount.ts).
+      where: { userId: request.userId, NOT: { status: "PENDING", reservationId: { not: null } } },
       orderBy: { createdAt: "desc" },
       include: { items: true },
     });
