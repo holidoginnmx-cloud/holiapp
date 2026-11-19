@@ -86,6 +86,14 @@ const CATEGORY_STYLE: Record<string, CategoryStyle> = {
     color: COLORS.warningText,
     icon: "bag-handle",
   },
+  // Anticipo cobrado sin reserva todavía (el cliente no mandó los datos del
+  // perro). Se mueve a su servicio cuando se asigna desde el admin web.
+  UNASSIGNED: {
+    label: "Por asignar",
+    bg: COLORS.bgSection,
+    color: COLORS.textSecondary,
+    icon: "time-outline",
+  },
 };
 
 const CATEGORY_FALLBACK: CategoryStyle = {
@@ -125,15 +133,20 @@ export default function AdminRevenue() {
   // Ventas de la tienda (mostrador y en línea): no cuelgan de una reservación,
   // así que son su propia banda y no reparten entre hotel y baño.
   const storeTotal = data?.byCategory?.store ?? 0;
+  const unassignedTotal = data?.byCategory?.unassigned ?? 0;
   // Para los porcentajes usamos el bruto positivo (categorías pueden ser
   // negativas si hubo más reembolsos que cobros, lo cual evitamos en la barra).
   const categoriesPositive =
-    Math.max(0, hotelTotal) + Math.max(0, bathTotal) + Math.max(0, storeTotal);
+    Math.max(0, hotelTotal) +
+    Math.max(0, bathTotal) +
+    Math.max(0, storeTotal) +
+    Math.max(0, unassignedTotal);
   const pctDe = (v: number) =>
     categoriesPositive > 0 ? Math.round((Math.max(0, v) / categoriesPositive) * 100) : 0;
   const hotelPct = pctDe(hotelTotal);
   const bathPct = pctDe(bathTotal);
   const storePct = pctDe(storeTotal);
+  const unassignedPct = pctDe(unassignedTotal);
   const paymentsCount =
     data?.payments.filter((p) => p.kind === "PAYMENT").length ?? 0;
   const refundsCount =
@@ -277,6 +290,29 @@ export default function AdminRevenue() {
                 </View>
               </View>
             )}
+
+            {unassignedTotal > 0 && (
+              <View style={styles.categoryItem}>
+                <View
+                  style={[styles.categoryIconWrap, { backgroundColor: COLORS.bgSection }]}
+                >
+                  <Ionicons name="time-outline" size={20} color={COLORS.textSecondary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.categoryLabel}>Por asignar</Text>
+                  <Text style={styles.categoryAmount}>
+                    {formatCurrency(unassignedTotal)}
+                  </Text>
+                </View>
+                <View
+                  style={[styles.categoryPctPill, { backgroundColor: COLORS.bgSection }]}
+                >
+                  <Text style={[styles.categoryPctText, { color: COLORS.textSecondary }]}>
+                    {unassignedPct}%
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
 
           <View style={styles.barWrap}>
@@ -302,6 +338,14 @@ export default function AdminRevenue() {
                   style={[
                     styles.barSegment,
                     { flex: storeTotal, backgroundColor: COLORS.warningText },
+                  ]}
+                />
+              )}
+              {unassignedTotal > 0 && (
+                <View
+                  style={[
+                    styles.barSegment,
+                    { flex: unassignedTotal, backgroundColor: COLORS.textTertiary },
                   ]}
                 />
               )}
@@ -374,8 +418,11 @@ export default function AdminRevenue() {
         </View>
       ) : (
         data?.payments.map((item) => {
-          const owner = item.reservation
-            ? `${formatName(item.reservation.owner?.firstName ?? "")} ${formatName(item.reservation.owner?.lastName ?? "")}`.trim() || "—"
+          // Sin reserva (anticipo por asignar, venta con cliente): el nombre
+          // sale del cliente del pago. "—" es el apellido placeholder del Excel.
+          const ownerSrc = item.reservation?.owner ?? item.user ?? null;
+          const owner = ownerSrc
+            ? `${formatName(ownerSrc.firstName ?? "")} ${ownerSrc.lastName && ownerSrc.lastName !== "—" ? formatName(ownerSrc.lastName) : ""}`.trim() || "—"
             : "—";
           const pet = item.reservation
             ? formatName(item.reservation.pet?.name ?? "—")

@@ -36,6 +36,7 @@ import { applyDaycareScheduleUpdate } from "../lib/daycareSchedule";
 import { applyStatusTransition } from "../lib/reservationStatus";
 import { createTeamReservation, teamCreatePayload } from "../lib/reservationTeamCreate";
 import { applyReservationTimesUpdate } from "../lib/stayTimes";
+import { registerUnassignedDeposit, assignDepositToReservation } from "../lib/unassignedDeposits";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  /internal/reservations/* — administración de reservas para el ADMIN WEB
@@ -131,6 +132,16 @@ const PaymentSchema = z.object({
   reference: z.string().max(120).nullable().optional(),
   paidAt: z.coerce.date().nullable().optional(),
   kind: z.enum(["ANTICIPO", "ABONO", "RESTANTE", "FULL"]).nullable().optional(),
+});
+
+/** Anticipo sin reserva (ver lib/unassignedDeposits.ts). */
+const UnassignedDepositSchema = PaymentSchema.omit({ kind: true }).extend({
+  userId: z.string().min(1).nullable().optional(),
+});
+
+const AssignDepositSchema = z.object({
+  reservationId: z.string().min(1),
+  confirmOtherOwner: z.boolean().optional(),
 });
 
 /**
@@ -704,6 +715,50 @@ export default async function internalReservationsRoutes(fastify: FastifyInstanc
         fields: Object.keys(parsed.data),
         amount: Number(res.data.payment.amount),
         method: res.data.payment.method,
+        balance: res.data.balance,
+      });
+      return reply.send(res.data);
+    }
+  );
+
+  // ── POST /internal/payments/unassigned — anticipo sin reserva ───────────
+  //  El cliente pagó el anticipo pero no mandó los datos del perro: el dinero
+  //  entra hoy como ingreso "Por asignar" y se cuelga de su reserva después.
+  fastify.post("/internal/payments/unassigned", opts, async (request, reply) => {
+    const parsed = UnassignedDepositSchema.safeParse(request.body);
+    if (!parsed.success) return sendInvalid(reply, parsed.error);
+    const res = await registerUnassignedDeposit(prisma, {
+      input: parsed.data,
+      actor: actorOf(request),
+    });
+    if (!res.ok) return sendError(reply, res);
+    logInternal(request, "internal-unassigned-deposit", {
+      paymentId: res.data.payment.id,
+      userId: parsed.data.userId ?? null,
+      amount: parsed.data.amount,
+      method: parsed.data.method,
+    });
+    return reply.status(201).send(res.data);
+  });
+
+  // ── POST /internal/payments/:id/assign — colgar el anticipo de su reserva ─
+  fastify.post<{ Params: { id: string } }>(
+    "/internal/payments/:id/assign",
+    opts,
+    async (request, reply) => {
+      const parsed = AssignDepositSchema.safeParse(request.body);
+      if (!parsed.success) return sendInvalid(reply, parsed.error);
+      const res = await assignDepositToReservation(prisma, {
+        paymentId: request.params.id,
+        reservationId: parsed.data.reservationId,
+        confirmOtherOwner: parsed.data.confirmOtherOwner,
+        actor: actorOf(request),
+      });
+      if (!res.ok) return sendError(reply, res);
+      logInternal(request, "internal-deposit-assign", {
+        paymentId: request.params.id,
+        reservationId: parsed.data.reservationId,
+        confirmOtherOwner: parsed.data.confirmOtherOwner ?? false,
         balance: res.data.balance,
       });
       return reply.send(res.data);

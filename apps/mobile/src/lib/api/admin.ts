@@ -64,7 +64,9 @@ export type AdminRevenueBreakdown = {
   gross: number;
   refunded: number;
   byMethod: Record<string, number>;
-  byCategory: { hotel: number; bath: number; store: number };
+  // `unassigned` (anticipos sin reserva) llegó después: opcional para tolerar
+  // un API viejo.
+  byCategory: { hotel: number; bath: number; store: number; unassigned?: number };
   payments: {
     id: string;
     amount: string;
@@ -77,11 +79,13 @@ export type AdminRevenueBreakdown = {
     originLegacy: boolean;
     // El servidor puede agregar categorías nuevas (STORE llegó después): la
     // pantalla indexa CATEGORY_STYLE con un fallback, no con una unión cerrada.
-    category: "HOTEL" | "BATH" | "MIXED" | "STORE" | (string & {});
+    category: "HOTEL" | "BATH" | "MIXED" | "STORE" | "UNASSIGNED" | (string & {});
     hotelAmount: number;
     bathAmount: number;
     // Venta de tienda: el pago cuelga de un pedido en vez de una reservación.
     order: { id: string; orderNumber: number; channel: "ONLINE" | "COUNTER" } | null;
+    // Cliente del pago: es el único nombre que tiene un anticipo sin reserva.
+    user?: { firstName: string; lastName: string | null } | null;
     reservation: {
       id: string;
       reservationType: "STAY" | "BATH" | "DAYCARE";

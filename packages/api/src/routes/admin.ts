@@ -403,6 +403,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             },
           },
           order: { select: { id: true, orderNumber: true, channel: true } },
+          // Anticipo sin reserva: el nombre del cliente sale de aquí.
+          user: { select: { firstName: true, lastName: true } },
           addons: {
             select: {
               unitPrice: true,
@@ -428,7 +430,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           .filter((a) => a.variant.serviceType.code === "BATH")
           .reduce((sum, a) => sum + Number(a.unitPrice), 0);
 
-        let category: "HOTEL" | "BATH" | "MIXED" | "STORE";
+        let category: "HOTEL" | "BATH" | "MIXED" | "STORE" | "UNASSIGNED";
         let hotelAmount: number;
         let bathAmount: number;
 
@@ -437,6 +439,12 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         // el `else` final y se reportaría como HOTEL.
         if (p.orderId) {
           category = "STORE";
+          hotelAmount = 0;
+          bathAmount = 0;
+        } else if (!p.reservationId) {
+          // Anticipo sin reserva (lib/unassignedDeposits.ts): todavía no se
+          // sabe de qué servicio es. Sin esta rama caía en HOTEL.
+          category = "UNASSIGNED";
           hotelAmount = 0;
           bathAmount = 0;
         } else if (p.reservation?.reservationType === "BATH") {
@@ -489,9 +497,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           // Las ventas de tienda no reparten entre hotel/estética: el monto
           // entero es su propia banda (hotelAmount y bathAmount quedan en 0).
           if (p.category === "STORE") acc.store += sign * Number(p.amount);
+          if (p.category === "UNASSIGNED") acc.unassigned += sign * Number(p.amount);
           return acc;
         },
-        { hotel: 0, bath: 0, store: 0 }
+        { hotel: 0, bath: 0, store: 0, unassigned: 0 }
       );
 
       return reply.send({

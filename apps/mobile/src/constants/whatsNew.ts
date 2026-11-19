@@ -41,6 +41,25 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-18-c",
+    title: "Anticipos sin reserva",
+    items: [
+      {
+        icon: "time-outline",
+        title: "Ingresos: «Por asignar»",
+        body: "Anticipos que ya pagaron pero aún no tienen reserva; se capturan y asignan en el panel web.",
+        route: "/admin/revenue",
+        steps: ["Ingresos del mes", "Por asignar"],
+        preview: {
+          label: "POR ASIGNAR",
+          value: "$350",
+          caption: "Al asignarlo a su reserva pasa a Hotel o Baño",
+        },
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-11-18-b",
     title: "Citas que se agendan solas",
     items: [
