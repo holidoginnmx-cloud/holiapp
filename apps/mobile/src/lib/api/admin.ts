@@ -623,3 +623,46 @@ export const removeAccountProduct = (reservationId: string, itemId: string) =>
   apiFetch<{ success: true }>(`/admin/reservations/${reservationId}/products/${itemId}`, {
     method: "DELETE",
   });
+
+// ─── Anticipos SIN reserva («Por asignar») ──────────────────────────────────
+// El cliente pagó el anticipo pero no mandó los datos del perro. Se registra
+// como ingreso «Por asignar» y se cuelga de su reserva cuando exista.
+
+export type UnassignedDeposit = {
+  id: string;
+  amount: number;
+  method: string;
+  cardBrand: string | null;
+  paidAt: string | null;
+  notes: string | null;
+  userId: string | null;
+  clientName: string | null;
+};
+
+export const UNASSIGNED_DEPOSITS_KEY = ["admin", "unassigned-deposits"] as const;
+
+export const getUnassignedDeposits = () =>
+  apiFetch<UnassignedDeposit[]>("/admin/payments/unassigned");
+
+export const createUnassignedDeposit = (data: {
+  userId?: string | null;
+  name?: string | null;
+  amount: number;
+  method: "CASH" | "TRANSFER" | "CARD";
+  cardBrand?: string;
+  notes?: string | null;
+}) =>
+  apiFetch<{ success: true; payment: { id: string } }>("/admin/payments/unassigned", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+/** 409 con code OTHER_OWNER si la reserva es de otra cuenta: reintentar con confirmOtherOwner. */
+export const assignDeposit = (
+  paymentId: string,
+  data: { reservationId: string; confirmOtherOwner?: boolean },
+) =>
+  apiFetch<{ success: true; balance: number; groupBalance: number; overpaid: number }>(
+    `/admin/payments/${paymentId}/assign`,
+    { method: "POST", body: JSON.stringify(data) },
+  );

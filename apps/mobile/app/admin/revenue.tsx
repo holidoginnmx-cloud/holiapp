@@ -11,7 +11,11 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getAdminRevenueBreakdown } from "@/lib/api";
+import {
+  getAdminRevenueBreakdown,
+  getUnassignedDeposits,
+  UNASSIGNED_DEPOSITS_KEY,
+} from "@/lib/api";
 import {
   formatName,
   formatCurrency,
@@ -112,6 +116,12 @@ export default function AdminRevenue() {
     queryFn: () => getAdminRevenueBreakdown(),
     refetchInterval: 60_000,
   });
+  // Anticipos sin reserva de CUALQUIER mes (el rubro de arriba es solo este mes).
+  const { data: porAsignar } = useQuery({
+    queryKey: UNASSIGNED_DEPOSITS_KEY,
+    queryFn: getUnassignedDeposits,
+  });
+  const porAsignarTotal = (porAsignar ?? []).reduce((s, d) => s + d.amount, 0);
 
   if (isError) {
     return <ErrorState error={error} onRetry={refetch} />;
@@ -353,6 +363,27 @@ export default function AdminRevenue() {
           </View>
         </View>
       )}
+
+      {/* Anticipos sin reserva: registrar uno nuevo o asignarlo a su reserva. */}
+      <TouchableOpacity
+        style={styles.breakdownButton}
+        onPress={() => router.push("/admin/deposits" as any)}
+        activeOpacity={0.85}
+        testID="revenue-unassigned-deposits"
+      >
+        <View style={styles.breakdownIconWrap}>
+          <Ionicons name="time-outline" size={18} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.breakdownTitle}>Anticipos sin reserva</Text>
+          <Text style={styles.breakdownSubtitle}>
+            {(porAsignar ?? []).length > 0
+              ? `${porAsignar!.length} por asignar · ${formatCurrency(porAsignarTotal)}`
+              : "Registrar un anticipo que aún no tiene reserva"}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
+      </TouchableOpacity>
 
       {/* Ver método de pago — botón a pantalla dedicada */}
       {total > 0 && (

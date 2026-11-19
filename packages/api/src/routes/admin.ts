@@ -56,6 +56,8 @@ import {
   removeProductFromAccount,
   variantLabel,
 } from "../lib/reservationAccount";
+import { registerUnassignedDeposit, assignDepositToReservation } from "../lib/unassignedDeposits";
+import { parseManualMethod, cardFeeSnapshot } from "../lib/manualPayment";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   const { prisma } = fastify;
@@ -1408,6 +1410,112 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       const res = await addReservationAddon(prisma, {
         reservationId: request.params.id,
         input: parsed.data,
+        actor: actorOf(request),
+      });
+      if (!res.ok) return sendOpError(reply, res);
+      return reply.send(res.data);
+    }
+  );
+
+  // ─── Anticipos SIN reserva («Por asignar») ───────────────────────
+  // Mismo negocio que /internal/payments/unassigned del panel web
+  // (lib/unassignedDeposits.ts), para que Jessica/José lo hagan desde el
+  // teléfono. Solo ADMIN: es dinero (ver permisos-staff-crear-no-dinero).
+  fastify.get(
+    "/admin/payments/unassigned",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (_request, reply) => {
+      const rows = await prisma.payment.findMany({
+        where: {
+          reservationId: null,
+          orderId: null,
+          status: { in: ["PAID", "PARTIAL"] },
+        },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          cardBrand: true,
+          paidAt: true,
+          notes: true,
+          userId: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { paidAt: "desc" },
+        take: 200,
+      });
+      return reply.send(
+        rows.map((r) => ({
+          id: r.id,
+          amount: Number(r.amount),
+          method: r.method,
+          cardBrand: r.cardBrand,
+          paidAt: r.paidAt,
+          notes: r.notes,
+          userId: r.userId,
+          clientName: r.user
+            ? [r.user.firstName, r.user.lastName].filter((s) => s && s !== "—").join(" ")
+            : null,
+        }))
+      );
+    }
+  );
+
+  fastify.post<{
+    Body: {
+      userId?: string | null;
+      /** Sin ficha todavía: a nombre de quién es. */
+      name?: string | null;
+      amount?: number;
+      method?: string;
+      cardBrand?: string;
+      notes?: string | null;
+    };
+  }>(
+    "/admin/payments/unassigned",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const body = request.body ?? {};
+      const amount = body.amount;
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        return reply.status(400).send({ error: "El monto debe ser un número mayor a 0" });
+      }
+      const parsed = parseManualMethod(body.method, body.cardBrand);
+      if (!parsed.ok) return reply.status(400).send({ error: parsed.error });
+      const name = body.name?.trim().slice(0, 120) || null;
+      const extra = body.notes?.trim().slice(0, 300) || null;
+      const notes = [name ? `Anticipo de ${name}` : null, extra].filter(Boolean).join(" · ") || null;
+      const card = await cardFeeSnapshot(prisma, parsed.method, parsed.cardBrand, amount);
+      const res = await registerUnassignedDeposit(prisma, {
+        input: {
+          amount,
+          method: parsed.method,
+          userId: body.userId || null,
+          cardBrand: card.cardBrand,
+          cardFeePct: card.cardFeePct != null ? Number(card.cardFeePct) : null,
+          cardFeeAmount: card.cardFeeAmount != null ? Number(card.cardFeeAmount) : null,
+          notes,
+        },
+        actor: actorOf(request),
+      });
+      if (!res.ok) return sendOpError(reply, res);
+      return reply.status(201).send(res.data);
+    }
+  );
+
+  fastify.post<{
+    Params: { id: string };
+    Body: { reservationId?: string; confirmOtherOwner?: boolean };
+  }>(
+    "/admin/payments/:id/assign",
+    { preHandler: [authMiddleware, adminMiddleware] },
+    async (request, reply) => {
+      const reservationId = request.body?.reservationId;
+      if (!reservationId) return reply.status(400).send({ error: "Elige la reserva" });
+      const res = await assignDepositToReservation(prisma, {
+        paymentId: request.params.id,
+        reservationId,
+        confirmOtherOwner: request.body?.confirmOtherOwner === true,
         actor: actorOf(request),
       });
       if (!res.ok) return sendOpError(reply, res);

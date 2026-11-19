@@ -41,6 +41,25 @@ export type WhatsNewRelease = {
 
 export const WHATS_NEW: WhatsNewRelease[] = [
   {
+    id: "2026-11-18-e",
+    title: "Anticipos sin reserva, desde la app",
+    items: [
+      {
+        icon: "time-outline",
+        title: "Registra y asigna anticipos aquí",
+        body: "Si ya pagó pero aún no manda los datos del perro, regístralo; cuando tenga reserva, asígnalo.",
+        route: "/admin/deposits",
+        steps: ["Ingresos del mes", "Anticipos sin reserva"],
+        preview: {
+          label: "ANTICIPOS SIN RESERVA",
+          value: "1 por asignar · $350",
+          caption: "Toca uno → elige su reserva → Asignar",
+        },
+        roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
     id: "2026-11-18-d",
     title: "Productos en la cuenta",
     items: [
